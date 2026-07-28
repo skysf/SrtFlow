@@ -2,9 +2,12 @@
 
 [中文](#中文) · [English](#english)
 
-SrtFlow is a lightweight, native macOS subtitle editor and converter. It supports
-Text, SRT, WebVTT, ASS, and SSA files without cloud services or runtime
-dependencies.
+**中文：** SrtFlow 是一款轻量、原生的 macOS 字幕编辑与格式转换工具，支持
+Text、SRT、WebVTT、ASS 和 SSA，无需云服务或额外运行时依赖。
+
+**English:** SrtFlow is a lightweight, native macOS subtitle editor and
+converter for Text, SRT, WebVTT, ASS, and SSA files, with no cloud services or
+additional runtime dependencies.
 
 ## English
 
