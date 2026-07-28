@@ -1,0 +1,83 @@
+# Xcode
+build/
+DerivedData/
+*.xcuserdata
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+xcuserdata/
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package
+.swiftpm/
+Packages/
+Package.resolved
+.build/
+
+# macOS
+.DS_Store
+**/.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Build products
+dist/
+*.dmg
+*.app
+export/
+Release/
+Debug/
+
+# Secrets / personal
+.env
+.env.*
+*.pem
+*.cer
+*.crt
+*.p12
+*.p8
+*.mobileprovision
+Secrets/
+**/GoogleService-Info.plist
+**/AuthKey_*.p8
+IDCStore/
+*.keychain
+
+# Local agent / automation settings
+.agents/
+.codex/
+AGENTS.md
+AGENTS.local.md
+
+# IDE
+.idea/
+*.swp
+*~
+.vscode/
+.cursor/
+*.xcuserstate
+
+# Local diagnostics
+*.log
+*.tmp
