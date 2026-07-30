@@ -1,5 +1,4 @@
 /* 字幕编辑与批量转换 */
-"Batch Convert…" = "批量转换…";
 "Batch Convert" = "批量转换";
 "Add Cue" = "添加条目";
 "Delete" = "删除";
@@ -22,27 +21,18 @@
 "Convert" = "转换";
 "Drop subtitle files here, or click Add Files…" = "将字幕文件拖到此处，或点击“添加文件…”";
 
-/* 首页 */
-"Subtitles and video, all on your Mac." = "字幕与视频，都在这台 Mac 上完成。";
-"Drop a video or a subtitle file anywhere in this window." = "把视频或字幕文件拖到窗口任意位置即可。";
+/* 主窗口侧边栏 */
 "Compress Video" = "压缩视频";
 "Make files much smaller without visible quality loss." = "在看不出画质损失的前提下，把文件大幅变小。";
-"H.264 CRF or the M-series hardware encoder." = "H.264 CRF 或 M 系列芯片的硬件编码器。";
 "Burn In Subtitles" = "烧制字幕";
 "Render subtitles permanently into the picture." = "把字幕永久合成进画面。";
-"Adjustable font, colour and position, with presets." = "字体、颜色、位置都可调，并带预设。";
-"Edit Subtitles" = "编辑字幕";
-"Open a subtitle file to edit timing and text." = "打开字幕文件，修改时间码和文字。";
-"Text, SRT, VTT, ASS and SSA." = "支持 Text、SRT、VTT、ASS 和 SSA。";
 "Convert many subtitle files at once." = "一次转换多个字幕文件。";
-"Any supported format to any other." = "任意支持的格式之间互转。";
+"Edit Subtitles" = "编辑字幕";
+"Opens a subtitle file in its own editor window." = "在独立的编辑窗口里打开字幕文件。";
 "Checking the video engine…" = "正在检查视频引擎…";
+"Video engine needs attention" = "视频引擎有问题";
+"Engine ready · ffmpeg %@" = "引擎就绪 · ffmpeg %@";
 "Video engine ready — ffmpeg %@ (%@, native Apple silicon)" = "视频引擎就绪 —— ffmpeg %@（%@，原生 Apple 芯片）";
-
-/* 菜单 */
-"Compress Video…" = "压缩视频…";
-"Burn In Subtitles…" = "烧制字幕…";
-"SrtFlow Home" = "SrtFlow 首页";
 
 /* 引擎状态与错误 */
 "Bundled with SrtFlow" = "随 SrtFlow 一起分发";
@@ -54,8 +44,9 @@
 "Could not start ffmpeg: %@" = "无法启动 ffmpeg：%@";
 "ffmpeg exited with code %d." = "ffmpeg 退出，代码 %d。";
 "Cancelled." = "已取消。";
-"macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS 拦下了随包的 ffmpeg（因为这个 App 是从网上下载的）。把下面这行粘到「终端」里执行，然后重新打开 SrtFlow：\n%@";
-"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS 中止了随包的 ffmpeg（因为这个 App 是从网上下载的）。把下面这行粘到「终端」里执行，然后重新打开 SrtFlow：\n%@";
+"macOS blocked this app because it was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then open SrtFlow again. If compression still fails immediately, paste this line into Terminal instead:\n%@" = "macOS 拦下了这个 App（因为它是从网上下载的）。打开「系统设置 → 隐私与安全性」，找到关于 SrtFlow 的那条提示，点「仍要打开」，然后再打开一次 SrtFlow 就行。如果压缩还是一点就失败，再把下面这行粘到「终端」里执行：\n%@";
+"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then reopen it. If it still fails, paste this line into Terminal:\n%@" = "macOS 中止了随包的 ffmpeg（因为这个 App 是从网上下载的）。打开「系统设置 → 隐私与安全性」，点关于 SrtFlow 的「仍要打开」，然后重新打开它。如果还是不行，再把下面这行粘到「终端」里执行：\n%@";
+"Open System Settings" = "打开系统设置";
 "ffmpeg was stopped by the system (signal %d)." = "ffmpeg 被系统中止（信号 %d）。";
 "This file has no video track." = "这个文件没有视频轨。";
 "Could not read video information from %@." = "无法读取 %@ 的视频信息。";
@@ -130,7 +121,16 @@
 "Rendering preview…" = "正在渲染预览…";
 "Preview line" = "预览第几条";
 "Preview" = "预览中";
-"Preview is rendered by ffmpeg with the export settings, so it matches the result exactly." = "预览由 ffmpeg 按导出设置真实渲染，所见即所得。";
+
+/* 预览：播放 / 精确帧 */
+"Play" = "播放";
+"Pause" = "暂停";
+"Exact frame" = "精确帧";
+"Fill the window with the preview" = "把预览铺满窗口";
+"Shrink the preview (Esc)" = "还原预览（Esc）";
+"Esc to shrink · ⌃⌘F for full screen" = "Esc 还原 · ⌃⌘F 进入全屏";
+"Playback draws the subtitles itself: the timing is exact, the look is close but not final. Switch to Exact frame to judge the look." = "播放时的字幕是本机即时画的：时间轴是准的，外观接近但不是最终效果。要看确切外观请切到「精确帧」。";
+"The exact frame is rendered by ffmpeg with the export settings, so it matches the result exactly." = "精确帧由 ffmpeg 按导出设置真实渲染，所见即所得。";
 "No subtitle file yet" = "还没有配字幕";
 "Export" = "导出";
 "Also attach a switchable subtitle track" = "同时附加可开关的字幕轨";
@@ -139,9 +139,10 @@
 /* 样式编辑 */
 "Font" = "字体";
 "Typeface" = "字体";
-"Loading…" = "加载中…";
 "Supports Chinese" = "支持中文";
 "Other fonts" = "其他字体";
+"Search fonts" = "搜索字体";
+"Arrow keys walk the list — the preview follows as you go." = "用上下方向键逐个试，预览会实时跟着变。";
 "Size" = "字号";
 "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "所有尺寸都以 1080p 画面为基准，因此同一套样式在 720p 和 4K 导出里看起来完全一致。";
 "Bold" = "粗体";
@@ -161,7 +162,7 @@
 "Distance from edge" = "距边缘距离";
 "Vertical offset" = "垂直偏移";
 "Side margins" = "左右边距";
-"Side margins also decide where long lines wrap." = "左右边距同时决定长句在哪里换行。";
+"Side margins also decide where long lines wrap. Guide lines appear on the preview while you drag." = "左右边距同时决定长句在哪里换行。拖动时预览上会画出参考线。";
 "Custom" = "自定义";
 "Preset name" = "预设名称";
 "Save" = "保存";

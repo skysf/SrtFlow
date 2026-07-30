@@ -3,7 +3,9 @@ import SrtFlowCore
 
 /// 压缩视频：拖一堆视频进来排队，在不明显损失画质的前提下把体积压下去。
 struct CompressView: View {
-    @StateObject private var queue = EncodeQueue(outputSuffix: "_compressed")
+    // 队列是全局的，不是这个视图的 @StateObject —— 切到别的栏目时视图会被销毁，
+    // 队列跟着走的话正在跑的编码就断了。
+    @ObservedObject private var queue = EncodeQueue.compress
     @StateObject private var toolchain = MediaToolchain.shared
     @StateObject private var handoff = CompressHandoff.shared
     // 这个视图在代码里拼字符串（L10n(...)），不是纯 LocalizedStringKey，
@@ -20,7 +22,8 @@ struct CompressView: View {
             settingsSide
                 .frame(minWidth: 340, idealWidth: 380, maxWidth: 460)
         }
-        .frame(minWidth: 820, minHeight: 520)
+        // 主窗口左边还有侧边栏，这里的下限比原来独立开窗时收一点。
+        .frame(minWidth: 760, minHeight: 500)
         .onAppear {
             toolchain.resolveIfNeeded()
             restoreSettings()

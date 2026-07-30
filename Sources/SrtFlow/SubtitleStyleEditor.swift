@@ -53,6 +53,8 @@ struct SubtitleStyleEditor: View {
     @Binding var style: BurnInStyle
     @ObservedObject var fontCatalog: FontCatalogStore
     @ObservedObject var presets: StylePresetStore
+    /// 拖边距滑块时让预览上闪出参考线。
+    @ObservedObject var guides: MarginGuideFlash
 
     @State private var newPresetName = ""
     @State private var isNamingPreset = false
@@ -142,29 +144,40 @@ struct SubtitleStyleEditor: View {
             Section("Position") {
                 PositionGrid(position: $style.position)
 
+                // 这两个滑块拖的时候会在预览上画出参考线（`MarginGuideFlash`）：
+                // 光看数字想象不出边距在哪儿，尤其它还决定长句在哪换行。
                 LabeledSlider(
                     label: style.position.isVerticallyCentered ? "Vertical offset" : "Distance from edge",
                     value: Binding(
                         get: { Double(style.marginVertical) },
-                        set: { style.marginVertical = Int($0.rounded()) }
+                        set: {
+                            style.marginVertical = Int($0.rounded())
+                            guides.flash()
+                        }
                     ),
                     range: Double(BurnInStyle.marginRange.lowerBound)...Double(BurnInStyle.marginRange.upperBound),
                     step: 5,
-                    readout: "\(style.marginVertical)"
+                    readout: "\(style.marginVertical)",
+                    onEditingChanged: { guides.setDragging($0) }
                 )
                 LabeledSlider(
                     label: "Side margins",
                     value: Binding(
                         get: { Double(style.marginHorizontal) },
-                        set: { style.marginHorizontal = Int($0.rounded()) }
+                        set: {
+                            style.marginHorizontal = Int($0.rounded())
+                            guides.flash()
+                        }
                     ),
                     range: Double(BurnInStyle.marginRange.lowerBound)...Double(BurnInStyle.marginRange.upperBound),
                     step: 5,
-                    readout: "\(style.marginHorizontal)"
+                    readout: "\(style.marginHorizontal)",
+                    onEditingChanged: { guides.setDragging($0) }
                 )
-                Text("Side margins also decide where long lines wrap.")
+                Text("Side margins also decide where long lines wrap. Guide lines appear on the preview while you drag.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .formStyle(.grouped)
@@ -265,27 +278,7 @@ struct SubtitleStyleEditor: View {
     // MARK: - 字体
 
     private var fontPicker: some View {
-        Picker("Typeface", selection: $style.fontName) {
-            if fontCatalog.isLoading {
-                Text("Loading…").tag(style.fontName)
-            } else {
-                // 当前字体如果不在可用列表里（比如换了机器），也得能显示出来。
-                if fontCatalog.font(named: style.fontName) == nil {
-                    Text(style.fontName).tag(style.fontName)
-                    Divider()
-                }
-                Section("Supports Chinese") {
-                    ForEach(fontCatalog.chineseCapableFonts) { font in
-                        Text(font.familyName).tag(font.familyName)
-                    }
-                }
-                Section("Other fonts") {
-                    ForEach(fontCatalog.otherFonts) { font in
-                        Text(font.familyName).tag(font.familyName)
-                    }
-                }
-            }
-        }
+        FontPickerField(fontName: $style.fontName, catalog: fontCatalog)
     }
 
     private func colorBinding(_ keyPath: WritableKeyPath<BurnInStyle, SubtitleColor>) -> Binding<Color> {
@@ -303,6 +296,8 @@ private struct LabeledSlider: View {
     let range: ClosedRange<Double>
     let step: Double
     let readout: String
+    /// 开始/结束拖动。按住不动时也算在拖，边距参考线靠它决定什么时候开始倒计时。
+    var onEditingChanged: ((Bool) -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -311,7 +306,9 @@ private struct LabeledSlider: View {
                 Spacer()
                 Text(readout).monospacedDigit().foregroundStyle(.secondary)
             }
-            Slider(value: $value, in: range, step: step)
+            Slider(value: $value, in: range, step: step) { editing in
+                onEditingChanged?(editing)
+            }
         }
     }
 }

@@ -21,7 +21,7 @@ enum FFmpegProcessError: LocalizedError {
         case .killedBySystem(let signal, let fixCommand):
             if let fixCommand {
                 return String(
-                    format: L10n("macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@"),
+                    format: L10n("macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then reopen it. If it still fails, paste this line into Terminal:\n%@"),
                     fixCommand
                 )
             }

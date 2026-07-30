@@ -1,11 +1,51 @@
 import SwiftUI
 import SrtFlowCore
 
+/// 批量转换的状态。
+///
+/// 和两个编码队列同理：主窗口靠侧边栏切栏目，切走这一栏视图就没了。排好的
+/// 文件列表和转换结果放在这里，切回来还在。
+@MainActor
+final class BatchConvertModel: ObservableObject {
+    static let shared = BatchConvertModel()
+
+    @Published var files: [URL] = []
+    @Published var target: SubtitleFormat = .srt
+    @Published var outputDirectory: URL?
+    @Published var statuses: [URL: String] = [:]
+
+    private init() {}
+
+    func add(_ url: URL) {
+        guard !files.contains(url) else { return }
+        files.append(url)
+        statuses[url] = nil
+    }
+
+    func remove(atOffsets offsets: IndexSet) {
+        for url in offsets.map({ files[$0] }) { statuses[url] = nil }
+        files.remove(atOffsets: offsets)
+    }
+
+    func clear() {
+        files.removeAll()
+        statuses.removeAll()
+    }
+
+    func convert() {
+        for url in files {
+            do {
+                let out = try SubtitleConverter.convertFile(at: url, to: target, outputDirectory: outputDirectory)
+                statuses[url] = "✓ \(out.lastPathComponent)"
+            } catch {
+                statuses[url] = "✗ \(error.localizedDescription)"
+            }
+        }
+    }
+}
+
 struct BatchConvertView: View {
-    @State private var files: [URL] = []
-    @State private var target: SubtitleFormat = .srt
-    @State private var outputDirectory: URL?
-    @State private var statuses: [URL: String] = [:]
+    @ObservedObject private var model = BatchConvertModel.shared
 
     var body: some View {
         VStack(spacing: 12) {
@@ -13,16 +53,13 @@ struct BatchConvertView: View {
 
             HStack {
                 Button("Add Files…", action: addFiles)
-                Button("Clear") {
-                    files.removeAll()
-                    statuses.removeAll()
-                }
-                .disabled(files.isEmpty)
+                Button("Clear") { model.clear() }
+                    .disabled(model.files.isEmpty)
                 Spacer()
             }
 
             HStack {
-                Picker("Target Format", selection: $target) {
+                Picker("Target Format", selection: $model.target) {
                     ForEach(SubtitleFormat.allCases, id: \.self) { format in
                         Text(format.displayName).tag(format)
                     }
@@ -30,7 +67,7 @@ struct BatchConvertView: View {
                 .fixedSize()
 
                 Button("Output Folder…", action: chooseOutputFolder)
-                Text(outputDirectory?.lastPathComponent ?? String(localized: "Same as source"))
+                Text(model.outputDirectory?.lastPathComponent ?? String(localized: "Same as source"))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -39,9 +76,9 @@ struct BatchConvertView: View {
 
             HStack {
                 Spacer()
-                Button("Convert", action: convert)
+                Button("Convert") { model.convert() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(files.isEmpty)
+                    .disabled(model.files.isEmpty)
             }
         }
         .padding()
@@ -50,20 +87,20 @@ struct BatchConvertView: View {
 
     private var fileList: some View {
         List {
-            if files.isEmpty {
+            if model.files.isEmpty {
                 Text("Drop subtitle files here, or click Add Files…")
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 40)
             } else {
-                ForEach(files, id: \.self) { url in
+                ForEach(model.files, id: \.self) { url in
                     HStack {
                         Image(systemName: "doc.text")
                         Text(url.lastPathComponent)
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Spacer()
-                        if let status = statuses[url] {
+                        if let status = model.statuses[url] {
                             Text(status)
                                 .foregroundStyle(status.hasPrefix("✓") ? .green : .red)
                                 .font(.callout)
@@ -74,27 +111,18 @@ struct BatchConvertView: View {
                         }
                     }
                 }
-                .onDelete { offsets in
-                    for url in offsets.map({ files[$0] }) { statuses[url] = nil }
-                    files.remove(atOffsets: offsets)
-                }
+                .onDelete { model.remove(atOffsets: $0) }
             }
         }
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             for provider in providers {
                 _ = provider.loadObject(ofClass: URL.self) { url, _ in
                     guard let url, SubtitleFormat.detect(from: url.lastPathComponent) != nil else { return }
-                    DispatchQueue.main.async { addFile(url) }
+                    DispatchQueue.main.async { model.add(url) }
                 }
             }
             return true
         }
-    }
-
-    private func addFile(_ url: URL) {
-        guard !files.contains(url) else { return }
-        files.append(url)
-        statuses[url] = nil
     }
 
     private func addFiles() {
@@ -103,7 +131,7 @@ struct BatchConvertView: View {
         panel.allowsMultipleSelection = true
         panel.begin { response in
             guard response == .OK else { return }
-            for url in panel.urls { addFile(url) }
+            for url in panel.urls { model.add(url) }
         }
     }
 
@@ -113,18 +141,7 @@ struct BatchConvertView: View {
         panel.canChooseDirectories = true
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
-            outputDirectory = url
-        }
-    }
-
-    private func convert() {
-        for url in files {
-            do {
-                let out = try SubtitleConverter.convertFile(at: url, to: target, outputDirectory: outputDirectory)
-                statuses[url] = "✓ \(out.lastPathComponent)"
-            } catch {
-                statuses[url] = "✗ \(error.localizedDescription)"
-            }
+            model.outputDirectory = url
         }
     }
 }

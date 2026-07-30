@@ -1,6 +1,13 @@
 import Foundation
 import SrtFlowCore
 
+/// 主窗口侧边栏上的小角标。切到别的栏目时，靠它知道某个队列还在忙。
+enum SidebarActivity: Equatable {
+    case running(fraction: Double)
+    case finished(count: Int)
+    case failed
+}
+
 /// 每个视频各自对应的字幕。样式是整批共用的，放在 `EncodeQueue` 上。
 struct BurnInRequest: Sendable {
     var subtitleURL: URL?
@@ -65,6 +72,29 @@ final class EncodeQueue: ObservableObject {
     init(outputSuffix: String, requiresSubtitles: Bool = false) {
         self.outputSuffix = outputSuffix
         self.requiresSubtitles = requiresSubtitles
+    }
+
+    // MARK: - 全局唯一的两个队列
+
+    /// 压缩队列。
+    ///
+    /// 刻意做成全局的，而不是压缩界面自己的 `@StateObject`：主窗口是侧边栏切换，
+    /// 切走那一栏的视图会被销毁。队列要是跟着视图走，正在跑的编码就会被中断。
+    /// 放在这里，压缩可以在后台一直跑，用户同时去调字幕样式或转格式。
+    static let compress = EncodeQueue(outputSuffix: "_compressed")
+
+    /// 烧字幕队列。理由同上。
+    static let burnIn = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true)
+
+    /// 侧边栏那一行要显示的状态：正在跑就报进度，跑完了报个完成数。
+    var sidebarActivity: SidebarActivity? {
+        if let running = items.first(where: { $0.status == .running }) {
+            return .running(fraction: running.progress)
+        }
+        let finished = items.filter { $0.status == .finished }.count
+        if finished > 0, !isRunning { return .finished(count: finished) }
+        if items.contains(where: { $0.status == .failed }) { return .failed }
+        return nil
     }
 
     // MARK: - 队列维护

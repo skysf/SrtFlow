@@ -12,7 +12,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME=SrtFlow
-VERSION="${VERSION:-0.2.0}"
+VERSION="${VERSION:-0.3.0}"
 DIST=dist
 
 echo "==> swift build -c release (arm64, -O)"
@@ -77,9 +77,10 @@ cp -R "$APP" "$DMG_ROOT/"
 ln -s /Applications "$DMG_ROOT/Applications"
 
 # 这个 App 只做 ad-hoc 签名、没有 Apple 公证。DMG 一经网络或 AirDrop 传输，
-# 整个 .app 会被打上下载隔离标记，后果有两个：App 可能打不开；即使打开了，
-# 包内的 ffmpeg 也会被系统直接 SIGKILL，表现为一点「开始压缩」就失败、
-# 且没有任何错误信息。解隔离一次即可，这里把办法直接放进 DMG。
+# 整个 .app 会被打上下载隔离标记，App 第一次打开会被 macOS 拦下。
+# 走「系统设置 → 隐私与安全性 → 仍要打开」放行即可，不用碰终端：放行之后 App
+# 启动时会自己清掉包上的隔离标记（Quarantine.repairOwnBundleIfNeeded），
+# 包内的 ffmpeg 就不会再被系统 SIGKILL。终端那行留作兜底。
 cat > "$DMG_ROOT/首次打开必读 - Read Me First.txt" <<'READMEEOF'
 SrtFlow — 首次打开必读 / Read Me First
 ======================================
@@ -87,17 +88,26 @@ SrtFlow — 首次打开必读 / Read Me First
 【中文】
 
 1. 把 SrtFlow.app 拖到左边的「应用程序」文件夹。
+   （一定要拖进去再打开，别直接在这个磁盘映像里双击运行。）
 
-2. 这个 App 没有做 Apple 公证（自用小工具，公证要每年 99 美元），
-   所以 macOS 会拦一下。打开「终端」，粘贴下面这一行，回车：
+2. 双击 SrtFlow。这个 App 没有做 Apple 公证（自用小工具，公证要每年 99 美元），
+   所以第一次打开会被 macOS 拦下，提示「无法打开」。点「完成」/「好」。
 
-       xattr -dr com.apple.quarantine /Applications/SrtFlow.app
+3. 打开「系统设置」→「隐私与安全性」，往下翻到「安全性」那一段，
+   会看到一行关于 SrtFlow 被阻止的提示，点右边的「仍要打开」，
+   再按提示输入你的密码 / 用触控 ID 确认。
 
-3. 然后正常双击打开就行，压缩视频和烧制字幕都能用。
+4. 回到「应用程序」里再双击 SrtFlow，这次就正常打开了。
+   压缩视频、烧制字幕全部功能都能用。
 
-第 2 步只需要做一次。如果跳过它，可能出现两种情况：App 打不开；
-或者能打开但一点「开始压缩」「烧制字幕」就失败 —— 那是 macOS 拦掉了
-App 里自带的 ffmpeg。软件里也会把这行命令提示给你。
+以上只需要做一次。
+
+万一第 4 步打开后，一点「开始压缩」或「烧制字幕」就失败，说明系统仍然
+拦着包内的 ffmpeg。这时打开「终端」，粘贴下面这一行、回车，然后重开 SrtFlow：
+
+    xattr -dr com.apple.quarantine /Applications/SrtFlow.app
+
+软件里也会把这一行显示给你，旁边还有直接打开系统设置的按钮。
 
 运行要求：Apple 芯片（M 系列）Mac，macOS 14 Sonoma 或更新版本。
 不需要额外安装 ffmpeg 或任何其他依赖，全部功能都在包内。
@@ -106,19 +116,28 @@ App 里自带的 ffmpeg。软件里也会把这行命令提示给你。
 【English】
 
 1. Drag SrtFlow.app into the Applications folder on the left.
+   Open it from there — do not run it straight out of this disk image.
 
-2. This app is not notarised by Apple (it is a personal tool, and notarisation
-   costs $99/year), so macOS blocks it. Open Terminal, paste this line and
-   press Return:
+2. Double-click SrtFlow. This app is not notarised by Apple (it is a personal
+   tool, and notarisation costs $99/year), so macOS blocks the first launch and
+   says it cannot be opened. Dismiss that dialog.
 
-       xattr -dr com.apple.quarantine /Applications/SrtFlow.app
+3. Open System Settings → Privacy & Security, scroll down to the Security
+   section. There is a line saying SrtFlow was blocked — click "Open Anyway"
+   next to it and confirm with your password or Touch ID.
 
-3. Then just double-click the app. Compression and subtitle burn-in will work.
+4. Double-click SrtFlow again. It opens normally now, with compression and
+   subtitle burn-in fully working.
 
-Step 2 is needed only once. Skip it and one of two things happens: the app
-refuses to open, or it opens but compression and burn-in fail instantly —
-because macOS blocks the ffmpeg bundled inside the app. The app shows you the
-same command when it detects this.
+That is a one-time step.
+
+If it does open but compression or burn-in fails the instant you start it, macOS
+is still blocking the ffmpeg inside the bundle. Open Terminal, paste this line,
+press Return, and reopen SrtFlow:
+
+    xattr -dr com.apple.quarantine /Applications/SrtFlow.app
+
+The app shows you the same line, next to a button that opens System Settings.
 
 Requirements: an Apple silicon (M-series) Mac running macOS 14 Sonoma or later.
 No need to install ffmpeg or anything else — everything is inside the app.
