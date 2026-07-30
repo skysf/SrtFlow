@@ -170,6 +170,23 @@
 				<string>public.plain-text</string>
 			</array>
 		</dict>
+		<!-- 视频只做 Viewer / Alternate：不抢默认播放器，但支持把视频拖到 App
+		     图标上或用「打开方式」交给 SrtFlow 压缩。 -->
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Video</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.movie</string>
+				<string>public.video</string>
+				<string>public.mpeg-4</string>
+				<string>com.apple.quicktime-movie</string>
+			</array>
+		</dict>
 	</array>
 </dict>
 </plist>

@@ -1,3 +1,4 @@
+/* Subtitle editing and batch conversion */
 "Batch Convert…" = "Batch Convert…";
 "Batch Convert" = "Batch Convert";
 "Add Cue" = "Add Cue";
@@ -20,3 +21,170 @@
 "Same as source" = "Same as source";
 "Convert" = "Convert";
 "Drop subtitle files here, or click Add Files…" = "Drop subtitle files here, or click Add Files…";
+
+/* Home */
+"Subtitles and video, all on your Mac." = "Subtitles and video, all on your Mac.";
+"Drop a video or a subtitle file anywhere in this window." = "Drop a video or a subtitle file anywhere in this window.";
+"Compress Video" = "Compress Video";
+"Make files much smaller without visible quality loss." = "Make files much smaller without visible quality loss.";
+"H.264 CRF or the M-series hardware encoder." = "H.264 CRF or the M-series hardware encoder.";
+"Burn In Subtitles" = "Burn In Subtitles";
+"Render subtitles permanently into the picture." = "Render subtitles permanently into the picture.";
+"Adjustable font, colour and position, with presets." = "Adjustable font, colour and position, with presets.";
+"Edit Subtitles" = "Edit Subtitles";
+"Open a subtitle file to edit timing and text." = "Open a subtitle file to edit timing and text.";
+"Text, SRT, VTT, ASS and SSA." = "Text, SRT, VTT, ASS and SSA.";
+"Convert many subtitle files at once." = "Convert many subtitle files at once.";
+"Any supported format to any other." = "Any supported format to any other.";
+"Checking the video engine…" = "Checking the video engine…";
+"Video engine ready — ffmpeg %@ (%@, native Apple silicon)" = "Video engine ready — ffmpeg %@ (%@, native Apple silicon)";
+
+/* Menus */
+"Compress Video…" = "Compress Video…";
+"Burn In Subtitles…" = "Burn In Subtitles…";
+"SrtFlow Home" = "SrtFlow Home";
+
+/* Engine status and errors */
+"Bundled with SrtFlow" = "Bundled with SrtFlow";
+"Repository vendor/ directory" = "Repository vendor/ directory";
+"SRTFLOW_FFMPEG override" = "SRTFLOW_FFMPEG override";
+"ffmpeg was not found. Rebuild the app with scripts/build-app.sh, or install it with: brew install ffmpeg" = "ffmpeg was not found. Rebuild the app with scripts/build-app.sh, or install it with: brew install ffmpeg";
+"This ffmpeg build has no libass, so subtitles cannot be burned in. Compression still works." = "This ffmpeg build has no libass, so subtitles cannot be burned in. Compression still works.";
+"This ffmpeg is not a native arm64 build, so it runs under Rosetta translation and encodes roughly twice as slowly." = "This ffmpeg is not a native arm64 build, so it runs under Rosetta translation and encodes roughly twice as slowly.";
+"Could not start ffmpeg: %@" = "Could not start ffmpeg: %@";
+"ffmpeg exited with code %d." = "ffmpeg exited with code %d.";
+"Cancelled." = "Cancelled.";
+"macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@";
+"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@";
+"ffmpeg was stopped by the system (signal %d)." = "ffmpeg was stopped by the system (signal %d).";
+"This file has no video track." = "This file has no video track.";
+"Could not read video information from %@." = "Could not read video information from %@.";
+"Could not render the preview frame." = "Could not render the preview frame.";
+"No subtitle lines found in %@." = "No subtitle lines found in %@.";
+
+/* Queue */
+"Waiting" = "Waiting";
+"Cancelled" = "Cancelled";
+"Save to" = "Save to";
+"Same folder as source" = "Same folder as source";
+"Choose…" = "Choose…";
+"Reset" = "Reset";
+"Show in Finder" = "Show in Finder";
+"Cancel" = "Cancel";
+"Remove from list" = "Remove from list";
+"Stop All" = "Stop All";
+"Clear Finished" = "Clear Finished";
+"Compress" = "Compress";
+"Compress %lld Videos" = "Compress %lld Videos";
+"Burn In %lld Videos" = "Burn In %lld Videos";
+"Drop videos here to compress them.\nEach one keeps its own progress and size saving." = "Drop videos here to compress them.\nEach one keeps its own progress and size saving.";
+"%d done · %@ → %@ · %@" = "%d done · %@ → %@ · %@";
+"%d s left" = "%d s left";
+"%d min left" = "%d min left";
+"%.0f%% smaller" = "%.0f%% smaller";
+"%.0f%% larger" = "%.0f%% larger";
+
+/* Export settings */
+"Video" = "Video";
+"Encoder" = "Encoder";
+"H.264 CRF — best size" = "H.264 CRF — best size";
+"Hardware — fastest" = "Hardware — fastest";
+"H.264 CRF (best size)" = "H.264 CRF (best size)";
+"Hardware (fastest)" = "Hardware (fastest)";
+"Quality (CRF)" = "Quality (CRF)";
+"Quality" = "Quality";
+"Better quality" = "Better quality";
+"Smaller file" = "Smaller file";
+"Preset" = "Preset";
+"Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p." = "Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p.";
+"Resolution" = "Resolution";
+"Frame rate" = "Frame rate";
+"Resolution and frame rate are only ever lowered, never raised." = "Resolution and frame rate are only ever lowered, never raised.";
+"Original" = "Original";
+"Audio" = "Audio";
+"Copy (original quality)" = "Copy (original quality)";
+"Re-encode AAC" = "Re-encode AAC";
+"Bitrate" = "Bitrate";
+"Audio is copied untouched, so nothing is lost. Sources that mp4 cannot carry (PCM, AC-3) fall back to AAC automatically." = "Audio is copied untouched, so nothing is lost. Sources that mp4 cannot carry (PCM, AC-3) fall back to AAC automatically.";
+"Output" = "Output";
+"Optimise for web streaming" = "Optimise for web streaming";
+"Moves the index to the front of the file so it can start playing before it finishes downloading." = "Moves the index to the front of the file so it can start playing before it finishes downloading.";
+"Strip source metadata" = "Strip source metadata";
+"Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound." = "Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound.";
+"Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched." = "Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched.";
+"Drops the tags the source file carries — camera model, shooting date, location, chapters." = "Drops the tags the source file carries — camera model, shooting date, location, chapters.";
+"Equivalent ffmpeg command" = "Equivalent ffmpeg command";
+"Copy command" = "Copy command";
+"Near-lossless, larger file" = "Near-lossless, larger file";
+"High quality" = "High quality";
+"Visually lossless (recommended)" = "Visually lossless (recommended)";
+"Smaller file, slight quality loss" = "Smaller file, slight quality loss";
+"Smallest file, visible quality loss" = "Smallest file, visible quality loss";
+"Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder." = "Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder.";
+
+/* Burn-in window */
+"Videos and subtitles" = "Videos and subtitles";
+"Drop a video and its subtitle file here." = "Drop a video and its subtitle file here.";
+"Files with matching names are paired automatically." = "Files with matching names are paired automatically.";
+"Add a video with subtitles to see a preview." = "Add a video with subtitles to see a preview.";
+"Rendering preview…" = "Rendering preview…";
+"Preview line" = "Preview line";
+"Preview" = "Preview";
+"Preview is rendered by ffmpeg with the export settings, so it matches the result exactly." = "Preview is rendered by ffmpeg with the export settings, so it matches the result exactly.";
+"No subtitle file yet" = "No subtitle file yet";
+"Export" = "Export";
+"Also attach a switchable subtitle track" = "Also attach a switchable subtitle track";
+"Adds the subtitles as an mp4 text track on top of the burned-in copy, so players that support it can toggle a selectable version too." = "Adds the subtitles as an mp4 text track on top of the burned-in copy, so players that support it can toggle a selectable version too.";
+
+/* Style editor */
+"Font" = "Font";
+"Typeface" = "Typeface";
+"Loading…" = "Loading…";
+"Supports Chinese" = "Supports Chinese";
+"Other fonts" = "Other fonts";
+"Size" = "Size";
+"Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports.";
+"Bold" = "Bold";
+"Italic" = "Italic";
+"Letter spacing" = "Letter spacing";
+"Colours" = "Colours";
+"Background" = "Background";
+"Outline" = "Outline";
+"Solid bar" = "Solid bar";
+"Outline width" = "Outline width";
+"Shadow" = "Shadow";
+"Shadow offset" = "Shadow offset";
+"Bar colour" = "Bar colour";
+"Bar padding" = "Bar padding";
+"A solid bar behind the text stays readable over busy footage." = "A solid bar behind the text stays readable over busy footage.";
+"Position" = "Position";
+"Distance from edge" = "Distance from edge";
+"Vertical offset" = "Vertical offset";
+"Side margins" = "Side margins";
+"Side margins also decide where long lines wrap." = "Side margins also decide where long lines wrap.";
+"Custom" = "Custom";
+"Preset name" = "Preset name";
+"Save" = "Save";
+"Save as preset" = "Save as preset";
+"Delete preset" = "Delete preset";
+"Top left" = "Top left";
+"Top centre" = "Top centre";
+"Top right" = "Top right";
+"Middle left" = "Middle left";
+"Centre" = "Centre";
+"Middle right" = "Middle right";
+"Bottom left" = "Bottom left";
+"Bottom centre" = "Bottom centre";
+"Bottom right" = "Bottom right";
+
+/* Built-in style presets */
+"White text, black outline" = "White text, black outline";
+"Black text, white outline" = "Black text, white outline";
+"Yellow text, black outline" = "Yellow text, black outline";
+"White text, drop shadow" = "White text, drop shadow";
+"White text on translucent bar" = "White text on translucent bar";
+
+/* Language */
+"Language" = "Language";
+"Appearance" = "Appearance";
+"The app’s own text switches right away. The menu bar and system dialogs follow after you quit and reopen SrtFlow." = "The app’s own text switches right away. The menu bar and system dialogs follow after you quit and reopen SrtFlow.";
