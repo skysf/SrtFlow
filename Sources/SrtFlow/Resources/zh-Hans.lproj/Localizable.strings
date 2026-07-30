@@ -1,3 +1,4 @@
+/* 字幕编辑与批量转换 */
 "Batch Convert…" = "批量转换…";
 "Batch Convert" = "批量转换";
 "Add Cue" = "添加条目";
@@ -20,3 +21,170 @@
 "Same as source" = "与源文件相同";
 "Convert" = "转换";
 "Drop subtitle files here, or click Add Files…" = "将字幕文件拖到此处，或点击“添加文件…”";
+
+/* 首页 */
+"Subtitles and video, all on your Mac." = "字幕与视频，都在这台 Mac 上完成。";
+"Drop a video or a subtitle file anywhere in this window." = "把视频或字幕文件拖到窗口任意位置即可。";
+"Compress Video" = "压缩视频";
+"Make files much smaller without visible quality loss." = "在看不出画质损失的前提下，把文件大幅变小。";
+"H.264 CRF or the M-series hardware encoder." = "H.264 CRF 或 M 系列芯片的硬件编码器。";
+"Burn In Subtitles" = "烧制字幕";
+"Render subtitles permanently into the picture." = "把字幕永久合成进画面。";
+"Adjustable font, colour and position, with presets." = "字体、颜色、位置都可调，并带预设。";
+"Edit Subtitles" = "编辑字幕";
+"Open a subtitle file to edit timing and text." = "打开字幕文件，修改时间码和文字。";
+"Text, SRT, VTT, ASS and SSA." = "支持 Text、SRT、VTT、ASS 和 SSA。";
+"Convert many subtitle files at once." = "一次转换多个字幕文件。";
+"Any supported format to any other." = "任意支持的格式之间互转。";
+"Checking the video engine…" = "正在检查视频引擎…";
+"Video engine ready — ffmpeg %@ (%@, native Apple silicon)" = "视频引擎就绪 —— ffmpeg %@（%@，原生 Apple 芯片）";
+
+/* 菜单 */
+"Compress Video…" = "压缩视频…";
+"Burn In Subtitles…" = "烧制字幕…";
+"SrtFlow Home" = "SrtFlow 首页";
+
+/* 引擎状态与错误 */
+"Bundled with SrtFlow" = "随 SrtFlow 一起分发";
+"Repository vendor/ directory" = "仓库的 vendor/ 目录";
+"SRTFLOW_FFMPEG override" = "SRTFLOW_FFMPEG 指定";
+"ffmpeg was not found. Rebuild the app with scripts/build-app.sh, or install it with: brew install ffmpeg" = "没找到 ffmpeg。请用 scripts/build-app.sh 重新打包，或执行 brew install ffmpeg 安装。";
+"This ffmpeg build has no libass, so subtitles cannot be burned in. Compression still works." = "这个 ffmpeg 没有编译 libass，无法烧制字幕；压缩功能仍可正常使用。";
+"This ffmpeg is not a native arm64 build, so it runs under Rosetta translation and encodes roughly twice as slowly." = "这个 ffmpeg 不是原生 arm64 版，会走 Rosetta 转译，编码速度大约要慢一倍。";
+"Could not start ffmpeg: %@" = "无法启动 ffmpeg：%@";
+"ffmpeg exited with code %d." = "ffmpeg 退出，代码 %d。";
+"Cancelled." = "已取消。";
+"macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS 拦下了随包的 ffmpeg（因为这个 App 是从网上下载的）。把下面这行粘到「终端」里执行，然后重新打开 SrtFlow：\n%@";
+"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS 中止了随包的 ffmpeg（因为这个 App 是从网上下载的）。把下面这行粘到「终端」里执行，然后重新打开 SrtFlow：\n%@";
+"ffmpeg was stopped by the system (signal %d)." = "ffmpeg 被系统中止（信号 %d）。";
+"This file has no video track." = "这个文件没有视频轨。";
+"Could not read video information from %@." = "无法读取 %@ 的视频信息。";
+"Could not render the preview frame." = "无法渲染预览帧。";
+"No subtitle lines found in %@." = "%@ 里没有找到字幕条目。";
+
+/* 队列 */
+"Waiting" = "等待中";
+"Cancelled" = "已取消";
+"Save to" = "输出到";
+"Same folder as source" = "与源文件同一目录";
+"Choose…" = "选择…";
+"Reset" = "重置";
+"Show in Finder" = "在 Finder 中显示";
+"Cancel" = "取消";
+"Remove from list" = "从列表移除";
+"Stop All" = "全部停止";
+"Clear Finished" = "清除已完成";
+"Compress" = "开始压缩";
+"Compress %lld Videos" = "压缩 %lld 个视频";
+"Burn In %lld Videos" = "烧制 %lld 个视频";
+"Drop videos here to compress them.\nEach one keeps its own progress and size saving." = "把视频拖到这里开始压缩。\n每个文件都会单独显示进度与体积节省。";
+"%d done · %@ → %@ · %@" = "已完成 %d 个 · %@ → %@ · %@";
+"%d s left" = "剩余 %d 秒";
+"%d min left" = "剩余 %d 分钟";
+"%.0f%% smaller" = "小了 %.0f%%";
+"%.0f%% larger" = "大了 %.0f%%";
+
+/* 导出设置 */
+"Video" = "视频";
+"Encoder" = "编码器";
+"H.264 CRF — best size" = "H.264 CRF —— 体积最优";
+"Hardware — fastest" = "硬件编码 —— 速度最快";
+"H.264 CRF (best size)" = "H.264 CRF（体积最优）";
+"Hardware (fastest)" = "硬件编码（速度最快）";
+"Quality (CRF)" = "画质（CRF）";
+"Quality" = "画质";
+"Better quality" = "画质更好";
+"Smaller file" = "体积更小";
+"Preset" = "预设";
+"Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p." = "越慢的 preset 会花更多时间寻找可压缩的空间 —— 画质不变，体积更小。M 系列芯片处理 1080p 时，slow 通常比实时播放还快。";
+"Resolution" = "分辨率";
+"Frame rate" = "帧率";
+"Resolution and frame rate are only ever lowered, never raised." = "分辨率和帧率只会下调，不会上调。";
+"Original" = "保持原样";
+"Audio" = "音频";
+"Copy (original quality)" = "直接复制（原始音质）";
+"Re-encode AAC" = "重新压成 AAC";
+"Bitrate" = "码率";
+"Audio is copied untouched, so nothing is lost. Sources that mp4 cannot carry (PCM, AC-3) fall back to AAC automatically." = "音频原样复制，不会有任何损失。mp4 装不下的格式（PCM、AC-3）会自动转成 AAC。";
+"Output" = "输出";
+"Optimise for web streaming" = "针对网络播放优化";
+"Moves the index to the front of the file so it can start playing before it finishes downloading." = "把索引挪到文件开头，没下载完也能先开始播放。";
+"Strip source metadata" = "剥除源文件元数据";
+"Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound." = "等于加上 -movflags +faststart。要上传的文件都建议开着；它完全不影响画面和声音。";
+"Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched." = "等于加上 -map_metadata -1。发给别人之前用得上；画面和声音不受影响。";
+"Drops the tags the source file carries — camera model, shooting date, location, chapters." = "丢掉源文件带的那些标签 —— 相机型号、拍摄日期、地理位置、章节等。";
+"Equivalent ffmpeg command" = "等效的 ffmpeg 命令";
+"Copy command" = "复制命令";
+"Near-lossless, larger file" = "接近无损，文件较大";
+"High quality" = "高画质";
+"Visually lossless (recommended)" = "视觉无损（推荐）";
+"Smaller file, slight quality loss" = "体积更小，画质略有下降";
+"Smallest file, visible quality loss" = "体积最小，画质有可见下降";
+"Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder." = "直接调用 M 系列芯片内建的媒体引擎：速度大约快十倍，几乎不耗电。相同体积下画质略逊于 CRF 编码器。";
+
+/* 烧字幕窗口 */
+"Videos and subtitles" = "视频与字幕";
+"Drop a video and its subtitle file here." = "把视频和它的字幕文件拖到这里。";
+"Files with matching names are paired automatically." = "同名文件会自动配对。";
+"Add a video with subtitles to see a preview." = "添加视频和字幕后即可看到预览。";
+"Rendering preview…" = "正在渲染预览…";
+"Preview line" = "预览第几条";
+"Preview" = "预览中";
+"Preview is rendered by ffmpeg with the export settings, so it matches the result exactly." = "预览由 ffmpeg 按导出设置真实渲染，所见即所得。";
+"No subtitle file yet" = "还没有配字幕";
+"Export" = "导出";
+"Also attach a switchable subtitle track" = "同时附加可开关的字幕轨";
+"Adds the subtitles as an mp4 text track on top of the burned-in copy, so players that support it can toggle a selectable version too." = "在烧进画面之外，再把字幕作为 mp4 文本轨嵌入；支持的播放器里可以另外开关一份可选字幕。";
+
+/* 样式编辑 */
+"Font" = "字体";
+"Typeface" = "字体";
+"Loading…" = "加载中…";
+"Supports Chinese" = "支持中文";
+"Other fonts" = "其他字体";
+"Size" = "字号";
+"Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "所有尺寸都以 1080p 画面为基准，因此同一套样式在 720p 和 4K 导出里看起来完全一致。";
+"Bold" = "粗体";
+"Italic" = "斜体";
+"Letter spacing" = "字间距";
+"Colours" = "颜色";
+"Background" = "背景";
+"Outline" = "描边";
+"Solid bar" = "底色条";
+"Outline width" = "描边宽度";
+"Shadow" = "阴影";
+"Shadow offset" = "阴影偏移";
+"Bar colour" = "底条颜色";
+"Bar padding" = "底条内边距";
+"A solid bar behind the text stays readable over busy footage." = "文字后面垫一条底色，画面复杂时也看得清。";
+"Position" = "位置";
+"Distance from edge" = "距边缘距离";
+"Vertical offset" = "垂直偏移";
+"Side margins" = "左右边距";
+"Side margins also decide where long lines wrap." = "左右边距同时决定长句在哪里换行。";
+"Custom" = "自定义";
+"Preset name" = "预设名称";
+"Save" = "保存";
+"Save as preset" = "存为预设";
+"Delete preset" = "删除预设";
+"Top left" = "左上";
+"Top centre" = "中上";
+"Top right" = "右上";
+"Middle left" = "左中";
+"Centre" = "正中";
+"Middle right" = "右中";
+"Bottom left" = "左下";
+"Bottom centre" = "中下";
+"Bottom right" = "右下";
+
+/* 内置样式预设 */
+"White text, black outline" = "白字黑边";
+"Black text, white outline" = "黑字白边";
+"Yellow text, black outline" = "黄字黑边";
+"White text, drop shadow" = "白字加投影";
+"White text on translucent bar" = "白字半透明底条";
+
+/* 语言 */
+"Language" = "界面语言";
+"Appearance" = "外观";
+"The app’s own text switches right away. The menu bar and system dialogs follow after you quit and reopen SrtFlow." = "界面文字会立刻切换；菜单栏和系统对话框要退出并重新打开 SrtFlow 后才会跟着变。";
