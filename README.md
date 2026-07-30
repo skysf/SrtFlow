@@ -30,12 +30,20 @@ entirely on your own Mac, with no cloud services.
   and margins.
 - Built-in presets (white on black outline, black on white outline, yellow on
   black outline, drop shadow, translucent bar) plus your own saved presets.
-- The font list only offers typefaces the renderer can actually load, and marks
-  which ones contain Chinese glyphs — so the font you pick is the font you get.
+- The font list only offers typefaces the renderer can actually load, marks
+  which ones contain Chinese glyphs, and draws every name in its own typeface —
+  arrow through the list and the preview follows, so you can judge a font
+  without committing to it.
 - Sizes are relative to a 1080p frame, so one style looks identical whether you
   export 720p or 4K.
-- Preview is a real frame rendered by ffmpeg through the same filter chain as
-  the export, so what you see is what you get.
+- Two ways to check the result. **Play** runs the real video with the subtitles
+  drawn live over it, so you can hear the speech and confirm the timing lines
+  up. **Exact frame** is a still rendered by ffmpeg through the same filter
+  chain as the export, so the look is pixel-accurate. Either one can be blown
+  up to fill the window (Esc to shrink, ⌃⌘F for full screen).
+- Dragging a margin slider draws guide lines on the preview showing exactly
+  where the margins fall — and therefore where long lines will wrap. They fade
+  three seconds after you let go.
 - Batch mode pairs videos with same-named subtitle files automatically.
 
 **Compress video**
@@ -54,6 +62,13 @@ entirely on your own Mac, with no cloud services.
 
 **Interface**
 
+- One window. Compress, burn-in, and batch conversion are sections in a left
+  sidebar, so switching between them is a single click and long jobs keep
+  running in the background while you work in another section — the sidebar row
+  shows their progress.
+- Subtitle editing opens in its own document window, which is what keeps the
+  native document behaviour: ⌘S, Save As, Revert, version history, and several
+  files open side by side.
 - English and Simplified Chinese, either following the system language or
   switched inside the app at any time.
 
@@ -82,20 +97,34 @@ version control.
 
 ### Sharing the app with someone else
 
-The build is ad-hoc signed, not notarised by Apple, so macOS blocks it after the
-DMG travels over the network or AirDrop. That block is not cosmetic: even if the
-app opens, the ffmpeg inside its bundle gets killed on sight, so compression and
-burn-in fail instantly with nothing in the error output.
+The build is ad-hoc signed, not notarised by Apple, so macOS blocks the first
+launch after the DMG travels over the network or AirDrop. The block is not
+cosmetic: while the bundle carries the download-quarantine flag, the ffmpeg
+inside it cannot run either, so compression and burn-in would fail instantly with
+nothing in the error output.
 
-One command clears it, once, on the receiving Mac:
+No Terminal needed. On the receiving Mac:
+
+1. Drag `SrtFlow.app` into `/Applications` and open it from there — not straight
+   out of the disk image.
+2. Double-click it. macOS refuses; dismiss the dialog.
+3. Open **System Settings → Privacy & Security**, scroll to Security, and click
+   **Open Anyway** next to the line about SrtFlow. Confirm with password/Touch ID.
+4. Open SrtFlow again. Everything works from then on — at startup the app clears
+   the quarantine flag from its own bundle, which is what frees the bundled
+   ffmpeg.
+
+If it opens but compression still fails the instant you start it, macOS is still
+holding the helper. This clears it for good:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/SrtFlow.app
 ```
 
-The DMG ships a bilingual `Read Me First` note with the same instruction, and the
-app detects the situation and shows the exact command in its status bar.
-Handing the app over on a USB drive or over `scp` avoids the flag entirely.
+The DMG ships a bilingual `Read Me First` with the same steps, and the app shows
+the command plus a button that opens System Settings when it detects the
+situation. Handing the app over on a USB drive or over `scp` avoids the flag
+entirely.
 
 ### About the bundled ffmpeg
 
@@ -147,10 +176,15 @@ SrtFlow 是一款轻量、原生的 macOS 字幕与视频工具。
   九宫格位置与边距，全部可调。
 - 内置预设：白字黑边、黑字白边、黄字黑边、白字加投影、白字半透明底条；
   也可以把自己调好的样式存成预设。
-- 字体列表只列出渲染器真正能加载的字体，并标注哪些含中文字形 ——
-  选了什么字体，烧出来就是什么字体，不会被悄悄替换。
+- 字体列表只列出渲染器真正能加载的字体，标注哪些含中文字形，并且**每个字体名
+  都用它自己的字体写出来**；用方向键在列表里走一遍，预览会跟着一个个变，
+  不用点进点出就能挑。选了什么字体，烧出来就是什么字体，不会被悄悄替换。
 - 所有尺寸以 1080p 画面为基准，同一套样式导出 720p 或 4K 看起来完全一致。
-- 预览是 ffmpeg 用**与导出完全相同的滤镜链**渲染出的真实画面，所见即所得。
+- 两种核对方式：**播放**是真的放视频、字幕即时叠在画面上，能听着声音确认时间轴
+  对不对得上；**精确帧**是 ffmpeg 用与导出完全相同的滤镜链渲染的静帧，外观
+  一模一样。两种都可以放大到铺满窗口（Esc 还原，⌃⌘F 进全屏）。
+- 拖动边距滑块时，预览上会画出参考线，标明边距的确切位置 ——
+  也就是长句会在哪里换行；松手 3 秒后自动消失。
 - 批量模式会按文件名自动把视频和同名字幕配对。
 
 **压缩视频**
@@ -165,8 +199,12 @@ SrtFlow 是一款轻量、原生的 macOS 字幕与视频工具。
 - 批量队列，逐个显示进度、速度、剩余时间和体积节省。
 - 界面上直接显示等效的 ffmpeg 命令，可复制到终端使用。
 
-**界面语言**
+**界面**
 
+- 一个窗口。压缩、烧字幕、批量转换是左侧边栏里的三栏，切换只要点一下；
+  切走之后长任务照旧在后台跑，侧边栏那一行会显示进度。
+- 编辑字幕单独开文档窗口 —— 这样才保得住原生的文档行为：⌘S、另存为、
+  恢复、版本历史，以及同时打开多个字幕文件。
 - 中英双语，可跟随系统，也可以在应用内随时切换。
 
 ### 构建要求
@@ -189,17 +227,28 @@ scripts/build-app.sh
 ### 分享给别人时
 
 构建只做了 ad-hoc 签名、没有 Apple 公证，所以 DMG 一经网络或 AirDrop 传输，
-macOS 就会拦。这个拦截不只是弹窗那么简单：即使 App 打开了，**包内的 ffmpeg
-也会被系统当场杀掉**，压缩和烧字幕会立刻失败，而且错误输出里什么都没有。
+macOS 第一次打开时就会拦。这个拦截不只是弹窗那么简单：只要包上还带着下载隔离
+标记，**包内的 ffmpeg 也跑不起来**，压缩和烧字幕会立刻失败，错误输出里什么都没有。
 
-在收到文件的那台 Mac 上执行一次这行命令即可：
+不用碰终端。在收到文件的那台 Mac 上：
+
+1. 把 `SrtFlow.app` 拖进 `/Applications`，从那里打开 —— 别直接在磁盘映像里双击。
+2. 双击它，macOS 会拒绝打开，把弹窗关掉。
+3. 打开**「系统设置 → 隐私与安全性」**，往下翻到「安全性」那一段，会看到一行
+   关于 SrtFlow 被阻止的提示，点右边的**「仍要打开」**，用密码或触控 ID 确认。
+4. 再打开一次 SrtFlow，从此就正常了 —— App 启动时会清掉自己包上的隔离标记，
+   包内的 ffmpeg 也就跟着放行了。
+
+万一打开之后一点「开始压缩」还是立刻失败，说明系统仍然扣着那个辅助程序，
+执行这一行可以彻底解决：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/SrtFlow.app
 ```
 
-DMG 里附了一份中英文的《首次打开必读》写着同一件事；App 也会自己识别这种情况，
-把确切的命令显示在状态栏里。用 U 盘或 `scp` 传则完全不会被打上这个标记。
+DMG 里附了一份中英文的《首次打开必读》写着同样的步骤；App 识别到这种情况时，
+会把命令和一个「打开系统设置」的按钮一起显示出来。用 U 盘或 `scp` 传则完全
+不会被打上这个标记。
 
 ### 关于随包的 ffmpeg
 

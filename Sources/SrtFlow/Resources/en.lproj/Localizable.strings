@@ -1,5 +1,4 @@
 /* Subtitle editing and batch conversion */
-"Batch Convert…" = "Batch Convert…";
 "Batch Convert" = "Batch Convert";
 "Add Cue" = "Add Cue";
 "Delete" = "Delete";
@@ -22,27 +21,18 @@
 "Convert" = "Convert";
 "Drop subtitle files here, or click Add Files…" = "Drop subtitle files here, or click Add Files…";
 
-/* Home */
-"Subtitles and video, all on your Mac." = "Subtitles and video, all on your Mac.";
-"Drop a video or a subtitle file anywhere in this window." = "Drop a video or a subtitle file anywhere in this window.";
+/* Main window sidebar */
 "Compress Video" = "Compress Video";
 "Make files much smaller without visible quality loss." = "Make files much smaller without visible quality loss.";
-"H.264 CRF or the M-series hardware encoder." = "H.264 CRF or the M-series hardware encoder.";
 "Burn In Subtitles" = "Burn In Subtitles";
 "Render subtitles permanently into the picture." = "Render subtitles permanently into the picture.";
-"Adjustable font, colour and position, with presets." = "Adjustable font, colour and position, with presets.";
-"Edit Subtitles" = "Edit Subtitles";
-"Open a subtitle file to edit timing and text." = "Open a subtitle file to edit timing and text.";
-"Text, SRT, VTT, ASS and SSA." = "Text, SRT, VTT, ASS and SSA.";
 "Convert many subtitle files at once." = "Convert many subtitle files at once.";
-"Any supported format to any other." = "Any supported format to any other.";
+"Edit Subtitles" = "Edit Subtitles";
+"Opens a subtitle file in its own editor window." = "Opens a subtitle file in its own editor window.";
 "Checking the video engine…" = "Checking the video engine…";
+"Video engine needs attention" = "Video engine needs attention";
+"Engine ready · ffmpeg %@" = "Engine ready · ffmpeg %@";
 "Video engine ready — ffmpeg %@ (%@, native Apple silicon)" = "Video engine ready — ffmpeg %@ (%@, native Apple silicon)";
-
-/* Menus */
-"Compress Video…" = "Compress Video…";
-"Burn In Subtitles…" = "Burn In Subtitles…";
-"SrtFlow Home" = "SrtFlow Home";
 
 /* Engine status and errors */
 "Bundled with SrtFlow" = "Bundled with SrtFlow";
@@ -54,8 +44,9 @@
 "Could not start ffmpeg: %@" = "Could not start ffmpeg: %@";
 "ffmpeg exited with code %d." = "ffmpeg exited with code %d.";
 "Cancelled." = "Cancelled.";
-"macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@";
-"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@" = "macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@";
+"macOS blocked this app because it was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then open SrtFlow again. If compression still fails immediately, paste this line into Terminal instead:\n%@" = "macOS blocked this app because it was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then open SrtFlow again. If compression still fails immediately, paste this line into Terminal instead:\n%@";
+"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then reopen it. If it still fails, paste this line into Terminal:\n%@" = "macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then reopen it. If it still fails, paste this line into Terminal:\n%@";
+"Open System Settings" = "Open System Settings";
 "ffmpeg was stopped by the system (signal %d)." = "ffmpeg was stopped by the system (signal %d).";
 "This file has no video track." = "This file has no video track.";
 "Could not read video information from %@." = "Could not read video information from %@.";
@@ -130,7 +121,16 @@
 "Rendering preview…" = "Rendering preview…";
 "Preview line" = "Preview line";
 "Preview" = "Preview";
-"Preview is rendered by ffmpeg with the export settings, so it matches the result exactly." = "Preview is rendered by ffmpeg with the export settings, so it matches the result exactly.";
+
+/* Preview: playback / exact frame */
+"Play" = "Play";
+"Pause" = "Pause";
+"Exact frame" = "Exact frame";
+"Fill the window with the preview" = "Fill the window with the preview";
+"Shrink the preview (Esc)" = "Shrink the preview (Esc)";
+"Esc to shrink · ⌃⌘F for full screen" = "Esc to shrink · ⌃⌘F for full screen";
+"Playback draws the subtitles itself: the timing is exact, the look is close but not final. Switch to Exact frame to judge the look." = "Playback draws the subtitles itself: the timing is exact, the look is close but not final. Switch to Exact frame to judge the look.";
+"The exact frame is rendered by ffmpeg with the export settings, so it matches the result exactly." = "The exact frame is rendered by ffmpeg with the export settings, so it matches the result exactly.";
 "No subtitle file yet" = "No subtitle file yet";
 "Export" = "Export";
 "Also attach a switchable subtitle track" = "Also attach a switchable subtitle track";
@@ -139,9 +139,10 @@
 /* Style editor */
 "Font" = "Font";
 "Typeface" = "Typeface";
-"Loading…" = "Loading…";
 "Supports Chinese" = "Supports Chinese";
 "Other fonts" = "Other fonts";
+"Search fonts" = "Search fonts";
+"Arrow keys walk the list — the preview follows as you go." = "Arrow keys walk the list — the preview follows as you go.";
 "Size" = "Size";
 "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports.";
 "Bold" = "Bold";
@@ -161,7 +162,7 @@
 "Distance from edge" = "Distance from edge";
 "Vertical offset" = "Vertical offset";
 "Side margins" = "Side margins";
-"Side margins also decide where long lines wrap." = "Side margins also decide where long lines wrap.";
+"Side margins also decide where long lines wrap. Guide lines appear on the preview while you drag." = "Side margins also decide where long lines wrap. Guide lines appear on the preview while you drag.";
 "Custom" = "Custom";
 "Preset name" = "Preset name";
 "Save" = "Save";

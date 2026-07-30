@@ -9,9 +9,19 @@ import SrtFlowCore
 /// 所以预览看到的就是成品的样子。代价是每次要起一次 ffmpeg，所以做了防抖。
 @MainActor
 final class BurnInPreviewRenderer: ObservableObject {
+    /// 和两个编码队列一样是全局的：切走烧字幕那一栏时视图会被销毁，渲染好的
+    /// 那一帧留在这里，切回来就不用再等一次 ffmpeg。
+    static let shared = BurnInPreviewRenderer()
+
     @Published private(set) var image: NSImage?
     @Published private(set) var isRendering = false
     @Published private(set) var errorMessage: String?
+    /// 预览取第几条字幕。它得和上面那张图一起活着，否则切回来时步进器显示
+    /// 「1 / N」而画面其实是第 4 条 —— 对不上。
+    @Published var cueIndex = 0
+
+    /// 有没有东西可显示。切回栏目时用它判断要不要重新渲染。
+    var hasContent: Bool { image != nil || errorMessage != nil || isRendering }
 
     private var pendingTask: Task<Void, Never>?
     private var currentProcess: FFmpegProcess?

@@ -3,18 +3,23 @@ import SrtFlowCore
 
 /// 把字幕永久烧进画面。左边是队列和预览，右边是样式与导出设置。
 struct BurnInView: View {
-    @StateObject private var queue = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true)
+    // 队列和预览都是全局的，不是这个视图的 @StateObject —— 切到别的栏目时视图会
+    // 被销毁，跟着视图走的话正在跑的编码会断、渲染好的预览帧也会白丢。
+    @ObservedObject private var queue = EncodeQueue.burnIn
+    @ObservedObject private var renderer = BurnInPreviewRenderer.shared
     @StateObject private var toolchain = MediaToolchain.shared
     @StateObject private var fontCatalog = FontCatalogStore.shared
     @StateObject private var presets = StylePresetStore.shared
-    @StateObject private var renderer = BurnInPreviewRenderer()
     @StateObject private var handoff = BurnInHandoff.shared
+    /// 拖边距滑块时预览上闪出的参考线。
+    @StateObject private var guides = MarginGuideFlash()
+    /// 预览播放器。放在这一层而不是预览视图里：放大/还原时预览视图会被重建，
+    /// 播放器跟着走的话一放大就从头开始播了。
+    @StateObject private var clock = PlayerClock(observationInterval: 0.05)
     // 这个视图在代码里拼字符串（L10n(...)），不是纯 LocalizedStringKey，
     // 光靠环境 locale 变化不会重新求值 body，所以要显式观察语言选择。
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
-    /// 预览用第几条字幕。挑有字幕的时刻，不然预览多半是一张没字的图。
-    @State private var previewCueIndex = 0
     @State private var didResolveFont = false
     /// 这次是不是从 UserDefaults 里恢复出了用户上次调好的样式。
     @State private var didRestoreStyle = false
@@ -22,31 +27,67 @@ struct BurnInView: View {
     @AppStorage("burnInSettings") private var storedSettings = ""
     @AppStorage("burnInStyle") private var storedStyle = ""
     @AppStorage("burnInSoftTrack") private var storedSoftTrack = false
+    /// 预览是「播放」还是「精确帧」。
+    @AppStorage("burnInPreviewMode") private var previewMode = BurnInPreviewMode.playback
+    /// 预览铺满整个窗口。字幕看不看得清、位置对不对，小窗里判断不了。
+    @State private var isPreviewExpanded = false
 
     var body: some View {
+        // 放大的预览必须用 overlay 而不是 ZStack 的兄弟节点：ZStack 的尺寸取各子项
+        // 的最大值，而放大预览里那个 GeometryReader 是「有多少要多少」，会一路把
+        // 窗口撑大（实测一点放大窗口就从 760 高变成 1838）。overlay 的尺寸跟着
+        // 底下的视图走，不参与窗口定尺。
+        splitLayout
+            .overlay {
+                if isPreviewExpanded {
+                    expandedPreview
+                }
+            }
+            // 放大时按 Esc 还原。
+            .onExitCommand { setPreviewExpanded(false) }
+    }
+
+    /// 放大预览时把侧边栏一起收起来，整个窗口都让给画面；还原时再放回来。
+    /// 想要真正的满屏就在放大后按 ⌃⌘F 让窗口进系统全屏。
+    private func setPreviewExpanded(_ expanded: Bool) {
+        isPreviewExpanded = expanded
+        MainWindowState.shared.sidebarVisibility = expanded ? .detailOnly : .all
+    }
+
+    private var splitLayout: some View {
         HSplitView {
             mainSide
                 .frame(minWidth: 480, idealWidth: 700, maxWidth: .infinity)
             sidebar
                 .frame(minWidth: 340, idealWidth: 390, maxWidth: 470)
         }
-        .frame(minWidth: 900, minHeight: 600)
+        // 主窗口左边还有侧边栏，这里的下限比原来独立开窗时收一点。
+        .frame(minWidth: 860, minHeight: 580)
         .onAppear {
             toolchain.resolveIfNeeded()
             fontCatalog.loadIfNeeded()
             restore()
-            // 字体表可能早就扫好了（重开窗口时），那样 onChange 不会再触发。
+            // 字体表可能早就扫好了（切回这一栏时），那样 onChange 不会再触发。
             pickDefaultFontIfNeeded(fontCatalog.fonts)
             takeHandoff()
+            // 从别的栏目切回来时预览通常还在（渲染器是全局的）；只有队列里有片子
+            // 却一帧都还没渲染过时才需要补一次。
+            if previewMode == .exactFrame, !renderer.hasContent { requestPreview() }
         }
         .onChange(of: handoff.pendingVideos) { _, _ in takeHandoff() }
         .onChange(of: fontCatalog.fonts) { _, fonts in pickDefaultFontIfNeeded(fonts) }
         .onChange(of: queue.burnInStyle) { _, _ in
             persistStyle()
-            requestPreview()
+            // 播放模式下的字幕是即时画的，不用起 ffmpeg。
+            if previewMode == .exactFrame { requestPreview() }
         }
         .onChange(of: queue.settings) { _, _ in persistSettings() }
-        .onChange(of: previewCueIndex) { _, _ in requestPreview() }
+        .onChange(of: renderer.cueIndex) { _, _ in
+            if previewMode == .exactFrame { requestPreview() }
+        }
+        .onChange(of: previewMode) { _, mode in
+            if mode == .exactFrame { requestPreview() }
+        }
         .onChange(of: queue.attachSoftSubtitleTrack) { _, value in storedSoftTrack = value }
         .onDropOfFiles { urls in add(urls) }
     }
@@ -103,79 +144,37 @@ struct BurnInView: View {
     }
 
     private var previewArea: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.black.opacity(0.85))
-
-                if let image = renderer.image {
-                    Image(nsImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else if let message = renderer.errorMessage {
-                    VStack(spacing: 6) {
-                        Image(systemName: "exclamationmark.triangle")
-                            .font(.title2)
-                            .foregroundStyle(.orange)
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                    }
-                } else if previewItem == nil {
-                    Text("Add a video with subtitles to see a preview.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("Rendering preview…").foregroundStyle(.secondary)
-                }
-
-                if renderer.isRendering {
-                    VStack {
-                        HStack {
-                            Spacer()
-                            ProgressView().controlSize(.small).padding(8)
-                        }
-                        Spacer()
-                    }
-                }
-            }
-            .frame(minHeight: 220)
-
-            previewControls
-        }
-        .padding(12)
+        BurnInPreviewArea(
+            item: previewItem,
+            style: queue.burnInStyle,
+            mode: $previewMode,
+            renderer: renderer,
+            guides: guides,
+            clock: clock,
+            onToggleExpand: { setPreviewExpanded(true) }
+        )
     }
 
-    private var previewControls: some View {
-        HStack(spacing: 10) {
-            if let cues = previewCues, !cues.isEmpty {
-                Text("Preview line")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                Stepper(
-                    value: $previewCueIndex,
-                    in: 0...(cues.count - 1)
-                ) {
-                    Text("\(previewCueIndex + 1) / \(cues.count)")
-                        .font(.callout)
-                        .monospacedDigit()
-                }
-                Text(SubtitleSerializer.plainText(cues[min(previewCueIndex, cues.count - 1)].text)
-                        .replacingOccurrences(of: "\n", with: " "))
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            Spacer()
-            Text("Preview is rendered by ffmpeg with the export settings, so it matches the result exactly.")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.trailing)
-                .fixedSize(horizontal: false, vertical: true)
+    /// 铺满整个窗口的预览。窗口再按 ⌃⌘F 进系统全屏就是真全屏了，字幕叠层
+    /// 一路都在（它和画面在同一个 SwiftUI 层级里，不像 AVPlayerView 自带的全屏
+    /// 会把叠层甩掉）。
+    private var expandedPreview: some View {
+        ZStack {
+            Rectangle()
+                .fill(.background)
+                .ignoresSafeArea()
+            BurnInPreviewArea(
+                item: previewItem,
+                style: queue.burnInStyle,
+                mode: $previewMode,
+                renderer: renderer,
+                guides: guides,
+                clock: clock,
+                isExpanded: true,
+                onToggleExpand: { setPreviewExpanded(false) }
+            )
         }
+        .transition(.opacity)
     }
 
     private var footer: some View {
@@ -248,7 +247,8 @@ struct BurnInView: View {
             SubtitleStyleEditor(
                 style: $queue.burnInStyle,
                 fontCatalog: fontCatalog,
-                presets: presets
+                presets: presets,
+                guides: guides
             )
             .tabItem { Text("Style") }
 
@@ -307,7 +307,7 @@ struct BurnInView: View {
             return
         }
 
-        let index = min(max(0, previewCueIndex), cues.count - 1)
+        let index = min(max(0, renderer.cueIndex), cues.count - 1)
         let cue = cues[index]
         // 取这条字幕的中点，保证画面上一定有字。
         var time = (cue.start + cue.end) / 2
@@ -389,7 +389,7 @@ struct BurnInView: View {
 
     /// 队列刚变动时 info 可能还在探测，稍等一下再画预览。
     private func requestPreviewSoon() {
-        previewCueIndex = 0
+        renderer.cueIndex = 0
         Task {
             try? await Task.sleep(nanoseconds: 400_000_000)
             requestPreview()

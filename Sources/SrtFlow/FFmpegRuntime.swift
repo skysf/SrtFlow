@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// 找到并检验要用的 ffmpeg。
@@ -234,10 +235,16 @@ final class MediaToolchain: ObservableObject {
         }
     }
 
-    /// 解隔离的命令，可以直接复制到终端执行。
+    /// 解隔离的命令，可以直接复制到终端执行。给「仍要打开」之后仍然被拦时兜底。
     var quarantineFixCommand: String? {
         guard let quarantinedBundlePath else { return nil }
         return "xattr -dr com.apple.quarantine \"\(quarantinedBundlePath)\""
+    }
+
+    /// 直接跳到「系统设置 → 隐私与安全性」。这是不碰终端就能放行的那条路。
+    func openPrivacySettings() {
+        guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?General") else { return }
+        NSWorkspace.shared.open(url)
     }
 
     /// 缺 ffmpeg，或者有但不能烧字幕时，给界面用的说明文字。
@@ -246,9 +253,12 @@ final class MediaToolchain: ObservableObject {
 
         // 这一条必须排在「找不到」前面：文件明明就在包里，是被系统拦下的。
         // 这时候提示去 brew install 只会让人白折腾。
+        //
+        // 先给不用碰终端的那条路（系统设置里点「仍要打开」），命令只作为兜底 ——
+        // 放行之后 App 会自己清掉包上的隔离标记，通常一次就好了。
         if let command = quarantineFixCommand {
             return String(
-                format: L10n("macOS blocked the bundled ffmpeg because the app was downloaded from the internet. Paste this line into Terminal, then reopen SrtFlow:\n%@"),
+                format: L10n("macOS blocked this app because it was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then open SrtFlow again. If compression still fails immediately, paste this line into Terminal instead:\n%@"),
                 command
             )
         }
