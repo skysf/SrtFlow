@@ -37,6 +37,9 @@
 - [timeline-drag-gestures.md](docs/architecture/timeline-drag-gestures.md) —
   块布局原点恒为 0、边缘把手手势必须 `.global` 坐标系（反馈回路）、拖动中的
   动画豁免与异步缩略图去抖；**给时间线加把手/改拖动手势前必读**
+- [preview-free-transform.md](docs/architecture/preview-free-transform.md) —
+  预览区变换框与 `ClipPlacement`：归一化摆放、九宫格互斥、预览/导出两条管线
+  同账（导出用 overlay 不用 pad）；**改预览合成/导出滤镜图/变换框前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 

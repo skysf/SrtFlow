@@ -35,6 +35,7 @@ func timeline(mainMedia: [URL], subtitle: URL? = nil) -> TimelineState {
     for url in mainMedia {
         var clip = EditClip(sourceURL: url, sourceDuration: 12, timelineStart: cursor)
         clip.transitionAfter = .crossFade
+        clip.placement = ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3)
         clip.info = MediaInfo(
             duration: 12,
             displaySize: CGSize(width: 1920, height: 1080),
@@ -73,6 +74,11 @@ do {
     checkEqual(result.timeline.shapes.count, 1, "形状标注要存住")
     checkEqual(result.timeline.mainClips.first?.transitionAfter, .crossFade, "转场要存住")
     checkEqual(result.timeline.mainClips.first?.info?.frameRate, 30, "探测信息要存住")
+    checkEqual(
+        result.timeline.mainClips.first?.placement,
+        ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3),
+        "预览里摆的位置/大小要存住"
+    )
 }
 
 // MARK: - 2. 素材改了名 —— 靠书签找回来

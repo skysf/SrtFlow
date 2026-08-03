@@ -3,6 +3,36 @@ import AppKit
 import SwiftUI
 import SrtFlowCore
 
+/// 时间线的鼠标工具（对齐 CapCut：选择 A / 分割 B）。
+enum TimelineTool: String, CaseIterable, Identifiable {
+    case select
+    case split
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .select: return "Select"
+        case .split: return "Split"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .select: return "cursorarrow"
+        case .split: return "rectangle.split.2x1"
+        }
+    }
+
+    /// 菜单里展示的单键快捷键。
+    var shortcutLabel: String {
+        switch self {
+        case .select: return "A"
+        case .split: return "B"
+        }
+    }
+}
+
 /// 视频编辑器的全部可变状态。
 ///
 /// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
@@ -119,6 +149,10 @@ final class VideoEditProject: ObservableObject {
             selectedClipIDs = [id]
         }
     }
+
+    /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
+    /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
+    @Published var activeTool: TimelineTool = .select
 
     // 三个开关，对应截图里的磁吸、吸附、链接。
     @Published var magnetEnabled = true {
@@ -593,6 +627,17 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 刀片工具：在指定时刻切开指定的段（链接开着时同组一起切）。
+    func splitClip(_ id: UUID, at time: Double) {
+        guard let clip = state.clip(with: id), clip.contains(time: time) else { return }
+        let targets = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
+        perform { state in
+            for member in targets {
+                Self.split(&state, clipID: member, at: time)
+            }
+        }
+    }
+
     private static func split(_ state: inout TimelineState, clipID: UUID, at time: Double) {
         guard let location = state.location(of: clipID) else { return }
         var clips = state[track: location.track]
@@ -616,6 +661,7 @@ final class VideoEditProject: ObservableObject {
             transitionDuration: left.transitionDuration,
             overlayFraction: left.overlayFraction,
             overlayAnchor: left.overlayAnchor,
+            placement: left.placement,
             info: left.info,
             audioAssetDuration: left.audioAssetDuration,
             // 图片段的身份必须跟过来：`sourceURL` 只是随时会被系统清掉的静帧缓存，
@@ -716,6 +762,33 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 把这一段的转场（类型 + 时长）套到主轨的每一个接缝上。
+    func applyTransitionToAll(like id: UUID) {
+        guard let clip = state.clip(with: id), clip.transitionAfter != .none else { return }
+        let transition = clip.transitionAfter
+        let duration = clip.transitionDuration
+        perform { state in
+            for index in state.mainClips.indices.dropLast() {
+                state.mainClips[index].transitionAfter = transition
+                state.mainClips[index].transitionDuration = duration
+            }
+        }
+    }
+
+    /// 清掉主轨上的所有转场。
+    func clearAllTransitions() {
+        perform { state in
+            for index in state.mainClips.indices {
+                state.mainClips[index].transitionAfter = .none
+            }
+        }
+    }
+
+    /// 主轨上还有没有任何转场（Clear all 的可用状态）。
+    var hasAnyTransition: Bool {
+        state.mainClips.contains { $0.transitionAfter != .none }
+    }
+
     func setVolume(_ id: UUID, volume: Double) {
         perform { state in
             state.update(id) { $0.volume = min(max(volume, 0), 2) }
@@ -733,7 +806,23 @@ final class VideoEditProject: ObservableObject {
             state.update(id) { clip in
                 if let fraction { clip.overlayFraction = min(max(fraction, 0.1), 1) }
                 if let anchor { clip.overlayAnchor = anchor }
+                // 九宫格和自由摆放是两套模型：点了停靠位就回到九宫格。
+                clip.placement = nil
             }
+        }
+    }
+
+    /// 预览里拖缩放框（连续手势）：每 tick 从快照重放，松手才结一步撤销。
+    func livePlace(_ id: UUID, placement: ClipPlacement) {
+        liveApply { state in
+            state.update(id) { $0.placement = placement.clamped }
+        }
+    }
+
+    /// 回到默认布局（主轨铺满 / 画中画九宫格）。
+    func resetPlacement(_ id: UUID) {
+        perform { state in
+            state.update(id) { $0.placement = nil }
         }
     }
 

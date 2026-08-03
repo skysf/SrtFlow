@@ -244,6 +244,12 @@
 "Picture-in-picture" = "Picture-in-picture";
 "Size" = "Size";
 "Split" = "Split";
+"Select" = "Select";
+"Mouse tool: Select (A) or Split (B)" = "Mouse tool: Select (A) or Split (B)";
+"Apply to All" = "Apply to All";
+"Clear All" = "Clear All";
+"Position & Size" = "Position & Size";
+"Drag the frame on the preview to move it; corners scale, edges stretch." = "Drag the frame on the preview to move it; corners scale, edges stretch.";
 "Line" = "Line";
 "Rectangle" = "Rectangle";
 "Square" = "Square";

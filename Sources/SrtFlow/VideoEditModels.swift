@@ -80,6 +80,63 @@ enum OverlayAnchor: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - 自由变换
+
+/// 画面段在输出画布上的自由摆放：中心和宽高都是相对画布的 0…1 归一化值。
+///
+/// `nil`（不设）表示默认布局 —— 主轨等比铺满居中、画中画走
+/// `overlayFraction`/`overlayAnchor` 的九宫格。一旦用户在预览里拖过缩放框，
+/// 就换成这份显式的摆放；预览（AVFoundation 变换）和导出（ffmpeg scale+overlay）
+/// 都按同一份归一化值换算，所见即所得。宽高各自独立 —— 拉边把手允许变形。
+struct ClipPlacement: Hashable, Sendable {
+    var centerX: Double
+    var centerY: Double
+    /// 相对画布宽的比例。
+    var width: Double
+    /// 相对画布高的比例。
+    var height: Double
+
+    /// 画布上的像素框。
+    func frame(in canvas: CGSize) -> CGRect {
+        CGRect(
+            x: (centerX - width / 2) * canvas.width,
+            y: (centerY - height / 2) * canvas.height,
+            width: width * canvas.width,
+            height: height * canvas.height
+        )
+    }
+
+    init(centerX: Double, centerY: Double, width: Double, height: Double) {
+        self.centerX = centerX
+        self.centerY = centerY
+        self.width = width
+        self.height = height
+    }
+
+    init(frame: CGRect, in canvas: CGSize) {
+        guard canvas.width > 0, canvas.height > 0 else {
+            self.init(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
+            return
+        }
+        self.init(
+            centerX: frame.midX / canvas.width,
+            centerY: frame.midY / canvas.height,
+            width: frame.width / canvas.width,
+            height: frame.height / canvas.height
+        )
+    }
+
+    /// 兜住失控的值：尺寸别缩没，中心别整个飞出画面。
+    var clamped: ClipPlacement {
+        ClipPlacement(
+            centerX: min(max(centerX, 0), 1),
+            centerY: min(max(centerY, 0), 1),
+            width: min(max(width, 0.02), 4),
+            height: min(max(height, 0.02), 4)
+        )
+    }
+}
+
 // MARK: - 画布比例
 
 /// 输出画面的宽高比。`auto` 跟随主轨第一段素材。
@@ -253,6 +310,9 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var overlayFraction: Double
     var overlayAnchor: OverlayAnchor
 
+    /// 用户在预览里摆过的自由位置/尺寸；nil = 默认布局（主轨铺满、画中画九宫格）。
+    var placement: ClipPlacement?
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -277,6 +337,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         transitionDuration: Double = 0.5,
         overlayFraction: Double = 0.4,
         overlayAnchor: OverlayAnchor = .topTrailing,
+        placement: ClipPlacement? = nil,
         info: MediaInfo? = nil,
         audioAssetDuration: Double? = nil,
         stillImageURL: URL? = nil
@@ -295,6 +356,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.transitionDuration = transitionDuration
         self.overlayFraction = overlayFraction
         self.overlayAnchor = overlayAnchor
+        self.placement = placement
         self.info = info
         self.audioAssetDuration = audioAssetDuration
         self.stillImageURL = stillImageURL
@@ -316,6 +378,30 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
     func contains(time: Double) -> Bool {
         time > timelineStart + 0.001 && time < timelineEnd - 0.001
+    }
+
+    /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算 ——
+    /// 主轨等比铺满居中，画中画按 `overlayFraction` 宽度停靠九宫格。
+    /// 预览里的选中框和拖动起点都从这里取，跟合成/导出的默认摆法一致。
+    func resolvedPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
+        if let placement { return placement }
+        guard let display = info?.displaySize, display.width > 0, display.height > 0,
+              canvas.width > 0, canvas.height > 0 else {
+            return ClipPlacement(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
+        }
+        if isOverlay {
+            let scale = canvas.width * overlayFraction / display.width
+            let size = CGSize(width: display.width * scale, height: display.height * scale)
+            let origin = overlayAnchor.origin(canvas: canvas, overlay: size, inset: canvas.width * 0.02)
+            return ClipPlacement(frame: CGRect(origin: origin, size: size), in: canvas)
+        }
+        let scale = min(canvas.width / display.width, canvas.height / display.height)
+        return ClipPlacement(
+            centerX: 0.5,
+            centerY: 0.5,
+            width: display.width * scale / canvas.width,
+            height: display.height * scale / canvas.height
+        )
     }
 }
 
@@ -584,11 +670,35 @@ extension ShapeAnnotation: Codable {
     }
 }
 
+extension ClipPlacement: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case centerX, centerY, width, height
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            centerX: try c.decodeIfPresent(Double.self, forKey: .centerX) ?? 0.5,
+            centerY: try c.decodeIfPresent(Double.self, forKey: .centerY) ?? 0.5,
+            width: try c.decodeIfPresent(Double.self, forKey: .width) ?? 1,
+            height: try c.decodeIfPresent(Double.self, forKey: .height) ?? 1
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(centerX, forKey: .centerX)
+        try c.encode(centerY, forKey: .centerY)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+    }
+}
+
 extension EditClip: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
-        case overlayFraction, overlayAnchor, info, audioAssetDuration, stillImageURL
+        case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
     }
 
     init(from decoder: Decoder) throws {
@@ -609,6 +719,7 @@ extension EditClip: Codable {
             transitionDuration: try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.5,
             overlayFraction: try c.decodeIfPresent(Double.self, forKey: .overlayFraction) ?? 0.4,
             overlayAnchor: try c.decodeIfPresent(OverlayAnchor.self, forKey: .overlayAnchor) ?? .topTrailing,
+            placement: try c.decodeIfPresent(ClipPlacement.self, forKey: .placement),
             info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
             audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
             stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
@@ -633,6 +744,7 @@ extension EditClip: Codable {
         try c.encode(transitionDuration, forKey: .transitionDuration)
         try c.encode(overlayFraction, forKey: .overlayFraction)
         try c.encode(overlayAnchor, forKey: .overlayAnchor)
+        try c.encodeIfPresent(placement, forKey: .placement)
         try c.encodeIfPresent(info, forKey: .info)
         try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
         try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)

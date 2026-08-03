@@ -84,6 +84,7 @@ enum VideoEditCompositionBuilder {
                 naturalSize: naturalSize,
                 preferredTransform: preferred,
                 renderSize: renderSize,
+                placement: clip.placement,
                 overlay: nil
             )
 
@@ -153,6 +154,7 @@ enum VideoEditCompositionBuilder {
                     naturalSize: naturalSize,
                     preferredTransform: preferred,
                     renderSize: renderSize,
+                    placement: clip.placement,
                     overlay: (clip.overlayFraction, clip.overlayAnchor)
                 )
                 placed.append(PlacedClip(
@@ -285,15 +287,28 @@ enum VideoEditCompositionBuilder {
 
     /// 素材画面摆进输出画布的变换：先按源自带的旋转摆正，把包围盒挪回原点，
     /// 再缩放，最后平移到位（主画面居中、画中画按停靠位）。
+    /// 用户在预览里摆过的（`placement`）优先：直接非等比缩放进那个归一化框。
     private static func fittingTransform(
         naturalSize: CGSize,
         preferredTransform: CGAffineTransform,
         renderSize: CGSize,
+        placement: ClipPlacement?,
         overlay: (fraction: Double, anchor: OverlayAnchor)?
     ) -> CGAffineTransform {
         let bounds = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let display = CGSize(width: abs(bounds.width), height: abs(bounds.height))
         guard display.width > 0, display.height > 0 else { return .identity }
+
+        if let placement {
+            let target = placement.frame(in: renderSize)
+            return preferredTransform
+                .concatenating(CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
+                .concatenating(CGAffineTransform(
+                    scaleX: target.width / display.width,
+                    y: target.height / display.height
+                ))
+                .concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+        }
 
         let scale: Double
         let origin: CGPoint

@@ -82,7 +82,7 @@ struct VideoEditView: View {
 
     // MARK: - 键盘
 
-    /// 空格播放/暂停；V 切换所在轨的隐藏。
+    /// 空格播放/暂停；V 切换所在轨的隐藏；A/B 切换选择/分割工具。
     /// 这个视图只在「视频剪辑」栏可见时存在，监听不会漏到别的页面。
     private func installEventMonitor() {
         guard eventMonitor == nil else { return }
@@ -105,6 +105,12 @@ struct VideoEditView: View {
                 return nil
             case "v":
                 project.toggleHiddenForSelectionLane()
+                return nil
+            case "a":
+                project.activeTool = .select
+                return nil
+            case "b":
+                project.activeTool = .split
                 return nil
             default:
                 return event
@@ -152,6 +158,8 @@ struct VideoEditView: View {
                 Color.black
                 if !project.state.isEmpty {
                     PlayerViewRepresentable(player: clock.player, controlsStyle: .none)
+                    // 点选画面内容 + 变换框。放在形状叠层下面：形状的点击优先。
+                    ClipTransformCanvas(project: project, clock: clock, boxSize: size)
                 } else {
                     Text("Add clips to start editing.")
                         .foregroundStyle(.secondary)
@@ -298,6 +306,7 @@ struct VideoEditView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             addMenu
+            toolMenu
 
             Divider().frame(height: 16)
 
@@ -376,6 +385,30 @@ struct VideoEditView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
 
+    }
+
+    /// 鼠标工具下拉：选择（A）/ 分割（B）。快捷键走本视图的事件监听，
+    /// 不挂 keyboardShortcut —— 无修饰键的键盘等价符会抢文本框的输入。
+    private var toolMenu: some View {
+        Menu {
+            ForEach(TimelineTool.allCases) { tool in
+                Button {
+                    project.activeTool = tool
+                } label: {
+                    if project.activeTool == tool {
+                        Label("\(L10n(tool.title)) (\(tool.shortcutLabel))", systemImage: "checkmark")
+                    } else {
+                        Label("\(L10n(tool.title)) (\(tool.shortcutLabel))", systemImage: tool.icon)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: project.activeTool.icon)
+                .frame(width: 20, height: 18)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Mouse tool: Select (A) or Split (B)")
     }
 
     private var canSplit: Bool {
@@ -465,15 +498,61 @@ private struct ShapeOverlayCanvas: View {
             ForEach(project.visibleShapes(at: project.clock.time)) { shape in
                 shapeView(shape)
             }
+            // 选中形状的变换框：线条只给左右（改长度），正方形只给四角（保形），
+            // 长方形全套八个。移动仍走形状本体的拖动手势，框体不拦事件。
+            if let shape = project.selectedShape, shape.contains(time: project.clock.time) {
+                ResizableFrameBox(
+                    rect: resizeBoxRect(shape),
+                    handles: resizeHandles(shape.kind),
+                    keepAspectOnCorners: true,
+                    movable: false,
+                    onChange: { newRect in applyShapeResize(shape, newRect) },
+                    onEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                )
+            }
         }
         .frame(width: boxSize.width, height: boxSize.height)
+    }
+
+    /// 框比形状本体略大一圈；线条的外接框高度是 0，撑到能看见的高度。
+    private func resizeBoxRect(_ shape: ShapeAnnotation) -> CGRect {
+        var frame = shape.frame(in: boxSize).insetBy(dx: -4, dy: -4)
+        if shape.kind == .line {
+            let minHeight = 14.0
+            frame = frame.insetBy(dx: 0, dy: -(minHeight - frame.height) / 2)
+        }
+        return frame
+    }
+
+    private func resizeHandles(_ kind: ShapeKind) -> Set<FrameHandle> {
+        switch kind {
+        case .line: return FrameHandle.horizontal
+        case .square: return FrameHandle.corners
+        case .rectangle: return FrameHandle.all
+        }
+    }
+
+    /// 把新框写回归一化的形状字段。正方形由 `updateShape` 强制保形；
+    /// 线条只吃长度和中心，高度是撑出来的视觉量，不落模型。
+    private func applyShapeResize(_ shape: ShapeAnnotation, _ newRect: CGRect) {
+        let rect = newRect.insetBy(dx: 4, dy: 4)
+        let kind = shape.kind
+        project.liveApply { state in
+            state.updateShape(shape.id) {
+                $0.centerX = min(max(newRect.midX / boxSize.width, 0), 1)
+                $0.centerY = min(max(newRect.midY / boxSize.height, 0), 1)
+                $0.width = min(max(rect.width / boxSize.width, 0.02), 1)
+                if kind == .rectangle {
+                    $0.height = min(max(rect.height / boxSize.height, 0.02), 1)
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private func shapeView(_ shape: ShapeAnnotation) -> some View {
         let frame = shape.frame(in: boxSize)
         let strokeWidth = max(0.5, shape.lineWidth * boxSize.height / 1080)
-        let isSelected = project.selectedShapeID == shape.id
 
         Group {
             switch shape.kind {
@@ -487,14 +566,6 @@ private struct ShapeOverlayCanvas: View {
                 Rectangle()
                     .strokeBorder(shape.color.swiftUIColor, lineWidth: strokeWidth)
                     .frame(width: max(2, frame.width), height: max(2, frame.height))
-            }
-        }
-        .overlay {
-            if isSelected {
-                Rectangle()
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(-4)
             }
         }
         .contentShape(Rectangle().inset(by: -8))

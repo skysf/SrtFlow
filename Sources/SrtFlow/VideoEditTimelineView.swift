@@ -818,6 +818,8 @@ private struct ClipBlockView: View {
     @State private var dragVisualStart: Double?
     /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
     @State private var isTrimming = false
+    /// 刀片工具的十字光标压没压进光标栈（离开时要弹回来）。
+    @State private var pushedSplitCursor = false
 
     private var width: Double { max(6, clip.timelineDuration * pps) }
     private var isAudioRow: Bool { slot.isAudio }
@@ -838,12 +840,18 @@ private struct ClipBlockView: View {
             }
         }
         .frame(width: width, height: height)
-        .onTapGesture {
-            let flags = NSApp.currentEvent?.modifierFlags ?? []
-            project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
+        .onTapGesture(coordinateSpace: .local) { location in
+            if project.activeTool == .split {
+                // 刀片：点哪儿切哪儿。链接组的处理和 ⌘B 一致。
+                project.splitClip(clip.id, at: clip.timelineStart + min(max(0, location.x), width) / pps)
+            } else {
+                let flags = NSApp.currentEvent?.modifierFlags ?? []
+                project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
+            }
         }
         .gesture(moveGesture)
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
+        .onHover(perform: updateSplitCursor)
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
@@ -946,6 +954,17 @@ private struct ClipBlockView: View {
                 dragVisualStart = nil
                 onDragEnd()
             }
+    }
+
+    /// 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
+    private func updateSplitCursor(_ inside: Bool) {
+        if inside, project.activeTool == .split, !pushedSplitCursor {
+            NSCursor.crosshair.push()
+            pushedSplitCursor = true
+        } else if !inside, pushedSplitCursor {
+            NSCursor.pop()
+            pushedSplitCursor = false
+        }
     }
 
     /// 鼠标扫过视频块时，画面直接滚到指的那一帧（播放中和拖动中不抢）。
