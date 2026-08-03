@@ -67,7 +67,6 @@ IDCStore/
 # Local agent / automation settings
 .agents/
 .codex/
-AGENTS.md
 AGENTS.local.md
 
 # IDE
