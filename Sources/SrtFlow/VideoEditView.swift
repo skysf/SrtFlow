@@ -14,7 +14,8 @@ struct VideoEditView: View {
 
     @Environment(\.undoManager) private var undoManager
     @State private var showsExportSheet = false
-    /// 触控板捏合缩放和空格/V 快捷键的事件监听（SwiftUI 手势在 ScrollView 上收不到捏合）。
+    /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
+    /// 的 local monitor 处理，不在这里。
     @State private var eventMonitor: Any?
 
     init() {
@@ -40,6 +41,11 @@ struct VideoEditView: View {
             toolchain.resolveIfNeeded()
             project.undoManager = undoManager
             installEventMonitor()
+            // GUI 冒烟测试的导入钩子：环境变量不设就完全不生效。
+            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_VIDEO"],
+               !smoke.isEmpty, project.state.isEmpty {
+                project.addMedia(urls: [URL(fileURLWithPath: smoke)])
+            }
         }
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
@@ -68,22 +74,19 @@ struct VideoEditView: View {
         }
     }
 
-    // MARK: - 触控板与键盘
+    // MARK: - 键盘
 
-    /// 捏合缩放时间线；空格播放/暂停；V 切换所在轨的隐藏。
+    /// 空格播放/暂停；V 切换所在轨的隐藏。
     /// 这个视图只在「视频剪辑」栏可见时存在，监听不会漏到别的页面。
     private func installEventMonitor() {
         guard eventMonitor == nil else { return }
-        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: [.magnify, .keyDown]) { event in
+        eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             MainActor.assumeIsolated { handleEvent(event) }
         }
     }
 
     private func handleEvent(_ event: NSEvent) -> NSEvent? {
         switch event.type {
-        case .magnify:
-            project.pixelsPerSecond = min(max(project.pixelsPerSecond * (1 + event.magnification), 4), 120)
-            return event
         case .keyDown:
             // 正在打字（哪怕是别的输入框）就别抢按键。
             if NSApp.keyWindow?.firstResponder is NSTextView { return event }
