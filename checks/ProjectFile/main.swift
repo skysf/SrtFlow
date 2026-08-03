@@ -356,6 +356,41 @@ do {
     checkEqual(state.mainClips[0].needsStillConversion, true, "对不上缓存就该标成待转换")
 }
 
+// MARK: - 13. 选中导出：画中画升主轨要丢自由摆放
+//
+// 回归：只选画中画导出时它会被升为主轨（约定是「导出单个视频＝完整画面」），
+// 升轨时不清 placement 的话，导出器继续走黑底 overlay 分支——出来是黑底小窗。
+
+do {
+    let place = ClipPlacement(centerX: 0.8, centerY: 0.2, width: 0.3, height: 0.3)
+    var state = TimelineState()
+    let main = EditClip(sourceURL: URL(fileURLWithPath: "/m/main.mp4"), sourceDuration: 10)
+    var pip = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip.mp4"), sourceDuration: 5, timelineStart: 2)
+    pip.placement = place
+    var pip2 = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip2.mp4"), sourceDuration: 4, timelineStart: 3)
+    pip2.placement = place
+    state.mainClips = [main]
+    state.overlayTracks = [EditLane(clips: [pip]), EditLane(clips: [pip2])]
+
+    // 只选一条画中画：升主轨、平移到 0、丢摆放。
+    let solo = state.selectionForExport(ids: [pip.id])
+    checkEqual(solo.mainClips.map(\.id), [pip.id], "只选画中画时它应升为主轨")
+    check(solo.overlayTracks.isEmpty, "升完不该剩空画中画轨")
+    checkEqual(solo.mainClips.first?.placement, nil, "升主轨必须丢自由摆放，否则导出是黑底小窗")
+    checkEqual(solo.mainClips.first?.timelineStart, 0, "选中导出要平移到 0 起点")
+
+    // 画中画和主轨一起选：不升轨的画中画保持摆放（所见即所得）。
+    let both = state.selectionForExport(ids: [main.id, pip.id])
+    checkEqual(both.mainClips.map(\.id), [main.id], "主轨还在就不升画中画")
+    checkEqual(both.overlayTracks.first?.clips.first?.placement, place, "没升轨的画中画要保留摆放")
+
+    // 只选两条画中画：最下面那条升主轨丢摆放，另一条留在画中画轨保留摆放。
+    let pips = state.selectionForExport(ids: [pip.id, pip2.id])
+    checkEqual(pips.mainClips.map(\.id), [pip.id], "升的是最下面那条画中画轨")
+    checkEqual(pips.mainClips.first?.placement, nil, "升主轨的那条要丢摆放")
+    checkEqual(pips.overlayTracks.first?.clips.first?.placement, place, "另一条画中画的摆放不该被牵连")
+}
+
 try? manager.removeItem(at: root)
 
 print("\(checks) checks, \(failures) failures")

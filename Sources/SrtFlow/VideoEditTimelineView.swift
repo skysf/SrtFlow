@@ -849,7 +849,9 @@ private struct ClipBlockView: View {
                 project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
             }
         }
-        .gesture(moveGesture)
+        // 分割模式下移动手势整个停掉（.subviews 保留上面的点击）：
+        // 只 guard 回调的话，4pt 的手抖仍会被手势吃掉，本该落下的那一刀就没了。
+        .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
         .onHover(perform: updateSplitCursor)
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
@@ -980,7 +982,8 @@ private struct ClipBlockView: View {
     @ViewBuilder
     private func trimHandle(leading: Bool) -> some View {
         // 块太窄时不给裁切把手，不然根本点不到移动区。
-        if width > 26 {
+        // 分割模式下彻底不给：把手压着块的两端，边缘那一刀会变成裁切。
+        if width > 26, project.activeTool == .select {
             Rectangle()
                 .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
                 .frame(width: isSelected ? 5 : 8)

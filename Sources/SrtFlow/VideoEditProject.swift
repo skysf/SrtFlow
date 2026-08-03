@@ -539,42 +539,11 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 要导出的时间线：完整的，或只含选中内容（平移到 0 起点）。
-    ///
-    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
-    /// 拿到的就是完整画面而不是黑底小窗。
+    /// 要导出的时间线：完整的，或只含选中内容（逻辑在
+    /// `TimelineState.selectionForExport`，纯值变换，工程文件自检里有回归）。
     func stateForExport(selectionOnly: Bool) -> TimelineState {
         guard selectionOnly, !selectedClipIDs.isEmpty else { return state }
-        let ids = selectedClipIDs
-        let picked = state.allClips.filter { ids.contains($0.id) }
-        guard let earliest = picked.map(\.timelineStart).min() else { return state }
-
-        func shifted(_ clip: EditClip) -> EditClip {
-            var copy = clip
-            copy.timelineStart -= earliest
-            copy.transitionAfter = .none
-            return copy
-        }
-
-        var sub = TimelineState()
-        sub.mainClips = state.mainClips.filter { ids.contains($0.id) }.map(shifted)
-        for lane in state.overlayTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
-            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
-        }
-        for lane in state.audioTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
-            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
-        }
-        if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
-            sub.mainClips = sub.overlayTracks.removeFirst().clips
-        }
-        sub.canvasRatio = state.canvasRatio
-        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
-        if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
-            sub.packMain()
-        }
-        return sub
+        return state.selectionForExport(ids: selectedClipIDs)
     }
 
     func attachSubtitle(_ url: URL) {

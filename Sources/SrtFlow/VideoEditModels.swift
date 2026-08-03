@@ -592,6 +592,52 @@ struct TimelineState: Hashable, Sendable {
     }
 }
 
+// MARK: - 选中导出的子集
+
+extension TimelineState {
+    /// 只含 `ids` 的时间线（平移到 0 起点），「Selected only」导出用。
+    ///
+    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
+    /// 拿到的就是完整画面而不是黑底小窗。所以**升轨的段必须丢掉自由摆放
+    /// （placement）**：那是相对完整画面摆的，画面本身都不在这次导出里。
+    /// 没升轨的画中画保持原样（含摆放），所见即所得。
+    func selectionForExport(ids: Set<UUID>) -> TimelineState {
+        let picked = allClips.filter { ids.contains($0.id) }
+        guard let earliest = picked.map(\.timelineStart).min() else { return self }
+
+        func shifted(_ clip: EditClip) -> EditClip {
+            var copy = clip
+            copy.timelineStart -= earliest
+            copy.transitionAfter = .none
+            return copy
+        }
+
+        var sub = TimelineState()
+        sub.mainClips = mainClips.filter { ids.contains($0.id) }.map(shifted)
+        for lane in overlayTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
+        }
+        for lane in audioTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
+        }
+        if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
+            sub.mainClips = sub.overlayTracks.removeFirst().clips.map { clip in
+                var promoted = clip
+                promoted.placement = nil
+                return promoted
+            }
+        }
+        sub.canvasRatio = canvasRatio
+        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
+        if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
+            sub.packMain()
+        }
+        return sub
+    }
+}
+
 // MARK: - 存盘（.srtflowproj）
 //
 // 工程文件是长期格式，读旧文件不能因为「多了/少了一个字段」就整份打不开，

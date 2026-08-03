@@ -54,6 +54,9 @@
 - [2026-08-03-trim-flicker-halved.md](docs/bugfixes/2026-08-03-trim-flicker-halved.md) —
   裁切块闪烁卡顿 + 裁切量恰好半速：把手 .local 坐标系随裁切自移形成反馈回路；
   另修动画豁免与缩略图/波形去抖
+- [2026-08-04-editor-tools-review.md](docs/bugfixes/2026-08-04-editor-tools-review.md) —
+  评审返工三连：工具模式要整个关掉旧手势（GestureMask 不是 guard 回调）、
+  画中画升主轨要丢 placement、线条选中框要按旋转后包络
 
 ## 根目录既有文档
 

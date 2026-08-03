@@ -503,7 +503,7 @@ private struct ShapeOverlayCanvas: View {
             if let shape = project.selectedShape, shape.contains(time: project.clock.time) {
                 ResizableFrameBox(
                     rect: resizeBoxRect(shape),
-                    handles: resizeHandles(shape.kind),
+                    handles: resizeHandles(shape),
                     keepAspectOnCorners: true,
                     movable: false,
                     onChange: { newRect in applyShapeResize(shape, newRect) },
@@ -514,19 +514,36 @@ private struct ShapeOverlayCanvas: View {
         .frame(width: boxSize.width, height: boxSize.height)
     }
 
-    /// 框比形状本体略大一圈；线条的外接框高度是 0，撑到能看见的高度。
+    /// 框比形状本体略大一圈。线条按**旋转后的包络**画框（绘制带
+    /// rotationEffect，`frame(in:)` 不带），细的方向撑到能看见。
     private func resizeBoxRect(_ shape: ShapeAnnotation) -> CGRect {
-        var frame = shape.frame(in: boxSize).insetBy(dx: -4, dy: -4)
+        var frame = shape.frame(in: boxSize)
         if shape.kind == .line {
-            let minHeight = 14.0
-            frame = frame.insetBy(dx: 0, dy: -(minHeight - frame.height) / 2)
+            let angle = shape.rotationDegrees * .pi / 180
+            let w = abs(frame.width * cos(angle))
+            let h = abs(frame.width * sin(angle))
+            frame = CGRect(x: frame.midX - w / 2, y: frame.midY - h / 2, width: w, height: h)
+        }
+        frame = frame.insetBy(dx: -4, dy: -4)
+        if shape.kind == .line {
+            let minSide = 14.0
+            if frame.height < minSide {
+                frame = frame.insetBy(dx: 0, dy: -(minSide - frame.height) / 2)
+            }
+            if frame.width < minSide {
+                frame = frame.insetBy(dx: -(minSide - frame.width) / 2, dy: 0)
+            }
         }
         return frame
     }
 
-    private func resizeHandles(_ kind: ShapeKind) -> Set<FrameHandle> {
-        switch kind {
-        case .line: return FrameHandle.horizontal
+    private func resizeHandles(_ shape: ShapeAnnotation) -> Set<FrameHandle> {
+        switch shape.kind {
+        case .line:
+            // 转过角度的线，左右把手方向就不对了：只留框做选中指示，
+            // 长度在检查器里调。没转的照旧左右改长度。
+            let rotated = abs(shape.rotationDegrees.truncatingRemainder(dividingBy: 360)) > 0.5
+            return rotated ? [] : FrameHandle.horizontal
         case .square: return FrameHandle.corners
         case .rectangle: return FrameHandle.all
         }
