@@ -287,7 +287,7 @@ struct BurnInPreviewArea: View {
             get: { displayTime },
             set: { newValue in
                 scrubTime = newValue
-                // 拖动过程中用粗定位（就近关键帧），跟手不卡。
+                // 拖动过程中走链式精确 seek：逐帧刷新且不淹解码器。
                 clock.seek(to: newValue, precise: false)
             }
         )
