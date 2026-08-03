@@ -18,12 +18,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 这里只把文件暂存进中转站，切栏目交给 MainWindowView：`openWindow` 只有在
     /// SwiftUI 视图里才拿得到。
     func application(_ application: NSApplication, open urls: [URL]) {
+        // 双击 .srtflowproj 直接进剪辑页打开那条工程。
+        if let projectFile = urls.first(where: {
+            $0.pathExtension.lowercased() == VideoEditProjectFile.fileExtension
+        }) {
+            MainWindowState.shared.section = .videoEdit
+            Task { await VideoEditProject.shared.openProject(at: projectFile) }
+            return
+        }
+
         let videos = urls.filter(MediaFileTypes.isVideo)
         let subtitles = urls.filter(MediaFileTypes.isSubtitle)
         if !subtitles.isEmpty {
             BurnInHandoff.shared.stage(videos: videos, subtitles: subtitles)
         } else if !videos.isEmpty {
             CompressHandoff.shared.stage(videos: videos)
+        }
+    }
+
+    /// 退出前把改动落定 —— 自动保存有 2 秒防抖，正好卡在那两秒里按 ⌘Q 的话
+    /// 不能把改动丢了。
+    ///
+    /// 必须在 shouldTerminate 这一步做而不是 willTerminate：那时已经拦不住
+    /// 退出了，写盘失败（磁盘满、外接盘被拔）也只能眼睁睁丢数据。这里失败或
+    /// 用户在「未命名工程要不要保存」上点了取消，就取消退出。
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated {
+            VideoEditProject.shared.prepareToCloseDocument() ? .terminateNow : .terminateCancel
         }
     }
 }
@@ -43,6 +64,7 @@ struct SrtFlowApp: App {
         .defaultSize(width: 1180, height: 760)
         .commands {
             CommandGroup(after: .newItem) {
+                ProjectCommands()
                 Divider()
                 SectionButton(title: "Compress Video", section: .compress)
                     .keyboardShortcut("1", modifiers: [.command])
@@ -80,6 +102,63 @@ private struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 420)
         .padding(.vertical, 8)
+    }
+}
+
+/// 文件菜单里的剪辑工程那几项。
+///
+/// 「最近打开」读的是系统那份最近文件列表（`NSDocumentController`），跟 Dock
+/// 图标右键看到的是同一份，不用自己存一套。
+private struct ProjectCommands: View {
+    @ObservedObject private var windowState = MainWindowState.shared
+    @ObservedObject private var project = VideoEditProject.shared
+
+    @Environment(\.openWindow) private var openWindow
+
+    /// ⌘S 只在剪辑页有意义 —— 在压缩页按它不该悄悄存一份剪辑工程。
+    private var isEditing: Bool { windowState.section == .videoEdit }
+
+    var body: some View {
+        Button("New Project") {
+            showEditor()
+            project.newProject()
+        }
+        .keyboardShortcut("n", modifiers: .command)
+
+        Button("Open Project…") {
+            showEditor()
+            project.promptOpenProject()
+        }
+        .keyboardShortcut("o", modifiers: .command)
+
+        Menu("Open Recent") {
+            let recents = RecentProjects.existing()
+            if recents.isEmpty {
+                Text("No Recent Projects")
+            } else {
+                ForEach(recents, id: \.self) { url in
+                    Button(url.deletingPathExtension().lastPathComponent) {
+                        showEditor()
+                        Task { await project.openProject(at: url) }
+                    }
+                }
+            }
+        }
+
+        Divider()
+
+        Button("Save") { project.saveDocument() }
+            .keyboardShortcut("s", modifiers: .command)
+            .disabled(!isEditing)
+
+        Button("Save As…") { project.saveDocumentAs() }
+            .keyboardShortcut("s", modifiers: [.command, .shift])
+            .disabled(!isEditing)
+    }
+
+    private func showEditor() {
+        windowState.section = .videoEdit
+        openWindow(id: WindowID.main)
     }
 }
 

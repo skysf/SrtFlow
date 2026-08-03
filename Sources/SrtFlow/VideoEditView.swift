@@ -50,6 +50,8 @@ struct VideoEditView: View {
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
             eventMonitor = nil
+            // 切去别的栏目时把挂着的自动保存写下去，别留在内存里等。
+            project.flushAutosave()
         }
         .onDropOfFiles { urls in project.addMedia(urls: urls) }
         .onDeleteCommand { project.deleteSelected() }
@@ -58,6 +60,10 @@ struct VideoEditView: View {
         }
         // Export 放窗口右上角的工具栏，随时够得着。
         .toolbar {
+            // 工程名下拉放最左边，它就是这个编辑器的文件菜单。
+            ToolbarItem(placement: .navigation) {
+                VideoEditProjectMenu(project: project)
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 if exporter.isExporting {
                     ProgressView(value: exporter.progress)
@@ -112,10 +118,25 @@ struct VideoEditView: View {
 
     private var previewPane: some View {
         VStack(spacing: 0) {
-            videoBox
+            if !project.missingMedia.isEmpty {
+                MissingMediaBar(project: project)
+                Divider()
+            }
+            if showsStartScreen {
+                VideoEditStartScreen(project: project)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                videoBox
+            }
             Divider()
             transport
         }
+    }
+
+    /// 空的未命名工程给起始页（拖放提示 + 最近工程），比一整块黑屏有用。
+    /// 打开过的工程哪怕是空的也照常显示预览区 —— 那是「这条工程本来就空」。
+    private var showsStartScreen: Bool {
+        project.state.isEmpty && project.isUntitled && project.importingCount == 0
     }
 
     private var aspect: Double {

@@ -126,6 +126,22 @@ enum VideoEditExportGraph {
         subtitleFontURL: URL?,
         output: URL
     ) throws -> Plan {
+        // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
+        // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
+        // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
+        let pendingStills = ((state.mainHidden ? [] : state.mainClips)
+            + state.overlayTracks.filter { !$0.isHidden }.flatMap(\.clips))
+            .filter(\.needsStillConversion)
+        if !pendingStills.isEmpty {
+            let names = pendingStills
+                .map(\.name)
+                .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+            throw PlanError(message: String(
+                format: L10n("These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing."),
+                names.joined(separator: "、")
+            ))
+        }
+
         // 隐藏的轨和还在转静帧的占位块都不进成片。
         let mainVisible = (state.mainHidden ? [] : state.mainClips)
             .filter { !$0.needsStillConversion }

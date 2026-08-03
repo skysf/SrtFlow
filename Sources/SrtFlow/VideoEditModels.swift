@@ -506,6 +506,235 @@ struct TimelineState: Hashable, Sendable {
     }
 }
 
+// MARK: - 存盘（.srtflowproj）
+//
+// 工程文件是长期格式，读旧文件不能因为「多了/少了一个字段」就整份打不开，
+// 所以这里全部手写宽容解码：缺的字段取默认值，不认识的枚举值退回兜底项。
+// 有默认值的新字段可以随便加，老工程照样能开。
+
+/// 读到不认识的原始值时退回默认项，而不是让整份工程解不开。
+protocol LenientCodableEnum: RawRepresentable, Codable where RawValue == String {
+    static var decodingFallback: Self { get }
+}
+
+extension LenientCodableEnum {
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? Self.decodingFallback
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+extension ClipTransition: LenientCodableEnum {
+    static var decodingFallback: ClipTransition { .none }
+}
+
+extension OverlayAnchor: LenientCodableEnum {
+    static var decodingFallback: OverlayAnchor { .topTrailing }
+}
+
+extension CanvasRatio: LenientCodableEnum {
+    static var decodingFallback: CanvasRatio { .auto }
+}
+
+extension ShapeKind: LenientCodableEnum {
+    static var decodingFallback: ShapeKind { .rectangle }
+}
+
+extension ShapeAnnotation: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, timelineStart, duration, color, lineWidth
+        case centerX, centerY, width, height, rotationDegrees
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            kind: try c.decodeIfPresent(ShapeKind.self, forKey: .kind) ?? .rectangle,
+            timelineStart: try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0,
+            duration: try c.decodeIfPresent(Double.self, forKey: .duration) ?? 3,
+            color: try c.decodeIfPresent(SubtitleColor.self, forKey: .color) ?? .yellow,
+            lineWidth: try c.decodeIfPresent(Double.self, forKey: .lineWidth) ?? 6,
+            centerX: try c.decodeIfPresent(Double.self, forKey: .centerX) ?? 0.5,
+            centerY: try c.decodeIfPresent(Double.self, forKey: .centerY) ?? 0.5,
+            width: try c.decodeIfPresent(Double.self, forKey: .width) ?? 0.3,
+            height: try c.decodeIfPresent(Double.self, forKey: .height) ?? 0.2,
+            rotationDegrees: try c.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(timelineStart, forKey: .timelineStart)
+        try c.encode(duration, forKey: .duration)
+        try c.encode(color, forKey: .color)
+        try c.encode(lineWidth, forKey: .lineWidth)
+        try c.encode(centerX, forKey: .centerX)
+        try c.encode(centerY, forKey: .centerY)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+        try c.encode(rotationDegrees, forKey: .rotationDegrees)
+    }
+}
+
+extension EditClip: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
+        case isMuted, volume, linkGroup, transitionAfter, transitionDuration
+        case overlayFraction, overlayAnchor, info, audioAssetDuration, stillImageURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 素材路径是唯一必需的字段：没有它这段就不成立。
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceURL: try c.decode(URL.self, forKey: .sourceURL),
+            isAudioOnly: try c.decodeIfPresent(Bool.self, forKey: .isAudioOnly) ?? false,
+            sourceStart: try c.decodeIfPresent(Double.self, forKey: .sourceStart) ?? 0,
+            sourceDuration: try c.decodeIfPresent(Double.self, forKey: .sourceDuration) ?? 0,
+            speed: try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1,
+            timelineStart: try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0,
+            isMuted: try c.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false,
+            volume: try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1,
+            linkGroup: try c.decodeIfPresent(UUID.self, forKey: .linkGroup),
+            transitionAfter: try c.decodeIfPresent(ClipTransition.self, forKey: .transitionAfter) ?? .none,
+            transitionDuration: try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.5,
+            overlayFraction: try c.decodeIfPresent(Double.self, forKey: .overlayFraction) ?? 0.4,
+            overlayAnchor: try c.decodeIfPresent(OverlayAnchor.self, forKey: .overlayAnchor) ?? .topTrailing,
+            info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
+            audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
+            stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
+        )
+        // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
+        // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(sourceURL, forKey: .sourceURL)
+        try c.encode(isAudioOnly, forKey: .isAudioOnly)
+        try c.encode(sourceStart, forKey: .sourceStart)
+        try c.encode(sourceDuration, forKey: .sourceDuration)
+        try c.encode(speed, forKey: .speed)
+        try c.encode(timelineStart, forKey: .timelineStart)
+        try c.encode(isMuted, forKey: .isMuted)
+        try c.encode(volume, forKey: .volume)
+        try c.encodeIfPresent(linkGroup, forKey: .linkGroup)
+        try c.encode(transitionAfter, forKey: .transitionAfter)
+        try c.encode(transitionDuration, forKey: .transitionDuration)
+        try c.encode(overlayFraction, forKey: .overlayFraction)
+        try c.encode(overlayAnchor, forKey: .overlayAnchor)
+        try c.encodeIfPresent(info, forKey: .info)
+        try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
+        try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)
+    }
+}
+
+extension EditLane: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, clips, isHidden
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            clips: try c.decodeIfPresent([EditClip].self, forKey: .clips) ?? [],
+            isHidden: try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(clips, forKey: .clips)
+        try c.encode(isHidden, forKey: .isHidden)
+    }
+}
+
+extension TimelineState: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case mainClips, mainHidden, overlayTracks, audioTracks
+        case subtitle, subtitleURL, shapes, canvasRatio
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        mainClips = try c.decodeIfPresent([EditClip].self, forKey: .mainClips) ?? []
+        mainHidden = try c.decodeIfPresent(Bool.self, forKey: .mainHidden) ?? false
+        overlayTracks = try c.decodeIfPresent([EditLane].self, forKey: .overlayTracks) ?? []
+        audioTracks = try c.decodeIfPresent([EditLane].self, forKey: .audioTracks) ?? []
+        subtitle = try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .subtitle)
+        subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
+        shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
+        canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(mainClips, forKey: .mainClips)
+        try c.encode(mainHidden, forKey: .mainHidden)
+        try c.encode(overlayTracks, forKey: .overlayTracks)
+        try c.encode(audioTracks, forKey: .audioTracks)
+        try c.encodeIfPresent(subtitle, forKey: .subtitle)
+        try c.encodeIfPresent(subtitleURL, forKey: .subtitleURL)
+        try c.encode(shapes, forKey: .shapes)
+        try c.encode(canvasRatio, forKey: .canvasRatio)
+    }
+}
+
+/// 时间线里出现的所有素材路径（含字幕文件）。存盘时给它们各配一份书签。
+extension TimelineState {
+    var mediaURLs: [URL] {
+        var seen = Set<URL>()
+        var result: [URL] = []
+        func add(_ url: URL?) {
+            guard let url, !seen.contains(url) else { return }
+            seen.insert(url)
+            result.append(url)
+        }
+        for clip in allClips {
+            // 图片段存的是原图，不是生成出来的静帧视频（那个是缓存，能重生成）。
+            if let image = clip.stillImageURL {
+                add(image)
+            } else {
+                add(clip.sourceURL)
+            }
+        }
+        add(subtitleURL)
+        return result
+    }
+
+    /// 把所有指向 `old` 的引用改成 `new`。重新链接素材时用。
+    mutating func replaceMedia(_ old: URL, with new: URL) {
+        func fix(_ clip: inout EditClip) {
+            if clip.stillImageURL == old {
+                clip.stillImageURL = new
+            } else if clip.sourceURL == old {
+                clip.sourceURL = new
+            }
+        }
+        for index in mainClips.indices { fix(&mainClips[index]) }
+        for lane in overlayTracks.indices {
+            for index in overlayTracks[lane].clips.indices { fix(&overlayTracks[lane].clips[index]) }
+        }
+        for lane in audioTracks.indices {
+            for index in audioTracks[lane].clips.indices { fix(&audioTracks[lane].clips[index]) }
+        }
+        if subtitleURL == old { subtitleURL = new }
+    }
+}
+
 /// 轨道的身份：主轨、第几条画中画轨、第几条音频轨。
 enum TrackSlot: Hashable, Sendable {
     case main

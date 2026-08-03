@@ -23,16 +23,25 @@
   真实窗口冒烟测试全流程：改名启动避同名进程、按窗口 ID 截图、事件注入边界、
   `SRTFLOW_SMOKE_VIDEO` / `SRTFLOW_FFMPEG` 环境变量钩子
 
+自检命令：`swift run SrtFlowCoreChecks`（核心库）、
+`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）
+
 ## 架构与实现决策（docs/architecture/）
 
 - [timeline-pinch-zoom.md](docs/architecture/timeline-pinch-zoom.md) —
   时间线捏合缩放为什么只能用 local NSEvent monitor（含全部失败方案与回归清单）；
   **改时间线手势/滚动代码前必读**
+- [video-edit-project-file.md](docs/architecture/video-edit-project-file.md) —
+  `.srtflowproj` 工程格式、为什么不做 App 内文件夹管理、素材重链接的四层线索、
+  脏标记与自动保存的唯一入口；**改工程存盘/素材路径/自动保存前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
 - [2026-08-03-trackpad-pinch-zoom.md](docs/bugfixes/2026-08-03-trackpad-pinch-zoom.md) —
   触控板捏合缩放反复"修好"又失败：事件序列锁定 + Rosetta 旧二进制两个根因
+- [2026-08-03-project-file-lifecycle.md](docs/bugfixes/2026-08-03-project-file-lifecycle.md) —
+  工程文件首版的 11 处数据丢失路径：书签被自动保存抹掉、切工程/退出不看写盘
+  成败、导入竞态、静帧静默丢失等；教训是生命周期边界要逐条过失败分支
 
 ## 根目录既有文档
 
