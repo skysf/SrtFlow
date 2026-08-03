@@ -47,6 +47,13 @@ final class PlayerClock: ObservableObject {
         if autoplay { player.play() }
     }
 
+    /// 换上一个现成的条目（时间线合成不是 URL，`attach(url:)` 用不上）。
+    /// 播放头交给调用方自己恢复。
+    func attachItem(_ item: AVPlayerItem) {
+        player.replaceCurrentItem(with: item)
+        hasVideo = true
+    }
+
     func detach() {
         player.pause()
         player.replaceCurrentItem(with: nil)
@@ -96,31 +103,3 @@ struct PlayerViewRepresentable: NSViewRepresentable {
     }
 }
 
-struct VideoPreviewView: View {
-    @ObservedObject var clock: PlayerClock
-    let currentCue: SubtitleCue?
-
-    var body: some View {
-        VStack(spacing: 8) {
-            PlayerViewRepresentable(player: clock.player)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-            Text(Timecode.formatMillis(clock.time, separator: "."))
-                .monospacedDigit()
-                .font(.callout)
-                .foregroundStyle(.secondary)
-
-            if let cue = currentCue {
-                Text(SubtitleSerializer.plainText(cue.text))
-                    .font(.title3)
-                    .multilineTextAlignment(.center)
-                    .textSelection(.enabled)
-                    .padding(.horizontal)
-            } else {
-                Text("—")
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.bottom, 8)
-    }
-}

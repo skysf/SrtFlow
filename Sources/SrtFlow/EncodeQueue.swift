@@ -9,9 +9,16 @@ enum SidebarActivity: Equatable {
 }
 
 /// 每个视频各自对应的字幕。样式是整批共用的，放在 `EncodeQueue` 上。
+///
+/// 存的是**完整的字幕文档**而不只是 cue 列表：字幕在烧录页里就地可编辑，
+/// 保存回原文件时要保留原格式和 ASS 样式表，光有 cue 是写不回去的。
 struct BurnInRequest: Sendable {
     var subtitleURL: URL?
-    var cues: [SubtitleCue]
+    var document: SubtitleDocumentModel?
+    /// 有没有改过但还没写回文件的内容。
+    var hasUnsavedEdits = false
+
+    var cues: [SubtitleCue] { document?.cues ?? [] }
 }
 
 struct EncodeItem: Identifiable {
@@ -132,6 +139,23 @@ final class EncodeQueue: ObservableObject {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         items[index].burnIn = burnIn
         items[index].errorMessage = nil
+    }
+
+    /// 就地编辑某个条目的字幕文档。改动立即用于预览和烧录。
+    func editBurnInDocument(for id: EncodeItem.ID, _ mutate: (inout SubtitleDocumentModel) -> Void) {
+        guard let index = items.firstIndex(where: { $0.id == id }),
+              var request = items[index].burnIn,
+              var document = request.document else { return }
+        mutate(&document)
+        request.document = document
+        request.hasUnsavedEdits = true
+        items[index].burnIn = request
+    }
+
+    /// 字幕写回文件之后清掉未保存标记。
+    func markBurnInSaved(for id: EncodeItem.ID) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].burnIn?.hasUnsavedEdits = false
     }
 
     /// 显示一条与执行无关的错误（比如字幕文件读不出来）。

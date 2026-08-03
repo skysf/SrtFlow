@@ -75,6 +75,12 @@ enum MediaFileTypes {
     static func isSubtitle(_ url: URL) -> Bool {
         SubtitleFormat.detect(from: url.lastPathComponent) != nil
     }
+
+    /// 能放上时间线的静态图片（编辑器里会先转成静帧视频段）。
+    static func isImage(_ url: URL) -> Bool {
+        ["png", "jpg", "jpeg", "heic", "heif", "webp", "bmp", "tif", "tiff", "gif"]
+            .contains(url.pathExtension.lowercased())
+    }
 }
 
 extension SubtitleColor {
@@ -112,10 +118,31 @@ extension View {
 
 extension NSItemProvider {
     /// 把 NSItemProvider 的回调式接口包成 async。
+    ///
+    /// 先走 `loadObject(URL.self)`；个别拖放源（某些图片、浏览器下载条目）
+    /// 只注册了 file-url 的原始数据表示，那就退回去手工解。
     func loadFileURL() async -> URL? {
-        await withCheckedContinuation { continuation in
-            _ = loadObject(ofClass: URL.self) { url, _ in
-                continuation.resume(returning: url)
+        if canLoadObject(ofClass: URL.self) {
+            let url: URL? = await withCheckedContinuation { continuation in
+                _ = loadObject(ofClass: URL.self) { url, _ in
+                    continuation.resume(returning: url)
+                }
+            }
+            if let url { return url }
+        }
+        guard hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) else { return nil }
+        return await withCheckedContinuation { continuation in
+            loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
+                if let data = item as? Data,
+                   let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    continuation.resume(returning: url)
+                } else if let url = item as? URL {
+                    continuation.resume(returning: url)
+                } else if let path = item as? String {
+                    continuation.resume(returning: URL(fileURLWithPath: path))
+                } else {
+                    continuation.resume(returning: nil)
+                }
             }
         }
     }

@@ -1,0 +1,888 @@
+import AVFoundation
+import AppKit
+import SwiftUI
+import SrtFlowCore
+
+/// 视频编辑器的全部可变状态。
+///
+/// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
+/// 正在播的预览必须留着。所有会改时间线的操作都走 `perform`，那里统一做
+/// 磁吸排列、撤销登记和预览重建。
+@MainActor
+final class VideoEditProject: ObservableObject {
+    static let shared = VideoEditProject()
+
+    @Published private(set) var state = TimelineState()
+    /// 选中的剪辑们。⌘点选可多选，拖任意一个选中块整组一起动。
+    @Published var selectedClipIDs: Set<UUID> = [] {
+        didSet { if !selectedClipIDs.isEmpty { selectedShapeID = nil } }
+    }
+    @Published var selectedShapeID: UUID? {
+        didSet { if selectedShapeID != nil { selectedClipIDs = [] } }
+    }
+
+    /// 点选：普通点是单选，⌘/⇧点是加选或取消。
+    func select(_ id: UUID, additive: Bool) {
+        if additive {
+            if selectedClipIDs.contains(id) {
+                selectedClipIDs.remove(id)
+            } else {
+                selectedClipIDs.insert(id)
+            }
+        } else {
+            selectedClipIDs = [id]
+        }
+    }
+
+    // 三个开关，对应截图里的磁吸、吸附、链接。
+    @Published var magnetEnabled = true {
+        didSet { if magnetEnabled { perform { $0.packMain() } } }
+    }
+    @Published var snappingEnabled = true
+    @Published var linkageEnabled = true
+
+    /// 时间线缩放：一秒画多少点。
+    @Published var pixelsPerSecond: Double = 24
+
+    // 各类轨道的行高。有时块太小看不清，在轨道头上下拖就能调，记住上次的值。
+    @Published var mainRowHeight: Double {
+        didSet { UserDefaults.standard.set(mainRowHeight, forKey: "editMainRowHeight") }
+    }
+    @Published var overlayRowHeight: Double {
+        didSet { UserDefaults.standard.set(overlayRowHeight, forKey: "editOverlayRowHeight") }
+    }
+    @Published var audioRowHeight: Double {
+        didSet { UserDefaults.standard.set(audioRowHeight, forKey: "editAudioRowHeight") }
+    }
+
+    /// 正在后台导入的素材数（图片转静帧、探测时长时给个转圈，别让人以为拖丢了）。
+    @Published private(set) var importingCount = 0
+
+    /// 预览播放器。0.05s 的回调间隔，字幕叠层和播放头才跟得上。
+    let clock = PlayerClock(observationInterval: 0.05)
+
+    /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
+    @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
+    /// 预览是否正在重建（大工程时给个转圈）。
+    @Published private(set) var isRebuildingPreview = false
+    /// 素材探测失败之类需要用户看见的话。
+    @Published var notice: String?
+
+    /// 撤销登记走窗口的 UndoManager，⌘Z/⇧⌘Z 和菜单原生可用。视图出现时塞进来。
+    weak var undoManager: UndoManager?
+
+    private var infoCache: [URL: MediaInfo] = [:]
+    private var audioDurationCache: [URL: Double] = [:]
+    private var rebuildTask: Task<Void, Never>?
+    /// 预览重建的代数，旧的构建结果回来晚了就直接扔。
+    private var rebuildGeneration = 0
+
+    private init() {
+        let defaults = UserDefaults.standard
+        let stored = { (key: String, fallback: Double) -> Double in
+            let value = defaults.double(forKey: key)
+            return value > 0 ? value : fallback
+        }
+        mainRowHeight = stored("editMainRowHeight", 54)
+        overlayRowHeight = stored("editOverlayRowHeight", 38)
+        audioRowHeight = stored("editAudioRowHeight", 34)
+    }
+
+    /// 恰好选中一个时的那一个（检查器只在单选时展示细节）。
+    var selectedClip: EditClip? {
+        guard selectedClipIDs.count == 1, let id = selectedClipIDs.first else { return nil }
+        return state.clip(with: id)
+    }
+
+    var selectedShape: ShapeAnnotation? {
+        selectedShapeID.flatMap { id in state.shapes.first { $0.id == id } }
+    }
+
+    var duration: Double { state.duration }
+
+    // MARK: - 所有修改的必经之路
+
+    /// 一步到位的修改：登记撤销、磁吸排列、重建预览。
+    /// `rebuildsPreview: false` 给只影响叠层（形状）不影响 AV 合成的改动。
+    func perform(rebuildsPreview: Bool = true, _ mutate: (inout TimelineState) -> Void) {
+        // 有连续编辑挂着（比如滑块拖到一半直接点了按钮）就先把它结成一步。
+        endLiveEdit(rebuildsPreview: false)
+        let before = state
+        var next = state
+        mutate(&next)
+        if magnetEnabled { next.packMain() }
+        guard next != before else { return }
+        registerUndo(before)
+        state = next
+        if rebuildsPreview { scheduleRebuild() }
+    }
+
+    // MARK: - 连续修改（拖动、滑块）
+
+    /// 拖动或拖滑块这类连续动作：开始时抓一份快照，过程中**每次都从快照重放**
+    /// （绝对增量，幂等），结束时才把整个动作登记成一步撤销。
+    private var liveEditSnapshot: TimelineState?
+
+    /// 手势开始时的状态，拖动回调里读原始值用。
+    var liveEditOrigin: TimelineState? { liveEditSnapshot }
+
+    func beginLiveEdit() {
+        if liveEditSnapshot == nil { liveEditSnapshot = state }
+    }
+
+    /// 从快照出发应用一次完整修改。反复调用不会叠加。
+    func liveApply(_ mutate: (inout TimelineState) -> Void) {
+        beginLiveEdit()
+        guard var next = liveEditSnapshot else { return }
+        mutate(&next)
+        if magnetEnabled { next.packMain() }
+        state = next
+    }
+
+    func endLiveEdit(rebuildsPreview: Bool = true) {
+        guard let snapshot = liveEditSnapshot else { return }
+        liveEditSnapshot = nil
+        guard state != snapshot else { return }
+        registerUndo(snapshot)
+        if rebuildsPreview { scheduleRebuild() }
+    }
+
+    /// 放弃连续编辑，回到手势开始前。跨轨拖动落地时用：水平的预挪先回滚，
+    /// 让 relocate 独立成完整的一步撤销。
+    func cancelLiveEdit() {
+        guard let snapshot = liveEditSnapshot else { return }
+        liveEditSnapshot = nil
+        state = snapshot
+    }
+
+    /// 拖动剪辑（实时重排版本）：磁吸开着的主轨会当场重排顺序。
+    /// 多选时拖任何一个选中块，其余选中的和链接的伙伴保持相对错位一起动。
+    func liveMove(_ id: UUID, toStart proposed: Double) {
+        beginLiveEdit()
+        guard let origin = liveEditSnapshot,
+              let location = origin.location(of: id),
+              let clip = origin.clip(with: id) else { return }
+        var followers = linkageEnabled ? origin.linkedClipIDs(of: id).subtracting([id]) : []
+        if selectedClipIDs.contains(id) {
+            followers.formUnion(selectedClipIDs.subtracting([id]))
+        }
+        let offsets: [UUID: Double] = Dictionary(uniqueKeysWithValues: followers.compactMap { fid in
+            origin.clip(with: fid).map { (fid, $0.timelineStart - clip.timelineStart) }
+        })
+        let magnet = magnetEnabled
+
+        liveApply { state in
+            if location.track.isMain && magnet {
+                guard let index = state.mainClips.firstIndex(where: { $0.id == id }) else { return }
+                var clips = state.mainClips
+                let moving = clips.remove(at: index)
+                let center = proposed + moving.timelineDuration / 2
+                var insertAt = clips.count
+                for (i, other) in clips.enumerated()
+                where center < other.timelineStart + other.timelineDuration / 2 {
+                    insertAt = i
+                    break
+                }
+                clips.insert(moving, at: insertAt)
+                state.mainClips = clips
+                state.packMain()
+            } else {
+                let clamped = Self.clampedStart(state, id: id, proposed: proposed)
+                state.update(id) { $0.timelineStart = clamped }
+            }
+            guard let moved = state.clip(with: id) else { return }
+            for follower in followers {
+                let target = moved.timelineStart + (offsets[follower] ?? 0)
+                let clamped = Self.clampedStart(state, id: follower, proposed: target)
+                state.update(follower) { $0.timelineStart = clamped }
+            }
+        }
+    }
+
+    /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
+    func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        beginLiveEdit()
+        liveApply { state in
+            state.update(id) { clip in
+                if leading {
+                    let maxExtend = clip.sourceStart / clip.speed
+                    let maxShrink = clip.timelineDuration - 0.1
+                    let delta = min(max(deltaSeconds, -maxExtend), maxShrink)
+                    clip.sourceStart += delta * clip.speed
+                    clip.sourceDuration -= delta * clip.speed
+                    clip.timelineStart += delta
+                } else {
+                    let maxExtend = (clip.assetDuration - clip.sourceStart - clip.sourceDuration) / clip.speed
+                    let maxShrink = -(clip.timelineDuration - 0.1)
+                    let delta = min(max(deltaSeconds, maxShrink), maxExtend)
+                    clip.sourceDuration += delta * clip.speed
+                }
+            }
+        }
+    }
+
+    /// 视图给的 UndoManager 首次出现时常常还是 nil，注册进去就全丢了。
+    /// 兜底拿键窗口的，⌘Z 才靠得住。
+    private var effectiveUndoManager: UndoManager? {
+        undoManager ?? NSApp.keyWindow?.undoManager
+    }
+
+    private func registerUndo(_ snapshot: TimelineState) {
+        let manager = effectiveUndoManager
+        manager?.registerUndo(withTarget: self) { target in
+            MainActor.assumeIsolated {
+                target.applySnapshot(snapshot)
+            }
+        }
+        manager?.setActionName(L10n("Edit Timeline"))
+    }
+
+    private func applySnapshot(_ snapshot: TimelineState) {
+        let current = state
+        effectiveUndoManager?.registerUndo(withTarget: self) { target in
+            MainActor.assumeIsolated {
+                target.applySnapshot(current)
+            }
+        }
+        state = snapshot
+        selectedClipIDs = selectedClipIDs.filter { state.clip(with: $0) != nil }
+        // 撤销可能把「还在转静帧」的占位块带回来，转换要是早就完成了，当场补上。
+        repairPendingStills()
+        scheduleRebuild()
+    }
+
+    /// 把已经转完静帧的占位图片块补成真素材（不进撤销栈）。
+    private func repairPendingStills() {
+        var next = state
+        var changed = false
+        for clip in next.allClips where clip.needsStillConversion {
+            guard let image = clip.stillImageURL,
+                  let video = StillImageClipFactory.cachedStillVideo(for: image) else { continue }
+            let info = infoCache[video]
+            next.update(clip.id) { pending in
+                pending.sourceURL = video
+                pending.needsStillConversion = false
+                if let info { pending.info = info }
+            }
+            changed = true
+        }
+        if changed { state = next }
+    }
+
+    // MARK: - 添加素材
+
+    /// 按类型分流：字幕进字幕轨，音频进音频轨，图片先转成静帧视频，
+    /// 视频上主轨（或画中画轨）。
+    func addMedia(urls: [URL], videosToOverlay: Bool = false) {
+        let subtitles = urls.filter(MediaFileTypes.isSubtitle)
+        let videos = urls.filter(MediaFileTypes.isVideo)
+        let images = urls.filter(MediaFileTypes.isImage)
+        let audios = urls.filter { url in
+            !MediaFileTypes.isVideo(url) && !MediaFileTypes.isSubtitle(url)
+                && !MediaFileTypes.isImage(url) && Self.looksLikeAudio(url)
+        }
+
+        if let subtitle = subtitles.first { attachSubtitle(subtitle) }
+        if !videos.isEmpty {
+            Task { await addVideos(videos, toOverlay: videosToOverlay) }
+        }
+        if !images.isEmpty {
+            Task { await addImages(images, toOverlay: videosToOverlay) }
+        }
+        if !audios.isEmpty {
+            Task { await addAudios(audios) }
+        }
+    }
+
+    static func looksLikeAudio(_ url: URL) -> Bool {
+        ["mp3", "m4a", "aac", "wav", "aiff", "aif", "flac", "ogg", "opus", "wma", "caf"]
+            .contains(url.pathExtension.lowercased())
+    }
+
+    /// 视频素材：探测完再上轨，时长、尺寸一步到位。
+    func addVideos(_ urls: [URL], toOverlay: Bool) async {
+        importingCount += urls.count
+        defer { importingCount -= urls.count }
+        for url in urls {
+            guard let info = await probeVideo(url) else {
+                notice = String(format: L10n("Could not read video information from %@."), url.lastPathComponent)
+                continue
+            }
+            let playhead = clock.time
+            perform { state in
+                var clip = EditClip(sourceURL: url, sourceDuration: info.duration, info: info)
+                if toOverlay {
+                    // 画中画：落在播放头上，直觉就是「现在看到的地方叠一个」。
+                    clip.timelineStart = playhead
+                    _ = state.place(clip, intoAudio: false)
+                } else {
+                    clip.timelineStart = state.mainClips.last?.timelineEnd ?? 0
+                    state.mainClips.append(clip)
+                }
+            }
+        }
+    }
+
+    func addAudios(_ urls: [URL]) async {
+        importingCount += urls.count
+        defer { importingCount -= urls.count }
+        for url in urls {
+            guard let duration = await audioDuration(url), duration > 0 else {
+                notice = String(format: L10n("Could not read %@."), url.lastPathComponent)
+                continue
+            }
+            let playhead = clock.time
+            perform { state in
+                let clip = EditClip(
+                    sourceURL: url,
+                    isAudioOnly: true,
+                    sourceDuration: duration,
+                    timelineStart: playhead,
+                    audioAssetDuration: duration
+                )
+                _ = state.place(clip, intoAudio: true)
+            }
+        }
+    }
+
+    /// 图片：**立即**上轨（占位块马上能拖能剪），ffmpeg 在后台把它转成静帧
+    /// 循环视频，转完无感替换 —— 之后转场、变速、画中画全都不用特判。
+    func addImages(_ urls: [URL], toOverlay: Bool) async {
+        guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
+            notice = L10n("The video engine is not ready yet.")
+            return
+        }
+        importingCount += urls.count
+        defer { importingCount -= urls.count }
+        for url in urls {
+            let clipID = UUID()
+            let playhead = clock.time
+            perform(rebuildsPreview: false) { state in
+                var clip = EditClip(
+                    id: clipID,
+                    sourceURL: url,
+                    sourceDuration: 5,
+                    stillImageURL: url
+                )
+                clip.needsStillConversion = true
+                if toOverlay {
+                    clip.timelineStart = playhead
+                    _ = state.place(clip, intoAudio: false)
+                } else {
+                    clip.timelineStart = state.mainClips.last?.timelineEnd ?? 0
+                    state.mainClips.append(clip)
+                }
+            }
+
+            do {
+                let still = try await StillImageClipFactory.stillVideo(for: url, ffmpeg: ffmpeg)
+                let info = await probeVideo(still)
+                // 直接替换，不占撤销栈 —— 用户没做任何操作。
+                var next = state
+                next.update(clipID) { clip in
+                    clip.sourceURL = still
+                    clip.needsStillConversion = false
+                    if let info { clip.info = info }
+                }
+                state = next
+                scheduleRebuild()
+            } catch {
+                notice = error.localizedDescription
+                perform(rebuildsPreview: false) { $0.remove(clipID) }
+            }
+        }
+    }
+
+    /// 要导出的时间线：完整的，或只含选中内容（平移到 0 起点）。
+    ///
+    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
+    /// 拿到的就是完整画面而不是黑底小窗。
+    func stateForExport(selectionOnly: Bool) -> TimelineState {
+        guard selectionOnly, !selectedClipIDs.isEmpty else { return state }
+        let ids = selectedClipIDs
+        let picked = state.allClips.filter { ids.contains($0.id) }
+        guard let earliest = picked.map(\.timelineStart).min() else { return state }
+
+        func shifted(_ clip: EditClip) -> EditClip {
+            var copy = clip
+            copy.timelineStart -= earliest
+            copy.transitionAfter = .none
+            return copy
+        }
+
+        var sub = TimelineState()
+        sub.mainClips = state.mainClips.filter { ids.contains($0.id) }.map(shifted)
+        for lane in state.overlayTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
+        }
+        for lane in state.audioTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
+        }
+        if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
+            sub.mainClips = sub.overlayTracks.removeFirst().clips
+        }
+        sub.canvasRatio = state.canvasRatio
+        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
+        if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
+            sub.packMain()
+        }
+        return sub
+    }
+
+    func attachSubtitle(_ url: URL) {
+        do {
+            let document = try SubtitleLoader.load(url)
+            perform { state in
+                state.subtitle = document
+                state.subtitleURL = url
+            }
+        } catch {
+            notice = error.localizedDescription
+        }
+    }
+
+    func removeSubtitle() {
+        perform { state in
+            state.subtitle = nil
+            state.subtitleURL = nil
+        }
+    }
+
+    // MARK: - 剪辑操作
+
+    /// 播放头落在主轨哪一段上（分割、裁切的默认对象）。
+    func mainClipAtPlayhead() -> EditClip? {
+        state.mainClips.first { $0.contains(time: clock.time) }
+    }
+
+    /// 分割：优先选中的、且被播放头穿过的那些段；没选就分播放头下的主轨段。
+    /// 链接开着时同组一起分。
+    func splitAtPlayhead() {
+        let time = clock.time
+        var seed: [UUID] = selectedClipIDs
+            .compactMap { state.clip(with: $0) }
+            .filter { $0.contains(time: time) }
+            .map(\.id)
+        if seed.isEmpty, let main = mainClipAtPlayhead() {
+            seed = [main.id]
+        }
+        var targets = Set(seed)
+        if linkageEnabled {
+            for id in seed { targets.formUnion(state.linkedClipIDs(of: id)) }
+        }
+        guard !targets.isEmpty else { return }
+
+        perform { state in
+            for id in targets {
+                Self.split(&state, clipID: id, at: time)
+            }
+        }
+    }
+
+    private static func split(_ state: inout TimelineState, clipID: UUID, at time: Double) {
+        guard let location = state.location(of: clipID) else { return }
+        var clips = state[track: location.track]
+        var left = clips[location.clipIndex]
+        guard left.contains(time: time) else { return }
+
+        let leftSourceLength = (time - left.timelineStart) * left.speed
+        var right = left
+        // 右半是新的一段，得有自己的身份，链接组保持一致。
+        right = EditClip(
+            sourceURL: left.sourceURL,
+            isAudioOnly: left.isAudioOnly,
+            sourceStart: left.sourceStart + leftSourceLength,
+            sourceDuration: left.sourceDuration - leftSourceLength,
+            speed: left.speed,
+            timelineStart: time,
+            isMuted: left.isMuted,
+            volume: left.volume,
+            linkGroup: left.linkGroup,
+            transitionAfter: left.transitionAfter,
+            transitionDuration: left.transitionDuration,
+            overlayFraction: left.overlayFraction,
+            overlayAnchor: left.overlayAnchor,
+            info: left.info,
+            audioAssetDuration: left.audioAssetDuration
+        )
+        left.sourceDuration = leftSourceLength
+        // 切口是硬切，原来的转场跟着右半走。
+        left.transitionAfter = .none
+
+        clips[location.clipIndex] = left
+        clips.insert(right, at: location.clipIndex + 1)
+        state[track: location.track] = clips
+    }
+
+    /// 裁掉播放头左边（或右边）的部分。作用于选中段，其次是播放头下的主轨段。
+    func trimToPlayhead(keepRight: Bool) {
+        let time = clock.time
+        var targetID: UUID?
+        if let selected = selectedClip, selected.contains(time: time) {
+            targetID = selected.id
+        } else if let main = mainClipAtPlayhead() {
+            targetID = main.id
+        }
+        guard let targetID else { return }
+        let ids = linkageEnabled ? state.linkedClipIDs(of: targetID) : [targetID]
+
+        perform { state in
+            for id in ids {
+                state.update(id) { clip in
+                    guard clip.contains(time: time) else { return }
+                    let cut = (time - clip.timelineStart) * clip.speed
+                    if keepRight {
+                        clip.sourceStart += cut
+                        clip.sourceDuration -= cut
+                        clip.timelineStart = time
+                    } else {
+                        clip.sourceDuration = cut
+                    }
+                }
+            }
+        }
+    }
+
+    func deleteSelected() {
+        if let shapeID = selectedShapeID {
+            deleteShape(shapeID)
+            return
+        }
+        guard !selectedClipIDs.isEmpty else { return }
+        var ids = selectedClipIDs
+        if linkageEnabled {
+            for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
+        }
+        perform { state in
+            for member in ids { state.remove(member) }
+        }
+        selectedClipIDs = []
+    }
+
+    /// 自由轨上的落点：不早于 0，不和同轨邻居叠。
+    private static func clampedStart(_ state: TimelineState, id: UUID, proposed: Double) -> Double {
+        guard let location = state.location(of: id), let clip = state.clip(with: id) else { return max(0, proposed) }
+        var start = max(0, proposed)
+        let neighbours = state[track: location.track].filter { $0.id != id }
+        let duration = clip.timelineDuration
+        for other in neighbours.sorted(by: { $0.timelineStart < $1.timelineStart }) {
+            let overlaps = start < other.timelineEnd && other.timelineStart < start + duration
+            guard overlaps else { continue }
+            // 往右让还是往左让，取决于想去的位置更靠哪边。
+            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2 {
+                start = max(0, other.timelineStart - duration)
+            } else {
+                start = other.timelineEnd
+            }
+        }
+        return start
+    }
+
+    func setSpeed(_ id: UUID, speed: Double) {
+        let clamped = min(max(speed, 0.1), 8)
+        let ids = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
+        perform { state in
+            for member in ids {
+                state.update(member) { $0.speed = clamped }
+            }
+        }
+    }
+
+    func setTransition(after id: UUID, _ transition: ClipTransition, duration: Double? = nil) {
+        perform { state in
+            state.update(id) { clip in
+                clip.transitionAfter = transition
+                if let duration { clip.transitionDuration = min(max(duration, 0.1), 3) }
+            }
+        }
+    }
+
+    func setVolume(_ id: UUID, volume: Double) {
+        perform { state in
+            state.update(id) { $0.volume = min(max(volume, 0), 2) }
+        }
+    }
+
+    func setMuted(_ id: UUID, muted: Bool) {
+        perform { state in
+            state.update(id) { $0.isMuted = muted }
+        }
+    }
+
+    func setOverlayLayout(_ id: UUID, fraction: Double? = nil, anchor: OverlayAnchor? = nil) {
+        perform { state in
+            state.update(id) { clip in
+                if let fraction { clip.overlayFraction = min(max(fraction, 0.1), 1) }
+                if let anchor { clip.overlayAnchor = anchor }
+            }
+        }
+    }
+
+    /// 把视频段的声音分离成音频轨上的一段，两边用链接组绑在一起。
+    func detachAudio(from id: UUID) {
+        guard let clip = state.clip(with: id), !clip.isAudioOnly, clip.hasAudio, !clip.isMuted else { return }
+        perform { state in
+            let group = clip.linkGroup ?? UUID()
+            // 源还是那个视频文件，isAudioOnly 只表示这段只取它的声音。
+            let detached = EditClip(
+                sourceURL: clip.sourceURL,
+                isAudioOnly: true,
+                sourceStart: clip.sourceStart,
+                sourceDuration: clip.sourceDuration,
+                speed: clip.speed,
+                timelineStart: clip.timelineStart,
+                volume: clip.volume,
+                linkGroup: group,
+                info: clip.info,
+                audioAssetDuration: clip.info?.duration
+            )
+            state.update(id) { original in
+                original.isMuted = true
+                original.linkGroup = group
+            }
+            _ = state.place(detached, intoAudio: true)
+        }
+    }
+
+    /// 垂直拖动的落点：某条现有轨，或者在最上/最下开一条新轨。
+    enum RowTarget: Equatable {
+        case main
+        case overlay(Int)
+        case newOverlayTop
+        case audio(Int)
+        case newAudioBottom
+    }
+
+    /// 把剪辑挪到另一条轨（垂直拖动的收尾）。行的上下顺序就是画面的叠放顺序。
+    func relocate(_ id: UUID, to target: RowTarget, start proposed: Double) {
+        guard let clip = state.clip(with: id) else { return }
+        let magnet = magnetEnabled
+        perform { state in
+            // 手动摘下来，先别清空轨 —— target 里的轨编号是按当前排布算的，
+            // 这时候清空轨会让编号移位插错行。收尾再统一清理。
+            if let location = state.location(of: id) {
+                var clips = state[track: location.track]
+                clips.remove(at: location.clipIndex)
+                state[track: location.track] = clips
+            }
+            var moved = clip
+            moved.timelineStart = max(0, proposed)
+            moved.transitionAfter = .none
+
+            switch target {
+            case .main:
+                if magnet {
+                    let center = moved.timelineStart + moved.timelineDuration / 2
+                    var insertAt = state.mainClips.count
+                    for (index, other) in state.mainClips.enumerated()
+                    where center < other.timelineStart + other.timelineDuration / 2 {
+                        insertAt = index
+                        break
+                    }
+                    state.mainClips.insert(moved, at: insertAt)
+                } else {
+                    state.mainClips.append(moved)
+                }
+            case .overlay(let index):
+                if state.overlayTracks.indices.contains(index) {
+                    state.overlayTracks[index].clips.append(moved)
+                    state.overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+                } else {
+                    state.overlayTracks.append(EditLane(clips: [moved]))
+                }
+            case .newOverlayTop:
+                // 数组末尾 = 层级最高 = 显示在最上面一行。
+                state.overlayTracks.append(EditLane(clips: [moved]))
+            case .audio(let index):
+                if state.audioTracks.indices.contains(index) {
+                    state.audioTracks[index].clips.append(moved)
+                    state.audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+                } else {
+                    state.audioTracks.append(EditLane(clips: [moved]))
+                }
+            case .newAudioBottom:
+                state.audioTracks.append(EditLane(clips: [moved]))
+            }
+
+            // 挤开重叠（主轨磁吸时 packMain 会处理）。
+            if !(target == .main && magnet) {
+                let clamped = Self.clampedStart(state, id: id, proposed: moved.timelineStart)
+                state.update(id) { $0.timelineStart = clamped }
+            }
+            state.pruneEmptyTracks()
+        }
+        selectedClipIDs = [id]
+    }
+
+    /// 整轨隐藏/显示（快捷键 V）。隐藏的轨灰显不可编辑，预览和导出都跳过。
+    func toggleLaneHidden(_ slot: TrackSlot) {
+        perform { state in
+            switch slot {
+            case .main:
+                state.mainHidden.toggle()
+            case .overlay(let index):
+                if state.overlayTracks.indices.contains(index) {
+                    state.overlayTracks[index].isHidden.toggle()
+                }
+            case .audio(let index):
+                if state.audioTracks.indices.contains(index) {
+                    state.audioTracks[index].isHidden.toggle()
+                }
+            }
+        }
+    }
+
+    /// 画布比例：预览和导出共用，改动可撤销。
+    func setCanvasRatio(_ ratio: CanvasRatio) {
+        perform { $0.canvasRatio = ratio }
+        // 立刻更新预览框的形状，不等合成重建。
+        renderSize = VideoEditCompositionBuilder.renderSize(for: state)
+    }
+
+    /// V 键：切换选中剪辑所在的轨；什么都没选就切主轨。
+    func toggleHiddenForSelectionLane() {
+        if let id = selectedClipIDs.first, let location = state.location(of: id) {
+            toggleLaneHidden(location.track)
+        } else {
+            toggleLaneHidden(.main)
+        }
+    }
+
+    /// 主轨 ↔ 画中画轨。
+    func toggleOverlay(_ id: UUID) {
+        guard let location = state.location(of: id), let clip = state.clip(with: id), !clip.isAudioOnly else { return }
+        perform { state in
+            state.remove(id)
+            var moved = clip
+            switch location.track {
+            case .main:
+                _ = state.place(moved, intoAudio: false)
+            case .overlay:
+                moved.transitionAfter = .none
+                state.mainClips.append(moved)
+                if !magnetEnabled {
+                    moved.timelineStart = state.mainClips.dropLast().map(\.timelineEnd).max() ?? 0
+                    state.mainClips[state.mainClips.count - 1] = moved
+                }
+            case .audio:
+                break
+            }
+        }
+    }
+
+    // MARK: - 形状标注
+
+    /// 在播放头处放一个形状，默认 3 秒，放完就选中它好接着调。
+    func addShape(_ kind: ShapeKind) {
+        let start = clock.time
+        let shape: ShapeAnnotation
+        switch kind {
+        case .line:
+            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0)
+        case .rectangle:
+            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0.22)
+        case .square:
+            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.2, height: 0.2)
+        }
+        perform(rebuildsPreview: false) { $0.shapes.append(shape) }
+        selectedShapeID = shape.id
+    }
+
+    /// 形状不参与 AV 合成（叠层是 SwiftUI 画的），改它不用重建预览。
+    func updateShape(_ id: UUID, _ change: @escaping (inout ShapeAnnotation) -> Void) {
+        perform(rebuildsPreview: false) { $0.updateShape(id, change) }
+    }
+
+    func deleteShape(_ id: UUID) {
+        perform(rebuildsPreview: false) { state in
+            state.shapes.removeAll { $0.id == id }
+        }
+        if selectedShapeID == id { selectedShapeID = nil }
+    }
+
+    /// 此刻画面上该显示的形状。
+    func visibleShapes(at time: Double) -> [ShapeAnnotation] {
+        state.shapes.filter { $0.contains(time: time) }
+    }
+
+    // MARK: - 吸附
+
+    /// 拖动时把时刻吸到附近的关键点：0、播放头、别的剪辑的两端。
+    /// 返回吸附后的时刻和吸到的参考点（画参考线用）。
+    func snap(_ proposed: Double, excluding id: UUID?) -> (time: Double, guide: Double?) {
+        guard snappingEnabled else { return (max(0, proposed), nil) }
+        let threshold = 7.0 / max(pixelsPerSecond, 1)
+        var candidates: [Double] = [0, clock.time]
+        for clip in state.allClips where clip.id != id {
+            candidates.append(clip.timelineStart)
+            candidates.append(clip.timelineEnd)
+        }
+        var best: Double?
+        var bestDistance = threshold
+        for candidate in candidates {
+            let distance = abs(candidate - proposed)
+            if distance < bestDistance {
+                bestDistance = distance
+                best = candidate
+            }
+        }
+        if let best { return (max(0, best), best) }
+        return (max(0, proposed), nil)
+    }
+
+    // MARK: - 素材探测
+
+    private func probeVideo(_ url: URL) async -> MediaInfo? {
+        if let cached = infoCache[url] { return cached }
+        let result = await MediaProbe.probe(url: url, ffmpeg: MediaToolchain.shared.runtime?.url)
+        if case .success(let info) = result {
+            infoCache[url] = info
+            return info
+        }
+        return nil
+    }
+
+    private func audioDuration(_ url: URL) async -> Double? {
+        if let cached = audioDurationCache[url] { return cached }
+        let asset = AVURLAsset(url: url)
+        guard let duration = try? await asset.load(.duration).seconds, duration.isFinite else { return nil }
+        audioDurationCache[url] = duration
+        return duration
+    }
+
+    // MARK: - 预览重建
+
+    /// 时间线一变就（去抖后）重建预览合成。播放头位置和播放状态都要还原，
+    /// 不然每改一刀就跳回 0:00 没法干活。
+    func scheduleRebuild() {
+        rebuildGeneration += 1
+        let generation = rebuildGeneration
+        rebuildTask?.cancel()
+        isRebuildingPreview = true
+        rebuildTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self, !Task.isCancelled else { return }
+            let snapshot = self.state
+            let built = await VideoEditCompositionBuilder.build(from: snapshot)
+            guard !Task.isCancelled, generation == self.rebuildGeneration else { return }
+            self.isRebuildingPreview = false
+            guard let built else {
+                self.clock.detach()
+                return
+            }
+            self.renderSize = built.renderSize
+            let wasPlaying = self.clock.isPlaying
+            let time = self.clock.time
+            let item = AVPlayerItem(asset: built.composition)
+            item.videoComposition = built.videoComposition
+            item.audioMix = built.audioMix
+            // 变速片段保持音调，跟导出时 atempo 的听感一致。
+            item.audioTimePitchAlgorithm = .spectral
+            self.clock.attachItem(item)
+            self.clock.seek(to: min(time, snapshot.duration), precise: true)
+            if wasPlaying { self.clock.player.play() }
+        }
+    }
+}
