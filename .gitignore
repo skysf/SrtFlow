@@ -1,5 +1,6 @@
 # Xcode
-build/
+# 只锚定仓库根目录：不加斜杠会把 docs/build/ 这类文档目录一起吞掉
+/build/
 DerivedData/
 *.xcuserdata
 *.xcworkspace/xcuserdata/
