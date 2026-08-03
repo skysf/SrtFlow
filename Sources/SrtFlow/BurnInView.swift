@@ -11,6 +11,8 @@ struct BurnInView: View {
     @StateObject private var fontCatalog = FontCatalogStore.shared
     @StateObject private var presets = StylePresetStore.shared
     @StateObject private var handoff = BurnInHandoff.shared
+    /// 没配到视频、单独打开编辑的字幕文件。
+    @StateObject private var standalone = StandaloneSubtitleStore.shared
     /// 拖边距滑块时预览上闪出的参考线。
     @StateObject private var guides = MarginGuideFlash()
     /// 预览播放器。放在这一层而不是预览视图里：放大/还原时预览视图会被重建，
@@ -57,12 +59,12 @@ struct BurnInView: View {
     private var splitLayout: some View {
         HSplitView {
             mainSide
-                .frame(minWidth: 480, idealWidth: 700, maxWidth: .infinity)
+                .frame(minWidth: 580, idealWidth: 820, maxWidth: .infinity)
             sidebar
                 .frame(minWidth: 340, idealWidth: 390, maxWidth: 470)
         }
         // 主窗口左边还有侧边栏，这里的下限比原来独立开窗时收一点。
-        .frame(minWidth: 860, minHeight: 580)
+        .frame(minWidth: 930, minHeight: 580)
         .onAppear {
             toolchain.resolveIfNeeded()
             fontCatalog.loadIfNeeded()
@@ -89,44 +91,78 @@ struct BurnInView: View {
             if mode == .exactFrame { requestPreview() }
         }
         .onChange(of: queue.attachSoftSubtitleTrack) { _, value in storedSoftTrack = value }
+        // 在字幕列里改了内容，「精确帧」也要跟着重渲。去抖：打字的每一击都起一次
+        // ffmpeg 太浪费，停手片刻再渲。
+        .onChange(of: previewItem?.burnIn?.cues) { _, _ in
+            guard previewMode == .exactFrame else { return }
+            cueEditRefreshTask?.cancel()
+            cueEditRefreshTask = Task {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                guard !Task.isCancelled else { return }
+                requestPreview()
+            }
+        }
         .onDropOfFiles { urls in add(urls) }
     }
+
+    /// 字幕编辑后重渲精确帧的去抖任务。
+    @State private var cueEditRefreshTask: Task<Void, Never>?
 
     // MARK: - 左侧
 
     private var mainSide: some View {
         VStack(spacing: 0) {
-            fileList
+            // 预览在最上面吃掉主要高度 —— 盯着看的是画面，不是文件列表。
+            workArea
+                .frame(maxHeight: .infinity)
+                .layoutPriority(1)
             Divider()
-            previewArea
+            fileList
             Divider()
             footer
         }
     }
 
+    /// 预览 + 字幕列。字幕整份可见、就地可编辑，播放到哪句滚到哪句。
+    private var workArea: some View {
+        HSplitView {
+            previewArea
+                .frame(minWidth: 320, idealWidth: 540, maxWidth: .infinity)
+            SubtitleEditPanel(
+                queue: queue,
+                standalone: standalone,
+                itemID: previewItem?.id,
+                clock: clock,
+                renderer: renderer,
+                previewMode: previewMode,
+                onOpenSubtitle: openSubtitleForEditing
+            )
+            .frame(minWidth: 252, idealWidth: 320, maxWidth: 460)
+        }
+    }
+
+    /// 预览下面的紧凑素材条：空着时只占一行提示，有文件时也别跟预览抢高度。
     private var fileList: some View {
         VStack(spacing: 0) {
-            HStack {
+            HStack(spacing: 8) {
                 Text("Videos and subtitles").font(.headline)
+                if queue.items.isEmpty {
+                    Text("Drop a video and its subtitle file here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Files with matching names are paired automatically.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
                 Spacer()
                 Button("Add Files…") { chooseFiles() }
                     .controlSize(.small)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 10)
-            .padding(.bottom, 6)
+            .padding(.vertical, 8)
 
-            if queue.items.isEmpty {
-                VStack(spacing: 8) {
-                    Text("Drop a video and its subtitle file here.")
-                        .foregroundStyle(.secondary)
-                    Text("Files with matching names are paired automatically.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-            } else {
+            if !queue.items.isEmpty {
                 List {
                     ForEach(queue.items) { item in
                         BurnInRow(
@@ -138,7 +174,7 @@ struct BurnInView: View {
                     }
                 }
                 .listStyle(.inset)
-                .frame(minHeight: 120, maxHeight: 190)
+                .frame(minHeight: 64, maxHeight: 150)
             }
         }
     }
@@ -328,8 +364,15 @@ struct BurnInView: View {
 
     private func chooseFiles() {
         var types = MediaFileTypes.video
-        types.append(contentsOf: SubtitleDocument.readableContentTypes)
+        types.append(contentsOf: SubtitleFileTypes.readable)
         add(FilePicker.chooseFiles(types: types))
+    }
+
+    /// 字幕列空着时的「打开字幕」：有等着配字幕的视频就配给它，没有就独立打开。
+    private func openSubtitleForEditing() {
+        let urls = FilePicker.chooseFiles(types: SubtitleFileTypes.readable, allowsMultiple: false)
+        guard let url = urls.first else { return }
+        add([url])
     }
 
     private func add(_ urls: [URL]) {
@@ -338,7 +381,7 @@ struct BurnInView: View {
 
         // 先把视频排进队列。
         for video in videos where !queue.items.contains(where: { $0.inputURL == video && !$0.isDone }) {
-            queue.add(urls: [video], burnIn: BurnInRequest(subtitleURL: nil, cues: []))
+            queue.add(urls: [video], burnIn: BurnInRequest(subtitleURL: nil))
         }
 
         guard !subtitles.isEmpty else {
@@ -353,11 +396,22 @@ struct BurnInView: View {
             guard let item = queue.items.first(where: { $0.inputURL == video }) else { continue }
             attach(subtitle: subtitle, to: item.id)
         }
+
+        // 配不上的字幕也不能扔：还有缺字幕的视频就给第一个，一个视频都没有
+        // 就当作独立的字幕文件打开来编辑 —— 双击 .srt 进来走的就是这条路。
+        let leftovers = subtitles.filter { !pairs.values.contains($0) }
+        if let first = leftovers.first {
+            if let waiting = queue.items.first(where: { ($0.burnIn?.cues.isEmpty ?? true) && !$0.isDone }) {
+                attach(subtitle: first, to: waiting.id)
+            } else {
+                standalone.open(first)
+            }
+        }
         requestPreviewSoon()
     }
 
     private func pickSubtitle(for id: EncodeItem.ID) {
-        let urls = FilePicker.chooseFiles(types: SubtitleDocument.readableContentTypes, allowsMultiple: false)
+        let urls = FilePicker.chooseFiles(types: SubtitleFileTypes.readable, allowsMultiple: false)
         guard let url = urls.first else { return }
         attach(subtitle: url, to: id)
         requestPreviewSoon()
@@ -365,8 +419,21 @@ struct BurnInView: View {
 
     private func attach(subtitle: URL, to id: EncodeItem.ID) {
         do {
-            let document = try SubtitleLoader.load(subtitle)
-            queue.updateBurnIn(BurnInRequest(subtitleURL: subtitle, cues: document.cues), for: id)
+            let document: SubtitleDocumentModel
+            if standalone.url == subtitle, let edited = standalone.document, standalone.hasUnsavedEdits {
+                // 这个文件正在字幕列里改着呢，配给视频时要带着没保存的改动走，
+                // 不能从磁盘重读一份把编辑丢了。
+                document = edited
+                queue.updateBurnIn(
+                    BurnInRequest(subtitleURL: subtitle, document: document, hasUnsavedEdits: true),
+                    for: id
+                )
+                standalone.clear()
+            } else {
+                document = try SubtitleLoader.load(subtitle)
+                queue.updateBurnIn(BurnInRequest(subtitleURL: subtitle, document: document), for: id)
+                if standalone.url == subtitle { standalone.clear() }
+            }
             if document.cues.isEmpty {
                 queue.setError(
                     String(

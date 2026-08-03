@@ -216,6 +216,7 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 | 图标 | `packaging/icon-source-1024.png` 是设计好的 1024 图；`scripts/make-icon.swift` 把里面那个圆角方块按量出来的几何（834×834 @ (94,87)、圆角 200）搬进标准栅格（824×824 @ 100，四周透明）并按圆角裁切 —— 源图**没有透明通道**，圆角外是近白底色，直接用会在 Dock 里显示成一个白方块。源图缺失时退回用代码画的那版 |
 | 首次打开 | 走 **系统设置 → 隐私与安全性 → 仍要打开**，不需要终端。放行后 App 启动时会清掉自身包上的 `com.apple.quarantine`（`Quarantine.repairOwnBundleIfNeeded`），包内 ffmpeg 才能执行 —— 实测带着隔离标记时它跑不起来。仍然失败时界面上给出 `xattr -dr` 命令兜底，并带一个直接打开系统设置的按钮 |
 | 体积/性能 | App 壳本体仍约 400 KB，加上随包 ffmpeg 后 `.app` 约 **50 MB**、DMG 约 **23 MB**。实测原生 arm64 比系统里的 x86_64（Rosetta）版快约 **2.1 倍**（30 秒 1080p，crf 23 + preset slow：14.7s vs 31.0s，输出体积相同） |
+| 时间线捏合缩放 | **只能用 local NSEvent monitor**（`TimelineMagnificationBridge`），一切靠命中/响应链的方案真机必失败。2026-08-03 硬件实测定案；原因、失败方案清单与回归清单见 `docs/architecture/timeline-pinch-zoom.md` |
 | 公证分发 | 自用/朋友分享可直接用（右键打开）；CLT 自带 `notarytool`，有 Developer ID 后可公证 |
 | 授权 | 本体 MIT；随包 ffmpeg 为 GPLv2+，以独立进程调用、不做链接，两者互不影响。分发时随包提供其许可与源码途径 |
 

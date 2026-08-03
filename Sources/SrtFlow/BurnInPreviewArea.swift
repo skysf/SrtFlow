@@ -357,7 +357,8 @@ struct BurnInPreviewArea: View {
 /// 这是**近似**效果，不是 libass 的输出。SwiftUI 的 Text 画不了描边，所以用八个
 /// 方向的副本垫在下面充当描边 —— 在实际会用到的描边宽度（1080p 基准 1～6 px）下
 /// 看起来足够接近。字号、边距都按 1080 基准换算到画面框的实际尺寸。
-private struct BurnInSubtitleOverlay: View {
+/// 视频编辑器的预览也用它画字幕轨，所以不是 private。
+struct BurnInSubtitleOverlay: View {
     let text: String
     let style: BurnInStyle
     let scale: Double

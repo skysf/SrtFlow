@@ -4,13 +4,12 @@ import SrtFlowCore
 
 /// 主窗口侧边栏里的一栏。
 ///
-/// 「编辑字幕」不在这里：它是 `DocumentGroup`，SwiftUI 规定文档场景各开自己的
-/// 窗口，塞不进侧边栏的右侧面板。这么分也说得通 —— 压缩、烧字幕、批量转换都是
-/// 「做一批活儿」的工具，一个窗口够了；改字幕是编辑文档，一个文件一个窗口，
-/// ⌘S、版本历史、同时开好几个文件这些原生行为都得留着。
+/// 「编辑字幕」不再单列：字幕表就在烧录那一栏的预览旁边，改完立刻能看到
+/// 烧出来的样子，也能存回原文件。
 enum ToolSection: String, CaseIterable, Identifiable {
     case compress
     case burnIn
+    case videoEdit
     case batchConvert
 
     var id: String { rawValue }
@@ -19,6 +18,7 @@ enum ToolSection: String, CaseIterable, Identifiable {
         switch self {
         case .compress: return "Compress Video"
         case .burnIn: return "Burn In Subtitles"
+        case .videoEdit: return "Edit Video"
         case .batchConvert: return "Batch Convert"
         }
     }
@@ -27,6 +27,7 @@ enum ToolSection: String, CaseIterable, Identifiable {
         switch self {
         case .compress: return "arrow.down.circle"
         case .burnIn: return "text.below.photo"
+        case .videoEdit: return "film.stack"
         case .batchConvert: return "square.stack.3d.down.right"
         }
     }
@@ -36,6 +37,7 @@ enum ToolSection: String, CaseIterable, Identifiable {
         switch self {
         case .compress: return "Make files much smaller without visible quality loss."
         case .burnIn: return "Render subtitles permanently into the picture."
+        case .videoEdit: return "Cut, arrange, and retime clips on a timeline."
         case .batchConvert: return "Convert many subtitle files at once."
         }
     }
@@ -104,6 +106,7 @@ struct MainWindowView: View {
         // AppDelegate 只能把文件放进中转站，切栏目得由视图来做。
         .onChange(of: compressHandoff.pendingVideos) { _, _ in routeStagedFiles() }
         .onChange(of: burnInHandoff.pendingVideos) { _, _ in routeStagedFiles() }
+        .onChange(of: burnInHandoff.pendingSubtitles) { _, _ in routeStagedFiles() }
     }
 
     // MARK: - 侧边栏
@@ -115,14 +118,6 @@ struct MainWindowView: View {
                     SidebarToolRow(section: section, activity: activity(for: section))
                         .tag(section)
                 }
-            }
-            Section {
-                SidebarActionRow(
-                    title: "Edit Subtitles",
-                    icon: "square.and.pencil",
-                    help: "Opens a subtitle file in its own editor window.",
-                    action: openSubtitleDocument
-                )
             }
         }
         .listStyle(.sidebar)
@@ -142,7 +137,7 @@ struct MainWindowView: View {
         switch section {
         case .compress: return compressQueue.sidebarActivity
         case .burnIn: return burnInQueue.sidebarActivity
-        case .batchConvert: return nil
+        case .videoEdit, .batchConvert: return nil
         }
     }
 
@@ -251,24 +246,18 @@ struct MainWindowView: View {
         switch state.section {
         case .compress: CompressView()
         case .burnIn: BurnInView()
+        case .videoEdit: VideoEditView()
         case .batchConvert: BatchConvertView()
         }
     }
 
     // MARK: - 动作
 
-    private func openSubtitleDocument() {
-        let urls = FilePicker.chooseFiles(
-            types: SubtitleDocument.readableContentTypes,
-            allowsMultiple: false
-        )
-        guard let url = urls.first else { return }
-        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
-    }
-
     /// 中转站里有文件就切到对应的栏目，工具自己会去取。
     private func routeStagedFiles() {
-        if !burnInHandoff.pendingVideos.isEmpty { show(.burnIn) }
+        if !burnInHandoff.pendingVideos.isEmpty || !burnInHandoff.pendingSubtitles.isEmpty {
+            show(.burnIn)
+        }
         if !compressHandoff.pendingVideos.isEmpty { show(.compress) }
     }
 
@@ -278,7 +267,8 @@ struct MainWindowView: View {
         openWindow(id: WindowID.main)
     }
 
-    /// 拖进来的东西按类型分流：视频去压缩，视频加字幕去烧字幕，光是字幕就打开编辑。
+    /// 拖进来的东西按类型分流：视频去压缩，视频加字幕去烧字幕，光是字幕就去
+    /// 烧录页的字幕列里编辑。
     private func handleDrop(_ urls: [URL]) {
         let videos = urls.filter(MediaFileTypes.isVideo)
         let subtitles = urls.filter(MediaFileTypes.isSubtitle)
@@ -295,8 +285,9 @@ struct MainWindowView: View {
             return
         }
 
-        for url in subtitles {
-            NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+        if !subtitles.isEmpty {
+            BurnInHandoff.shared.stage(videos: [], subtitles: subtitles)
+            show(.burnIn)
         }
     }
 }
@@ -340,42 +331,6 @@ private struct SidebarToolRow: View {
         case nil:
             EmptyView()
         }
-    }
-}
-
-/// 侧边栏里点了会另开窗口的那一行。
-///
-/// 它不是选中项（选中了右边却不会变，那样很怪），所以自己画悬停高亮，
-/// 尺寸和圆角对着旁边真正的侧边栏项来。
-private struct SidebarActionRow: View {
-    let title: String
-    let icon: String
-    let help: String
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Label(LocalizedStringKey(title), systemImage: icon)
-                Spacer(minLength: 4)
-                Image(systemName: "arrow.up.forward.app")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovering ? Color.primary.opacity(0.08) : .clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
-        .onHover { isHovering = $0 }
-        .help(LocalizedStringKey(help))
     }
 }
 

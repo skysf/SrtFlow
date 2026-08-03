@@ -7,26 +7,24 @@ enum WindowID {
     static let main = "main"
 }
 
-/// 拦掉「启动就新建/要求打开文档」的默认行为。
-///
-/// 只要场景里有 DocumentGroup，AppKit 的文档控制器就会在启动时自己开一个无标题
-/// 文档（或弹出打开面板）。但现在的入口是主窗口 —— 很多时候打开这个 App 只是想压
-/// 缩一个视频，不该先被要求选字幕文件。
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
-    /// 拖到 App 图标上、或者用「打开方式 → SrtFlow」进来的**视频**。
+    /// 拖到 App 图标上、或者用「打开方式 → SrtFlow」进来的文件。
     ///
-    /// 字幕文件不会走到这里：DocumentGroup 认得那些类型，会自己开成文档窗口。
-    /// 所以这条路只管视频，一律送去压缩 —— 想烧字幕就把视频和字幕一起拖到
-    /// 窗口里，那条路能同时拿到两种文件。
+    /// 字幕文件（双击 .srt 也走这里）去烧录页的字幕列编辑；带字幕的视频去烧录，
+    /// 光是视频就去压缩。
     ///
     /// 这里只把文件暂存进中转站，切栏目交给 MainWindowView：`openWindow` 只有在
     /// SwiftUI 视图里才拿得到。
     func application(_ application: NSApplication, open urls: [URL]) {
         let videos = urls.filter(MediaFileTypes.isVideo)
-        guard !videos.isEmpty else { return }
-        CompressHandoff.shared.stage(videos: videos)
+        let subtitles = urls.filter(MediaFileTypes.isSubtitle)
+        if !subtitles.isEmpty {
+            BurnInHandoff.shared.stage(videos: videos, subtitles: subtitles)
+        } else if !videos.isEmpty {
+            CompressHandoff.shared.stage(videos: videos)
+        }
     }
 }
 
@@ -50,13 +48,11 @@ struct SrtFlowApp: App {
                     .keyboardShortcut("1", modifiers: [.command])
                 SectionButton(title: "Burn In Subtitles", section: .burnIn)
                     .keyboardShortcut("2", modifiers: [.command])
-                SectionButton(title: "Batch Convert", section: .batchConvert)
+                SectionButton(title: "Edit Video", section: .videoEdit)
                     .keyboardShortcut("3", modifiers: [.command])
+                SectionButton(title: "Batch Convert", section: .batchConvert)
+                    .keyboardShortcut("4", modifiers: [.command])
             }
-        }
-
-        DocumentGroup(newDocument: { SubtitleDocument() }) { file in
-            ContentView(document: file.document).appLanguage()
         }
 
         Settings {

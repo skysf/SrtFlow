@@ -127,7 +127,7 @@ struct BatchConvertView: View {
 
     private func addFiles() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = SubtitleDocument.readableContentTypes
+        panel.allowedContentTypes = SubtitleFileTypes.readable
         panel.allowsMultipleSelection = true
         panel.begin { response in
             guard response == .OK else { return }
