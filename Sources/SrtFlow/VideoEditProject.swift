@@ -631,6 +631,11 @@ final class VideoEditProject: ObservableObject {
             overlayFraction: left.overlayFraction,
             overlayAnchor: left.overlayAnchor,
             placement: left.placement,
+            rotationDegrees: left.rotationDegrees,
+            opacity: left.opacity,
+            flippedHorizontally: left.flippedHorizontally,
+            flippedVertically: left.flippedVertically,
+            crop: left.crop,
             info: left.info,
             audioAssetDuration: left.audioAssetDuration,
             // 图片段的身份必须跟过来：`sourceURL` 只是随时会被系统清掉的静帧缓存，
@@ -792,6 +797,72 @@ final class VideoEditProject: ObservableObject {
     func resetPlacement(_ id: UUID) {
         perform { state in
             state.update(id) { $0.placement = nil }
+        }
+    }
+
+    // MARK: - Transform 面板（每次改动都是独立一步撤销）
+
+    /// 这段在不在画中画轨上（Position/Scale 的默认基准随轨道不同）。
+    func isOverlayClip(_ id: UUID) -> Bool {
+        if case .overlay = state.location(of: id)?.track { return true }
+        return false
+    }
+
+    /// 写入摆放并归一：约等于默认布局就存回 nil，检查器和预览都当「没摆过」。
+    func setPlacement(_ id: UUID, _ placement: ClipPlacement) {
+        guard let clip = state.clip(with: id) else { return }
+        let fallback = clip.defaultPlacement(canvas: renderSize, isOverlay: isOverlayClip(id))
+        let clamped = placement.clamped
+        let isDefault = abs(clamped.centerX - fallback.centerX) < 0.001
+            && abs(clamped.centerY - fallback.centerY) < 0.001
+            && abs(clamped.width - fallback.width) < 0.001
+            && abs(clamped.height - fallback.height) < 0.001
+        perform { state in
+            state.update(id) { $0.placement = isDefault ? nil : clamped }
+        }
+    }
+
+    func setRotation(_ id: UUID, degrees: Double) {
+        let clamped = min(max(degrees.isFinite ? degrees : 0, -360), 360)
+        perform { state in
+            state.update(id) { $0.rotationDegrees = abs(clamped) < 0.01 ? 0 : clamped }
+        }
+    }
+
+    func setClipOpacity(_ id: UUID, _ opacity: Double) {
+        let clamped = min(max(opacity.isFinite ? opacity : 1, 0), 1)
+        perform { state in
+            state.update(id) { $0.opacity = clamped }
+        }
+    }
+
+    func setFlip(_ id: UUID, horizontal: Bool? = nil, vertical: Bool? = nil) {
+        perform { state in
+            state.update(id) { clip in
+                if let horizontal { clip.flippedHorizontally = horizontal }
+                if let vertical { clip.flippedVertically = vertical }
+            }
+        }
+    }
+
+    func setCrop(_ id: UUID, _ crop: ClipCrop?) {
+        let normalized = (crop?.isEmpty ?? true) ? nil : crop
+        perform { state in
+            state.update(id) { $0.crop = normalized }
+        }
+    }
+
+    /// 整个 Transform 区归零（含自由摆放），一步撤销。
+    func resetTransform(_ id: UUID) {
+        perform { state in
+            state.update(id) { clip in
+                clip.placement = nil
+                clip.rotationDegrees = 0
+                clip.opacity = 1
+                clip.flippedHorizontally = false
+                clip.flippedVertically = false
+                clip.crop = nil
+            }
         }
     }
 

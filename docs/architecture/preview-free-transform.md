@@ -1,6 +1,7 @@
-# 预览区自由变换（ClipPlacement）：两条管线必须同账
+# 预览区自由变换（ClipPlacement + Transform 面板）：两条管线必须同账
 
-> 2026-08-04 引入。改预览合成（CompositionBuilder）、导出滤镜图（ExportGraph）
+> 2026-08-04 引入，同日扩入 Transform 面板（旋转/不透明度/翻转/裁切）。
+> 改预览合成（CompositionBuilder）、导出滤镜图（ExportGraph）
 > 或预览交互层（ClipTransformCanvas）之前必读。
 
 ## 模型
@@ -14,17 +15,41 @@
   （`setOverlayLayout` / `overlaySizeBinding`），否则那些控件看起来"失灵"。
 - 宽高**各自独立**（拉边把手允许变形），所以不能只存一个 scale。
 - `resolvedPlacement(canvas:isOverlay:)` 是唯一的"此刻实际框"换算口；
-  预览选中框、拖动起点都从它取，别在视图里重算默认布局。
+  预览选中框、拖动起点、Inspector 的 Position/Scale 都从它取。
+
+Transform 面板追加的四个字段（都有「无操作」默认值，全默认走原来的轻量路径，
+`hasVisualTransform` 是统一的判定口）：
+
+- `rotationDegrees` —— 绕摆放框中心，**正角度 = 顺时针**（SwiftUI
+  rotationEffect、CGAffineTransform 在 Y 朝下坐标系、ffmpeg rotate 三边天然
+  一致，别再加负号）。
+- `opacity`、`flippedHorizontally/Vertically`。
+- `crop: ClipCrop?` —— 四边各裁掉源画面（显示方向）的归一化比例。裁完剩下
+  的画面填进摆放框；**默认摆放框按裁后的宽高比算**（裁成 1:1 默认就显示成
+  正方形），见 `croppedDisplaySize`。
+
+**变换顺序是合同**：裁切 → 翻转 → 缩放进摆放框 → 绕框中心旋转 → 平移到位。
+预览（`fittingTransform` 拼 CGAffineTransform + `setCropRectangle`）和导出
+（filter 链顺序）都按这个来，改一边必改另一边。
+
+Inspector 的语义：Position = 摆放框中心相对画布中心的**输出像素**偏移；
+Scale = 相对默认布局宽度的百分比，改动等比乘在当前宽高上（保留边拉伸变形）；
+`setPlacement` 会把约等于默认布局的摆放归一回 nil。
 
 ## 两条渲染管线，一份时间账
 
-| 管线 | placement 的落点 |
+| 管线 | 落点 |
 | --- | --- |
-| 预览（AVFoundation） | `fittingTransform(placement:)`：非等比 scale + 平移进目标像素框 |
-| 导出（ffmpeg） | 主轨：`scale=w:h` + `color=black` 画布 + `overlay=x:y:shortest=1`（**不用 pad** —— pad 不接受负坐标/超界，overlay 允许探出画面）；画中画：`scale=w:h` + overlay 整数坐标 |
+| 预览（AVFoundation） | `fittingTransform`：完整 CGAffineTransform（翻转=负缩放）+ `setCropRectangle`（裁切矩形要逆着 preferredTransform 换算回源轨自然坐标）+ layer opacity（转场斜坡整体乘 clip.opacity） |
+| 导出（ffmpeg） | `transformSteps`：`crop` → `hflip/vflip` → `scale` → `format=rgba`（旋转/半透明才加）→ `rotate=θ:ow=rotw(θ):oh=roth(θ):c=black@0` → `colorchannelmixer=aa`；主轨叠 `color=black` 画布，**overlay 用中心表达式 `cx-w/2`** —— 旋转会把输出框撑大，只有中心是不变量。**不用 pad**：pad 不接受负坐标/超界，overlay 允许探出画面 |
 
 改任何一边都要对照另一边；验收标准是同一时刻预览截图和导出抽帧长一样。
 像素尺寸过 `evenPixel`（正偶数，yuv420 要求），坐标取整。
+
+**预览的黑底轨**：时间线上有任何半透明图层（不透明度、转场淡入淡出）时，
+CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当底 ——
+默认合成器在混合路径上不铺 `backgroundColor`，见
+[2026-08-04-opacity-green-background](../bugfixes/2026-08-04-opacity-green-background.md)。
 
 ## 交互层（ClipTransformCanvas / ResizableFrameBox）
 

@@ -57,6 +57,9 @@
 - [2026-08-04-editor-tools-review.md](docs/bugfixes/2026-08-04-editor-tools-review.md) —
   评审返工三连：工具模式要整个关掉旧手势（GestureMask 不是 guard 回调）、
   画中画升主轨要丢 placement、线条选中框要按旋转后包络
+- [2026-08-04-opacity-green-background.md](docs/bugfixes/2026-08-04-opacity-green-background.md) —
+  半透明图层让预览背景变暗绿：默认合成器混合路径不铺 backgroundColor
+  （YUV 零填充=绿），修法是垫一条 AVAssetWriter 生成的不透明黑底轨
 
 ## 根目录既有文档
 

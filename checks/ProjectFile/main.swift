@@ -36,6 +36,10 @@ func timeline(mainMedia: [URL], subtitle: URL? = nil) -> TimelineState {
         var clip = EditClip(sourceURL: url, sourceDuration: 12, timelineStart: cursor)
         clip.transitionAfter = .crossFade
         clip.placement = ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3)
+        clip.rotationDegrees = 15
+        clip.opacity = 0.8
+        clip.flippedHorizontally = true
+        clip.crop = ClipCrop(top: 0.1, leading: 0.05)
         clip.info = MediaInfo(
             duration: 12,
             displaySize: CGSize(width: 1920, height: 1080),
@@ -78,6 +82,14 @@ do {
         result.timeline.mainClips.first?.placement,
         ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3),
         "预览里摆的位置/大小要存住"
+    )
+    checkEqual(result.timeline.mainClips.first?.rotationDegrees, 15, "旋转角要存住")
+    checkEqual(result.timeline.mainClips.first?.opacity, 0.8, "不透明度要存住")
+    checkEqual(result.timeline.mainClips.first?.flippedHorizontally, true, "翻转要存住")
+    checkEqual(
+        result.timeline.mainClips.first?.crop,
+        ClipCrop(top: 0.1, leading: 0.05),
+        "四边裁切要存住"
     )
 }
 
@@ -367,6 +379,10 @@ do {
     let main = EditClip(sourceURL: URL(fileURLWithPath: "/m/main.mp4"), sourceDuration: 10)
     var pip = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip.mp4"), sourceDuration: 5, timelineStart: 2)
     pip.placement = place
+    pip.rotationDegrees = 30
+    pip.opacity = 0.5
+    pip.flippedVertically = true
+    pip.crop = ClipCrop(trailing: 0.2)
     var pip2 = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip2.mp4"), sourceDuration: 4, timelineStart: 3)
     pip2.placement = place
     state.mainClips = [main]
@@ -378,6 +394,10 @@ do {
     check(solo.overlayTracks.isEmpty, "升完不该剩空画中画轨")
     checkEqual(solo.mainClips.first?.placement, nil, "升主轨必须丢自由摆放，否则导出是黑底小窗")
     checkEqual(solo.mainClips.first?.timelineStart, 0, "选中导出要平移到 0 起点")
+    checkEqual(solo.mainClips.first?.rotationDegrees, 0, "升主轨要丢旋转（相对完整画面的属性）")
+    checkEqual(solo.mainClips.first?.opacity, 1, "升主轨要丢不透明度（对黑底没有意义）")
+    checkEqual(solo.mainClips.first?.flippedVertically, true, "翻转是内容属性，升主轨要保留")
+    checkEqual(solo.mainClips.first?.crop, ClipCrop(trailing: 0.2), "裁切是内容属性，升主轨要保留")
 
     // 画中画和主轨一起选：不升轨的画中画保持摆放（所见即所得）。
     let both = state.selectionForExport(ids: [main.id, pip.id])

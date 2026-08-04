@@ -1,5 +1,66 @@
 import AVFoundation
+import CoreVideo
 import Foundation
+
+/// 预览合成的黑底素材：64×36 的两帧纯黑 H.264，AVAssetWriter 直接生成，
+/// 不依赖 ffmpeg。放在缓存目录，被系统清掉就重新写一个。
+enum BlackBaseVideoFactory {
+    static func videoURL() async -> URL? {
+        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SrtFlowPreview", isDirectory: true)
+        let url = directory.appendingPathComponent("black-base-v1.mp4")
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+
+        do {
+            let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+            let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+                AVVideoCodecKey: AVVideoCodecType.h264,
+                AVVideoWidthKey: 64,
+                AVVideoHeightKey: 36
+            ])
+            let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+                assetWriterInput: input,
+                sourcePixelBufferAttributes: [
+                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+                    kCVPixelBufferWidthKey as String: 64,
+                    kCVPixelBufferHeightKey as String: 36
+                ]
+            )
+            writer.add(input)
+            guard writer.startWriting() else { return nil }
+            writer.startSession(atSourceTime: .zero)
+
+            guard let pool = adaptor.pixelBufferPool else { return nil }
+            var buffer: CVPixelBuffer?
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let buffer else { return nil }
+            CVPixelBufferLockBaseAddress(buffer, [])
+            if let baseAddress = CVPixelBufferGetBaseAddress(buffer) {
+                let byteCount = CVPixelBufferGetBytesPerRow(buffer) * CVPixelBufferGetHeight(buffer)
+                // BGRA 的不透明黑：B=G=R=0、A=255。按 32 位模式填。
+                let words = baseAddress.assumingMemoryBound(to: UInt32.self)
+                for index in 0..<(byteCount / 4) { words[index] = 0xFF00_0000 }
+            }
+            CVPixelBufferUnlockBaseAddress(buffer, [])
+
+            for seconds in [0.0, 1.0] {
+                while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 5_000_000) }
+                adaptor.append(buffer, withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600))
+            }
+            input.markAsFinished()
+            await writer.finishWriting()
+            guard writer.status == .completed else {
+                try? FileManager.default.removeItem(at: url)
+                return nil
+            }
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+    }
+}
 
 /// 把时间线状态翻译成 AVFoundation 的预览合成。
 ///
@@ -22,6 +83,8 @@ enum VideoEditCompositionBuilder {
         /// 这段落在哪条合成轨上。layer instruction 要拿它当 assetTrack 用。
         var track: AVMutableCompositionTrack
         var transform: CGAffineTransform
+        /// 四边裁切换算回源轨自然坐标系的矩形；nil = 不裁。
+        var cropRect: CGRect?
         /// 画面的叠放层级，越大越靠上（主轨 0，画中画 1+轨号）。
         var layer: Int
         var start: Double { clip.timelineStart }
@@ -80,12 +143,12 @@ enum VideoEditCompositionBuilder {
 
             let naturalSize = (try? await sourceVideo.load(.naturalSize)) ?? renderSize
             let preferred = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
-            let transform = fittingTransform(
+            let fitted = fittingTransform(
                 naturalSize: naturalSize,
                 preferredTransform: preferred,
                 renderSize: renderSize,
-                placement: clip.placement,
-                overlay: nil
+                clip: clip,
+                isOverlay: false
             )
 
             // 进出场的渐变由前后两个转场决定。
@@ -97,7 +160,8 @@ enum VideoEditCompositionBuilder {
             var item = PlacedClip(
                 clip: clip,
                 track: videoTrack,
-                transform: transform,
+                transform: fitted.transform,
+                cropRect: fitted.cropRect,
                 layer: 0
             )
             if overlapBefore > 0 {
@@ -150,17 +214,18 @@ enum VideoEditCompositionBuilder {
 
                 let naturalSize = (try? await sourceVideo.load(.naturalSize)) ?? renderSize
                 let preferred = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
-                let transform = fittingTransform(
+                let fitted = fittingTransform(
                     naturalSize: naturalSize,
                     preferredTransform: preferred,
                     renderSize: renderSize,
-                    placement: clip.placement,
-                    overlay: (clip.overlayFraction, clip.overlayAnchor)
+                    clip: clip,
+                    isOverlay: true
                 )
                 placed.append(PlacedClip(
                     clip: clip,
                     track: videoTrack,
-                    transform: transform,
+                    transform: fitted.transform,
+                    cropRect: fitted.cropRect,
                     layer: 1 + trackIndex
                 ))
 
@@ -193,6 +258,43 @@ enum VideoEditCompositionBuilder {
                 }
             }
             audioParams.append(params)
+        }
+
+        // MARK: 不透明黑底轨
+        //
+        // 默认合成器的坑：画面上有半透明图层（Transform 的不透明度、转场的
+        // 淡入淡出）时，它换到混合路径，`instruction.backgroundColor` 不再生效，
+        // 未覆盖区域是零填充的 YUV 缓冲 —— 显示成暗绿色。所以这种时候垫一条
+        // 真正的黑视频铺满全程当底，混合永远发生在不透明底之上。
+        let needsOpaqueBase = placed.contains {
+            $0.clip.opacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
+        }
+        if needsOpaqueBase, let baseURL = await BlackBaseVideoFactory.videoURL() {
+            let baseAsset = asset(for: baseURL)
+            if let baseSource = try? await baseAsset.loadTracks(withMediaType: .video).first,
+               let baseTrack = composition.addMutableTrack(
+                   withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
+               ),
+               let sourceRange = try? await baseSource.load(.timeRange),
+               (try? baseTrack.insertTimeRange(sourceRange, of: baseSource, at: .zero)) != nil {
+                baseTrack.scaleTimeRange(
+                    CMTimeRange(start: .zero, duration: sourceRange.duration),
+                    toDuration: time(state.duration)
+                )
+                let natural = (try? await baseSource.load(.naturalSize)) ?? CGSize(width: 64, height: 36)
+                var base = EditClip(sourceURL: baseURL, sourceDuration: state.duration)
+                base.timelineStart = 0
+                placed.append(PlacedClip(
+                    clip: base,
+                    track: baseTrack,
+                    transform: CGAffineTransform(
+                        scaleX: renderSize.width / max(natural.width, 1),
+                        y: renderSize.height / max(natural.height, 1)
+                    ),
+                    cropRect: nil,
+                    layer: Int.min
+                ))
+            }
         }
 
         // 纯音频时间线：没有任何画面就不配 videoComposition。
@@ -285,51 +387,84 @@ enum VideoEditCompositionBuilder {
         return true
     }
 
-    /// 素材画面摆进输出画布的变换：先按源自带的旋转摆正，把包围盒挪回原点，
-    /// 再缩放，最后平移到位（主画面居中、画中画按停靠位）。
-    /// 用户在预览里摆过的（`placement`）优先：直接非等比缩放进那个归一化框。
+    /// 素材画面摆进输出画布的完整变换：源自带旋转摆正 → 裁切区挪到原点 →
+    /// 缩放（翻转就是负缩放）→ 绕摆放框中心旋转 → 平移到摆放框。
+    /// 摆放框：用户摆过的（placement）优先，否则默认布局（主轨等比铺满居中、
+    /// 画中画按停靠位，都按**裁后的**宽高比）。返回的 cropRect 是换算回源轨
+    /// 自然坐标系的裁切矩形，layer instruction 用它真正剪掉框外像素。
     private static func fittingTransform(
         naturalSize: CGSize,
         preferredTransform: CGAffineTransform,
         renderSize: CGSize,
-        placement: ClipPlacement?,
-        overlay: (fraction: Double, anchor: OverlayAnchor)?
-    ) -> CGAffineTransform {
+        clip: EditClip,
+        isOverlay: Bool
+    ) -> (transform: CGAffineTransform, cropRect: CGRect?) {
         let bounds = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let display = CGSize(width: abs(bounds.width), height: abs(bounds.height))
-        guard display.width > 0, display.height > 0 else { return .identity }
+        guard display.width > 0, display.height > 0 else { return (.identity, nil) }
 
-        if let placement {
-            let target = placement.frame(in: renderSize)
-            return preferredTransform
-                .concatenating(CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
-                .concatenating(CGAffineTransform(
-                    scaleX: target.width / display.width,
-                    y: target.height / display.height
-                ))
-                .concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
-        }
+        // 显示方向上的裁切区（没裁就是整幅）。
+        let hasCrop = !(clip.crop?.isEmpty ?? true)
+        let source = clip.crop.flatMap { $0.isEmpty ? nil : $0.rect(in: display) }
+            ?? CGRect(origin: .zero, size: display)
 
-        let scale: Double
-        let origin: CGPoint
-        if let overlay {
-            scale = renderSize.width * overlay.fraction / display.width
-            let scaled = CGSize(width: display.width * scale, height: display.height * scale)
-            origin = overlay.anchor.origin(
+        // 摆放框：placement 或按裁后宽高比的默认布局。
+        // 注意别用 clip.defaultPlacement —— 那个基于 probe 的 displaySize，
+        // 和这里从源轨实测的尺寸可能差一两个像素，两边要用同一份。
+        let target: CGRect
+        if let placement = clip.placement {
+            target = placement.frame(in: renderSize)
+        } else if isOverlay {
+            let scale = renderSize.width * clip.overlayFraction / source.width
+            let size = CGSize(width: source.width * scale, height: source.height * scale)
+            let origin = clip.overlayAnchor.origin(
                 canvas: renderSize,
-                overlay: scaled,
+                overlay: size,
                 inset: renderSize.width * 0.02
             )
+            target = CGRect(origin: origin, size: size)
         } else {
-            scale = min(renderSize.width / display.width, renderSize.height / display.height)
-            let scaled = CGSize(width: display.width * scale, height: display.height * scale)
-            origin = CGPoint(x: (renderSize.width - scaled.width) / 2, y: (renderSize.height - scaled.height) / 2)
+            let scale = min(renderSize.width / source.width, renderSize.height / source.height)
+            let size = CGSize(width: source.width * scale, height: source.height * scale)
+            target = CGRect(
+                x: (renderSize.width - size.width) / 2,
+                y: (renderSize.height - size.height) / 2,
+                width: size.width,
+                height: size.height
+            )
         }
 
-        return preferredTransform
+        var transform = preferredTransform
             .concatenating(CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
-            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
-            .concatenating(CGAffineTransform(translationX: origin.x, y: origin.y))
+            .concatenating(CGAffineTransform(translationX: -source.minX, y: -source.minY))
+            .concatenating(CGAffineTransform(
+                scaleX: target.width / source.width * (clip.flippedHorizontally ? -1 : 1),
+                y: target.height / source.height * (clip.flippedVertically ? -1 : 1)
+            ))
+        if clip.flippedHorizontally || clip.flippedVertically {
+            transform = transform.concatenating(CGAffineTransform(
+                translationX: clip.flippedHorizontally ? target.width : 0,
+                y: clip.flippedVertically ? target.height : 0
+            ))
+        }
+        if abs(clip.rotationDegrees) > 0.01 {
+            let radians = clip.rotationDegrees * .pi / 180
+            transform = transform
+                .concatenating(CGAffineTransform(translationX: -target.width / 2, y: -target.height / 2))
+                .concatenating(CGAffineTransform(rotationAngle: radians))
+                .concatenating(CGAffineTransform(translationX: target.width / 2, y: target.height / 2))
+        }
+        transform = transform.concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+
+        // 裁切矩形换算回自然坐标：显示矩形先挪回包围盒位置，再逆着源旋转变换。
+        var cropRect: CGRect?
+        if hasCrop {
+            cropRect = source
+                .offsetBy(dx: bounds.minX, dy: bounds.minY)
+                .applying(preferredTransform.inverted())
+                .standardized
+        }
+        return (transform, cropRect)
     }
 
     /// 剪辑范围内的恒定音量；转场重叠区做交叉淡变。
@@ -413,6 +548,9 @@ enum VideoEditCompositionBuilder {
             for item in active {
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: item.track)
                 layer.setTransform(item.transform, at: time(sliceStart))
+                if let crop = item.cropRect {
+                    layer.setCropRectangle(crop, at: time(sliceStart))
+                }
                 applyOpacity(layer, item: item, sliceStart: sliceStart, sliceEnd: sliceEnd)
                 layers.append(layer)
             }
@@ -424,13 +562,15 @@ enum VideoEditCompositionBuilder {
         return videoComposition
     }
 
-    /// 一片时间里这段画面的透明度。
+    /// 一片时间里这段画面的透明度。转场的淡入淡出斜坡整体乘上剪辑自己的
+    /// 不透明度（Transform 面板的 Opacity），两套互不干扰。
     private static func applyOpacity(
         _ layer: AVMutableVideoCompositionLayerInstruction,
         item: PlacedClip,
         sliceStart: Double,
         sliceEnd: Double
     ) {
+        let base = Float(min(max(item.clip.opacity, 0), 1))
         // 淡入
         if let fadeIn = item.fadeIn {
             let fadeStart = fadeIn.delayedHalf ? item.start + fadeIn.duration / 2 : item.start
@@ -443,8 +583,8 @@ enum VideoEditCompositionBuilder {
                     let rampStart = max(sliceStart, fadeStart)
                     let rampEnd = min(sliceEnd, fadeEnd)
                     if rampEnd > rampStart {
-                        let from = Float((rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart))
-                        let to = Float((rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart))
+                        let from = Float((rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
+                        let to = Float((rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
                         layer.setOpacityRamp(
                             fromStartOpacity: from, toEndOpacity: to,
                             timeRange: CMTimeRange(start: time(rampStart), end: time(rampEnd))
@@ -466,8 +606,8 @@ enum VideoEditCompositionBuilder {
                 let rampStart = max(sliceStart, fadeStart)
                 let rampEnd = min(sliceEnd, fadeEnd)
                 if rampEnd > rampStart {
-                    let from = Float(1 - (rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart))
-                    let to = Float(1 - (rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart))
+                    let from = Float(1 - (rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
+                    let to = Float(1 - (rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
                     layer.setOpacityRamp(
                         fromStartOpacity: from, toEndOpacity: to,
                         timeRange: CMTimeRange(start: time(rampStart), end: time(rampEnd))
@@ -476,6 +616,6 @@ enum VideoEditCompositionBuilder {
                 return
             }
         }
-        layer.setOpacity(1, at: time(sliceStart))
+        layer.setOpacity(base, at: time(sliceStart))
     }
 }
