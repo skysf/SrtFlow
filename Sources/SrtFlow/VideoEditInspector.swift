@@ -125,13 +125,16 @@ struct VideoEditInspectorView: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("Transition to next clip").font(.callout).fontWeight(.medium)
+                // menu 而不是 segmented：四个英文段名撑爆右栏宽度上限，
+                // 整个检查器会横向溢出被裁。
                 Picker("", selection: transitionBinding(clip)) {
                     ForEach(ClipTransition.allCases) { transition in
                         Text(LocalizedStringKey(transition.title)).tag(transition)
                     }
                 }
                 .labelsHidden()
-                .pickerStyle(.segmented)
+                .pickerStyle(.menu)
+                .fixedSize()
                 if clip.transitionAfter != .none {
                     HStack {
                         Slider(
@@ -163,21 +166,9 @@ struct VideoEditInspectorView: View {
             }
         }
 
-        // 在预览里摆过位置/大小的段：给一个「复原」回到默认布局。
-        if !clip.isAudioOnly, clip.placement != nil {
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Position & Size").font(.callout).fontWeight(.medium)
-                    Spacer()
-                    Button("Reset") { project.resetPlacement(clip.id) }
-                        .controlSize(.small)
-                }
-                Text("Drag the frame on the preview to move it; corners scale, edges stretch.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        // 画面变换（音频段没有画面，不给）。
+        if !clip.isAudioOnly {
+            transformSection(clip)
         }
 
         // 画中画：大小 + 九宫格停靠位。
@@ -237,6 +228,265 @@ struct VideoEditInspectorView: View {
                 }
             }
         }
+    }
+
+    // MARK: - 画面变换（Transform）
+
+    /// 位置/缩放/旋转/不透明度/裁切/翻转，每行可单独复原，标题行整区复原。
+    /// 数值都是「按 Enter/失焦提交」的离散修改，一次一步撤销。
+    @ViewBuilder
+    private func transformSection(_ clip: EditClip) -> some View {
+        let live = project.state.clip(with: clip.id) ?? clip
+        let isOverlay = project.isOverlayClip(clip.id)
+        let resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+        let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+
+        Divider()
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Transform").font(.callout).fontWeight(.medium)
+                Spacer()
+                resetButton(disabled: !live.hasVisualTransform, help: "Reset all transform adjustments") {
+                    project.resetTransform(clip.id)
+                }
+            }
+
+            transformRow("Position", isDefault: live.placement == nil, reset: {
+                project.setPlacement(clip.id, ClipPlacement(
+                    centerX: fallback.centerX,
+                    centerY: fallback.centerY,
+                    width: resolved.width,
+                    height: resolved.height
+                ))
+            }) {
+                Text("X").font(.caption2).foregroundStyle(.tertiary)
+                numberField(positionBinding(clip, x: true), width: 46)
+                Text("Y").font(.caption2).foregroundStyle(.tertiary)
+                numberField(positionBinding(clip, x: false), width: 46)
+            }
+
+            transformRow("Scale", isDefault: live.placement == nil, reset: {
+                project.setPlacement(clip.id, ClipPlacement(
+                    centerX: resolved.centerX,
+                    centerY: resolved.centerY,
+                    width: fallback.width,
+                    height: fallback.height
+                ))
+            }) {
+                numberField(scaleBinding(clip), width: 46)
+                Text("%").font(.caption2).foregroundStyle(.tertiary)
+            }
+
+            transformRow("Rotation", isDefault: abs(live.rotationDegrees) < 0.01, reset: {
+                project.setRotation(clip.id, degrees: 0)
+            }) {
+                numberField(rotationBinding(clip), width: 46, fractions: 1)
+                Text("°").font(.caption2).foregroundStyle(.tertiary)
+            }
+
+            transformRow("Opacity", isDefault: live.opacity > 0.999, reset: {
+                project.setClipOpacity(clip.id, 1)
+            }) {
+                numberField(opacityBinding(clip), width: 46)
+                Text("%").font(.caption2).foregroundStyle(.tertiary)
+            }
+
+            transformRow("Flip", isDefault: !live.flippedHorizontally && !live.flippedVertically, reset: {
+                project.setFlip(clip.id, horizontal: false, vertical: false)
+            }) {
+                flipToggle(clip, horizontal: true, isOn: live.flippedHorizontally)
+                flipToggle(clip, horizontal: false, isOn: live.flippedVertically)
+            }
+
+            transformRow("Crop", isDefault: live.crop == nil, reset: {
+                project.setCrop(clip.id, nil)
+            }) {
+                cropPresetMenu(clip, live: live)
+            }
+            HStack(spacing: 4) {
+                cropField("Left", clip, live: live, \.leading)
+                cropField("Right", clip, live: live, \.trailing)
+                cropField("Top", clip, live: live, \.top)
+                cropField("Bottom", clip, live: live, \.bottom)
+            }
+        }
+    }
+
+    /// 一行：左标题、右控件、行尾复原。
+    private func transformRow(
+        _ title: LocalizedStringKey,
+        isDefault: Bool,
+        reset: @escaping () -> Void,
+        @ViewBuilder content: () -> some View
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+                .frame(width: 58, alignment: .leading)
+            Spacer(minLength: 2)
+            content()
+            resetButton(disabled: isDefault, help: "Reset", action: reset)
+        }
+    }
+
+    private func resetButton(disabled: Bool, help: LocalizedStringKey, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "arrow.counterclockwise")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.mini)
+        .disabled(disabled)
+        .help(help)
+    }
+
+    private func numberField(_ value: Binding<Double>, width: Double, fractions: Int = 0) -> some View {
+        TextField("", value: value, format: .number.precision(.fractionLength(0...fractions)))
+            .textFieldStyle(.roundedBorder)
+            .controlSize(.small)
+            .multilineTextAlignment(.trailing)
+            .frame(width: width)
+    }
+
+    private func flipToggle(_ clip: EditClip, horizontal: Bool, isOn: Bool) -> some View {
+        Toggle(isOn: Binding(
+            get: { isOn },
+            set: { newValue in
+                if horizontal {
+                    project.setFlip(clip.id, horizontal: newValue)
+                } else {
+                    project.setFlip(clip.id, vertical: newValue)
+                }
+            }
+        )) {
+            Image(systemName: horizontal ? "arrow.left.and.right" : "arrow.up.and.down")
+        }
+        .toggleStyle(.button)
+        .buttonStyle(.borderless)
+        .controlSize(.small)
+        .tint(.teal)
+        .help(horizontal ? "Flip horizontally" : "Flip vertically")
+    }
+
+    private static let cropPresets: [(label: String, aspect: Double)] = [
+        ("16:9", 16.0 / 9), ("9:16", 9.0 / 16), ("1:1", 1), ("4:3", 4.0 / 3), ("3:4", 3.0 / 4)
+    ]
+
+    /// 比例预设：居中裁到目标宽高比；None 清掉。四个数值框随时可微调。
+    private func cropPresetMenu(_ clip: EditClip, live: EditClip) -> some View {
+        Menu {
+            Button("None") { project.setCrop(clip.id, nil) }
+            ForEach(Self.cropPresets, id: \.label) { preset in
+                Button(preset.label) {
+                    guard let display = live.info?.displaySize else { return }
+                    project.setCrop(clip.id, ClipCrop.centered(aspect: preset.aspect, in: display))
+                }
+            }
+        } label: {
+            Text(live.crop == nil ? "None" : "Custom")
+                .font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .disabled(live.info?.displaySize == nil)
+    }
+
+    private func cropField(
+        _ label: LocalizedStringKey,
+        _ clip: EditClip,
+        live: EditClip,
+        _ keyPath: KeyPath<ClipCrop, Double>
+    ) -> some View {
+        HStack(spacing: 2) {
+            Text(label).font(.caption2).foregroundStyle(.tertiary)
+            numberField(Binding(
+                get: {
+                    ((project.state.clip(with: clip.id)?.crop ?? live.crop)?[keyPath: keyPath] ?? 0) * 100
+                },
+                set: { newValue in
+                    let current = project.state.clip(with: clip.id)?.crop ?? ClipCrop()
+                    let fraction = min(max(newValue / 100, 0), 45.0 / 100)
+                    var top = current.top
+                    var bottom = current.bottom
+                    var leading = current.leading
+                    var trailing = current.trailing
+                    switch keyPath {
+                    case \ClipCrop.top: top = fraction
+                    case \ClipCrop.bottom: bottom = fraction
+                    case \ClipCrop.leading: leading = fraction
+                    default: trailing = fraction
+                    }
+                    project.setCrop(clip.id, ClipCrop(top: top, bottom: bottom, leading: leading, trailing: trailing))
+                }
+            ), width: 38)
+        }
+    }
+
+    // MARK: Transform 绑定（离散提交）
+
+    /// 位置：摆放框中心相对画布中心的偏移，按输出像素计。
+    private func positionBinding(_ clip: EditClip, x: Bool) -> Binding<Double> {
+        Binding(
+            get: {
+                guard let live = project.state.clip(with: clip.id) else { return 0 }
+                let resolved = live.resolvedPlacement(
+                    canvas: project.renderSize,
+                    isOverlay: project.isOverlayClip(clip.id)
+                )
+                return x
+                    ? (resolved.centerX - 0.5) * project.renderSize.width
+                    : (resolved.centerY - 0.5) * project.renderSize.height
+            },
+            set: { newValue in
+                guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
+                var resolved = live.resolvedPlacement(
+                    canvas: project.renderSize,
+                    isOverlay: project.isOverlayClip(clip.id)
+                )
+                if x {
+                    resolved.centerX = 0.5 + newValue / max(project.renderSize.width, 1)
+                } else {
+                    resolved.centerY = 0.5 + newValue / max(project.renderSize.height, 1)
+                }
+                project.setPlacement(clip.id, resolved)
+            }
+        )
+    }
+
+    /// 缩放：相对默认布局宽度的百分比；改动等比作用于当前宽高（保留拉伸变形）。
+    private func scaleBinding(_ clip: EditClip) -> Binding<Double> {
+        Binding(
+            get: {
+                guard let live = project.state.clip(with: clip.id) else { return 100 }
+                let isOverlay = project.isOverlayClip(clip.id)
+                let resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                return resolved.width / max(fallback.width, 0.0001) * 100
+            },
+            set: { newValue in
+                guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
+                let isOverlay = project.isOverlayClip(clip.id)
+                var resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                let clamped = min(max(newValue, 1), 400)
+                let ratio = fallback.width * clamped / 100 / max(resolved.width, 0.0001)
+                resolved.width *= ratio
+                resolved.height *= ratio
+                project.setPlacement(clip.id, resolved)
+            }
+        )
+    }
+
+    private func rotationBinding(_ clip: EditClip) -> Binding<Double> {
+        Binding(
+            get: { project.state.clip(with: clip.id)?.rotationDegrees ?? clip.rotationDegrees },
+            set: { project.setRotation(clip.id, degrees: $0) }
+        )
+    }
+
+    private func opacityBinding(_ clip: EditClip) -> Binding<Double> {
+        Binding(
+            get: { (project.state.clip(with: clip.id)?.opacity ?? clip.opacity) * 100 },
+            set: { project.setClipOpacity(clip.id, $0 / 100) }
+        )
     }
 
     // MARK: - 形状

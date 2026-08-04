@@ -58,9 +58,11 @@ struct ClipTransformCanvas: View {
                     .frame(in: boxSize)
                 ResizableFrameBox(
                     rect: rect,
+                    bounds: boxSize,
                     handles: FrameHandle.all,
                     keepAspectOnCorners: true,
                     movable: true,
+                    rotationDegrees: selection.clip.rotationDegrees,
                     onTap: { location in selectClip(at: location) },
                     onChange: { newRect in
                         project.livePlace(
@@ -84,10 +86,20 @@ struct ClipTransformCanvas: View {
 
     private func selectClip(at location: CGPoint) {
         let hit = visibleClips.first { visible in
-            visible.clip
+            let rect = visible.clip
                 .resolvedPlacement(canvas: boxSize, isOverlay: visible.isOverlay)
                 .frame(in: boxSize)
-                .contains(location)
+            // 旋转过的段：把点反着转回未旋转坐标系再判定。
+            let degrees = visible.clip.rotationDegrees
+            guard abs(degrees) > 0.01 else { return rect.contains(location) }
+            let angle = -degrees * .pi / 180
+            let dx = location.x - rect.midX
+            let dy = location.y - rect.midY
+            let unrotated = CGPoint(
+                x: rect.midX + dx * cos(angle) - dy * sin(angle),
+                y: rect.midY + dx * sin(angle) + dy * cos(angle)
+            )
+            return rect.contains(unrotated)
         }
         if let hit {
             project.select(hit.clip.id, additive: false)
@@ -149,14 +161,18 @@ enum FrameHandle: CaseIterable {
 /// 抓的 `startRect` 重放绝对增量，幂等。
 struct ResizableFrameBox: View {
     let rect: CGRect
+    /// 所在画布的尺寸（旋转锚点要换算成 UnitPoint）。
+    let bounds: CGSize
     var handles: Set<FrameHandle> = FrameHandle.all
     /// 四角是否保持宽高比（边把手永远自由拉伸）。
     var keepAspectOnCorners = true
     /// 框内能不能拖动移动。
     var movable = true
+    /// 内容的旋转角（度）：框跟着转，把手增量换算回未旋转坐标系。
+    var rotationDegrees: Double = 0
     /// 框内单击（没构成拖动）转给外层重新点选用；nil 就不拦。
     var onTap: ((CGPoint) -> Void)?
-    /// 拖动中的回调，给的是**绝对**的新框。
+    /// 拖动中的回调，给的是**绝对**的新框（未旋转坐标系）。
     let onChange: (CGRect) -> Void
     let onEnd: () -> Void
 
@@ -167,6 +183,18 @@ struct ResizableFrameBox: View {
     private let minSide: Double = 14
 
     var body: some View {
+        frameContent
+            .frame(width: bounds.width, height: bounds.height, alignment: .topLeading)
+            .rotationEffect(
+                .degrees(rotationDegrees),
+                anchor: UnitPoint(
+                    x: bounds.width > 0 ? rect.midX / bounds.width : 0.5,
+                    y: bounds.height > 0 ? rect.midY / bounds.height : 0.5
+                )
+            )
+    }
+
+    private var frameContent: some View {
         ZStack(alignment: .topLeading) {
             // 描边；能移动的框整个内部都接拖动，不能移动的（形状）只当视觉框，
             // 事件全部放行给下面形状自己的手势。
@@ -224,7 +252,7 @@ struct ResizableFrameBox: View {
                     .onChanged { value in
                         if startRect == nil { startRect = rect }
                         guard let start = startRect else { return }
-                        onChange(resized(start, handle: handle, translation: value.translation))
+                        onChange(resized(start, handle: handle, translation: derotated(value.translation)))
                     }
                     .onEnded { _ in
                         startRect = nil
@@ -235,6 +263,18 @@ struct ResizableFrameBox: View {
                 x: rect.minX + rect.width * handle.unit.x - handleSize / 2,
                 y: rect.minY + rect.height * handle.unit.y - handleSize / 2
             )
+    }
+
+    /// 把手的全局位移换算回框的未旋转坐标系（框转了 θ，位移就反转 θ）。
+    /// 框内移动不需要：移动量在两个坐标系里是同一个向量的不同表达，
+    /// 直接用全局位移跟手才对。
+    private func derotated(_ translation: CGSize) -> CGSize {
+        guard abs(rotationDegrees) > 0.01 else { return translation }
+        let angle = -rotationDegrees * .pi / 180
+        return CGSize(
+            width: translation.width * cos(angle) - translation.height * sin(angle),
+            height: translation.width * sin(angle) + translation.height * cos(angle)
+        )
     }
 
     /// 从起始框算新框：边把手只动那一条边（自由拉伸），

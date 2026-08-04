@@ -137,6 +137,55 @@ struct ClipPlacement: Hashable, Sendable {
     }
 }
 
+// MARK: - 四边裁切
+
+/// 画面段的四边裁切：每边裁掉源画面（按显示方向）的归一化比例，0…0.45。
+/// 裁完剩下的画面填进摆放框；默认摆放框本身也按裁后的宽高比算。
+struct ClipCrop: Hashable, Sendable {
+    var top: Double
+    var bottom: Double
+    var leading: Double
+    var trailing: Double
+
+    init(top: Double = 0, bottom: Double = 0, leading: Double = 0, trailing: Double = 0) {
+        self.top = min(max(top, 0), 0.45)
+        self.bottom = min(max(bottom, 0), 0.45)
+        self.leading = min(max(leading, 0), 0.45)
+        self.trailing = min(max(trailing, 0), 0.45)
+    }
+
+    var isEmpty: Bool {
+        top < 0.0005 && bottom < 0.0005 && leading < 0.0005 && trailing < 0.0005
+    }
+
+    /// 在给定显示尺寸上的裁切矩形（像素）。
+    func rect(in display: CGSize) -> CGRect {
+        CGRect(
+            x: leading * display.width,
+            y: top * display.height,
+            width: max(1, display.width * (1 - leading - trailing)),
+            height: max(1, display.height * (1 - top - bottom))
+        )
+    }
+
+    /// 把源画面居中裁到目标宽高比（Inspector 里的比例预设）。
+    static func centered(aspect: Double, in display: CGSize) -> ClipCrop {
+        guard display.width > 0, display.height > 0, aspect > 0 else { return ClipCrop() }
+        let current = display.width / display.height
+        if current > aspect {
+            // 太宽：裁左右。
+            let keep = aspect / current
+            let inset = (1 - keep) / 2
+            return ClipCrop(leading: inset, trailing: inset)
+        } else {
+            // 太高：裁上下。
+            let keep = current / aspect
+            let inset = (1 - keep) / 2
+            return ClipCrop(top: inset, bottom: inset)
+        }
+    }
+}
+
 // MARK: - 画布比例
 
 /// 输出画面的宽高比。`auto` 跟随主轨第一段素材。
@@ -313,6 +362,17 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 用户在预览里摆过的自由位置/尺寸；nil = 默认布局（主轨铺满、画中画九宫格）。
     var placement: ClipPlacement?
 
+    // Inspector Transform 区的四项静态变换。都有「无操作」默认值，
+    // 全默认时预览/导出走原来的轻量路径。
+    /// 顺时针旋转角（度），绕摆放框中心。
+    var rotationDegrees: Double
+    /// 画面不透明度 0…1。
+    var opacity: Double
+    var flippedHorizontally: Bool
+    var flippedVertically: Bool
+    /// 四边裁切；nil = 不裁。
+    var crop: ClipCrop?
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -338,6 +398,11 @@ struct EditClip: Identifiable, Hashable, Sendable {
         overlayFraction: Double = 0.4,
         overlayAnchor: OverlayAnchor = .topTrailing,
         placement: ClipPlacement? = nil,
+        rotationDegrees: Double = 0,
+        opacity: Double = 1,
+        flippedHorizontally: Bool = false,
+        flippedVertically: Bool = false,
+        crop: ClipCrop? = nil,
         info: MediaInfo? = nil,
         audioAssetDuration: Double? = nil,
         stillImageURL: URL? = nil
@@ -357,6 +422,11 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.overlayFraction = overlayFraction
         self.overlayAnchor = overlayAnchor
         self.placement = placement
+        self.rotationDegrees = rotationDegrees
+        self.opacity = opacity
+        self.flippedHorizontally = flippedHorizontally
+        self.flippedVertically = flippedVertically
+        self.crop = crop
         self.info = info
         self.audioAssetDuration = audioAssetDuration
         self.stillImageURL = stillImageURL
@@ -380,12 +450,43 @@ struct EditClip: Identifiable, Hashable, Sendable {
         time > timelineStart + 0.001 && time < timelineEnd - 0.001
     }
 
-    /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算 ——
-    /// 主轨等比铺满居中，画中画按 `overlayFraction` 宽度停靠九宫格。
+    /// 画面上有任何非默认的变换吗（导出走覆盖分支、检查器显示复原用）。
+    var hasVisualTransform: Bool {
+        placement != nil || abs(rotationDegrees) > 0.01 || opacity < 0.999
+            || flippedHorizontally || flippedVertically || !(crop?.isEmpty ?? true)
+    }
+
+    /// 这段的画面把整个画布**盖满且完全不透明**吗。
+    ///
+    /// 叠化的「后段垫底、前段淡出」路径只有在接缝两侧都满足这个条件时才逐像素
+    /// 精确等于 xfade dissolve —— 判定条件必须是它，不能拿 `hasVisualTransform`
+    /// 凑数：仅翻转（甚至放大出画布的摆放）照样满幅不透明，走近似路径纯属
+    /// 误伤（白闪变暗）。旋转保守地一律当不满幅。
+    func coversCanvasOpaquely(canvas: CGSize, isOverlay: Bool) -> Bool {
+        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01 else { return false }
+        let frame = resolvedPlacement(canvas: canvas, isOverlay: isOverlay).frame(in: canvas)
+        return frame.minX <= 0.5 && frame.minY <= 0.5
+            && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
+    }
+
+    /// 裁切后的源画面尺寸（显示方向）。默认摆放框按它算宽高比。
+    var croppedDisplaySize: CGSize? {
+        guard let display = info?.displaySize, display.width > 0, display.height > 0 else { return nil }
+        guard let crop, !crop.isEmpty else { return display }
+        return crop.rect(in: display).size
+    }
+
+    /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算。
     /// 预览里的选中框和拖动起点都从这里取，跟合成/导出的默认摆法一致。
     func resolvedPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
-        if let placement { return placement }
-        guard let display = info?.displaySize, display.width > 0, display.height > 0,
+        placement ?? defaultPlacement(canvas: canvas, isOverlay: isOverlay)
+    }
+
+    /// 默认布局：主轨等比铺满居中，画中画按 `overlayFraction` 宽度停靠九宫格。
+    /// 裁切过的段按**裁后的宽高比**摆（裁成 1:1 就显示成正方形）。
+    /// Inspector 的 Scale/Position 以它为 100%/原点基准。
+    func defaultPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
+        guard let display = croppedDisplaySize,
               canvas.width > 0, canvas.height > 0 else {
             return ClipPlacement(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
         }
@@ -625,7 +726,11 @@ extension TimelineState {
         if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
             sub.mainClips = sub.overlayTracks.removeFirst().clips.map { clip in
                 var promoted = clip
+                // 摆放/旋转/透明度是相对完整画面的，画面不在这次导出里，丢掉；
+                // 裁切和翻转是内容本身的属性，保留。
                 promoted.placement = nil
+                promoted.rotationDegrees = 0
+                promoted.opacity = 1
                 return promoted
             }
         }
@@ -740,11 +845,36 @@ extension ClipPlacement: Codable {
     }
 }
 
+extension ClipCrop: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case top, bottom, leading, trailing
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            top: try c.decodeIfPresent(Double.self, forKey: .top) ?? 0,
+            bottom: try c.decodeIfPresent(Double.self, forKey: .bottom) ?? 0,
+            leading: try c.decodeIfPresent(Double.self, forKey: .leading) ?? 0,
+            trailing: try c.decodeIfPresent(Double.self, forKey: .trailing) ?? 0
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(top, forKey: .top)
+        try c.encode(bottom, forKey: .bottom)
+        try c.encode(leading, forKey: .leading)
+        try c.encode(trailing, forKey: .trailing)
+    }
+}
+
 extension EditClip: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
         case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
+        case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop
     }
 
     init(from decoder: Decoder) throws {
@@ -766,6 +896,11 @@ extension EditClip: Codable {
             overlayFraction: try c.decodeIfPresent(Double.self, forKey: .overlayFraction) ?? 0.4,
             overlayAnchor: try c.decodeIfPresent(OverlayAnchor.self, forKey: .overlayAnchor) ?? .topTrailing,
             placement: try c.decodeIfPresent(ClipPlacement.self, forKey: .placement),
+            rotationDegrees: try c.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0,
+            opacity: try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1,
+            flippedHorizontally: try c.decodeIfPresent(Bool.self, forKey: .flippedHorizontally) ?? false,
+            flippedVertically: try c.decodeIfPresent(Bool.self, forKey: .flippedVertically) ?? false,
+            crop: try c.decodeIfPresent(ClipCrop.self, forKey: .crop),
             info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
             audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
             stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
@@ -791,6 +926,11 @@ extension EditClip: Codable {
         try c.encode(overlayFraction, forKey: .overlayFraction)
         try c.encode(overlayAnchor, forKey: .overlayAnchor)
         try c.encodeIfPresent(placement, forKey: .placement)
+        try c.encode(rotationDegrees, forKey: .rotationDegrees)
+        try c.encode(opacity, forKey: .opacity)
+        try c.encode(flippedHorizontally, forKey: .flippedHorizontally)
+        try c.encode(flippedVertically, forKey: .flippedVertically)
+        try c.encodeIfPresent(crop, forKey: .crop)
         try c.encodeIfPresent(info, forKey: .info)
         try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
         try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)

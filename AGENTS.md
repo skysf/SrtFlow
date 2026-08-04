@@ -24,7 +24,9 @@
   `SRTFLOW_SMOKE_VIDEO` / `SRTFLOW_FFMPEG` 环境变量钩子
 
 自检命令：`swift run SrtFlowCoreChecks`（核心库）、
-`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）
+`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
+`scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
+源码在 `checks/PreviewComposition/`）
 
 ## 架构与实现决策（docs/architecture/）
 
@@ -57,6 +59,12 @@
 - [2026-08-04-editor-tools-review.md](docs/bugfixes/2026-08-04-editor-tools-review.md) —
   评审返工三连：工具模式要整个关掉旧手势（GestureMask 不是 guard 回调）、
   画中画升主轨要丢 placement、线条选中框要按旋转后包络
+- [2026-08-04-opacity-green-background.md](docs/bugfixes/2026-08-04-opacity-green-background.md) —
+  半透明图层让预览背景变暗绿：默认合成器混合路径不铺 backgroundColor
+  （YUV 零填充=绿），修法是垫一条 AVAssetWriter 生成的不透明黑底轨
+- [2026-08-04-transform-review.md](docs/bugfixes/2026-08-04-transform-review.md) —
+  Transform 评审返工三连：加字段必须升 formatVersion（旧版拒开胜过静默毁字段）、
+  叠化「垫底=精确」的前提被变换破坏、缓存文件要「临时名→校验→原子替换」
 
 ## 根目录既有文档
 

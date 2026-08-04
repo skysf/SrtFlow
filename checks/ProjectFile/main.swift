@@ -36,6 +36,10 @@ func timeline(mainMedia: [URL], subtitle: URL? = nil) -> TimelineState {
         var clip = EditClip(sourceURL: url, sourceDuration: 12, timelineStart: cursor)
         clip.transitionAfter = .crossFade
         clip.placement = ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3)
+        clip.rotationDegrees = 15
+        clip.opacity = 0.8
+        clip.flippedHorizontally = true
+        clip.crop = ClipCrop(top: 0.1, leading: 0.05)
         clip.info = MediaInfo(
             duration: 12,
             displaySize: CGSize(width: 1920, height: 1080),
@@ -78,6 +82,14 @@ do {
         result.timeline.mainClips.first?.placement,
         ClipPlacement(centerX: 0.4, centerY: 0.6, width: 0.5, height: 0.3),
         "预览里摆的位置/大小要存住"
+    )
+    checkEqual(result.timeline.mainClips.first?.rotationDegrees, 15, "旋转角要存住")
+    checkEqual(result.timeline.mainClips.first?.opacity, 0.8, "不透明度要存住")
+    checkEqual(result.timeline.mainClips.first?.flippedHorizontally, true, "翻转要存住")
+    checkEqual(
+        result.timeline.mainClips.first?.crop,
+        ClipCrop(top: 0.1, leading: 0.05),
+        "四边裁切要存住"
     )
 }
 
@@ -323,12 +335,30 @@ do {
     }
     check(rejected, "formatVersion 比当前大的工程必须拒绝打开")
 
-    // 当前版本号照常能开。
+    // 旧版本号（v1）照常能开 —— 新版读旧版永远宽容。
     let ok = dir.appendingPathComponent("ok.srtflowproj")
     try Data("""
     { "formatVersion": 1, "timeline": { "mainClips": [] }, "media": [] }
     """.utf8).write(to: ok)
-    check((try? VideoEditProjectIO.load(from: ok)) != nil, "当前版本的工程要能打开")
+    check((try? VideoEditProjectIO.load(from: ok)) != nil, "旧版本（v1）的工程要能打开")
+
+    // 回归：新工程写盘必须带**当前**版本号，且 Transform 字段起码是 v2。
+    // 写成 v1 的话，只认 v1 的旧版会照常打开，然后在下一次自动保存时把
+    // placement/rotation/opacity/flip/crop 全部静默删光。
+    let media = dir.appendingPathComponent("v2.mp4")
+    makeFile(media)
+    let saved = dir.appendingPathComponent("v2.srtflowproj")
+    try VideoEditProjectIO.save(timeline(mainMedia: [media]), to: saved)
+    let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: saved)) as? [String: Any]
+    checkEqual(
+        raw?["formatVersion"] as? Int,
+        VideoEditProjectFile.currentFormatVersion,
+        "写盘要带当前格式版本"
+    )
+    check(
+        VideoEditProjectFile.currentFormatVersion >= 2,
+        "带 Transform/placement 字段的格式起码是 v2，旧版才会拒开而不是默默毁字段"
+    )
 }
 
 // MARK: - 12. 重链接图片之后要重新对静帧
@@ -367,6 +397,10 @@ do {
     let main = EditClip(sourceURL: URL(fileURLWithPath: "/m/main.mp4"), sourceDuration: 10)
     var pip = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip.mp4"), sourceDuration: 5, timelineStart: 2)
     pip.placement = place
+    pip.rotationDegrees = 30
+    pip.opacity = 0.5
+    pip.flippedVertically = true
+    pip.crop = ClipCrop(trailing: 0.2)
     var pip2 = EditClip(sourceURL: URL(fileURLWithPath: "/m/pip2.mp4"), sourceDuration: 4, timelineStart: 3)
     pip2.placement = place
     state.mainClips = [main]
@@ -378,6 +412,10 @@ do {
     check(solo.overlayTracks.isEmpty, "升完不该剩空画中画轨")
     checkEqual(solo.mainClips.first?.placement, nil, "升主轨必须丢自由摆放，否则导出是黑底小窗")
     checkEqual(solo.mainClips.first?.timelineStart, 0, "选中导出要平移到 0 起点")
+    checkEqual(solo.mainClips.first?.rotationDegrees, 0, "升主轨要丢旋转（相对完整画面的属性）")
+    checkEqual(solo.mainClips.first?.opacity, 1, "升主轨要丢不透明度（对黑底没有意义）")
+    checkEqual(solo.mainClips.first?.flippedVertically, true, "翻转是内容属性，升主轨要保留")
+    checkEqual(solo.mainClips.first?.crop, ClipCrop(trailing: 0.2), "裁切是内容属性，升主轨要保留")
 
     // 画中画和主轨一起选：不升轨的画中画保持摆放（所见即所得）。
     let both = state.selectionForExport(ids: [main.id, pip.id])

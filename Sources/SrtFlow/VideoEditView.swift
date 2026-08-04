@@ -503,6 +503,7 @@ private struct ShapeOverlayCanvas: View {
             if let shape = project.selectedShape, shape.contains(time: project.clock.time) {
                 ResizableFrameBox(
                     rect: resizeBoxRect(shape),
+                    bounds: boxSize,
                     handles: resizeHandles(shape),
                     keepAspectOnCorners: true,
                     movable: false,

@@ -280,22 +280,23 @@ enum VideoEditExportGraph {
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
-                if let placement = clip.placement {
-                    // 用户摆过的主轨段：缩放到摆放框，再叠到黑底画布上。
-                    // 用 overlay 而不是 pad —— 框可以比画布大、也可以探出边界。
-                    let target = placement.frame(in: renderSize)
+                if clip.hasVisualTransform {
+                    // 摆放/旋转/裁切/翻转/透明度任一非默认的主轨段：
+                    // 变换链处理后叠到黑底画布上。用 overlay 而不是 pad ——
+                    // 框可以比画布大、可以探出边界，旋转还会撑大输出框。
+                    let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: false)
                     let fg = nextLabel("fg")
                     let bg = nextLabel("bg")
                     filters.append(
                         "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                         "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                        "scale=\(evenPixel(target.width)):\(evenPixel(target.height)),setsar=1[\(fg)]"
+                        "\(transformed.chain)[\(fg)]"
                     )
                     filters.append(
                         "color=black:s=\(width)x\(height):r=30:d=\(fmt(segment.duration))[\(bg)]"
                     )
                     filters.append(
-                        "[\(bg)][\(fg)]overlay=x=\(Int(target.minX.rounded())):y=\(Int(target.minY.rounded())):" +
+                        "[\(bg)][\(fg)]overlay=x=\(transformed.overlayX):y=\(transformed.overlayY):" +
                         "shortest=1,format=yuv420p[\(vLabel)]"
                     )
                 } else {
@@ -366,18 +367,18 @@ enum VideoEditExportGraph {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
                 let scaled = nextLabel("ov")
-                // 摆过的画中画按摆放框缩放定位；没摆过走九宫格表达式。
-                let scaleFilter: String
+                // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
+                let chain: String
                 let x: String
                 let y: String
-                if let placement = clip.placement {
-                    let target = placement.frame(in: renderSize)
-                    scaleFilter = "scale=\(evenPixel(target.width)):\(evenPixel(target.height))"
-                    x = "\(Int(target.minX.rounded()))"
-                    y = "\(Int(target.minY.rounded()))"
+                if clip.hasVisualTransform {
+                    let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
+                    chain = transformed.chain
+                    x = transformed.overlayX
+                    y = transformed.overlayY
                 } else {
                     let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
-                    scaleFilter = "scale=\(overlayWidth):-2"
+                    chain = "scale=\(overlayWidth):-2,setsar=1"
                     let inset = Int(renderSize.width * 0.02)
                     x = xExpression(for: clip.overlayAnchor, inset: inset)
                     y = yExpression(for: clip.overlayAnchor, inset: inset)
@@ -385,7 +386,7 @@ enum VideoEditExportGraph {
                 filters.append(
                     "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                     "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                    "\(scaleFilter),setsar=1," +
+                    "\(chain)," +
                     "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
                 )
                 let outV = nextLabel("v")
@@ -484,6 +485,44 @@ enum VideoEditExportGraph {
     /// 摆放框的像素尺寸收成正偶数：yuv420 要偶数，scale 不吃 0。
     private static func evenPixel(_ value: Double) -> Int {
         max(2, Int((value / 2).rounded()) * 2)
+    }
+
+    /// Transform 面板的完整滤镜链（接在 fps=30 之后）：
+    /// 裁切 → 翻转 → 缩放进摆放框 → 旋转（rgba 透明角）→ 不透明度。
+    /// 定位用中心表达式 —— 旋转会把输出框撑大（rotw/roth），
+    /// 只有中心是不变量。时间账与预览的 fittingTransform 完全同构。
+    private static func transformSteps(
+        clip: EditClip,
+        renderSize: CGSize,
+        isOverlay: Bool
+    ) -> (chain: String, overlayX: String, overlayY: String) {
+        let target = clip.resolvedPlacement(canvas: renderSize, isOverlay: isOverlay)
+            .frame(in: renderSize)
+        var steps: [String] = []
+        if let crop = clip.crop, !crop.isEmpty, let display = clip.info?.displaySize {
+            let rect = crop.rect(in: display)
+            steps.append(
+                "crop=\(Int(rect.width.rounded())):\(Int(rect.height.rounded())):" +
+                "\(Int(rect.minX.rounded())):\(Int(rect.minY.rounded()))"
+            )
+        }
+        if clip.flippedHorizontally { steps.append("hflip") }
+        if clip.flippedVertically { steps.append("vflip") }
+        steps.append("scale=\(evenPixel(target.width)):\(evenPixel(target.height))")
+        steps.append("setsar=1")
+        let rotated = abs(clip.rotationDegrees) > 0.01
+        let translucent = clip.opacity < 0.999
+        if rotated || translucent { steps.append("format=rgba") }
+        if rotated {
+            let radians = fmt(clip.rotationDegrees * .pi / 180)
+            steps.append("rotate=\(radians):ow=rotw(\(radians)):oh=roth(\(radians)):c=black@0")
+        }
+        if translucent { steps.append("colorchannelmixer=aa=\(fmt(clip.opacity))") }
+        return (
+            steps.joined(separator: ","),
+            "\(Int(target.midX.rounded()))-w/2",
+            "\(Int(target.midY.rounded()))-h/2"
+        )
     }
 
     /// `30.0` → `"30"`，`1.2345` → `"1.234"`。滤镜参数里别出现一长串小数。
