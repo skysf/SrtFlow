@@ -2,8 +2,9 @@ import AVFoundation
 import CoreVideo
 import Foundation
 
-/// 预览合成的黑底素材：64×36 的两帧纯黑 H.264，AVAssetWriter 直接生成，
-/// 不依赖 ffmpeg。放在缓存目录，被系统清掉就重新写一个。
+/// 预览合成的纯色底素材：64×36 的两帧纯色 H.264，AVAssetWriter 直接生成，
+/// 不依赖 ffmpeg。黑底垫在半透明合成下面；白底给关键帧画中画的蒙版
+/// 预渲染当「白块」用。放在缓存目录，被系统清掉就重新写一个。
 ///
 /// actor + 单飞：预览重建高频触发，并发进来只允许一个真正去写；生成先落
 /// **唯一命名的临时文件**，写完验证能读出视频轨才原子替换到正式路径 ——
@@ -11,27 +12,32 @@ import Foundation
 actor BlackBaseVideoFactory {
     static let shared = BlackBaseVideoFactory()
 
-    private var inFlight: Task<URL?, Never>?
+    private var inFlight: [String: Task<URL?, Never>] = [:]
 
     static func videoURL() async -> URL? {
-        await shared.resolve()
+        await shared.resolve(fileName: "black-base-v1.mp4", bgra: 0xFF00_0000)
     }
 
-    private func resolve() async -> URL? {
-        let destination = Self.cacheURL
+    /// 纯白版本（蒙版渲染的「白块」素材）。
+    static func whiteVideoURL() async -> URL? {
+        await shared.resolve(fileName: "white-base-v1.mp4", bgra: 0xFFFF_FFFF)
+    }
+
+    private func resolve(fileName: String, bgra: UInt32) async -> URL? {
+        let destination = Self.cacheURL(fileName)
         if await Self.isUsable(destination) { return destination }
-        if let inFlight { return await inFlight.value }
-        let task = Task { await Self.generate(to: destination) }
-        inFlight = task
+        if let existing = inFlight[fileName] { return await existing.value }
+        let task = Task { await Self.generate(to: destination, bgra: bgra) }
+        inFlight[fileName] = task
         let result = await task.value
-        inFlight = nil
+        inFlight[fileName] = nil
         return result
     }
 
-    private static var cacheURL: URL {
+    private static func cacheURL(_ fileName: String) -> URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SrtFlowPreview", isDirectory: true)
-            .appendingPathComponent("black-base-v1.mp4")
+            .appendingPathComponent(fileName)
     }
 
     /// 真能当素材用吗：必须读得出视频轨且时长正常，坏文件当场删掉重来。
@@ -47,10 +53,10 @@ actor BlackBaseVideoFactory {
         return true
     }
 
-    private static func generate(to destination: URL) async -> URL? {
+    private static func generate(to destination: URL, bgra: UInt32) async -> URL? {
         let directory = destination.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let temp = directory.appendingPathComponent("black-base-\(UUID().uuidString).tmp.mp4")
+        let temp = directory.appendingPathComponent("base-\(UUID().uuidString).tmp.mp4")
         // 所有提前退出的分支都不许留半成品。
         defer { try? FileManager.default.removeItem(at: temp) }
 
@@ -80,9 +86,9 @@ actor BlackBaseVideoFactory {
             CVPixelBufferLockBaseAddress(buffer, [])
             if let baseAddress = CVPixelBufferGetBaseAddress(buffer) {
                 let byteCount = CVPixelBufferGetBytesPerRow(buffer) * CVPixelBufferGetHeight(buffer)
-                // BGRA 的不透明黑：B=G=R=0、A=255。按 32 位模式填。
+                // 按 32 位 BGRA 模式填纯色（A=255 的黑或白）。
                 let words = baseAddress.assumingMemoryBound(to: UInt32.self)
-                for index in 0..<(byteCount / 4) { words[index] = 0xFF00_0000 }
+                for index in 0..<(byteCount / 4) { words[index] = bgra }
             }
             CVPixelBufferUnlockBaseAddress(buffer, [])
 
@@ -141,6 +147,15 @@ enum VideoEditCompositionBuilder {
         var renderSize: CGSize
     }
 
+    /// 素材摆进画布所需的固定几何量（关键帧动画每片重算变换时复用）。
+    private struct ClipGeometry {
+        var preferredTransform: CGAffineTransform
+        /// 源旋转摆正后包围盒的原点（挪回原点用）。
+        var boundsOrigin: CGPoint
+        /// 显示方向上的裁切区（没裁就是整幅）。
+        var sourceRect: CGRect
+    }
+
     /// 预览里参与画面合成的一段（换算好合成轨和转场之后的产物）。
     private struct PlacedClip {
         var clip: EditClip
@@ -149,6 +164,10 @@ enum VideoEditCompositionBuilder {
         var transform: CGAffineTransform
         /// 四边裁切换算回源轨自然坐标系的矩形；nil = 不裁。
         var cropRect: CGRect?
+        /// 关键帧动画的段每片重算变换用；静态段是 nil。
+        var geometry: ClipGeometry?
+        /// 动画摆放的默认基准（主轨铺满还是画中画九宫格）。
+        var isOverlay = false
         /// 画面的叠放层级，越大越靠上（主轨 0，画中画 1+轨号）。
         var layer: Int
         var start: Double { clip.timelineStart }
@@ -159,15 +178,24 @@ enum VideoEditCompositionBuilder {
         var fadeOut: (duration: Double, earlyHalf: Bool)?
     }
 
-    static func build(from state: TimelineState) async -> Built? {
+    /// - Parameter renderSizeOverride: 导出预渲染要用外层时间线的画布尺寸，
+    ///   传它覆盖「按素材推断」的默认逻辑。
+    ///
+    /// 注意：默认合成器的 `backgroundColor` **只支持不透明色（alpha 被忽略，
+    /// 文档明说）**，所以这里出不了透明背景 —— 带 alpha 的预渲染走
+    /// fill + matte 双渲染（见 AnimatedClipPrerenderer）。
+    static func build(
+        from state: TimelineState,
+        renderSizeOverride: CGSize? = nil
+    ) async -> Built? {
         guard !state.isEmpty else { return nil }
 
         let composition = AVMutableComposition()
         var placed: [PlacedClip] = []
         var audioParams: [AVMutableAudioMixInputParameters] = []
 
-        // 输出尺寸：第一段主轨素材说了算。
-        let renderSize = Self.renderSize(for: state)
+        // 输出尺寸：第一段主轨素材说了算（预渲染时由外层画布指定）。
+        let renderSize = renderSizeOverride ?? Self.renderSize(for: state)
 
         // 素材缓存：同一个文件出现几段，AVURLAsset 只开一次。
         var assets: [URL: AVURLAsset] = [:]
@@ -226,6 +254,8 @@ enum VideoEditCompositionBuilder {
                 track: videoTrack,
                 transform: fitted.transform,
                 cropRect: fitted.cropRect,
+                geometry: fitted.geometry,
+                isOverlay: false,
                 layer: 0
             )
             if overlapBefore > 0 {
@@ -301,6 +331,8 @@ enum VideoEditCompositionBuilder {
                     track: videoTrack,
                     transform: fitted.transform,
                     cropRect: fitted.cropRect,
+                    geometry: fitted.geometry,
+                    isOverlay: true,
                     layer: 1 + trackIndex
                 ))
 
@@ -342,7 +374,7 @@ enum VideoEditCompositionBuilder {
         // 未覆盖区域是零填充的 YUV 缓冲 —— 显示成暗绿色。所以这种时候垫一条
         // 真正的黑视频铺满全程当底，混合永远发生在不透明底之上。
         let needsOpaqueBase = placed.contains {
-            $0.clip.opacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
+            $0.clip.minimumOpacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
         }
         if needsOpaqueBase, let baseURL = await BlackBaseVideoFactory.videoURL() {
             let baseAsset = asset(for: baseURL)
@@ -367,10 +399,21 @@ enum VideoEditCompositionBuilder {
                         y: renderSize.height / max(natural.height, 1)
                     ),
                     cropRect: nil,
+                    geometry: nil,
+                    isOverlay: false,
                     layer: Int.min
                 ))
             }
         }
+
+        // 清掉没有任何内容的合成轨（A/B 双轨和音轨是无条件建的）。
+        // AVPlayer 容忍空轨，AVAssetExportSession 会报 InvalidVideoComposition
+        //（表述是 "Operation Stopped"）—— 预渲染走导出会话，必须干净。
+        for track in composition.tracks where track.segments.isEmpty {
+            composition.removeTrack(track)
+        }
+        let remainingTrackIDs = Set(composition.tracks.map(\.trackID))
+        let effectiveAudioParams = audioParams.filter { remainingTrackIDs.contains($0.trackID) }
 
         // 纯音频时间线：没有任何画面就不配 videoComposition。
         let hasVideoContent = placed.contains { !$0.clip.isAudioOnly }
@@ -384,9 +427,9 @@ enum VideoEditCompositionBuilder {
         }
 
         var audioMix: AVMutableAudioMix?
-        if !audioParams.isEmpty {
+        if !effectiveAudioParams.isEmpty {
             let mix = AVMutableAudioMix()
-            mix.inputParameters = audioParams
+            mix.inputParameters = effectiveAudioParams
             audioMix = mix
         }
 
@@ -473,22 +516,30 @@ enum VideoEditCompositionBuilder {
         renderSize: CGSize,
         clip: EditClip,
         isOverlay: Bool
-    ) -> (transform: CGAffineTransform, cropRect: CGRect?) {
+    ) -> (transform: CGAffineTransform, cropRect: CGRect?, geometry: ClipGeometry?) {
         let bounds = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let display = CGSize(width: abs(bounds.width), height: abs(bounds.height))
-        guard display.width > 0, display.height > 0 else { return (.identity, nil) }
+        guard display.width > 0, display.height > 0 else { return (.identity, nil, nil) }
 
         // 显示方向上的裁切区（没裁就是整幅）。
         let hasCrop = !(clip.crop?.isEmpty ?? true)
         let source = clip.crop.flatMap { $0.isEmpty ? nil : $0.rect(in: display) }
             ?? CGRect(origin: .zero, size: display)
+        let geometry = ClipGeometry(
+            preferredTransform: preferredTransform,
+            boundsOrigin: CGPoint(x: bounds.minX, y: bounds.minY),
+            sourceRect: source
+        )
 
         // 摆放框：placement 或按裁后宽高比的默认布局。
         // 注意别用 clip.defaultPlacement —— 那个基于 probe 的 displaySize，
         // 和这里从源轨实测的尺寸可能差一两个像素，两边要用同一份。
         let target: CGRect
-        if let placement = clip.placement {
-            target = placement.frame(in: renderSize)
+        if clip.isAnimated || clip.placement != nil {
+            // 动画段（以及摆过的段）统一走归一化摆放：和预览里的交互框
+            // 完全同一套换算，动画哪个分量没打关键帧就用它的静态/默认值。
+            target = clip.animatedPlacement(atTimeline: clip.timelineStart, canvas: renderSize, isOverlay: isOverlay)
+                .frame(in: renderSize)
         } else if isOverlay {
             let scale = renderSize.width * clip.overlayFraction / source.width
             let size = CGSize(width: source.width * scale, height: source.height * scale)
@@ -509,27 +560,13 @@ enum VideoEditCompositionBuilder {
             )
         }
 
-        var transform = preferredTransform
-            .concatenating(CGAffineTransform(translationX: -bounds.minX, y: -bounds.minY))
-            .concatenating(CGAffineTransform(translationX: -source.minX, y: -source.minY))
-            .concatenating(CGAffineTransform(
-                scaleX: target.width / source.width * (clip.flippedHorizontally ? -1 : 1),
-                y: target.height / source.height * (clip.flippedVertically ? -1 : 1)
-            ))
-        if clip.flippedHorizontally || clip.flippedVertically {
-            transform = transform.concatenating(CGAffineTransform(
-                translationX: clip.flippedHorizontally ? target.width : 0,
-                y: clip.flippedVertically ? target.height : 0
-            ))
-        }
-        if abs(clip.rotationDegrees) > 0.01 {
-            let radians = clip.rotationDegrees * .pi / 180
-            transform = transform
-                .concatenating(CGAffineTransform(translationX: -target.width / 2, y: -target.height / 2))
-                .concatenating(CGAffineTransform(rotationAngle: radians))
-                .concatenating(CGAffineTransform(translationX: target.width / 2, y: target.height / 2))
-        }
-        transform = transform.concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+        let transform = placedTransform(
+            geometry: geometry,
+            target: target,
+            rotationDegrees: clip.rotationDegrees,
+            flippedHorizontally: clip.flippedHorizontally,
+            flippedVertically: clip.flippedVertically
+        )
 
         // 裁切矩形换算回自然坐标：显示矩形先挪回包围盒位置，再逆着源旋转变换。
         var cropRect: CGRect?
@@ -539,7 +576,62 @@ enum VideoEditCompositionBuilder {
                 .applying(preferredTransform.inverted())
                 .standardized
         }
-        return (transform, cropRect)
+        return (transform, cropRect, clip.isAnimated ? geometry : nil)
+    }
+
+    /// 给定摆放框和旋转角，算完整变换（几何量固定，动画每片重算时只换这两个）。
+    private static func placedTransform(
+        geometry: ClipGeometry,
+        target: CGRect,
+        rotationDegrees: Double,
+        flippedHorizontally: Bool,
+        flippedVertically: Bool
+    ) -> CGAffineTransform {
+        let source = geometry.sourceRect
+        guard source.width > 0, source.height > 0, target.width > 0, target.height > 0 else {
+            return .identity
+        }
+        var transform = geometry.preferredTransform
+            .concatenating(CGAffineTransform(translationX: -geometry.boundsOrigin.x, y: -geometry.boundsOrigin.y))
+            .concatenating(CGAffineTransform(translationX: -source.minX, y: -source.minY))
+            .concatenating(CGAffineTransform(
+                scaleX: target.width / source.width * (flippedHorizontally ? -1 : 1),
+                y: target.height / source.height * (flippedVertically ? -1 : 1)
+            ))
+        if flippedHorizontally || flippedVertically {
+            transform = transform.concatenating(CGAffineTransform(
+                translationX: flippedHorizontally ? target.width : 0,
+                y: flippedVertically ? target.height : 0
+            ))
+        }
+        if abs(rotationDegrees) > 0.01 {
+            let radians = rotationDegrees * .pi / 180
+            transform = transform
+                .concatenating(CGAffineTransform(translationX: -target.width / 2, y: -target.height / 2))
+                .concatenating(CGAffineTransform(rotationAngle: radians))
+                .concatenating(CGAffineTransform(translationX: target.width / 2, y: target.height / 2))
+        }
+        return transform.concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
+    }
+
+    /// 动画段在某时刻的完整变换（摆放框 + 旋转都按关键帧取值）。
+    private static func animatedTransform(
+        _ item: PlacedClip,
+        geometry: ClipGeometry,
+        at timelineTime: Double,
+        renderSize: CGSize
+    ) -> CGAffineTransform {
+        let clamped = min(max(timelineTime, item.start), item.end)
+        let target = item.clip
+            .animatedPlacement(atTimeline: clamped, canvas: renderSize, isOverlay: item.isOverlay)
+            .frame(in: renderSize)
+        return placedTransform(
+            geometry: geometry,
+            target: target,
+            rotationDegrees: item.clip.animatedRotation(atTimeline: clamped),
+            flippedHorizontally: item.clip.flippedHorizontally,
+            flippedVertically: item.clip.flippedVertically
+        )
     }
 
     /// 剪辑范围内的恒定音量；转场重叠区做交叉淡变。
@@ -596,6 +688,7 @@ enum VideoEditCompositionBuilder {
                 boundaries.insert(item.end - fadeOut.duration)
                 boundaries.insert(item.end - fadeOut.duration / 2)
             }
+            addAnimationBoundaries(for: item, into: &boundaries)
         }
         let times = boundaries.filter { $0 >= 0 && $0 <= totalDuration }.sorted()
 
@@ -622,7 +715,21 @@ enum VideoEditCompositionBuilder {
             var layers: [AVMutableVideoCompositionLayerInstruction] = []
             for item in active {
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: item.track)
-                layer.setTransform(item.transform, at: time(sliceStart))
+                if let geometry = item.geometry, item.clip.isAnimated {
+                    let fromTransform = animatedTransform(item, geometry: geometry, at: sliceStart, renderSize: renderSize)
+                    let toTransform = animatedTransform(item, geometry: geometry, at: sliceEnd, renderSize: renderSize)
+                    if fromTransform == toTransform {
+                        layer.setTransform(fromTransform, at: time(sliceStart))
+                    } else {
+                        layer.setTransformRamp(
+                            fromStart: fromTransform,
+                            toEnd: toTransform,
+                            timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+                        )
+                    }
+                } else {
+                    layer.setTransform(item.transform, at: time(sliceStart))
+                }
                 if let crop = item.cropRect {
                     layer.setCropRectangle(crop, at: time(sliceStart))
                 }
@@ -637,60 +744,99 @@ enum VideoEditCompositionBuilder {
         return videoComposition
     }
 
+    /// 动画段的额外切片边界：位置/缩放/不透明度的斜坡本身是精确线性，
+    /// 只要在每个关键帧处断片；旋转斜坡是矩阵线性插值（走弦不走弧，角度大了
+    /// 明显缩小变形），相邻帧之间按 ≤6°/片加密；不透明度动画和转场衰减相乘
+    /// 是二次曲线，斜坡只会线性，转场窗口内按 0.1s 加密补齐。
+    private static func addAnimationBoundaries(for item: PlacedClip, into boundaries: inout Set<Double>) {
+        guard let animation = item.clip.animation, !animation.isEmpty else { return }
+        let clip = item.clip
+
+        func insert(_ timelineTime: Double) {
+            if timelineTime > item.start + 0.0005, timelineTime < item.end - 0.0005 {
+                boundaries.insert(timelineTime)
+            }
+        }
+
+        for sourceTime in animation.allKeyTimes {
+            insert(clip.timelineTime(atSource: sourceTime))
+        }
+
+        let rotationKeys = animation.rotation.keys
+        if rotationKeys.count >= 2 {
+            for index in 1..<rotationKeys.count {
+                let a = rotationKeys[index - 1]
+                let b = rotationKeys[index]
+                // 单段最多 400 片：十几圈的疯转宁可略糙，别把指令表撑爆。
+                let steps = min(400, Int((abs(b.value - a.value) / 6).rounded(.up)))
+                guard steps > 1 else { continue }
+                for step in 1..<steps {
+                    let sourceTime = a.time + (b.time - a.time) * Double(step) / Double(steps)
+                    insert(clip.timelineTime(atSource: sourceTime))
+                }
+            }
+        }
+
+        if !animation.opacity.isEmpty {
+            var windows: [(Double, Double)] = []
+            if let fadeIn = item.fadeIn { windows.append((item.start, item.start + fadeIn.duration)) }
+            if let fadeOut = item.fadeOut { windows.append((item.end - fadeOut.duration, item.end)) }
+            for window in windows {
+                var t = window.0
+                while t < window.1 {
+                    insert(t)
+                    t += 0.1
+                }
+            }
+        }
+    }
+
     /// 一片时间里这段画面的透明度。转场的淡入淡出斜坡整体乘上剪辑自己的
-    /// 不透明度（Transform 面板的 Opacity），两套互不干扰。
+    /// 不透明度（Transform 面板的 Opacity，可能带关键帧），两套互不干扰。
     private static func applyOpacity(
         _ layer: AVMutableVideoCompositionLayerInstruction,
         item: PlacedClip,
         sliceStart: Double,
         sliceEnd: Double
     ) {
-        let base = Float(min(max(item.clip.opacity, 0), 1))
-        // 淡入
+        // 切片边界包含了所有折点（淡变起止/半程、关键帧、加密点），所以片内
+        // 两个通道都是线性，端点求值就能精确重建整片；乘积的二次误差由
+        // 0.1s 加密压到不可见。
+        let from = fadeFactor(item: item, at: sliceStart)
+            * Float(item.clip.animatedOpacity(atTimeline: min(max(sliceStart, item.start), item.end)))
+        let to = fadeFactor(item: item, at: sliceEnd)
+            * Float(item.clip.animatedOpacity(atTimeline: min(max(sliceEnd, item.start), item.end)))
+        if abs(from - to) < 0.0005 {
+            layer.setOpacity(from, at: time(sliceStart))
+        } else {
+            layer.setOpacityRamp(
+                fromStartOpacity: from, toEndOpacity: to,
+                timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+            )
+        }
+    }
+
+    /// 转场淡入淡出在某时刻的衰减系数（0…1，片内线性）。
+    private static func fadeFactor(item: PlacedClip, at timelineTime: Double) -> Float {
+        var factor = 1.0
         if let fadeIn = item.fadeIn {
             let fadeStart = fadeIn.delayedHalf ? item.start + fadeIn.duration / 2 : item.start
             let fadeEnd = item.start + fadeIn.duration
-            if sliceStart < fadeEnd, sliceEnd > item.start {
-                if sliceStart < fadeStart {
-                    layer.setOpacity(0, at: time(sliceStart))
-                }
-                if sliceEnd > fadeStart, sliceStart < fadeEnd {
-                    let rampStart = max(sliceStart, fadeStart)
-                    let rampEnd = min(sliceEnd, fadeEnd)
-                    if rampEnd > rampStart {
-                        let from = Float((rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
-                        let to = Float((rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
-                        layer.setOpacityRamp(
-                            fromStartOpacity: from, toEndOpacity: to,
-                            timeRange: CMTimeRange(start: time(rampStart), end: time(rampEnd))
-                        )
-                    }
-                }
-                return
+            if timelineTime <= fadeStart {
+                factor = 0
+            } else if timelineTime < fadeEnd {
+                factor = min(factor, (timelineTime - fadeStart) / max(0.001, fadeEnd - fadeStart))
             }
         }
-        // 淡出
         if let fadeOut = item.fadeOut {
             let fadeStart = item.end - fadeOut.duration
             let fadeEnd = fadeOut.earlyHalf ? item.end - fadeOut.duration / 2 : item.end
-            if sliceEnd > fadeStart, sliceStart < item.end {
-                if sliceStart >= fadeEnd {
-                    layer.setOpacity(0, at: time(sliceStart))
-                    return
-                }
-                let rampStart = max(sliceStart, fadeStart)
-                let rampEnd = min(sliceEnd, fadeEnd)
-                if rampEnd > rampStart {
-                    let from = Float(1 - (rampStart - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
-                    let to = Float(1 - (rampEnd - fadeStart) / max(0.001, fadeEnd - fadeStart)) * base
-                    layer.setOpacityRamp(
-                        fromStartOpacity: from, toEndOpacity: to,
-                        timeRange: CMTimeRange(start: time(rampStart), end: time(rampEnd))
-                    )
-                }
-                return
+            if timelineTime >= fadeEnd {
+                factor = 0
+            } else if timelineTime > fadeStart {
+                factor = min(factor, 1 - (timelineTime - fadeStart) / max(0.001, fadeEnd - fadeStart))
             }
         }
-        layer.setOpacity(base, at: time(sliceStart))
+        return Float(min(max(factor, 0), 1))
     }
 }

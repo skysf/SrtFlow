@@ -372,6 +372,9 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var flippedVertically: Bool
     /// 四边裁切；nil = 不裁。
     var crop: ClipCrop?
+    /// 关键帧动画（位置/缩放/旋转/不透明度）；nil = 无。类型与取值见
+    /// VideoEditAnimation.swift。
+    var animation: ClipAnimation?
 
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
@@ -403,6 +406,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         flippedHorizontally: Bool = false,
         flippedVertically: Bool = false,
         crop: ClipCrop? = nil,
+        animation: ClipAnimation? = nil,
         info: MediaInfo? = nil,
         audioAssetDuration: Double? = nil,
         stillImageURL: URL? = nil
@@ -427,6 +431,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.flippedHorizontally = flippedHorizontally
         self.flippedVertically = flippedVertically
         self.crop = crop
+        self.animation = animation
         self.info = info
         self.audioAssetDuration = audioAssetDuration
         self.stillImageURL = stillImageURL
@@ -454,6 +459,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var hasVisualTransform: Bool {
         placement != nil || abs(rotationDegrees) > 0.01 || opacity < 0.999
             || flippedHorizontally || flippedVertically || !(crop?.isEmpty ?? true)
+            || isAnimated
     }
 
     /// 这段的画面把整个画布**盖满且完全不透明**吗。
@@ -461,9 +467,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 叠化的「后段垫底、前段淡出」路径只有在接缝两侧都满足这个条件时才逐像素
     /// 精确等于 xfade dissolve —— 判定条件必须是它，不能拿 `hasVisualTransform`
     /// 凑数：仅翻转（甚至放大出画布的摆放）照样满幅不透明，走近似路径纯属
-    /// 误伤（白闪变暗）。旋转保守地一律当不满幅。
+    /// 误伤（白闪变暗）。旋转保守地一律当不满幅；带关键帧动画的段同样保守
+    /// 走近似路径（逐时刻判定不值得）。
     func coversCanvasOpaquely(canvas: CGSize, isOverlay: Bool) -> Bool {
-        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01 else { return false }
+        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01, !isAnimated else { return false }
         let frame = resolvedPlacement(canvas: canvas, isOverlay: isOverlay).frame(in: canvas)
         return frame.minX <= 0.5 && frame.minY <= 0.5
             && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
@@ -726,11 +733,12 @@ extension TimelineState {
         if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
             sub.mainClips = sub.overlayTracks.removeFirst().clips.map { clip in
                 var promoted = clip
-                // 摆放/旋转/透明度是相对完整画面的，画面不在这次导出里，丢掉；
-                // 裁切和翻转是内容本身的属性，保留。
+                // 摆放/旋转/透明度和它们的动画都是相对完整画面的，画面不在
+                // 这次导出里，丢掉；裁切和翻转是内容本身的属性，保留。
                 promoted.placement = nil
                 promoted.rotationDegrees = 0
                 promoted.opacity = 1
+                promoted.animation = nil
                 return promoted
             }
         }
@@ -874,7 +882,7 @@ extension EditClip: Codable {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
         case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
-        case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop
+        case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
     }
 
     init(from decoder: Decoder) throws {
@@ -901,6 +909,7 @@ extension EditClip: Codable {
             flippedHorizontally: try c.decodeIfPresent(Bool.self, forKey: .flippedHorizontally) ?? false,
             flippedVertically: try c.decodeIfPresent(Bool.self, forKey: .flippedVertically) ?? false,
             crop: try c.decodeIfPresent(ClipCrop.self, forKey: .crop),
+            animation: try c.decodeIfPresent(ClipAnimation.self, forKey: .animation),
             info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
             audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
             stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
@@ -931,6 +940,7 @@ extension EditClip: Codable {
         try c.encode(flippedHorizontally, forKey: .flippedHorizontally)
         try c.encode(flippedVertically, forKey: .flippedVertically)
         try c.encodeIfPresent(crop, forKey: .crop)
+        try c.encodeIfPresent(isAnimated ? animation : nil, forKey: .animation)
         try c.encodeIfPresent(info, forKey: .info)
         try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
         try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)

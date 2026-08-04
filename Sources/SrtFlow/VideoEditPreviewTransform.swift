@@ -54,7 +54,7 @@ struct ClipTransformCanvas: View {
 
             if let selection = selectedVisibleClip() {
                 let rect = selection.clip
-                    .resolvedPlacement(canvas: boxSize, isOverlay: selection.isOverlay)
+                    .animatedPlacement(atTimeline: clock.time, canvas: boxSize, isOverlay: selection.isOverlay)
                     .frame(in: boxSize)
                 ResizableFrameBox(
                     rect: rect,
@@ -62,7 +62,7 @@ struct ClipTransformCanvas: View {
                     handles: FrameHandle.all,
                     keepAspectOnCorners: true,
                     movable: true,
-                    rotationDegrees: selection.clip.rotationDegrees,
+                    rotationDegrees: selection.clip.animatedRotation(atTimeline: clock.time),
                     onTap: { location in selectClip(at: location) },
                     onChange: { newRect in
                         project.livePlace(
@@ -87,10 +87,10 @@ struct ClipTransformCanvas: View {
     private func selectClip(at location: CGPoint) {
         let hit = visibleClips.first { visible in
             let rect = visible.clip
-                .resolvedPlacement(canvas: boxSize, isOverlay: visible.isOverlay)
+                .animatedPlacement(atTimeline: clock.time, canvas: boxSize, isOverlay: visible.isOverlay)
                 .frame(in: boxSize)
             // 旋转过的段：把点反着转回未旋转坐标系再判定。
-            let degrees = visible.clip.rotationDegrees
+            let degrees = visible.clip.animatedRotation(atTimeline: clock.time)
             guard abs(degrees) > 0.01 else { return rect.contains(location) }
             let angle = -degrees * .pi / 180
             let dx = location.x - rect.midX

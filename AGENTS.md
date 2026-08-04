@@ -60,6 +60,9 @@
 - [preview-free-transform.md](docs/architecture/preview-free-transform.md) —
   预览区变换框与 `ClipPlacement`：归一化摆放、九宫格互斥、预览/导出两条管线
   同账（导出用 overlay 不用 pad）；**改预览合成/导出滤镜图/变换框前必读**
+- [keyframe-animation.md](docs/architecture/keyframe-animation.md) —
+  关键帧动画：源时间锚定（变速/分割自动正确）、切片规则（旋转 ≤6°/片）、
+  导出走 AVFoundation 预渲染 + 画中画 fill+matte；**改动画/预渲染前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -83,6 +86,9 @@
 - [2026-08-04-transform-review.md](docs/bugfixes/2026-08-04-transform-review.md) —
   Transform 评审返工三连：加字段必须升 formatVersion（旧版拒开胜过静默毁字段）、
   叠化「垫底=精确」的前提被变换破坏、缓存文件要「临时名→校验→原子替换」
+- [2026-08-04-prerender-avfoundation-pitfalls.md](docs/bugfixes/2026-08-04-prerender-avfoundation-pitfalls.md) —
+  预渲染两坑：空轨在 AVPlayer 能播但导出报 "Operation Stopped"；
+  backgroundColor 的 alpha 被忽略 → 带透明的产物走 fill+matte 双渲染
 
 ## 根目录既有文档
 

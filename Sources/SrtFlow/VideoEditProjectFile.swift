@@ -10,14 +10,14 @@ struct VideoEditProjectFile: Codable {
     /// 就是让旧版拒绝打开新工程，而不是打开后在下一次自动保存时把不认识的
     /// 字段悄悄删光（新版读旧版永远宽容，随便开）。
     /// 版本史：v1 首版；v2 自由摆放（placement）+ Transform
-    /// （rotationDegrees/opacity/flip/crop）。
+    /// （rotationDegrees/opacity/flip/crop）；v3 关键帧动画（animation）。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
     /// 时间线里每个素材路径配一份定位信息，素材被改名/移动后靠它找回来。
     var media: [MediaRecord]
 
-    static let currentFormatVersion = 2
+    static let currentFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
     private enum CodingKeys: String, CodingKey {

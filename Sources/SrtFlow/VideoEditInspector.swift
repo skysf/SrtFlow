@@ -5,6 +5,8 @@ import SrtFlowCore
 /// 形状给颜色/线宽/大小，什么都没选给项目总览。
 struct VideoEditInspectorView: View {
     @ObservedObject var project: VideoEditProject
+    /// 必须直接订阅时钟：关键帧的 ◇ 实心态和数值都跟着播放头走。
+    @ObservedObject var clock: PlayerClock
     var onExport: () -> Void = {}
 
     var body: some View {
@@ -234,60 +236,98 @@ struct VideoEditInspectorView: View {
 
     /// 位置/缩放/旋转/不透明度/裁切/翻转，每行可单独复原，标题行整区复原。
     /// 数值都是「按 Enter/失焦提交」的离散修改，一次一步撤销。
+    /// 前四行带 ‹ ◇ ›：播放头处打/删关键帧、跳上下帧；行里有帧后改值自动落帧。
     @ViewBuilder
     private func transformSection(_ clip: EditClip) -> some View {
         let live = project.state.clip(with: clip.id) ?? clip
         let isOverlay = project.isOverlayClip(clip.id)
-        let resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+        let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
         let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
 
         Divider()
         VStack(alignment: .leading, spacing: 7) {
-            HStack {
+            HStack(spacing: 5) {
                 Text("Transform").font(.callout).fontWeight(.medium)
                 Spacer()
+                keyframeCluster(live, nil)
                 resetButton(disabled: !live.hasVisualTransform, help: "Reset all transform adjustments") {
                     project.resetTransform(clip.id)
                 }
             }
 
-            transformRow("Position", isDefault: live.placement == nil, reset: {
-                project.setPlacement(clip.id, ClipPlacement(
-                    centerX: fallback.centerX,
-                    centerY: fallback.centerY,
-                    width: resolved.width,
-                    height: resolved.height
-                ))
-            }) {
+            transformRow(
+                "Position",
+                isDefault: live.placement == nil && !project.hasKeyframes(live, .position),
+                reset: {
+                    if project.hasKeyframes(live, .position) {
+                        project.clearKeyframes(clip.id, .position)
+                    } else {
+                        project.setPlacement(clip.id, ClipPlacement(
+                            centerX: fallback.centerX,
+                            centerY: fallback.centerY,
+                            width: resolved.width,
+                            height: resolved.height
+                        ))
+                    }
+                },
+                keyframes: (live, .position)
+            ) {
                 Text("X").font(.caption2).foregroundStyle(.tertiary)
-                numberField(positionBinding(clip, x: true), width: 46)
+                numberField(positionBinding(clip, x: true), width: 44)
                 Text("Y").font(.caption2).foregroundStyle(.tertiary)
-                numberField(positionBinding(clip, x: false), width: 46)
+                numberField(positionBinding(clip, x: false), width: 44)
             }
 
-            transformRow("Scale", isDefault: live.placement == nil, reset: {
-                project.setPlacement(clip.id, ClipPlacement(
-                    centerX: resolved.centerX,
-                    centerY: resolved.centerY,
-                    width: fallback.width,
-                    height: fallback.height
-                ))
-            }) {
-                numberField(scaleBinding(clip), width: 46)
+            transformRow(
+                "Scale",
+                isDefault: live.placement == nil && !project.hasKeyframes(live, .scale),
+                reset: {
+                    if project.hasKeyframes(live, .scale) {
+                        project.clearKeyframes(clip.id, .scale)
+                    } else {
+                        project.setPlacement(clip.id, ClipPlacement(
+                            centerX: resolved.centerX,
+                            centerY: resolved.centerY,
+                            width: fallback.width,
+                            height: fallback.height
+                        ))
+                    }
+                },
+                keyframes: (live, .scale)
+            ) {
+                numberField(scaleBinding(clip), width: 44)
                 Text("%").font(.caption2).foregroundStyle(.tertiary)
             }
 
-            transformRow("Rotation", isDefault: abs(live.rotationDegrees) < 0.01, reset: {
-                project.setRotation(clip.id, degrees: 0)
-            }) {
-                numberField(rotationBinding(clip), width: 46, fractions: 1)
+            transformRow(
+                "Rotation",
+                isDefault: abs(live.rotationDegrees) < 0.01 && !project.hasKeyframes(live, .rotation),
+                reset: {
+                    if project.hasKeyframes(live, .rotation) {
+                        project.clearKeyframes(clip.id, .rotation)
+                    } else {
+                        project.setRotation(clip.id, degrees: 0)
+                    }
+                },
+                keyframes: (live, .rotation)
+            ) {
+                numberField(rotationBinding(clip), width: 44, fractions: 1)
                 Text("°").font(.caption2).foregroundStyle(.tertiary)
             }
 
-            transformRow("Opacity", isDefault: live.opacity > 0.999, reset: {
-                project.setClipOpacity(clip.id, 1)
-            }) {
-                numberField(opacityBinding(clip), width: 46)
+            transformRow(
+                "Opacity",
+                isDefault: live.opacity > 0.999 && !project.hasKeyframes(live, .opacity),
+                reset: {
+                    if project.hasKeyframes(live, .opacity) {
+                        project.clearKeyframes(clip.id, .opacity)
+                    } else {
+                        project.setClipOpacity(clip.id, 1)
+                    }
+                },
+                keyframes: (live, .opacity)
+            ) {
+                numberField(opacityBinding(clip), width: 44)
                 Text("%").font(.caption2).foregroundStyle(.tertiary)
             }
 
@@ -312,11 +352,12 @@ struct VideoEditInspectorView: View {
         }
     }
 
-    /// 一行：左标题、右控件、行尾复原。
+    /// 一行：左标题、右控件、（可选）关键帧簇、行尾复原。
     private func transformRow(
         _ title: LocalizedStringKey,
         isDefault: Bool,
         reset: @escaping () -> Void,
+        keyframes: (EditClip, VideoEditProject.KeyframeProperty)? = nil,
         @ViewBuilder content: () -> some View
     ) -> some View {
         HStack(spacing: 5) {
@@ -324,8 +365,57 @@ struct VideoEditInspectorView: View {
                 .frame(width: 58, alignment: .leading)
             Spacer(minLength: 2)
             content()
+            if let (clip, property) = keyframes {
+                keyframeCluster(clip, property)
+            }
             resetButton(disabled: isDefault, help: "Reset", action: reset)
         }
+    }
+
+    /// ‹ ◇ ›：跳上一帧 / 打·删帧 / 跳下一帧。property nil 是标题行的总控
+    /// （四行齐打，跳帧按全轨并集）。
+    private func keyframeCluster(
+        _ clip: EditClip,
+        _ property: VideoEditProject.KeyframeProperty?
+    ) -> some View {
+        let inside = project.playheadInsideClip(clip)
+        let hasKeys = property.map { project.hasKeyframes(clip, $0) }
+            ?? VideoEditProject.KeyframeProperty.allCases.contains { project.hasKeyframes(clip, $0) }
+        let onKey = property.map { project.isOnKeyframe(clip, $0) }
+            ?? VideoEditProject.KeyframeProperty.allCases.contains { project.isOnKeyframe(clip, $0) }
+        return HStack(spacing: 1) {
+            Button {
+                project.seekToAdjacentKeyframe(clip.id, property, forward: false)
+            } label: {
+                Image(systemName: "chevron.left")
+            }
+            .disabled(!hasKeys)
+            .help("Previous keyframe")
+
+            Button {
+                if let property {
+                    project.toggleKeyframe(clip.id, property)
+                } else {
+                    project.toggleAllKeyframes(clip.id)
+                }
+            } label: {
+                Image(systemName: onKey ? "diamond.fill" : "diamond")
+                    .foregroundStyle(onKey ? Color.teal : (hasKeys ? Color.primary : Color.secondary))
+            }
+            .disabled(!inside)
+            .help("Add or remove a keyframe at the playhead")
+
+            Button {
+                project.seekToAdjacentKeyframe(clip.id, property, forward: true)
+            } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(!hasKeys)
+            .help("Next keyframe")
+        }
+        .buttonStyle(.borderless)
+        .controlSize(.mini)
+        .font(.system(size: 9))
     }
 
     private func resetButton(disabled: Bool, help: LocalizedStringKey, action: @escaping () -> Void) -> some View {
@@ -423,11 +513,13 @@ struct VideoEditInspectorView: View {
     // MARK: Transform 绑定（离散提交）
 
     /// 位置：摆放框中心相对画布中心的偏移，按输出像素计。
+    /// 读写都按播放头此刻的**生效值**（有动画时就是插值），落帧交给 setPlacement。
     private func positionBinding(_ clip: EditClip, x: Bool) -> Binding<Double> {
         Binding(
             get: {
                 guard let live = project.state.clip(with: clip.id) else { return 0 }
-                let resolved = live.resolvedPlacement(
+                let resolved = live.animatedPlacement(
+                    atTimeline: clock.time,
                     canvas: project.renderSize,
                     isOverlay: project.isOverlayClip(clip.id)
                 )
@@ -437,7 +529,8 @@ struct VideoEditInspectorView: View {
             },
             set: { newValue in
                 guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
-                var resolved = live.resolvedPlacement(
+                var resolved = live.animatedPlacement(
+                    atTimeline: clock.time,
                     canvas: project.renderSize,
                     isOverlay: project.isOverlayClip(clip.id)
                 )
@@ -457,14 +550,14 @@ struct VideoEditInspectorView: View {
             get: {
                 guard let live = project.state.clip(with: clip.id) else { return 100 }
                 let isOverlay = project.isOverlayClip(clip.id)
-                let resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
                 let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
                 return resolved.width / max(fallback.width, 0.0001) * 100
             },
             set: { newValue in
                 guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
                 let isOverlay = project.isOverlayClip(clip.id)
-                var resolved = live.resolvedPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                var resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
                 let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
                 let clamped = min(max(newValue, 1), 400)
                 let ratio = fallback.width * clamped / 100 / max(resolved.width, 0.0001)
@@ -477,14 +570,18 @@ struct VideoEditInspectorView: View {
 
     private func rotationBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
-            get: { project.state.clip(with: clip.id)?.rotationDegrees ?? clip.rotationDegrees },
+            get: {
+                (project.state.clip(with: clip.id) ?? clip).animatedRotation(atTimeline: clock.time)
+            },
             set: { project.setRotation(clip.id, degrees: $0) }
         )
     }
 
     private func opacityBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
-            get: { (project.state.clip(with: clip.id)?.opacity ?? clip.opacity) * 100 },
+            get: {
+                (project.state.clip(with: clip.id) ?? clip).animatedOpacity(atTimeline: clock.time) * 100
+            },
             set: { project.setClipOpacity(clip.id, $0 / 100) }
         )
     }

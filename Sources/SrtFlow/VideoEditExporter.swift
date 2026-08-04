@@ -37,7 +37,7 @@ final class VideoEditExporter: ObservableObject {
 
         Task {
             do {
-                let plan = try VideoEditExportGraph.plan(
+                let plan = try await VideoEditExportGraph.plan(
                     state: state,
                     settings: settings,
                     subtitleStyle: subtitleStyle,
@@ -125,7 +125,7 @@ enum VideoEditExportGraph {
         subtitleStyle: BurnInStyle,
         subtitleFontURL: URL?,
         output: URL
-    ) throws -> Plan {
+    ) async throws -> Plan {
         // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
         // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
         // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
@@ -175,6 +175,28 @@ enum VideoEditExportGraph {
             workspace = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SrtFlow-Edit-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        }
+
+        // 关键帧动画的段：先用预览同一套合成渲成中间片（AnimatedClipPrerenderer），
+        // ffmpeg 图里当普通素材吃。主轨一条黑底 422；画中画 fill+matte 两条
+        //（alphamerge 合回带 alpha 的流），细节见 AnimatedClipPrerenderer。
+        enum Prerendered {
+            case main(URL)
+            case overlay(fill: URL, matte: URL)
+        }
+        var prerendered: [UUID: Prerendered] = [:]
+        for clip in mainVisible where clip.isAnimated {
+            prerendered[clip.id] = .main(try await AnimatedClipPrerenderer.renderMain(
+                clip: clip, renderSize: renderSize, into: workspace
+            ))
+        }
+        for lane in overlayLanes {
+            for clip in lane.clips where clip.isAnimated && !clip.needsStillConversion {
+                let pair = try await AnimatedClipPrerenderer.renderOverlay(
+                    clip: clip, renderSize: renderSize, into: workspace
+                )
+                prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
+            }
         }
 
         // 形状 → 整幅透明 PNG。
@@ -280,7 +302,14 @@ enum VideoEditExportGraph {
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
-                if clip.hasVisualTransform {
+                if case .main(let intermediate) = prerendered[clip.id] {
+                    // 关键帧动画的段：中间片就是压平好的整段画面（黑底、画布
+                    // 尺寸、0 起点、时长=段长），直接进拼接链。声音仍走原素材。
+                    let preSource = input(for: intermediate)
+                    filters.append(
+                        "[\(preSource):v]fps=30,setsar=1,format=yuv420p[\(vLabel)]"
+                    )
+                } else if clip.hasVisualTransform {
                     // 摆放/旋转/裁切/翻转/透明度任一非默认的主轨段：
                     // 变换链处理后叠到黑底画布上。用 overlay 而不是 pad ——
                     // 框可以比画布大、可以探出边界，旋转还会撑大输出框。
@@ -365,30 +394,48 @@ enum VideoEditExportGraph {
         for lane in overlayLanes {
             for clip in lane.clips where !clip.needsStillConversion {
                 let source = input(for: clip.sourceURL)
-                let end = clip.sourceStart + clip.sourceDuration
                 let scaled = nextLabel("ov")
-                // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
-                let chain: String
                 let x: String
                 let y: String
-                if clip.hasVisualTransform {
-                    let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
-                    chain = transformed.chain
-                    x = transformed.overlayX
-                    y = transformed.overlayY
+                if case .overlay(let fill, let matte) = prerendered[clip.id] {
+                    // 关键帧动画的画中画：fill（内容压黑底）+ matte（白块蒙版）
+                    // alphamerge 合回带 alpha 的整幅画布，原位叠放。
+                    // 位置/缩放/旋转/不透明度全在两条中间片里烘焙好了。
+                    let fillSource = input(for: fill)
+                    let matteSource = input(for: matte)
+                    let fillLabel = nextLabel("kf")
+                    let matteLabel = nextLabel("km")
+                    filters.append("[\(fillSource):v]fps=30,setsar=1[\(fillLabel)]")
+                    filters.append("[\(matteSource):v]fps=30,setsar=1,format=gray[\(matteLabel)]")
+                    filters.append(
+                        "[\(fillLabel)][\(matteLabel)]alphamerge,format=rgba," +
+                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                    )
+                    x = "0"
+                    y = "0"
                 } else {
-                    let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
-                    chain = "scale=\(overlayWidth):-2,setsar=1"
-                    let inset = Int(renderSize.width * 0.02)
-                    x = xExpression(for: clip.overlayAnchor, inset: inset)
-                    y = yExpression(for: clip.overlayAnchor, inset: inset)
+                    // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
+                    let end = clip.sourceStart + clip.sourceDuration
+                    let chain: String
+                    if clip.hasVisualTransform {
+                        let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
+                        chain = transformed.chain
+                        x = transformed.overlayX
+                        y = transformed.overlayY
+                    } else {
+                        let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
+                        chain = "scale=\(overlayWidth):-2,setsar=1"
+                        let inset = Int(renderSize.width * 0.02)
+                        x = xExpression(for: clip.overlayAnchor, inset: inset)
+                        y = yExpression(for: clip.overlayAnchor, inset: inset)
+                    }
+                    filters.append(
+                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
+                        "\(chain)," +
+                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                    )
                 }
-                filters.append(
-                    "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
-                    "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                    "\(chain)," +
-                    "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
-                )
                 let outV = nextLabel("v")
                 filters.append(
                     "[\(video)][\(scaled)]overlay=x=\(x):y=\(y):eof_action=pass:" +

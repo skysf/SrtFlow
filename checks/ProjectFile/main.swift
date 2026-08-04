@@ -40,6 +40,12 @@ func timeline(mainMedia: [URL], subtitle: URL? = nil) -> TimelineState {
         clip.opacity = 0.8
         clip.flippedHorizontally = true
         clip.crop = ClipCrop(top: 0.1, leading: 0.05)
+        var animation = ClipAnimation()
+        animation.centerX.set(0.3, atSourceTime: 1)
+        animation.centerX.set(0.7, atSourceTime: 3)
+        animation.opacity.set(1, atSourceTime: 0)
+        animation.opacity.set(0.2, atSourceTime: 4)
+        clip.animation = animation
         clip.info = MediaInfo(
             duration: 12,
             displaySize: CGSize(width: 1920, height: 1080),
@@ -90,6 +96,14 @@ do {
         result.timeline.mainClips.first?.crop,
         ClipCrop(top: 0.1, leading: 0.05),
         "四边裁切要存住"
+    )
+    checkEqual(
+        result.timeline.mainClips.first?.animation?.centerX.keys.count, 2,
+        "关键帧轨要存住"
+    )
+    checkEqual(
+        result.timeline.mainClips.first?.animation?.centerX.value(atSourceTime: 2), 0.5,
+        "读回来的关键帧插值要一致"
     )
 }
 
@@ -356,8 +370,49 @@ do {
         "写盘要带当前格式版本"
     )
     check(
-        VideoEditProjectFile.currentFormatVersion >= 2,
-        "带 Transform/placement 字段的格式起码是 v2，旧版才会拒开而不是默默毁字段"
+        VideoEditProjectFile.currentFormatVersion >= 3,
+        "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
+    )
+}
+
+// MARK: - 14. 关键帧锚在源时间：插值、变速、分割语义
+
+do {
+    var track = KeyframeTrack()
+    track.set(10, atSourceTime: 1)
+    track.set(30, atSourceTime: 3)
+    checkEqual(track.value(atSourceTime: 2), 20, "两帧中点线性插值")
+    checkEqual(track.value(atSourceTime: 0), 10, "首帧之前夹紧")
+    checkEqual(track.value(atSourceTime: 9), 30, "末帧之后夹紧")
+    track.set(99, atSourceTime: 3.001)
+    checkEqual(track.keys.count, 2, "半帧内重写是替换不是堆积")
+    checkEqual(track.value(atSourceTime: 3), 99, "替换后取新值")
+    track.remove(atSourceTime: 1)
+    checkEqual(track.keys.count, 1, "按时刻删除")
+
+    // 变速：源锚定 → 时间线映射跟着速度换算。
+    var clip = EditClip(sourceURL: URL(fileURLWithPath: "/m/a.mp4"), sourceDuration: 8, speed: 2, timelineStart: 5)
+    var animation = ClipAnimation()
+    animation.opacity.set(1, atSourceTime: 0)
+    animation.opacity.set(0, atSourceTime: 8)
+    clip.animation = animation
+    // 2 倍速：时间线 5+2=7s 处对应源 4s → 不透明度 0.5。
+    checkEqual(clip.animatedOpacity(atTimeline: 7), 0.5, "变速下按源时间取动画值")
+
+    // 分割语义：两半带同一份轨，接缝处数值连续。
+    var state = TimelineState()
+    state.mainClips = [clip]
+    // 手工模拟 split 的右半构造（split 是 VideoEditProject 的私有函数，这里
+    // 只验证「源锚定 ⇒ 连续」这条性质本身）。
+    var left = clip
+    left.sourceDuration = 4
+    var right = clip
+    right.sourceStart = 4
+    right.sourceDuration = 4
+    right.timelineStart = 7
+    checkEqual(
+        left.animatedOpacity(atTimeline: 7), right.animatedOpacity(atTimeline: 7),
+        "分割接缝两侧动画值必须连续"
     )
 }
 
