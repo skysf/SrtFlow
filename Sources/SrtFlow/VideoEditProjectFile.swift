@@ -6,14 +6,18 @@ import Foundation
 /// 所以工程文件能随便放、随便改名、丢进 iCloud Drive 或 Time Machine，
 /// 文件夹管理交给 Finder，App 里不再自建一套。
 struct VideoEditProjectFile: Codable {
-    /// 格式版本。加带默认值的新字段不用动它；哪天改了不兼容的语义再 +1。
+    /// 格式版本。**加了旧版会静默丢掉的新字段就要 +1** —— 版本闸门的意义
+    /// 就是让旧版拒绝打开新工程，而不是打开后在下一次自动保存时把不认识的
+    /// 字段悄悄删光（新版读旧版永远宽容，随便开）。
+    /// 版本史：v1 首版；v2 自由摆放（placement）+ Transform
+    /// （rotationDegrees/opacity/flip/crop）。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
     /// 时间线里每个素材路径配一份定位信息，素材被改名/移动后靠它找回来。
     var media: [MediaRecord]
 
-    static let currentFormatVersion = 1
+    static let currentFormatVersion = 2
     static let fileExtension = "srtflowproj"
 
     private enum CodingKeys: String, CodingKey {

@@ -4,16 +4,58 @@ import Foundation
 
 /// 预览合成的黑底素材：64×36 的两帧纯黑 H.264，AVAssetWriter 直接生成，
 /// 不依赖 ffmpeg。放在缓存目录，被系统清掉就重新写一个。
-enum BlackBaseVideoFactory {
+///
+/// actor + 单飞：预览重建高频触发，并发进来只允许一个真正去写；生成先落
+/// **唯一命名的临时文件**，写完验证能读出视频轨才原子替换到正式路径 ——
+/// 光看「文件存在」会把并发写到一半的残骸当缓存，绿底就回来了。
+actor BlackBaseVideoFactory {
+    static let shared = BlackBaseVideoFactory()
+
+    private var inFlight: Task<URL?, Never>?
+
     static func videoURL() async -> URL? {
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        await shared.resolve()
+    }
+
+    private func resolve() async -> URL? {
+        let destination = Self.cacheURL
+        if await Self.isUsable(destination) { return destination }
+        if let inFlight { return await inFlight.value }
+        let task = Task { await Self.generate(to: destination) }
+        inFlight = task
+        let result = await task.value
+        inFlight = nil
+        return result
+    }
+
+    private static var cacheURL: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SrtFlowPreview", isDirectory: true)
-        let url = directory.appendingPathComponent("black-base-v1.mp4")
-        if FileManager.default.fileExists(atPath: url.path) { return url }
+            .appendingPathComponent("black-base-v1.mp4")
+    }
+
+    /// 真能当素材用吗：必须读得出视频轨且时长正常，坏文件当场删掉重来。
+    private static func isUsable(_ url: URL) async -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let range = try? await track.load(.timeRange),
+              range.duration.seconds > 0.5 else {
+            try? FileManager.default.removeItem(at: url)
+            return false
+        }
+        return true
+    }
+
+    private static func generate(to destination: URL) async -> URL? {
+        let directory = destination.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let temp = directory.appendingPathComponent("black-base-\(UUID().uuidString).tmp.mp4")
+        // 所有提前退出的分支都不许留半成品。
+        defer { try? FileManager.default.removeItem(at: temp) }
 
         do {
-            let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+            let writer = try AVAssetWriter(outputURL: temp, fileType: .mp4)
             let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
                 AVVideoCodecKey: AVVideoCodecType.h264,
                 AVVideoWidthKey: 64,
@@ -46,17 +88,25 @@ enum BlackBaseVideoFactory {
 
             for seconds in [0.0, 1.0] {
                 while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 5_000_000) }
-                adaptor.append(buffer, withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600))
+                // append 返回 false 就是写失败（Apple 文档明说），不能当没看见。
+                guard adaptor.append(
+                    buffer,
+                    withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600)
+                ) else { return nil }
             }
             input.markAsFinished()
             await writer.finishWriting()
-            guard writer.status == .completed else {
-                try? FileManager.default.removeItem(at: url)
-                return nil
+            guard writer.status == .completed else { return nil }
+
+            // 原子替换到正式路径，最后再验一遍才交出去。
+            if FileManager.default.fileExists(atPath: destination.path) {
+                _ = try FileManager.default.replaceItemAt(destination, withItemAt: temp)
+            } else {
+                try FileManager.default.moveItem(at: temp, to: destination)
             }
-            return url
+            guard await isUsable(destination) else { return nil }
+            return destination
         } catch {
-            try? FileManager.default.removeItem(at: url)
             return nil
         }
     }
@@ -165,9 +215,17 @@ enum VideoEditCompositionBuilder {
                 layer: 0
             )
             if overlapBefore > 0 {
-                // 叠化：后段整场垫在底下，不用淡入。压黑/闪白：后半段才亮起来。
+                // 叠化：后段整场垫在底下不淡入 —— 两侧都是不透明满幅画面时，
+                // 这个叠法逐像素等于导出的 xfade dissolve。压黑/闪白：后半段才亮。
+                //
+                // 但接缝任一侧有画面变换（半透明、旋转透明角、缩小挪位）时，
+                // 「垫底常亮」会让后段从转场第一帧就透出来，而导出是先把每段
+                // 压平到黑底再 dissolve。这种接缝改成双向线性淡变：后段从黑里
+                // 亮起来，贴合导出模型（代价是中点轻微变暗，见架构文档）。
                 if kindBefore != .crossFade {
                     item.fadeIn = (overlapBefore, true)
+                } else if clip.hasVisualTransform || state.mainClips[index - 1].hasVisualTransform {
+                    item.fadeIn = (overlapBefore, false)
                 }
             }
             if overlapAfter > 0 {

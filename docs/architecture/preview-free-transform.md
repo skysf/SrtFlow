@@ -50,6 +50,15 @@ Scale = 相对默认布局宽度的百分比，改动等比乘在当前宽高上
 CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当底 ——
 默认合成器在混合路径上不铺 `backgroundColor`，见
 [2026-08-04-opacity-green-background](../bugfixes/2026-08-04-opacity-green-background.md)。
+工厂是 actor 单飞：唯一临时文件 → 校验 → 原子替换，消费前还要再验一遍，
+「文件存在」不等于「文件可用」。
+
+**叠化 × Transform 的合成模型**：转场语义上作用在**压平到黑底之后**的段上
+（导出就是这么做的：先合黑底再 xfade）。预览的叠化对两侧都是不透明满幅的
+普通段用「后段垫底、前段淡出」—— 逐像素精确等于 dissolve；接缝**任一侧
+`hasVisualTransform`** 时后段改为全程线性淡入（从黑亮起）贴合压平模型，
+残余近似是中点亮度轻微下凹（默认合成器层叠乘法所致）。改这段逻辑前先想清
+「垫底=精确 dissolve」的前提条件是两侧不透明满幅。
 
 ## 交互层（ClipTransformCanvas / ResizableFrameBox）
 

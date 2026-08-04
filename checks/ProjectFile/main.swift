@@ -335,12 +335,30 @@ do {
     }
     check(rejected, "formatVersion 比当前大的工程必须拒绝打开")
 
-    // 当前版本号照常能开。
+    // 旧版本号（v1）照常能开 —— 新版读旧版永远宽容。
     let ok = dir.appendingPathComponent("ok.srtflowproj")
     try Data("""
     { "formatVersion": 1, "timeline": { "mainClips": [] }, "media": [] }
     """.utf8).write(to: ok)
-    check((try? VideoEditProjectIO.load(from: ok)) != nil, "当前版本的工程要能打开")
+    check((try? VideoEditProjectIO.load(from: ok)) != nil, "旧版本（v1）的工程要能打开")
+
+    // 回归：新工程写盘必须带**当前**版本号，且 Transform 字段起码是 v2。
+    // 写成 v1 的话，只认 v1 的旧版会照常打开，然后在下一次自动保存时把
+    // placement/rotation/opacity/flip/crop 全部静默删光。
+    let media = dir.appendingPathComponent("v2.mp4")
+    makeFile(media)
+    let saved = dir.appendingPathComponent("v2.srtflowproj")
+    try VideoEditProjectIO.save(timeline(mainMedia: [media]), to: saved)
+    let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: saved)) as? [String: Any]
+    checkEqual(
+        raw?["formatVersion"] as? Int,
+        VideoEditProjectFile.currentFormatVersion,
+        "写盘要带当前格式版本"
+    )
+    check(
+        VideoEditProjectFile.currentFormatVersion >= 2,
+        "带 Transform/placement 字段的格式起码是 v2，旧版才会拒开而不是默默毁字段"
+    )
 }
 
 // MARK: - 12. 重链接图片之后要重新对静帧

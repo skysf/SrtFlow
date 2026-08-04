@@ -60,6 +60,9 @@
 - [2026-08-04-opacity-green-background.md](docs/bugfixes/2026-08-04-opacity-green-background.md) —
   半透明图层让预览背景变暗绿：默认合成器混合路径不铺 backgroundColor
   （YUV 零填充=绿），修法是垫一条 AVAssetWriter 生成的不透明黑底轨
+- [2026-08-04-transform-review.md](docs/bugfixes/2026-08-04-transform-review.md) —
+  Transform 评审返工三连：加字段必须升 formatVersion（旧版拒开胜过静默毁字段）、
+  叠化「垫底=精确」的前提被变换破坏、缓存文件要「临时名→校验→原子替换」
 
 ## 根目录既有文档
 
