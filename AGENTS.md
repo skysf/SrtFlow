@@ -12,6 +12,24 @@
    案例里链接过去，避免只存在于一次性记录中。
 3. 新增其他文档归入 `docs/` 对应分类目录，并回本文件补一行索引。
 
+## 全局工程原则（动手写代码前先过一遍）
+
+1. **轻量化优先。** 能白嫖 macOS 现成能力（AVFoundation / AppKit / SwiftUI）
+   就不自建，不引第三方依赖；同一个功能有重量级和轻量级两种做法时选轻的，
+   重量级方案（自写合成器、自建文件管理这类）必须先问用户。先例：混合模式
+   因为要自写 Metal 合成器被否、工程的文件管理整个交给 Finder。
+2. **复用优先，抽象克制。** 同一个模式出现**第二次**就抽成共享组件，按仓库
+   现有先例的粒度来（`ResizableFrameBox` 同时服务剪辑和形状、
+   `LenientCodableEnum` 统一宽容解码、`liveApply`/`perform` 统一改动入口）；
+   但别为想象中的将来提前造泛型 —— 有真实的第二个用例再抽象，泛型只用在
+   真正多类型复用的地方（提前抽象既违背轻量化，堆多了还会拖垮 Swift 类型
+   检查）。
+3. **单文件别养大。** 新类型/新功能默认开新文件（按职责命名，先例：
+   `VideoEditPreviewTransform.swift`）；单文件超过 **~800 行**就是警戒线，
+   新代码别再往超标文件里堆，改到超标文件时顺手把职责独立的块拆出去。
+   **不要**为拆而拆地搞一次性大重构。当前超标待瘦身：
+   `VideoEditTimelineView`、`VideoEditProject`、`VideoEditModels`。
+
 ## 构建（docs/build/）
 
 - [build-and-packaging.md](docs/build/build-and-packaging.md) —
