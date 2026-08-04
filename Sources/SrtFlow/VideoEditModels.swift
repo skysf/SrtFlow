@@ -456,6 +456,19 @@ struct EditClip: Identifiable, Hashable, Sendable {
             || flippedHorizontally || flippedVertically || !(crop?.isEmpty ?? true)
     }
 
+    /// 这段的画面把整个画布**盖满且完全不透明**吗。
+    ///
+    /// 叠化的「后段垫底、前段淡出」路径只有在接缝两侧都满足这个条件时才逐像素
+    /// 精确等于 xfade dissolve —— 判定条件必须是它，不能拿 `hasVisualTransform`
+    /// 凑数：仅翻转（甚至放大出画布的摆放）照样满幅不透明，走近似路径纯属
+    /// 误伤（白闪变暗）。旋转保守地一律当不满幅。
+    func coversCanvasOpaquely(canvas: CGSize, isOverlay: Bool) -> Bool {
+        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01 else { return false }
+        let frame = resolvedPlacement(canvas: canvas, isOverlay: isOverlay).frame(in: canvas)
+        return frame.minX <= 0.5 && frame.minY <= 0.5
+            && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
+    }
+
     /// 裁切后的源画面尺寸（显示方向）。默认摆放框按它算宽高比。
     var croppedDisplaySize: CGSize? {
         guard let display = info?.displaySize, display.width > 0, display.height > 0 else { return nil }

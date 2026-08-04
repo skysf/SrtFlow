@@ -24,7 +24,9 @@
   `SRTFLOW_SMOKE_VIDEO` / `SRTFLOW_FFMPEG` 环境变量钩子
 
 自检命令：`swift run SrtFlowCoreChecks`（核心库）、
-`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）
+`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
+`scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
+源码在 `checks/PreviewComposition/`）
 
 ## 架构与实现决策（docs/architecture/）
 

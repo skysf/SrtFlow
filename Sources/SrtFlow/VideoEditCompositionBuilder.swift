@@ -86,13 +86,27 @@ actor BlackBaseVideoFactory {
             }
             CVPixelBufferUnlockBaseAddress(buffer, [])
 
+            // isReadyForMoreMediaData 在 writer 异步失败后可能**永远**不恢复
+            // （Apple 文档明说会长时间为 false）。不设状态检查和超时的话，
+            // 这个循环挂死 → 单飞任务永不返回 → 之后所有预览重建全部卡在它上。
+            var waitedNanoseconds: UInt64 = 0
             for seconds in [0.0, 1.0] {
-                while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 5_000_000) }
+                while !input.isReadyForMoreMediaData {
+                    guard writer.status == .writing, waitedNanoseconds < 5_000_000_000 else {
+                        writer.cancelWriting()
+                        return nil
+                    }
+                    try? await Task.sleep(nanoseconds: 5_000_000)
+                    waitedNanoseconds += 5_000_000
+                }
                 // append 返回 false 就是写失败（Apple 文档明说），不能当没看见。
                 guard adaptor.append(
                     buffer,
                     withPresentationTime: CMTime(seconds: seconds, preferredTimescale: 600)
-                ) else { return nil }
+                ) else {
+                    writer.cancelWriting()
+                    return nil
+                }
             }
             input.markAsFinished()
             await writer.finishWriting()
@@ -215,16 +229,19 @@ enum VideoEditCompositionBuilder {
                 layer: 0
             )
             if overlapBefore > 0 {
-                // 叠化：后段整场垫在底下不淡入 —— 两侧都是不透明满幅画面时，
-                // 这个叠法逐像素等于导出的 xfade dissolve。压黑/闪白：后半段才亮。
+                // 叠化：后段整场垫在底下不淡入 —— 接缝两侧都「盖满画布且不透明」
+                // 时，这个叠法逐像素等于导出的 xfade dissolve。压黑/闪白：后半段才亮。
                 //
-                // 但接缝任一侧有画面变换（半透明、旋转透明角、缩小挪位）时，
+                // 只要有一侧盖不满或半透明（缩小挪位、旋转透明角、整层透明度），
                 // 「垫底常亮」会让后段从转场第一帧就透出来，而导出是先把每段
                 // 压平到黑底再 dissolve。这种接缝改成双向线性淡变：后段从黑里
                 // 亮起来，贴合导出模型（代价是中点轻微变暗，见架构文档）。
+                // 判定必须用 coversCanvasOpaquely，别拿 hasVisualTransform 凑 ——
+                // 仅翻转照样满幅不透明，误走近似路径就是白闪变暗。
                 if kindBefore != .crossFade {
                     item.fadeIn = (overlapBefore, true)
-                } else if clip.hasVisualTransform || state.mainClips[index - 1].hasVisualTransform {
+                } else if !clip.coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
+                    || !state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false) {
                     item.fadeIn = (overlapBefore, false)
                 }
             }

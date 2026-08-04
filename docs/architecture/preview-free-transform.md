@@ -54,11 +54,17 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
 「文件存在」不等于「文件可用」。
 
 **叠化 × Transform 的合成模型**：转场语义上作用在**压平到黑底之后**的段上
-（导出就是这么做的：先合黑底再 xfade）。预览的叠化对两侧都是不透明满幅的
-普通段用「后段垫底、前段淡出」—— 逐像素精确等于 dissolve；接缝**任一侧
-`hasVisualTransform`** 时后段改为全程线性淡入（从黑亮起）贴合压平模型，
-残余近似是中点亮度轻微下凹（默认合成器层叠乘法所致）。改这段逻辑前先想清
-「垫底=精确 dissolve」的前提条件是两侧不透明满幅。
+（导出就是这么做的：先合黑底再 xfade）。预览的叠化按接缝分两条路径，判定
+用 `coversCanvasOpaquely(canvas:isOverlay:)`：
+
+- 两侧都**盖满画布且不透明**（仅翻转、放大出画布都算满足）→ 「后段垫底、
+  前段淡出」，逐像素精确等于 dissolve，全程不变暗；
+- 任一侧盖不满或半透明 → 后段改为全程线性淡入（从黑亮起）贴合压平模型，
+  残余近似是中点亮度轻微下凹（默认合成器层叠乘法所致，最坏 25%）。
+
+判定条件必须贴着数学前提（盖满 + 不透明）写，别拿 `hasVisualTransform`
+这类粗粒度标志凑 —— 仅翻转被误送进近似路径就是白闪变暗。回归靠
+`scripts/check-preview-composition.sh` 真取帧量像素守着。
 
 ## 交互层（ClipTransformCanvas / ResizableFrameBox）
 
