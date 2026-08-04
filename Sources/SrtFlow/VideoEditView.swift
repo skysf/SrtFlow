@@ -50,6 +50,8 @@ struct VideoEditView: View {
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
             eventMonitor = nil
+            // 切去别的栏目时把挂着的自动保存写下去，别留在内存里等。
+            project.flushAutosave()
         }
         .onDropOfFiles { urls in project.addMedia(urls: urls) }
         .onDeleteCommand { project.deleteSelected() }
@@ -58,6 +60,10 @@ struct VideoEditView: View {
         }
         // Export 放窗口右上角的工具栏，随时够得着。
         .toolbar {
+            // 工程名下拉放最左边，它就是这个编辑器的文件菜单。
+            ToolbarItem(placement: .navigation) {
+                VideoEditProjectMenu(project: project)
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 if exporter.isExporting {
                     ProgressView(value: exporter.progress)
@@ -76,7 +82,7 @@ struct VideoEditView: View {
 
     // MARK: - 键盘
 
-    /// 空格播放/暂停；V 切换所在轨的隐藏。
+    /// 空格播放/暂停；V 切换所在轨的隐藏；A/B 切换选择/分割工具。
     /// 这个视图只在「视频剪辑」栏可见时存在，监听不会漏到别的页面。
     private func installEventMonitor() {
         guard eventMonitor == nil else { return }
@@ -100,6 +106,12 @@ struct VideoEditView: View {
             case "v":
                 project.toggleHiddenForSelectionLane()
                 return nil
+            case "a":
+                project.activeTool = .select
+                return nil
+            case "b":
+                project.activeTool = .split
+                return nil
             default:
                 return event
             }
@@ -112,10 +124,25 @@ struct VideoEditView: View {
 
     private var previewPane: some View {
         VStack(spacing: 0) {
-            videoBox
+            if !project.missingMedia.isEmpty {
+                MissingMediaBar(project: project)
+                Divider()
+            }
+            if showsStartScreen {
+                VideoEditStartScreen(project: project)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                videoBox
+            }
             Divider()
             transport
         }
+    }
+
+    /// 空的未命名工程给起始页（拖放提示 + 最近工程），比一整块黑屏有用。
+    /// 打开过的工程哪怕是空的也照常显示预览区 —— 那是「这条工程本来就空」。
+    private var showsStartScreen: Bool {
+        project.state.isEmpty && project.isUntitled && project.importingCount == 0
     }
 
     private var aspect: Double {
@@ -131,6 +158,8 @@ struct VideoEditView: View {
                 Color.black
                 if !project.state.isEmpty {
                     PlayerViewRepresentable(player: clock.player, controlsStyle: .none)
+                    // 点选画面内容 + 变换框。放在形状叠层下面：形状的点击优先。
+                    ClipTransformCanvas(project: project, clock: clock, boxSize: size)
                 } else {
                     Text("Add clips to start editing.")
                         .foregroundStyle(.secondary)
@@ -277,6 +306,7 @@ struct VideoEditView: View {
     private var toolbar: some View {
         HStack(spacing: 10) {
             addMenu
+            toolMenu
 
             Divider().frame(height: 16)
 
@@ -355,6 +385,30 @@ struct VideoEditView: View {
         .menuStyle(.borderlessButton)
         .fixedSize()
 
+    }
+
+    /// 鼠标工具下拉：选择（A）/ 分割（B）。快捷键走本视图的事件监听，
+    /// 不挂 keyboardShortcut —— 无修饰键的键盘等价符会抢文本框的输入。
+    private var toolMenu: some View {
+        Menu {
+            ForEach(TimelineTool.allCases) { tool in
+                Button {
+                    project.activeTool = tool
+                } label: {
+                    if project.activeTool == tool {
+                        Label("\(L10n(tool.title)) (\(tool.shortcutLabel))", systemImage: "checkmark")
+                    } else {
+                        Label("\(L10n(tool.title)) (\(tool.shortcutLabel))", systemImage: tool.icon)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: project.activeTool.icon)
+                .frame(width: 20, height: 18)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Mouse tool: Select (A) or Split (B)")
     }
 
     private var canSplit: Bool {
@@ -444,15 +498,78 @@ private struct ShapeOverlayCanvas: View {
             ForEach(project.visibleShapes(at: project.clock.time)) { shape in
                 shapeView(shape)
             }
+            // 选中形状的变换框：线条只给左右（改长度），正方形只给四角（保形），
+            // 长方形全套八个。移动仍走形状本体的拖动手势，框体不拦事件。
+            if let shape = project.selectedShape, shape.contains(time: project.clock.time) {
+                ResizableFrameBox(
+                    rect: resizeBoxRect(shape),
+                    handles: resizeHandles(shape),
+                    keepAspectOnCorners: true,
+                    movable: false,
+                    onChange: { newRect in applyShapeResize(shape, newRect) },
+                    onEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                )
+            }
         }
         .frame(width: boxSize.width, height: boxSize.height)
+    }
+
+    /// 框比形状本体略大一圈。线条按**旋转后的包络**画框（绘制带
+    /// rotationEffect，`frame(in:)` 不带），细的方向撑到能看见。
+    private func resizeBoxRect(_ shape: ShapeAnnotation) -> CGRect {
+        var frame = shape.frame(in: boxSize)
+        if shape.kind == .line {
+            let angle = shape.rotationDegrees * .pi / 180
+            let w = abs(frame.width * cos(angle))
+            let h = abs(frame.width * sin(angle))
+            frame = CGRect(x: frame.midX - w / 2, y: frame.midY - h / 2, width: w, height: h)
+        }
+        frame = frame.insetBy(dx: -4, dy: -4)
+        if shape.kind == .line {
+            let minSide = 14.0
+            if frame.height < minSide {
+                frame = frame.insetBy(dx: 0, dy: -(minSide - frame.height) / 2)
+            }
+            if frame.width < minSide {
+                frame = frame.insetBy(dx: -(minSide - frame.width) / 2, dy: 0)
+            }
+        }
+        return frame
+    }
+
+    private func resizeHandles(_ shape: ShapeAnnotation) -> Set<FrameHandle> {
+        switch shape.kind {
+        case .line:
+            // 转过角度的线，左右把手方向就不对了：只留框做选中指示，
+            // 长度在检查器里调。没转的照旧左右改长度。
+            let rotated = abs(shape.rotationDegrees.truncatingRemainder(dividingBy: 360)) > 0.5
+            return rotated ? [] : FrameHandle.horizontal
+        case .square: return FrameHandle.corners
+        case .rectangle: return FrameHandle.all
+        }
+    }
+
+    /// 把新框写回归一化的形状字段。正方形由 `updateShape` 强制保形；
+    /// 线条只吃长度和中心，高度是撑出来的视觉量，不落模型。
+    private func applyShapeResize(_ shape: ShapeAnnotation, _ newRect: CGRect) {
+        let rect = newRect.insetBy(dx: 4, dy: 4)
+        let kind = shape.kind
+        project.liveApply { state in
+            state.updateShape(shape.id) {
+                $0.centerX = min(max(newRect.midX / boxSize.width, 0), 1)
+                $0.centerY = min(max(newRect.midY / boxSize.height, 0), 1)
+                $0.width = min(max(rect.width / boxSize.width, 0.02), 1)
+                if kind == .rectangle {
+                    $0.height = min(max(rect.height / boxSize.height, 0.02), 1)
+                }
+            }
+        }
     }
 
     @ViewBuilder
     private func shapeView(_ shape: ShapeAnnotation) -> some View {
         let frame = shape.frame(in: boxSize)
         let strokeWidth = max(0.5, shape.lineWidth * boxSize.height / 1080)
-        let isSelected = project.selectedShapeID == shape.id
 
         Group {
             switch shape.kind {
@@ -466,14 +583,6 @@ private struct ShapeOverlayCanvas: View {
                 Rectangle()
                     .strokeBorder(shape.color.swiftUIColor, lineWidth: strokeWidth)
                     .frame(width: max(2, frame.width), height: max(2, frame.height))
-            }
-        }
-        .overlay {
-            if isSelected {
-                Rectangle()
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .padding(-4)
             }
         }
         .contentShape(Rectangle().inset(by: -8))

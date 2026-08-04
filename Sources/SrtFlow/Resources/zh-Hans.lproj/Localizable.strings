@@ -244,6 +244,12 @@
 "Picture-in-picture" = "画中画";
 "Size" = "大小";
 "Split" = "分割";
+"Select" = "选择";
+"Mouse tool: Select (A) or Split (B)" = "鼠标工具：选择 (A) / 分割 (B)";
+"Apply to All" = "全部应用";
+"Clear All" = "全部清除";
+"Position & Size" = "位置与大小";
+"Drag the frame on the preview to move it; corners scale, edges stretch." = "在预览里拖动框可移动；四角等比缩放，四边自由拉伸。";
 "Line" = "线条";
 "Rectangle" = "长方形";
 "Square" = "正方形";

@@ -126,6 +126,22 @@ enum VideoEditExportGraph {
         subtitleFontURL: URL?,
         output: URL
     ) throws -> Plan {
+        // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
+        // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
+        // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
+        let pendingStills = ((state.mainHidden ? [] : state.mainClips)
+            + state.overlayTracks.filter { !$0.isHidden }.flatMap(\.clips))
+            .filter(\.needsStillConversion)
+        if !pendingStills.isEmpty {
+            let names = pendingStills
+                .map(\.name)
+                .reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
+            throw PlanError(message: String(
+                format: L10n("These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing."),
+                names.joined(separator: "、")
+            ))
+        }
+
         // 隐藏的轨和还在转静帧的占位块都不进成片。
         let mainVisible = (state.mainHidden ? [] : state.mainClips)
             .filter { !$0.needsStillConversion }
@@ -264,12 +280,32 @@ enum VideoEditExportGraph {
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
-                filters.append(
-                    "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
-                    "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                    "scale=\(width):\(height):force_original_aspect_ratio=decrease," +
-                    "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[\(vLabel)]"
-                )
+                if let placement = clip.placement {
+                    // 用户摆过的主轨段：缩放到摆放框，再叠到黑底画布上。
+                    // 用 overlay 而不是 pad —— 框可以比画布大、也可以探出边界。
+                    let target = placement.frame(in: renderSize)
+                    let fg = nextLabel("fg")
+                    let bg = nextLabel("bg")
+                    filters.append(
+                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
+                        "scale=\(evenPixel(target.width)):\(evenPixel(target.height)),setsar=1[\(fg)]"
+                    )
+                    filters.append(
+                        "color=black:s=\(width)x\(height):r=30:d=\(fmt(segment.duration))[\(bg)]"
+                    )
+                    filters.append(
+                        "[\(bg)][\(fg)]overlay=x=\(Int(target.minX.rounded())):y=\(Int(target.minY.rounded())):" +
+                        "shortest=1,format=yuv420p[\(vLabel)]"
+                    )
+                } else {
+                    filters.append(
+                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
+                        "scale=\(width):\(height):force_original_aspect_ratio=decrease," +
+                        "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[\(vLabel)]"
+                    )
+                }
                 if clip.hasAudio, !clip.isMuted {
                     filters.append(
                         "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
@@ -330,17 +366,29 @@ enum VideoEditExportGraph {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
                 let scaled = nextLabel("ov")
-                let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
+                // 摆过的画中画按摆放框缩放定位；没摆过走九宫格表达式。
+                let scaleFilter: String
+                let x: String
+                let y: String
+                if let placement = clip.placement {
+                    let target = placement.frame(in: renderSize)
+                    scaleFilter = "scale=\(evenPixel(target.width)):\(evenPixel(target.height))"
+                    x = "\(Int(target.minX.rounded()))"
+                    y = "\(Int(target.minY.rounded()))"
+                } else {
+                    let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
+                    scaleFilter = "scale=\(overlayWidth):-2"
+                    let inset = Int(renderSize.width * 0.02)
+                    x = xExpression(for: clip.overlayAnchor, inset: inset)
+                    y = yExpression(for: clip.overlayAnchor, inset: inset)
+                }
                 filters.append(
                     "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                     "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                    "scale=\(overlayWidth):-2,setsar=1," +
+                    "\(scaleFilter),setsar=1," +
                     "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
                 )
                 let outV = nextLabel("v")
-                let inset = Int(renderSize.width * 0.02)
-                let x = xExpression(for: clip.overlayAnchor, inset: inset)
-                let y = yExpression(for: clip.overlayAnchor, inset: inset)
                 filters.append(
                     "[\(video)][\(scaled)]overlay=x=\(x):y=\(y):eof_action=pass:" +
                     "enable='between(t,\(fmt(clip.timelineStart)),\(fmt(clip.timelineEnd)))'[\(outV)]"
@@ -432,6 +480,11 @@ enum VideoEditExportGraph {
     }
 
     // MARK: 小工具
+
+    /// 摆放框的像素尺寸收成正偶数：yuv420 要偶数，scale 不吃 0。
+    private static func evenPixel(_ value: Double) -> Int {
+        max(2, Int((value / 2).rounded()) * 2)
+    }
 
     /// `30.0` → `"30"`，`1.2345` → `"1.234"`。滤镜参数里别出现一长串小数。
     private static func fmt(_ value: Double) -> String {

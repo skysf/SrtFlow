@@ -3,6 +3,36 @@ import AppKit
 import SwiftUI
 import SrtFlowCore
 
+/// 时间线的鼠标工具（对齐 CapCut：选择 A / 分割 B）。
+enum TimelineTool: String, CaseIterable, Identifiable {
+    case select
+    case split
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .select: return "Select"
+        case .split: return "Split"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .select: return "cursorarrow"
+        case .split: return "rectangle.split.2x1"
+        }
+    }
+
+    /// 菜单里展示的单键快捷键。
+    var shortcutLabel: String {
+        switch self {
+        case .select: return "A"
+        case .split: return "B"
+        }
+    }
+}
+
 /// 视频编辑器的全部可变状态。
 ///
 /// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
@@ -12,7 +42,93 @@ import SrtFlowCore
 final class VideoEditProject: ObservableObject {
     static let shared = VideoEditProject()
 
-    @Published private(set) var state = TimelineState()
+    @Published private(set) var state = TimelineState() {
+        // 时间线的所有写入最终都落在这里（perform / liveApply / applySnapshot
+        // 都是给它赋值），所以脏标记和自动保存挂这一个点就够了。
+        didSet { documentDidChange() }
+    }
+
+    // MARK: - 工程文档（.srtflowproj）
+
+    // 下面几个由 VideoEditProjectDocument.swift 里的扩展维护（跨文件所以不能
+    // 是 private(set)），别的地方只读。
+    /// 当前工程存在哪。`nil` 表示还没落过盘的「未命名」工程。
+    @Published var documentURL: URL?
+    /// 有改动还没写进磁盘。自动保存开着的时候它只会亮一小会儿。
+    @Published var hasUnsavedChanges = false
+    /// 打开工程时四层线索都没找回来的素材，界面上标红并提供重新链接。
+    @Published var missingMedia: [URL] = []
+
+    /// 打开/新建工程期间为真：那时候改 `state` 不该算用户的改动。
+    var isLoadingDocument = false
+    /// 自动保存的防抖任务。
+    var autosaveTask: Task<Void, Never>?
+
+    /// 上次读/写工程时的素材定位表（键是素材路径）。
+    ///
+    /// 存盘时拿它兜底：素材此刻不可达就沿用旧书签，**绝不能**把还有效的定位
+    /// 信息覆盖成 nil。详见 `MediaRecord.init(url:projectDirectory:previous:)`。
+    var mediaRecords: [String: MediaRecord] = [:]
+
+    /// 工程文件自己的书签。用户在访达里把**正开着的**工程改名或挪走时，
+    /// 靠它把 `documentURL` 跟过去，而不是在旧位置又造一个旧名字的文件。
+    var documentBookmark: Data?
+
+    /// 当前工程的代号，每换一个工程 +1。
+    ///
+    /// 后台导入（探测时长、图片转静帧）是脱手的 Task，工程切走之后它们可能才
+    /// 回来。回来时对不上代号就直接丢弃，否则会把素材追加进**新**工程。
+    private(set) var documentGeneration = 0
+
+    /// 正在跑的后台导入任务，切工程时要取消。
+    private var importTasks: [Task<Void, Never>] = []
+
+    func trackImportTask(_ task: Task<Void, Never>) {
+        importTasks.removeAll { $0.isCancelled }
+        importTasks.append(task)
+    }
+
+    /// 切工程：作废所有还没回来的后台导入。
+    func invalidateDocumentGeneration() {
+        documentGeneration &+= 1
+        for task in importTasks { task.cancel() }
+        importTasks.removeAll()
+    }
+
+    /// 后台任务回来时先问一句：我还是当初那个工程吗？
+    func isCurrentGeneration(_ generation: Int) -> Bool {
+        generation == documentGeneration
+    }
+
+    /// 「打开工程」请求的流水号。
+    ///
+    /// 连点两个最近工程时，慢的那个可能后回来：没有它的话，先打开的 B 会被
+    /// A 的过期结果又顶掉。每次 openProject 进门 +1，await 回来对不上就作废。
+    var openRequestToken = 0
+
+    private func documentDidChange() {
+        guard !isLoadingDocument else { return }
+        hasUnsavedChanges = true
+        scheduleAutosave()
+    }
+
+    /// 整体换掉时间线：打开工程、新建工程用。不进撤销栈，也不算用户改动。
+    func replaceStateForDocument(_ next: TimelineState) {
+        isLoadingDocument = true
+        state = next
+        isLoadingDocument = false
+    }
+
+    /// 不算用户改动的时间线修补：打开工程后补静帧、重新链接素材走这里。
+    /// 这些改动不该让工程「变脏」，但预览要跟着重建。
+    func applyDocumentRepair(_ mutate: (inout TimelineState) -> Void) {
+        var next = state
+        mutate(&next)
+        guard next != state else { return }
+        replaceStateForDocument(next)
+        scheduleRebuild()
+    }
+
     /// 选中的剪辑们。⌘点选可多选，拖任意一个选中块整组一起动。
     @Published var selectedClipIDs: Set<UUID> = [] {
         didSet { if !selectedClipIDs.isEmpty { selectedShapeID = nil } }
@@ -33,6 +149,10 @@ final class VideoEditProject: ObservableObject {
             selectedClipIDs = [id]
         }
     }
+
+    /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
+    /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
+    @Published var activeTool: TimelineTool = .select
 
     // 三个开关，对应截图里的磁吸、吸附、链接。
     @Published var magnetEnabled = true {
@@ -223,7 +343,7 @@ final class VideoEditProject: ObservableObject {
 
     /// 视图给的 UndoManager 首次出现时常常还是 nil，注册进去就全丢了。
     /// 兜底拿键窗口的，⌘Z 才靠得住。
-    private var effectiveUndoManager: UndoManager? {
+    var effectiveUndoManager: UndoManager? {
         undoManager ?? NSApp.keyWindow?.undoManager
     }
 
@@ -283,14 +403,19 @@ final class VideoEditProject: ObservableObject {
         }
 
         if let subtitle = subtitles.first { attachSubtitle(subtitle) }
+        // 这三个都是脱手的后台任务，登记下来好在切工程时取消。
+        // 工程代号要在**创建 Task 之前**抓：Task 创建后未必立刻跑，等它跑起来
+        // 时用户可能已经切了工程 —— 那时在任务体里读到的就是新工程的代号，
+        // 守卫形同虚设，旧素材照样进新工程。
+        let generation = documentGeneration
         if !videos.isEmpty {
-            Task { await addVideos(videos, toOverlay: videosToOverlay) }
+            trackImportTask(Task { await addVideos(videos, toOverlay: videosToOverlay, generation: generation) })
         }
         if !images.isEmpty {
-            Task { await addImages(images, toOverlay: videosToOverlay) }
+            trackImportTask(Task { await addImages(images, toOverlay: videosToOverlay, generation: generation) })
         }
         if !audios.isEmpty {
-            Task { await addAudios(audios) }
+            trackImportTask(Task { await addAudios(audios, generation: generation) })
         }
     }
 
@@ -300,14 +425,23 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 视频素材：探测完再上轨，时长、尺寸一步到位。
-    func addVideos(_ urls: [URL], toOverlay: Bool) async {
+    /// `generation` 是**发起导入那一刻**的工程代号（默认取当前的，给冒烟钩子
+    /// 之类的同步调用方用）。任务体里各处都要拿它复核。
+    func addVideos(_ urls: [URL], toOverlay: Bool, generation: Int? = nil) async {
+        let generation = generation ?? documentGeneration
+        guard isCurrentGeneration(generation), !Task.isCancelled else { return }
         importingCount += urls.count
-        defer { importingCount -= urls.count }
+        defer { importingCount = max(0, importingCount - urls.count) }
         for url in urls {
             guard let info = await probeVideo(url) else {
-                notice = String(format: L10n("Could not read video information from %@."), url.lastPathComponent)
+                // 失败提示也要验代号：报的是旧工程素材的错，别写到新工程脸上。
+                if isCurrentGeneration(generation) {
+                    notice = String(format: L10n("Could not read video information from %@."), url.lastPathComponent)
+                }
                 continue
             }
+            // 探测期间用户可能已经换了工程，这份素材是上一个工程的，别往新的里塞。
+            guard isCurrentGeneration(generation) else { return }
             let playhead = clock.time
             perform { state in
                 var clip = EditClip(sourceURL: url, sourceDuration: info.duration, info: info)
@@ -323,14 +457,19 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    func addAudios(_ urls: [URL]) async {
+    func addAudios(_ urls: [URL], generation: Int? = nil) async {
+        let generation = generation ?? documentGeneration
+        guard isCurrentGeneration(generation), !Task.isCancelled else { return }
         importingCount += urls.count
-        defer { importingCount -= urls.count }
+        defer { importingCount = max(0, importingCount - urls.count) }
         for url in urls {
             guard let duration = await audioDuration(url), duration > 0 else {
-                notice = String(format: L10n("Could not read %@."), url.lastPathComponent)
+                if isCurrentGeneration(generation) {
+                    notice = String(format: L10n("Could not read %@."), url.lastPathComponent)
+                }
                 continue
             }
+            guard isCurrentGeneration(generation) else { return }
             let playhead = clock.time
             perform { state in
                 let clip = EditClip(
@@ -347,14 +486,17 @@ final class VideoEditProject: ObservableObject {
 
     /// 图片：**立即**上轨（占位块马上能拖能剪），ffmpeg 在后台把它转成静帧
     /// 循环视频，转完无感替换 —— 之后转场、变速、画中画全都不用特判。
-    func addImages(_ urls: [URL], toOverlay: Bool) async {
+    func addImages(_ urls: [URL], toOverlay: Bool, generation: Int? = nil) async {
         guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
             notice = L10n("The video engine is not ready yet.")
             return
         }
+        let generation = generation ?? documentGeneration
+        guard isCurrentGeneration(generation), !Task.isCancelled else { return }
         importingCount += urls.count
-        defer { importingCount -= urls.count }
+        defer { importingCount = max(0, importingCount - urls.count) }
         for url in urls {
+            guard isCurrentGeneration(generation) else { return }
             let clipID = UUID()
             let playhead = clock.time
             perform(rebuildsPreview: false) { state in
@@ -377,6 +519,9 @@ final class VideoEditProject: ObservableObject {
             do {
                 let still = try await StillImageClipFactory.stillVideo(for: url, ffmpeg: ffmpeg)
                 let info = await probeVideo(still)
+                // 转换期间可能已经换了工程，或者这个占位块被撤销掉了。
+                // 不加这两道判断的话，`state = next` 会把新工程平白标脏。
+                guard isCurrentGeneration(generation), state.clip(with: clipID) != nil else { return }
                 // 直接替换，不占撤销栈 —— 用户没做任何操作。
                 var next = state
                 next.update(clipID) { clip in
@@ -387,48 +532,18 @@ final class VideoEditProject: ObservableObject {
                 state = next
                 scheduleRebuild()
             } catch {
+                guard isCurrentGeneration(generation) else { return }
                 notice = error.localizedDescription
                 perform(rebuildsPreview: false) { $0.remove(clipID) }
             }
         }
     }
 
-    /// 要导出的时间线：完整的，或只含选中内容（平移到 0 起点）。
-    ///
-    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
-    /// 拿到的就是完整画面而不是黑底小窗。
+    /// 要导出的时间线：完整的，或只含选中内容（逻辑在
+    /// `TimelineState.selectionForExport`，纯值变换，工程文件自检里有回归）。
     func stateForExport(selectionOnly: Bool) -> TimelineState {
         guard selectionOnly, !selectedClipIDs.isEmpty else { return state }
-        let ids = selectedClipIDs
-        let picked = state.allClips.filter { ids.contains($0.id) }
-        guard let earliest = picked.map(\.timelineStart).min() else { return state }
-
-        func shifted(_ clip: EditClip) -> EditClip {
-            var copy = clip
-            copy.timelineStart -= earliest
-            copy.transitionAfter = .none
-            return copy
-        }
-
-        var sub = TimelineState()
-        sub.mainClips = state.mainClips.filter { ids.contains($0.id) }.map(shifted)
-        for lane in state.overlayTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
-            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
-        }
-        for lane in state.audioTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
-            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
-        }
-        if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
-            sub.mainClips = sub.overlayTracks.removeFirst().clips
-        }
-        sub.canvasRatio = state.canvasRatio
-        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
-        if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
-            sub.packMain()
-        }
-        return sub
+        return state.selectionForExport(ids: selectedClipIDs)
     }
 
     func attachSubtitle(_ url: URL) {
@@ -481,6 +596,17 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 刀片工具：在指定时刻切开指定的段（链接开着时同组一起切）。
+    func splitClip(_ id: UUID, at time: Double) {
+        guard let clip = state.clip(with: id), clip.contains(time: time) else { return }
+        let targets = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
+        perform { state in
+            for member in targets {
+                Self.split(&state, clipID: member, at: time)
+            }
+        }
+    }
+
     private static func split(_ state: inout TimelineState, clipID: UUID, at time: Double) {
         guard let location = state.location(of: clipID) else { return }
         var clips = state[track: location.track]
@@ -504,9 +630,15 @@ final class VideoEditProject: ObservableObject {
             transitionDuration: left.transitionDuration,
             overlayFraction: left.overlayFraction,
             overlayAnchor: left.overlayAnchor,
+            placement: left.placement,
             info: left.info,
-            audioAssetDuration: left.audioAssetDuration
+            audioAssetDuration: left.audioAssetDuration,
+            // 图片段的身份必须跟过来：`sourceURL` 只是随时会被系统清掉的静帧缓存，
+            // 丢了 `stillImageURL` 的话，右半段会把缓存 mp4 当真实素材写进工程 ——
+            // 缓存一清这段就再也无法从原图重建了。
+            stillImageURL: left.stillImageURL
         )
+        right.needsStillConversion = left.needsStillConversion
         left.sourceDuration = leftSourceLength
         // 切口是硬切，原来的转场跟着右半走。
         left.transitionAfter = .none
@@ -599,6 +731,33 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 把这一段的转场（类型 + 时长）套到主轨的每一个接缝上。
+    func applyTransitionToAll(like id: UUID) {
+        guard let clip = state.clip(with: id), clip.transitionAfter != .none else { return }
+        let transition = clip.transitionAfter
+        let duration = clip.transitionDuration
+        perform { state in
+            for index in state.mainClips.indices.dropLast() {
+                state.mainClips[index].transitionAfter = transition
+                state.mainClips[index].transitionDuration = duration
+            }
+        }
+    }
+
+    /// 清掉主轨上的所有转场。
+    func clearAllTransitions() {
+        perform { state in
+            for index in state.mainClips.indices {
+                state.mainClips[index].transitionAfter = .none
+            }
+        }
+    }
+
+    /// 主轨上还有没有任何转场（Clear all 的可用状态）。
+    var hasAnyTransition: Bool {
+        state.mainClips.contains { $0.transitionAfter != .none }
+    }
+
     func setVolume(_ id: UUID, volume: Double) {
         perform { state in
             state.update(id) { $0.volume = min(max(volume, 0), 2) }
@@ -616,7 +775,23 @@ final class VideoEditProject: ObservableObject {
             state.update(id) { clip in
                 if let fraction { clip.overlayFraction = min(max(fraction, 0.1), 1) }
                 if let anchor { clip.overlayAnchor = anchor }
+                // 九宫格和自由摆放是两套模型：点了停靠位就回到九宫格。
+                clip.placement = nil
             }
+        }
+    }
+
+    /// 预览里拖缩放框（连续手势）：每 tick 从快照重放，松手才结一步撤销。
+    func livePlace(_ id: UUID, placement: ClipPlacement) {
+        liveApply { state in
+            state.update(id) { $0.placement = placement.clamped }
+        }
+    }
+
+    /// 回到默认布局（主轨铺满 / 画中画九宫格）。
+    func resetPlacement(_ id: UUID) {
+        perform { state in
+            state.update(id) { $0.placement = nil }
         }
     }
 

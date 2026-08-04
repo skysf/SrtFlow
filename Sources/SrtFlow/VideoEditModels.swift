@@ -80,6 +80,63 @@ enum OverlayAnchor: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
+// MARK: - 自由变换
+
+/// 画面段在输出画布上的自由摆放：中心和宽高都是相对画布的 0…1 归一化值。
+///
+/// `nil`（不设）表示默认布局 —— 主轨等比铺满居中、画中画走
+/// `overlayFraction`/`overlayAnchor` 的九宫格。一旦用户在预览里拖过缩放框，
+/// 就换成这份显式的摆放；预览（AVFoundation 变换）和导出（ffmpeg scale+overlay）
+/// 都按同一份归一化值换算，所见即所得。宽高各自独立 —— 拉边把手允许变形。
+struct ClipPlacement: Hashable, Sendable {
+    var centerX: Double
+    var centerY: Double
+    /// 相对画布宽的比例。
+    var width: Double
+    /// 相对画布高的比例。
+    var height: Double
+
+    /// 画布上的像素框。
+    func frame(in canvas: CGSize) -> CGRect {
+        CGRect(
+            x: (centerX - width / 2) * canvas.width,
+            y: (centerY - height / 2) * canvas.height,
+            width: width * canvas.width,
+            height: height * canvas.height
+        )
+    }
+
+    init(centerX: Double, centerY: Double, width: Double, height: Double) {
+        self.centerX = centerX
+        self.centerY = centerY
+        self.width = width
+        self.height = height
+    }
+
+    init(frame: CGRect, in canvas: CGSize) {
+        guard canvas.width > 0, canvas.height > 0 else {
+            self.init(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
+            return
+        }
+        self.init(
+            centerX: frame.midX / canvas.width,
+            centerY: frame.midY / canvas.height,
+            width: frame.width / canvas.width,
+            height: frame.height / canvas.height
+        )
+    }
+
+    /// 兜住失控的值：尺寸别缩没，中心别整个飞出画面。
+    var clamped: ClipPlacement {
+        ClipPlacement(
+            centerX: min(max(centerX, 0), 1),
+            centerY: min(max(centerY, 0), 1),
+            width: min(max(width, 0.02), 4),
+            height: min(max(height, 0.02), 4)
+        )
+    }
+}
+
 // MARK: - 画布比例
 
 /// 输出画面的宽高比。`auto` 跟随主轨第一段素材。
@@ -253,6 +310,9 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var overlayFraction: Double
     var overlayAnchor: OverlayAnchor
 
+    /// 用户在预览里摆过的自由位置/尺寸；nil = 默认布局（主轨铺满、画中画九宫格）。
+    var placement: ClipPlacement?
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -277,6 +337,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         transitionDuration: Double = 0.5,
         overlayFraction: Double = 0.4,
         overlayAnchor: OverlayAnchor = .topTrailing,
+        placement: ClipPlacement? = nil,
         info: MediaInfo? = nil,
         audioAssetDuration: Double? = nil,
         stillImageURL: URL? = nil
@@ -295,6 +356,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.transitionDuration = transitionDuration
         self.overlayFraction = overlayFraction
         self.overlayAnchor = overlayAnchor
+        self.placement = placement
         self.info = info
         self.audioAssetDuration = audioAssetDuration
         self.stillImageURL = stillImageURL
@@ -316,6 +378,30 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
     func contains(time: Double) -> Bool {
         time > timelineStart + 0.001 && time < timelineEnd - 0.001
+    }
+
+    /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算 ——
+    /// 主轨等比铺满居中，画中画按 `overlayFraction` 宽度停靠九宫格。
+    /// 预览里的选中框和拖动起点都从这里取，跟合成/导出的默认摆法一致。
+    func resolvedPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
+        if let placement { return placement }
+        guard let display = info?.displaySize, display.width > 0, display.height > 0,
+              canvas.width > 0, canvas.height > 0 else {
+            return ClipPlacement(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
+        }
+        if isOverlay {
+            let scale = canvas.width * overlayFraction / display.width
+            let size = CGSize(width: display.width * scale, height: display.height * scale)
+            let origin = overlayAnchor.origin(canvas: canvas, overlay: size, inset: canvas.width * 0.02)
+            return ClipPlacement(frame: CGRect(origin: origin, size: size), in: canvas)
+        }
+        let scale = min(canvas.width / display.width, canvas.height / display.height)
+        return ClipPlacement(
+            centerX: 0.5,
+            centerY: 0.5,
+            width: display.width * scale / canvas.width,
+            height: display.height * scale / canvas.height
+        )
     }
 }
 
@@ -503,6 +589,307 @@ struct TimelineState: Hashable, Sendable {
 
     private func fits(_ clip: EditClip, in track: [EditClip]) -> Bool {
         !track.contains { $0.timelineStart < clip.timelineEnd - 0.001 && clip.timelineStart < $0.timelineEnd - 0.001 }
+    }
+}
+
+// MARK: - 选中导出的子集
+
+extension TimelineState {
+    /// 只含 `ids` 的时间线（平移到 0 起点），「Selected only」导出用。
+    ///
+    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
+    /// 拿到的就是完整画面而不是黑底小窗。所以**升轨的段必须丢掉自由摆放
+    /// （placement）**：那是相对完整画面摆的，画面本身都不在这次导出里。
+    /// 没升轨的画中画保持原样（含摆放），所见即所得。
+    func selectionForExport(ids: Set<UUID>) -> TimelineState {
+        let picked = allClips.filter { ids.contains($0.id) }
+        guard let earliest = picked.map(\.timelineStart).min() else { return self }
+
+        func shifted(_ clip: EditClip) -> EditClip {
+            var copy = clip
+            copy.timelineStart -= earliest
+            copy.transitionAfter = .none
+            return copy
+        }
+
+        var sub = TimelineState()
+        sub.mainClips = mainClips.filter { ids.contains($0.id) }.map(shifted)
+        for lane in overlayTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
+        }
+        for lane in audioTracks where !lane.isHidden {
+            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
+        }
+        if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
+            sub.mainClips = sub.overlayTracks.removeFirst().clips.map { clip in
+                var promoted = clip
+                promoted.placement = nil
+                return promoted
+            }
+        }
+        sub.canvasRatio = canvasRatio
+        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
+        if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
+            sub.packMain()
+        }
+        return sub
+    }
+}
+
+// MARK: - 存盘（.srtflowproj）
+//
+// 工程文件是长期格式，读旧文件不能因为「多了/少了一个字段」就整份打不开，
+// 所以这里全部手写宽容解码：缺的字段取默认值，不认识的枚举值退回兜底项。
+// 有默认值的新字段可以随便加，老工程照样能开。
+
+/// 读到不认识的原始值时退回默认项，而不是让整份工程解不开。
+protocol LenientCodableEnum: RawRepresentable, Codable where RawValue == String {
+    static var decodingFallback: Self { get }
+}
+
+extension LenientCodableEnum {
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? Self.decodingFallback
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+extension ClipTransition: LenientCodableEnum {
+    static var decodingFallback: ClipTransition { .none }
+}
+
+extension OverlayAnchor: LenientCodableEnum {
+    static var decodingFallback: OverlayAnchor { .topTrailing }
+}
+
+extension CanvasRatio: LenientCodableEnum {
+    static var decodingFallback: CanvasRatio { .auto }
+}
+
+extension ShapeKind: LenientCodableEnum {
+    static var decodingFallback: ShapeKind { .rectangle }
+}
+
+extension ShapeAnnotation: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, timelineStart, duration, color, lineWidth
+        case centerX, centerY, width, height, rotationDegrees
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            kind: try c.decodeIfPresent(ShapeKind.self, forKey: .kind) ?? .rectangle,
+            timelineStart: try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0,
+            duration: try c.decodeIfPresent(Double.self, forKey: .duration) ?? 3,
+            color: try c.decodeIfPresent(SubtitleColor.self, forKey: .color) ?? .yellow,
+            lineWidth: try c.decodeIfPresent(Double.self, forKey: .lineWidth) ?? 6,
+            centerX: try c.decodeIfPresent(Double.self, forKey: .centerX) ?? 0.5,
+            centerY: try c.decodeIfPresent(Double.self, forKey: .centerY) ?? 0.5,
+            width: try c.decodeIfPresent(Double.self, forKey: .width) ?? 0.3,
+            height: try c.decodeIfPresent(Double.self, forKey: .height) ?? 0.2,
+            rotationDegrees: try c.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(kind, forKey: .kind)
+        try c.encode(timelineStart, forKey: .timelineStart)
+        try c.encode(duration, forKey: .duration)
+        try c.encode(color, forKey: .color)
+        try c.encode(lineWidth, forKey: .lineWidth)
+        try c.encode(centerX, forKey: .centerX)
+        try c.encode(centerY, forKey: .centerY)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+        try c.encode(rotationDegrees, forKey: .rotationDegrees)
+    }
+}
+
+extension ClipPlacement: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case centerX, centerY, width, height
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            centerX: try c.decodeIfPresent(Double.self, forKey: .centerX) ?? 0.5,
+            centerY: try c.decodeIfPresent(Double.self, forKey: .centerY) ?? 0.5,
+            width: try c.decodeIfPresent(Double.self, forKey: .width) ?? 1,
+            height: try c.decodeIfPresent(Double.self, forKey: .height) ?? 1
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(centerX, forKey: .centerX)
+        try c.encode(centerY, forKey: .centerY)
+        try c.encode(width, forKey: .width)
+        try c.encode(height, forKey: .height)
+    }
+}
+
+extension EditClip: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
+        case isMuted, volume, linkGroup, transitionAfter, transitionDuration
+        case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 素材路径是唯一必需的字段：没有它这段就不成立。
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceURL: try c.decode(URL.self, forKey: .sourceURL),
+            isAudioOnly: try c.decodeIfPresent(Bool.self, forKey: .isAudioOnly) ?? false,
+            sourceStart: try c.decodeIfPresent(Double.self, forKey: .sourceStart) ?? 0,
+            sourceDuration: try c.decodeIfPresent(Double.self, forKey: .sourceDuration) ?? 0,
+            speed: try c.decodeIfPresent(Double.self, forKey: .speed) ?? 1,
+            timelineStart: try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0,
+            isMuted: try c.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false,
+            volume: try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1,
+            linkGroup: try c.decodeIfPresent(UUID.self, forKey: .linkGroup),
+            transitionAfter: try c.decodeIfPresent(ClipTransition.self, forKey: .transitionAfter) ?? .none,
+            transitionDuration: try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.5,
+            overlayFraction: try c.decodeIfPresent(Double.self, forKey: .overlayFraction) ?? 0.4,
+            overlayAnchor: try c.decodeIfPresent(OverlayAnchor.self, forKey: .overlayAnchor) ?? .topTrailing,
+            placement: try c.decodeIfPresent(ClipPlacement.self, forKey: .placement),
+            info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
+            audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
+            stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
+        )
+        // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
+        // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(sourceURL, forKey: .sourceURL)
+        try c.encode(isAudioOnly, forKey: .isAudioOnly)
+        try c.encode(sourceStart, forKey: .sourceStart)
+        try c.encode(sourceDuration, forKey: .sourceDuration)
+        try c.encode(speed, forKey: .speed)
+        try c.encode(timelineStart, forKey: .timelineStart)
+        try c.encode(isMuted, forKey: .isMuted)
+        try c.encode(volume, forKey: .volume)
+        try c.encodeIfPresent(linkGroup, forKey: .linkGroup)
+        try c.encode(transitionAfter, forKey: .transitionAfter)
+        try c.encode(transitionDuration, forKey: .transitionDuration)
+        try c.encode(overlayFraction, forKey: .overlayFraction)
+        try c.encode(overlayAnchor, forKey: .overlayAnchor)
+        try c.encodeIfPresent(placement, forKey: .placement)
+        try c.encodeIfPresent(info, forKey: .info)
+        try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
+        try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)
+    }
+}
+
+extension EditLane: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, clips, isHidden
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            clips: try c.decodeIfPresent([EditClip].self, forKey: .clips) ?? [],
+            isHidden: try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(clips, forKey: .clips)
+        try c.encode(isHidden, forKey: .isHidden)
+    }
+}
+
+extension TimelineState: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case mainClips, mainHidden, overlayTracks, audioTracks
+        case subtitle, subtitleURL, shapes, canvasRatio
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init()
+        mainClips = try c.decodeIfPresent([EditClip].self, forKey: .mainClips) ?? []
+        mainHidden = try c.decodeIfPresent(Bool.self, forKey: .mainHidden) ?? false
+        overlayTracks = try c.decodeIfPresent([EditLane].self, forKey: .overlayTracks) ?? []
+        audioTracks = try c.decodeIfPresent([EditLane].self, forKey: .audioTracks) ?? []
+        subtitle = try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .subtitle)
+        subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
+        shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
+        canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(mainClips, forKey: .mainClips)
+        try c.encode(mainHidden, forKey: .mainHidden)
+        try c.encode(overlayTracks, forKey: .overlayTracks)
+        try c.encode(audioTracks, forKey: .audioTracks)
+        try c.encodeIfPresent(subtitle, forKey: .subtitle)
+        try c.encodeIfPresent(subtitleURL, forKey: .subtitleURL)
+        try c.encode(shapes, forKey: .shapes)
+        try c.encode(canvasRatio, forKey: .canvasRatio)
+    }
+}
+
+/// 时间线里出现的所有素材路径（含字幕文件）。存盘时给它们各配一份书签。
+extension TimelineState {
+    var mediaURLs: [URL] {
+        var seen = Set<URL>()
+        var result: [URL] = []
+        func add(_ url: URL?) {
+            guard let url, !seen.contains(url) else { return }
+            seen.insert(url)
+            result.append(url)
+        }
+        for clip in allClips {
+            // 图片段存的是原图，不是生成出来的静帧视频（那个是缓存，能重生成）。
+            if let image = clip.stillImageURL {
+                add(image)
+            } else {
+                add(clip.sourceURL)
+            }
+        }
+        add(subtitleURL)
+        return result
+    }
+
+    /// 把所有指向 `old` 的引用改成 `new`。重新链接素材时用。
+    mutating func replaceMedia(_ old: URL, with new: URL) {
+        func fix(_ clip: inout EditClip) {
+            if clip.stillImageURL == old {
+                clip.stillImageURL = new
+            } else if clip.sourceURL == old {
+                clip.sourceURL = new
+            }
+        }
+        for index in mainClips.indices { fix(&mainClips[index]) }
+        for lane in overlayTracks.indices {
+            for index in overlayTracks[lane].clips.indices { fix(&overlayTracks[lane].clips[index]) }
+        }
+        for lane in audioTracks.indices {
+            for index in audioTracks[lane].clips.indices { fix(&audioTracks[lane].clips[index]) }
+        }
+        if subtitleURL == old { subtitleURL = new }
     }
 }
 

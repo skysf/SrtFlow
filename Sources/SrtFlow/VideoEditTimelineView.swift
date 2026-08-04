@@ -816,8 +816,10 @@ private struct ClipBlockView: View {
     /// 拖动中的视觉位置：跟手画，state 里的磁吸重排照常进行 ——
     /// 不然拖动块每一拍都被吸回格点，看起来就是闪烁。
     @State private var dragVisualStart: Double?
-    /// 悬停滚动预览的节流。
-    @State private var lastHoverSeek: Double = -1
+    /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
+    @State private var isTrimming = false
+    /// 刀片工具的十字光标压没压进光标栈（离开时要弹回来）。
+    @State private var pushedSplitCursor = false
 
     private var width: Double { max(6, clip.timelineDuration * pps) }
     private var isAudioRow: Bool { slot.isAudio }
@@ -838,12 +840,20 @@ private struct ClipBlockView: View {
             }
         }
         .frame(width: width, height: height)
-        .onTapGesture {
-            let flags = NSApp.currentEvent?.modifierFlags ?? []
-            project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
+        .onTapGesture(coordinateSpace: .local) { location in
+            if project.activeTool == .split {
+                // 刀片：点哪儿切哪儿。链接组的处理和 ⌘B 一致。
+                project.splitClip(clip.id, at: clip.timelineStart + min(max(0, location.x), width) / pps)
+            } else {
+                let flags = NSApp.currentEvent?.modifierFlags ?? []
+                project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
+            }
         }
-        .gesture(moveGesture)
+        // 分割模式下移动手势整个停掉（.subviews 保留上面的点击）：
+        // 只 guard 回调的话，4pt 的手抖仍会被手势吃掉，本该落下的那一刀就没了。
+        .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
+        .onHover(perform: updateSplitCursor)
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
@@ -851,8 +861,9 @@ private struct ClipBlockView: View {
         .help(clip.name)
         .offset(x: (dragVisualStart ?? clip.timelineStart) * pps)
         .zIndex(dragVisualStart != nil ? 10 : 0)
-        // 邻居被磁吸重排时平滑挪过去，别硬跳。
-        .animation(.easeOut(duration: 0.12), value: clip.timelineStart)
+        // 邻居被磁吸重排时平滑挪过去，别硬跳。裁切中的块例外：
+        // 每个 tick 都在改 timelineStart/宽度，动画反复重定向就是「追手指」的卡顿感。
+        .animation(isTrimming ? nil : .easeOut(duration: 0.12), value: clip.timelineStart)
     }
 
     private var background: some View {
@@ -947,33 +958,50 @@ private struct ClipBlockView: View {
             }
     }
 
+    /// 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
+    private func updateSplitCursor(_ inside: Bool) {
+        if inside, project.activeTool == .split, !pushedSplitCursor {
+            NSCursor.crosshair.push()
+            pushedSplitCursor = true
+        } else if !inside, pushedSplitCursor {
+            NSCursor.pop()
+            pushedSplitCursor = false
+        }
+    }
+
     /// 鼠标扫过视频块时，画面直接滚到指的那一帧（播放中和拖动中不抢）。
+    /// 不做节流：`precise: false` 走 PlayerClock 的链式 seek，天然限流。
     private func hoverScrub(_ phase: HoverPhase) {
         guard !clip.isAudioOnly, !isAudioRow else { return }
         guard case .active(let point) = phase else { return }
-        guard !project.clock.isPlaying, dragStartOrigin == nil else { return }
+        guard !project.clock.isPlaying, dragStartOrigin == nil, !isTrimming else { return }
         let x = min(max(0, point.x), width)
-        let time = clip.timelineStart + x / pps
-        guard abs(time - lastHoverSeek) > 0.04 else { return }
-        lastHoverSeek = time
-        project.clock.seek(to: time, precise: false)
+        project.clock.seek(to: clip.timelineStart + x / pps, precise: false)
     }
 
     @ViewBuilder
     private func trimHandle(leading: Bool) -> some View {
         // 块太窄时不给裁切把手，不然根本点不到移动区。
-        if width > 26 {
+        // 分割模式下彻底不给：把手压着块的两端，边缘那一刀会变成裁切。
+        if width > 26, project.activeTool == .select {
             Rectangle()
                 .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
                 .frame(width: isSelected ? 5 : 8)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
                 .contentShape(Rectangle())
                 .gesture(
-                    DragGesture(minimumDistance: 2)
+                    // 必须用 .global：把手挂在块边缘，.local 坐标系会随着裁切生效
+                    // 跟着块边移动，translation 被自己的位移抵消——表现为裁切量只有
+                    // 鼠标位移的一半，且每 tick 在两个位置间振荡（闪烁）。
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
                         .onChanged { value in
+                            isTrimming = true
                             onTrim(leading, value.translation.width / pps)
                         }
-                        .onEnded { _ in onTrimEnd() }
+                        .onEnded { _ in
+                            isTrimming = false
+                            onTrimEnd()
+                        }
                 )
                 .onHover { inside in
                     if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
@@ -1099,6 +1127,13 @@ private struct ThumbnailStripView: View {
 
     private func loadThumbnails(width: Double) async {
         guard width > 4 else { return }
+        // 裁切/缩放拖动中 key 每个 tick 都在变：已有图先撑着，等手停稳 200ms 再取，
+        // 否则每一拍都解码一串帧、旧任务的结果还会乱序落地把新图盖掉——就是闪烁。
+        // 首次加载（还没图）不等，尽快替掉底色。
+        if !images.isEmpty {
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard !Task.isCancelled else { return }
+        }
         let count = max(1, min(24, Int(width / 56)))
         // 图片素材：直接读原图铺满（比开 AVAsset 快得多，占位期也能显示）。
         if let stillURL = clip.stillImageURL {
@@ -1113,7 +1148,8 @@ private struct ThumbnailStripView: View {
             duration: clip.sourceDuration,
             count: count
         )
-        if !loaded.isEmpty { images = loaded }
+        guard !Task.isCancelled, !loaded.isEmpty else { return }
+        images = loaded
     }
 }
 
@@ -1159,6 +1195,9 @@ actor ClipThumbnailCache {
 
         var result: [CGImage] = []
         for index in 0..<count {
+            // 调用方（.task）已经换 key 取消了就别接着磨：actor 是串行的，
+            // 磨完一整串废帧会把新请求堵在门外。
+            if Task.isCancelled { return [] }
             let fraction = (Double(index) + 0.5) / Double(count)
             let seconds = start + duration * fraction
             let time = CMTime(seconds: seconds, preferredTimescale: 600)
@@ -1195,11 +1234,18 @@ private struct WaveformView: View {
             }
         }
         .task(id: "\(clip.sourceURL.path)|\(Int(clip.sourceStart * 10))|\(Int(clip.sourceDuration * 10))") {
-            samples = await WaveformCache.shared.samples(
+            // 同缩略图条：裁切拖动中先拿旧波形撑着，手停稳了再重读 PCM。
+            if !samples.isEmpty {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                guard !Task.isCancelled else { return }
+            }
+            let loaded = await WaveformCache.shared.samples(
                 url: clip.sourceURL,
                 start: clip.sourceStart,
                 duration: clip.sourceDuration
             )
+            guard !Task.isCancelled, !loaded.isEmpty else { return }
+            samples = loaded
         }
     }
 }

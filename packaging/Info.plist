@@ -30,6 +30,23 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
+			<string>com.srtflow.project</string>
+			<key>UTTypeDescription</key>
+			<string>SrtFlow Video Project</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>srtflowproj</string>
+				</array>
+			</dict>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
 			<string>com.srtflow.srt</string>
 			<key>UTTypeDescription</key>
 			<string>SubRip Subtitle</string>
@@ -110,6 +127,18 @@
 	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>SrtFlow Video Project</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.srtflow.project</string>
+			</array>
+		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>SubRip Subtitle</string>

@@ -25,6 +25,39 @@ struct MediaInfo: Hashable, Sendable {
     var resolutionLabel: String { "\(width)×\(height)" }
 }
 
+/// 探测结果会随工程存盘（省得每次打开都重探一遍所有素材），所以跟工程里
+/// 别的模型一样宽容解码：字段缺了取默认值，不让老工程整份打不开。
+extension MediaInfo: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case duration, displaySize, frameRate, videoCodec, audioCodec
+        case hasAudio, audioCanCopyToMP4, fileBytes
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+        displaySize = try c.decodeIfPresent(CGSize.self, forKey: .displaySize) ?? .zero
+        frameRate = try c.decodeIfPresent(Double.self, forKey: .frameRate) ?? 30
+        videoCodec = try c.decodeIfPresent(String.self, forKey: .videoCodec) ?? ""
+        audioCodec = try c.decodeIfPresent(String.self, forKey: .audioCodec)
+        hasAudio = try c.decodeIfPresent(Bool.self, forKey: .hasAudio) ?? false
+        audioCanCopyToMP4 = try c.decodeIfPresent(Bool.self, forKey: .audioCanCopyToMP4) ?? false
+        fileBytes = try c.decodeIfPresent(Int64.self, forKey: .fileBytes) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(duration, forKey: .duration)
+        try c.encode(displaySize, forKey: .displaySize)
+        try c.encode(frameRate, forKey: .frameRate)
+        try c.encode(videoCodec, forKey: .videoCodec)
+        try c.encodeIfPresent(audioCodec, forKey: .audioCodec)
+        try c.encode(hasAudio, forKey: .hasAudio)
+        try c.encode(audioCanCopyToMP4, forKey: .audioCanCopyToMP4)
+        try c.encode(fileBytes, forKey: .fileBytes)
+    }
+}
+
 enum MediaProbeError: LocalizedError {
     case noVideoTrack
     case unreadable(String)

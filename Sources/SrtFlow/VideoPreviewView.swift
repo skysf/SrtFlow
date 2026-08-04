@@ -12,6 +12,11 @@ final class PlayerClock: ObservableObject {
     private var timeObserver: Any?
     private var rateObservation: NSKeyValueObservation?
 
+    /// 链式 seek（Apple QA1820）的两个状态：上一个 seek 还没完成时只记下最新目标，
+    /// 完成后再续发。主线程读写。
+    private var isScrubSeeking = false
+    private var pendingScrubTarget: TimeInterval?
+
     /// - Parameter observationInterval: 时间回调的间隔。烧字幕预览要靠它切换叠在
     ///   画面上的那句字幕，所以给得比字幕编辑器密一些。
     init(observationInterval: TimeInterval = 0.25) {
@@ -41,6 +46,7 @@ final class PlayerClock: ObservableObject {
     }
 
     func attach(url: URL, autoplay: Bool = true) {
+        pendingScrubTarget = nil
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         hasVideo = true
         time = 0
@@ -50,6 +56,7 @@ final class PlayerClock: ObservableObject {
     /// 换上一个现成的条目（时间线合成不是 URL，`attach(url:)` 用不上）。
     /// 播放头交给调用方自己恢复。
     func attachItem(_ item: AVPlayerItem) {
+        pendingScrubTarget = nil
         player.replaceCurrentItem(with: item)
         hasVideo = true
     }
@@ -57,21 +64,50 @@ final class PlayerClock: ObservableObject {
     func detach() {
         player.pause()
         player.replaceCurrentItem(with: nil)
+        pendingScrubTarget = nil
         hasVideo = false
         time = 0
     }
 
-    /// - Parameter precise: 拖进度条的过程中给 `false`（跳到最近的关键帧，跟手），
-    ///   松手和按字幕跳转时要 `true` —— 核对字幕时间轴差半秒都算错。
+    /// - Parameter precise: 松手和按字幕跳转时给 `true`（立刻精确定位）；拖动/悬停
+    ///   扫过的过程中给 `false` —— 也是零容差逐帧刷新，但走链式 seek 防洪。
+    ///   注意不能退回「就近关键帧」的粗定位：合成条目的关键帧隔好几秒一个，
+    ///   拖动中画面会看起来纹丝不动（docs/bugfixes/2026-08-03-scrub-preview-keyframe-snap.md）。
     func seek(to seconds: TimeInterval, precise: Bool = true) {
         let clamped = max(0, seconds)
-        let target = CMTime(seconds: clamped, preferredTimescale: 600)
-        if precise {
-            player.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
-        } else {
-            player.seek(to: target)
-        }
         time = clamped
+        if precise {
+            pendingScrubTarget = nil
+            player.seek(
+                to: CMTime(seconds: clamped, preferredTimescale: 600),
+                toleranceBefore: .zero, toleranceAfter: .zero
+            )
+        } else {
+            scrub(to: clamped)
+        }
+    }
+
+    /// 每个 mouse move 都直发 `player.seek` 会淹死解码器（在飞的 seek 被反复取消，
+    /// 帧刷新率反而不稳）。这里串行化：在飞时只记目标，完成回调里续发最新的。
+    private func scrub(to seconds: TimeInterval) {
+        guard !isScrubSeeking else {
+            pendingScrubTarget = seconds
+            return
+        }
+        isScrubSeeking = true
+        player.seek(
+            to: CMTime(seconds: seconds, preferredTimescale: 600),
+            toleranceBefore: .zero, toleranceAfter: .zero
+        ) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isScrubSeeking = false
+                if let next = self.pendingScrubTarget {
+                    self.pendingScrubTarget = nil
+                    self.scrub(to: next)
+                }
+            }
+        }
     }
 
     func togglePlayback() {

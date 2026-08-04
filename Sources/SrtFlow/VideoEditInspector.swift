@@ -151,6 +151,32 @@ struct VideoEditInspectorView: View {
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // 批量：把这一段的转场铺到主轨所有接缝，或一键全清。
+                HStack {
+                    Button("Apply to All") { project.applyTransitionToAll(like: clip.id) }
+                        .disabled(clip.transitionAfter == .none)
+                    Spacer()
+                    Button("Clear All") { project.clearAllTransitions() }
+                        .disabled(!project.hasAnyTransition)
+                }
+                .controlSize(.small)
+            }
+        }
+
+        // 在预览里摆过位置/大小的段：给一个「复原」回到默认布局。
+        if !clip.isAudioOnly, clip.placement != nil {
+            Divider()
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Position & Size").font(.callout).fontWeight(.medium)
+                    Spacer()
+                    Button("Reset") { project.resetPlacement(clip.id) }
+                        .controlSize(.small)
+                }
+                Text("Drag the frame on the preview to move it; corners scale, edges stretch.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
 
@@ -452,7 +478,11 @@ struct VideoEditInspectorView: View {
             get: { project.state.clip(with: clip.id)?.overlayFraction ?? clip.overlayFraction },
             set: { newValue in
                 project.liveApply { state in
-                    state.update(clip.id) { $0.overlayFraction = min(max(newValue, 0.1), 1) }
+                    state.update(clip.id) { inner in
+                        inner.overlayFraction = min(max(newValue, 0.1), 1)
+                        // 滑块属于九宫格模型：一动就退出自由摆放，否则看不到效果。
+                        inner.placement = nil
+                    }
                 }
             }
         )
