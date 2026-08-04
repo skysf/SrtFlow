@@ -29,6 +29,10 @@ let root = FileManager.default.temporaryDirectory
 try! FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 defer { try? FileManager.default.removeItem(at: root) }
 
+struct SolidVideoError: Error, CustomStringConvertible {
+    let description: String
+}
+
 func makeSolidVideo(white: Double, seconds: Double, name: String) async throws -> URL {
     let url = root.appendingPathComponent(name)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -46,12 +50,20 @@ func makeSolidVideo(white: Double, seconds: Double, name: String) async throws -
         ]
     )
     writer.add(input)
-    precondition(writer.startWriting())
+    guard writer.startWriting() else {
+        throw SolidVideoError(description: "writer 起不来：\(writer.error?.localizedDescription ?? "?")")
+    }
     writer.startSession(atSourceTime: .zero)
-    guard let pool = adaptor.pixelBufferPool else { fatalError("no pixel buffer pool") }
+    guard let pool = adaptor.pixelBufferPool else {
+        writer.cancelWriting()
+        throw SolidVideoError(description: "拿不到 pixel buffer pool")
+    }
     var buffer: CVPixelBuffer?
     CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
-    guard let buffer else { fatalError("no pixel buffer") }
+    guard let buffer else {
+        writer.cancelWriting()
+        throw SolidVideoError(description: "拿不到 pixel buffer")
+    }
     CVPixelBufferLockBaseAddress(buffer, [])
     if let base = CVPixelBufferGetBaseAddress(buffer) {
         let level = UInt32(min(max(white, 0), 1) * 255)
@@ -61,17 +73,37 @@ func makeSolidVideo(white: Double, seconds: Double, name: String) async throws -
         for index in 0..<count { words[index] = bgra }
     }
     CVPixelBufferUnlockBaseAddress(buffer, [])
+    // 和产线 BlackBaseVideoFactory 同一课：isReadyForMoreMediaData 在 writer
+    // 异步失败后可能永远为 false，等待必须有状态检查和截止时间，
+    // 不然整个自检脚本挂死，连最后的 semaphore.signal() 都到不了。
     let fps = 10.0
+    let deadline = ContinuousClock.now.advanced(by: .seconds(10))
     for frame in 0..<Int(seconds * fps) {
-        while !input.isReadyForMoreMediaData { try? await Task.sleep(nanoseconds: 2_000_000) }
-        precondition(adaptor.append(
+        while !input.isReadyForMoreMediaData {
+            guard writer.status == .writing, ContinuousClock.now < deadline else {
+                writer.cancelWriting()
+                throw SolidVideoError(
+                    description: "写测试视频卡住或失败：status=\(writer.status.rawValue) "
+                        + (writer.error?.localizedDescription ?? "")
+                )
+            }
+            try? await Task.sleep(nanoseconds: 2_000_000)
+        }
+        guard adaptor.append(
             buffer,
             withPresentationTime: CMTime(seconds: Double(frame) / fps, preferredTimescale: 600)
-        ))
+        ) else {
+            writer.cancelWriting()
+            throw SolidVideoError(
+                description: "append 失败：\(writer.error?.localizedDescription ?? "?")"
+            )
+        }
     }
     input.markAsFinished()
     await writer.finishWriting()
-    precondition(writer.status == .completed, "写测试视频失败")
+    guard writer.status == .completed else {
+        throw SolidVideoError(description: "写测试视频收尾失败：\(writer.error?.localizedDescription ?? "?")")
+    }
     return url
 }
 
