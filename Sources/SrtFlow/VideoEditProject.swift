@@ -636,6 +636,9 @@ final class VideoEditProject: ObservableObject {
             flippedHorizontally: left.flippedHorizontally,
             flippedVertically: left.flippedVertically,
             crop: left.crop,
+            // 关键帧锚在源时间上：两半带同一份轨，各自只播自己窗口内的段落，
+            // 接缝处数值天然连续。
+            animation: left.animation,
             info: left.info,
             audioAssetDuration: left.audioAssetDuration,
             // 图片段的身份必须跟过来：`sourceURL` 只是随时会被系统清掉的静帧缓存，
@@ -787,9 +790,42 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 预览里拖缩放框（连续手势）：每 tick 从快照重放，松手才结一步撤销。
+    /// 位置/缩放行有关键帧时改为在播放头处落帧（连续拖动反复写同一帧=替换）。
     func livePlace(_ id: UUID, placement: ClipPlacement) {
-        liveApply { state in
-            state.update(id) { $0.placement = placement.clamped }
+        let clamped = placement.clamped
+        if let write = keyframedPlacementWriter(id, clamped) {
+            liveApply { state in state.update(id) { write(&$0) } }
+        } else {
+            liveApply { state in
+                state.update(id) { $0.placement = clamped }
+            }
+        }
+    }
+
+    /// 位置/缩放任一行带关键帧且播放头在段内时，返回「往轨里落帧」的写入闭包；
+    /// 否则 nil（走静态摆放）。没动画的行落进静态摆放（动画行的分量会被轨覆盖）。
+    private func keyframedPlacementWriter(
+        _ id: UUID, _ clamped: ClipPlacement
+    ) -> ((inout EditClip) -> Void)? {
+        guard let clip = state.clip(with: id) else { return nil }
+        let positionAnimated = hasKeyframes(clip, .position)
+        let scaleAnimated = hasKeyframes(clip, .scale)
+        guard positionAnimated || scaleAnimated, playheadInsideClip(clip) else { return nil }
+        let source = clip.sourceTime(atTimeline: clock.time)
+        return { c in
+            var animation = c.animation ?? ClipAnimation()
+            if positionAnimated {
+                animation.centerX.set(clamped.centerX, atSourceTime: source)
+                animation.centerY.set(clamped.centerY, atSourceTime: source)
+            }
+            if scaleAnimated {
+                animation.width.set(clamped.width, atSourceTime: source)
+                animation.height.set(clamped.height, atSourceTime: source)
+            }
+            c.animation = animation
+            if !positionAnimated || !scaleAnimated {
+                c.placement = clamped
+            }
         }
     }
 
@@ -809,10 +845,15 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 写入摆放并归一：约等于默认布局就存回 nil，检查器和预览都当「没摆过」。
+    /// 位置/缩放行有关键帧时改为在播放头处落帧。
     func setPlacement(_ id: UUID, _ placement: ClipPlacement) {
         guard let clip = state.clip(with: id) else { return }
-        let fallback = clip.defaultPlacement(canvas: renderSize, isOverlay: isOverlayClip(id))
         let clamped = placement.clamped
+        if let write = keyframedPlacementWriter(id, clamped) {
+            perform { state in state.update(id) { write(&$0) } }
+            return
+        }
+        let fallback = clip.defaultPlacement(canvas: renderSize, isOverlay: isOverlayClip(id))
         let isDefault = abs(clamped.centerX - fallback.centerX) < 0.001
             && abs(clamped.centerY - fallback.centerY) < 0.001
             && abs(clamped.width - fallback.width) < 0.001
@@ -824,13 +865,36 @@ final class VideoEditProject: ObservableObject {
 
     func setRotation(_ id: UUID, degrees: Double) {
         let clamped = min(max(degrees.isFinite ? degrees : 0, -360), 360)
+        let normalized = abs(clamped) < 0.01 ? 0 : clamped
+        if let clip = state.clip(with: id), hasKeyframes(clip, .rotation), playheadInsideClip(clip) {
+            let source = clip.sourceTime(atTimeline: clock.time)
+            perform { state in
+                state.update(id) { c in
+                    var animation = c.animation ?? ClipAnimation()
+                    animation.rotation.set(normalized, atSourceTime: source)
+                    c.animation = animation
+                }
+            }
+            return
+        }
         perform { state in
-            state.update(id) { $0.rotationDegrees = abs(clamped) < 0.01 ? 0 : clamped }
+            state.update(id) { $0.rotationDegrees = normalized }
         }
     }
 
     func setClipOpacity(_ id: UUID, _ opacity: Double) {
         let clamped = min(max(opacity.isFinite ? opacity : 1, 0), 1)
+        if let clip = state.clip(with: id), hasKeyframes(clip, .opacity), playheadInsideClip(clip) {
+            let source = clip.sourceTime(atTimeline: clock.time)
+            perform { state in
+                state.update(id) { c in
+                    var animation = c.animation ?? ClipAnimation()
+                    animation.opacity.set(clamped, atSourceTime: source)
+                    c.animation = animation
+                }
+            }
+            return
+        }
         perform { state in
             state.update(id) { $0.opacity = clamped }
         }
@@ -852,7 +916,7 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 整个 Transform 区归零（含自由摆放），一步撤销。
+    /// 整个 Transform 区归零（含自由摆放和全部关键帧），一步撤销。
     func resetTransform(_ id: UUID) {
         perform { state in
             state.update(id) { clip in
@@ -862,6 +926,7 @@ final class VideoEditProject: ObservableObject {
                 clip.flippedHorizontally = false
                 clip.flippedVertically = false
                 clip.crop = nil
+                clip.animation = nil
             }
         }
     }

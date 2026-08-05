@@ -261,6 +261,10 @@
 "Flip horizontally" = "Flip horizontally";
 "Flip vertically" = "Flip vertically";
 "Reset all transform adjustments" = "Reset all transform adjustments";
+"Add or remove a keyframe at the playhead" = "Add or remove a keyframe at the playhead";
+"Previous keyframe" = "Previous keyframe";
+"Next keyframe" = "Next keyframe";
+"Could not prepare the animated clip %@ for export." = "Could not prepare the animated clip %@ for export.";
 "Line" = "Line";
 "Rectangle" = "Rectangle";
 "Square" = "Square";

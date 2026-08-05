@@ -130,6 +130,28 @@ func averageBrightness(_ built: VideoEditCompositionBuilder.Built, at seconds: D
     return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3 / 255
 }
 
+/// 从文件抽帧（预渲染中间片的验收用）。
+func frameImage(fromFile url: URL, at seconds: Double) async -> CGImage? {
+    let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+    generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 15)
+    generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 15)
+    return try? await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image
+}
+
+/// 区域平均 RGBA（0…1，premultiplied）。画中画中间片要验 alpha 通道。
+func averageRGBA(_ image: CGImage, region: CGRect) -> (red: Double, alpha: Double) {
+    guard let cropped = image.cropping(to: region) else { return (-1, -1) }
+    var pixel = [UInt8](repeating: 0, count: 4)
+    guard let space = CGColorSpace(name: CGColorSpace.sRGB),
+          let context = CGContext(
+              data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+              space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+          ) else { return (-1, -1) }
+    context.interpolationQuality = .medium
+    context.draw(cropped, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+    return (Double(pixel[0]) / 255, Double(pixel[3]) / 255)
+}
+
 // MARK: - 场景搭建
 
 /// 两段 4s 纯白，叠化 1s（重叠 3.0–4.0），可对第一段做改动。
@@ -181,6 +203,149 @@ Task {
             check(mid > 0.9, "仅翻转的白→白叠化中点不许变暗，实测 \(mid)")
         } else {
             check(false, "仅翻转场景合成失败")
+        }
+
+        // A. 不透明度关键帧：1→0 匀减，中点该是半亮（验证斜坡 × 黑底轨）。
+        do {
+            var state = TimelineState()
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            var animation = ClipAnimation()
+            animation.opacity.set(1, atSourceTime: 0)
+            animation.opacity.set(0, atSourceTime: 4)
+            clip.animation = animation
+            state.mainClips = [clip]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let mid = await averageBrightness(built, at: 2)
+                check(mid > 0.35 && mid < 0.65, "不透明度 1→0 动画中点应≈半亮，实测 \(mid)")
+                let head = await averageBrightness(built, at: 0.15)
+                check(head > 0.85, "不透明度动画开头应接近全亮，实测 \(head)")
+            } else {
+                check(false, "不透明度动画场景合成失败")
+            }
+        }
+
+        // B. 缩放关键帧：白块从 0.2 长到满幅，画面平均亮度就是面积占比曲线
+        //    （验证 setTransformRamp 的端点取值和切片）。
+        do {
+            var state = TimelineState()
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            var animation = ClipAnimation()
+            animation.width.set(0.2, atSourceTime: 0)
+            animation.width.set(1.0, atSourceTime: 4)
+            animation.height.set(0.2, atSourceTime: 0)
+            animation.height.set(1.0, atSourceTime: 4)
+            clip.animation = animation
+            state.mainClips = [clip]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let mid = await averageBrightness(built, at: 2)
+                check(mid > 0.26 && mid < 0.46, "缩放动画中点面积占比应≈0.36，实测 \(mid)")
+                let tail = await averageBrightness(built, at: 3.9)
+                check(tail > 0.85, "缩放动画结尾应近满幅，实测 \(tail)")
+            } else {
+                check(false, "缩放动画场景合成失败")
+            }
+        }
+
+        // C. 旋转关键帧要按 ≤6°/片加密（矩阵插值走弦，不加密就是缩水变形）。
+        do {
+            var state = TimelineState()
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            var animation = ClipAnimation()
+            animation.rotation.set(0, atSourceTime: 0)
+            animation.rotation.set(90, atSourceTime: 4)
+            clip.animation = animation
+            state.mainClips = [clip]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let count = built.videoComposition?.instructions.count ?? 0
+                check(count >= 15, "旋转 90° 动画至少切成 15 片（≤6°/片），实测 \(count)")
+            } else {
+                check(false, "旋转动画场景合成失败")
+            }
+        }
+
+        // D. 主轨预渲染：动画段渲成黑底 ProRes 422 中间片，抽帧亮度要跟
+        //    合成里的面积曲线一致（导出=预览按构造一致的直接验收）。
+        do {
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            var animation = ClipAnimation()
+            animation.width.set(0.2, atSourceTime: 0)
+            animation.width.set(1.0, atSourceTime: 4)
+            animation.height.set(0.2, atSourceTime: 0)
+            animation.height.set(1.0, atSourceTime: 4)
+            clip.animation = animation
+            let intermediate = try await AnimatedClipPrerenderer.renderMain(
+                clip: clip, renderSize: CGSize(width: 64, height: 36), into: root
+            )
+            if let frame = await frameImage(fromFile: intermediate, at: 2) {
+                let probe = averageRGBA(frame, region: CGRect(x: 0, y: 0, width: frame.width, height: frame.height))
+                check(probe.red > 0.26 && probe.red < 0.46, "主轨预渲染中点面积占比应≈0.36，实测 \(probe.red)")
+            } else {
+                check(false, "主轨预渲染中间片抽不出帧")
+            }
+        }
+
+        // E. 画中画预渲染（fill + matte）：默认合成器出不了透明背景
+        //    （backgroundColor 只支持不透明色），所以蒙版单独渲 —— 验证
+        //    fill、matte 都烘焙了同一份不透明度（ffmpeg 那边靠 matte 把
+        //    fill 除回真实色，两边不带同一份 opacity 权重就除不对，见
+        //    docs/bugfixes/2026-08-05-export-prerender-review.md）。
+        do {
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var pip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            pip.placement = ClipPlacement(centerX: 0.5, centerY: 0.5, width: 0.5, height: 0.5)
+            pip.opacity = 0.5
+            var animation = ClipAnimation()
+            animation.centerX.set(0.5, atSourceTime: 0)
+            animation.centerX.set(0.5, atSourceTime: 4)
+            pip.animation = animation
+            let pair = try await AnimatedClipPrerenderer.renderOverlay(
+                clip: pip, renderSize: CGSize(width: 64, height: 36), into: root
+            )
+            if let fillFrame = await frameImage(fromFile: pair.fill, at: 2),
+               let matteFrame = await frameImage(fromFile: pair.matte, at: 2) {
+                let w = Double(fillFrame.width)
+                let h = Double(fillFrame.height)
+                let centerRegion = CGRect(x: w * 0.45, y: h * 0.45, width: w * 0.1, height: h * 0.1)
+                let cornerRegion = CGRect(x: 0, y: 0, width: max(2, w * 0.08), height: max(2, h * 0.08))
+                let fillCenter = averageRGBA(fillFrame, region: centerRegion)
+                check(
+                    fillCenter.red > 0.4 && fillCenter.red < 0.6,
+                    "fill 中心要跟 matte 一样烘焙 50% 不透明度（除回真实色时两边权重得对得上），实测 \(fillCenter.red)"
+                )
+                let matteCenter = averageRGBA(matteFrame, region: centerRegion)
+                let matteCorner = averageRGBA(matteFrame, region: cornerRegion)
+                check(
+                    matteCenter.red > 0.4 && matteCenter.red < 0.6,
+                    "matte 中心应≈0.5（50% 不透明度烘焙进蒙版），实测 \(matteCenter.red)"
+                )
+                check(matteCorner.red < 0.08, "matte 角落应是黑（透明区），实测 \(matteCorner.red)")
+            } else {
+                check(false, "画中画预渲染中间片抽不出帧")
+            }
         }
 
         // 3. 前段 50% 透明：近似「双向淡变」路径。

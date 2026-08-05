@@ -29,6 +29,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/StillImageClipFactory.swift \

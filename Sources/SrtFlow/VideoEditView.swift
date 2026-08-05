@@ -28,7 +28,7 @@ struct VideoEditView: View {
                 previewPane
                     .frame(minWidth: 430, idealWidth: 700, maxWidth: .infinity)
                     .layoutPriority(1)
-                VideoEditInspectorView(project: project, onExport: { showsExportSheet = true })
+                VideoEditInspectorView(project: project, clock: clock, onExport: { showsExportSheet = true })
                     .frame(minWidth: 252, idealWidth: 290, maxWidth: 360)
             }
             .frame(minHeight: 300, idealHeight: 400, maxHeight: .infinity)

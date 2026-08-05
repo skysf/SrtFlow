@@ -21,6 +21,7 @@ final class VideoEditExporter: ObservableObject {
 
     private var process: FFmpegProcess?
     private var workspace: URL?
+    private var cancellationToken: ExportCancellationToken?
 
     private init() {}
 
@@ -35,16 +36,22 @@ final class VideoEditExporter: ObservableObject {
         progress = 0
         isExporting = true
 
+        let token = ExportCancellationToken()
+        cancellationToken = token
+
         Task {
             do {
-                let plan = try VideoEditExportGraph.plan(
+                let plan = try await VideoEditExportGraph.plan(
                     state: state,
                     settings: settings,
                     subtitleStyle: subtitleStyle,
                     subtitleFontURL: subtitleFontURL,
-                    output: output
+                    output: output,
+                    cancellation: token
                 )
                 workspace = plan.workspace
+                // 预渲染和 ffmpeg 起跑之间有条窄缝：Stop 恰好点在这中间也要认。
+                if token.isCancelled { throw CancellationError() }
 
                 let ffmpeg = FFmpegProcess()
                 process = ffmpeg
@@ -59,22 +66,42 @@ final class VideoEditExporter: ObservableObject {
                         self.progress = fraction
                     }
                 }
+                // ffmpeg 成功返回和这里之间也有一条窄缝：ffmpeg 进程已经退出，
+                // process.cancel() 这时已经不管用了，得靠 token 再认一次——
+                // 不然临场点 Stop 会被吞掉，文件照样被替换。
+                if token.isCancelled { throw CancellationError() }
+                // ffmpeg 退出码 0 之后才碰用户目标：先落到 workspace 里的临时
+                // 文件，这里再原子替换过去——预渲染或 ffmpeg 中途任何失败都
+                // 还没碰过 output，用户原有文件（覆盖导出场景）不会被牵连。
+                guard FileManager.default.fileExists(atPath: plan.tempOutput.path) else {
+                    throw VideoEditExportGraph.PlanError(
+                        message: L10n("ffmpeg finished but produced no output file.")
+                    )
+                }
+                if FileManager.default.fileExists(atPath: output.path) {
+                    _ = try FileManager.default.replaceItemAt(output, withItemAt: plan.tempOutput)
+                } else {
+                    try FileManager.default.moveItem(at: plan.tempOutput, to: output)
+                }
                 progress = 1
                 finishedURL = output
+            } catch is CancellationError {
+                // 用户点了 Stop（预渲染或 ffmpeg 阶段）：临时产物随 workspace
+                // 一起清掉，不设 errorMessage，也不碰用户原有文件。
             } catch FFmpegProcessError.cancelled {
-                try? FileManager.default.removeItem(at: output)
             } catch {
                 errorMessage = error.localizedDescription
-                try? FileManager.default.removeItem(at: output)
             }
             if let workspace { try? FileManager.default.removeItem(at: workspace) }
             workspace = nil
             process = nil
+            cancellationToken = nil
             isExporting = false
         }
     }
 
     func cancel() {
+        cancellationToken?.cancel()
         process?.cancel()
     }
 }
@@ -88,6 +115,9 @@ enum VideoEditExportGraph {
         var arguments: [String]
         var workspace: URL
         var totalDuration: Double
+        /// ffmpeg 实际写入的路径：workspace 里的临时文件，不是用户选的目标——
+        /// 全部成功后才由调用方原子替换过去，失败/取消都不碰用户原有文件。
+        var tempOutput: URL
         /// 一点画面都没有（只选了音频）：输出纯音频文件。
         var isAudioOnly = false
     }
@@ -124,8 +154,9 @@ enum VideoEditExportGraph {
         settings: VideoEncodeSettings,
         subtitleStyle: BurnInStyle,
         subtitleFontURL: URL?,
-        output: URL
-    ) throws -> Plan {
+        output: URL,
+        cancellation: ExportCancellationToken? = nil
+    ) async throws -> Plan {
         // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
         // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
         // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
@@ -175,6 +206,47 @@ enum VideoEditExportGraph {
             workspace = FileManager.default.temporaryDirectory
                 .appendingPathComponent("SrtFlow-Edit-\(UUID().uuidString)", isDirectory: true)
             try FileManager.default.createDirectory(at: workspace, withIntermediateDirectories: true)
+        }
+        // 下面任何一步失败（预渲染报错、被取消……）都要把 workspace 连同已经
+        // 落盘的中间片一起清掉——不然调用方要等 plan() 成功返回才拿得到
+        // workspace 路径，异常分支永远够不着它，大体积 ProRes 中间片就烂在
+        // 临时目录里了。只有正常 return 之前才把 ownershipTransferred 置真，
+        // 表示「调用方接手了，它来负责清理」。
+        var workspaceOwnershipTransferred = false
+        defer {
+            if !workspaceOwnershipTransferred {
+                try? FileManager.default.removeItem(at: workspace)
+            }
+        }
+
+        // ffmpeg 落盘目标：workspace 里的临时文件，扩展名跟真实输出一致
+        // （ffmpeg 靠文件名猜 muxer）。真正的用户目标只在全部成功后才由
+        // 调用方原子替换过去——ffmpeg 的 -y 一旦打开文件就地截断，直接写
+        // 用户选的路径的话，编码编到一半失败也会把人家原来的文件先冲掉。
+        let tempOutput = workspace
+            .appendingPathComponent("export-output")
+            .appendingPathExtension(output.pathExtension)
+
+        // 关键帧动画的段：先用预览同一套合成渲成中间片（AnimatedClipPrerenderer），
+        // ffmpeg 图里当普通素材吃。主轨一条黑底 422；画中画 fill+matte 两条
+        //（alphamerge 合回带 alpha 的流），细节见 AnimatedClipPrerenderer。
+        enum Prerendered {
+            case main(URL)
+            case overlay(fill: URL, matte: URL)
+        }
+        var prerendered: [UUID: Prerendered] = [:]
+        for clip in mainVisible where clip.isAnimated {
+            prerendered[clip.id] = .main(try await AnimatedClipPrerenderer.renderMain(
+                clip: clip, renderSize: renderSize, into: workspace, cancellation: cancellation
+            ))
+        }
+        for lane in overlayLanes {
+            for clip in lane.clips where clip.isAnimated && !clip.needsStillConversion {
+                let pair = try await AnimatedClipPrerenderer.renderOverlay(
+                    clip: clip, renderSize: renderSize, into: workspace, cancellation: cancellation
+                )
+                prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
+            }
         }
 
         // 形状 → 整幅透明 PNG。
@@ -237,8 +309,12 @@ enum VideoEditExportGraph {
             args += ["-filter_complex", filters.joined(separator: ";")]
             args += ["-map", "[\(audioOut)]", "-c:a", "aac", "-b:a", "\(settings.audio.kbps)k"]
             args += ["-t", fmt(total)]
-            args.append(output.path)
-            return Plan(arguments: args, workspace: workspace, totalDuration: total, isAudioOnly: true)
+            args.append(tempOutput.path)
+            workspaceOwnershipTransferred = true
+            return Plan(
+                arguments: args, workspace: workspace, totalDuration: total,
+                tempOutput: tempOutput, isAudioOnly: true
+            )
         }
 
         // MARK: 主轨分节（素材 + 黑场补隙 + 结尾补到总长）
@@ -280,7 +356,14 @@ enum VideoEditExportGraph {
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
                 let end = clip.sourceStart + clip.sourceDuration
-                if clip.hasVisualTransform {
+                if case .main(let intermediate) = prerendered[clip.id] {
+                    // 关键帧动画的段：中间片就是压平好的整段画面（黑底、画布
+                    // 尺寸、0 起点、时长=段长），直接进拼接链。声音仍走原素材。
+                    let preSource = input(for: intermediate)
+                    filters.append(
+                        "[\(preSource):v]fps=30,setsar=1,format=yuv420p[\(vLabel)]"
+                    )
+                } else if clip.hasVisualTransform {
                     // 摆放/旋转/裁切/翻转/透明度任一非默认的主轨段：
                     // 变换链处理后叠到黑底画布上。用 overlay 而不是 pad ——
                     // 框可以比画布大、可以探出边界，旋转还会撑大输出框。
@@ -365,30 +448,72 @@ enum VideoEditExportGraph {
         for lane in overlayLanes {
             for clip in lane.clips where !clip.needsStillConversion {
                 let source = input(for: clip.sourceURL)
-                let end = clip.sourceStart + clip.sourceDuration
                 let scaled = nextLabel("ov")
-                // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
-                let chain: String
                 let x: String
                 let y: String
-                if clip.hasVisualTransform {
-                    let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
-                    chain = transformed.chain
-                    x = transformed.overlayX
-                    y = transformed.overlayY
+                if case .overlay(let fill, let matte) = prerendered[clip.id] {
+                    // 关键帧动画的画中画：fill（内容压黑底）+ matte（白块蒙版）
+                    // alphamerge 合回带 alpha 的整幅画布，原位叠放。
+                    // 位置/缩放/旋转/不透明度全在两条中间片里烘焙好了。
+                    //
+                    // fill 是压在黑底上合成出来的：边缘抗锯齿处的 RGB 已经是
+                    // 「真实色 × coverage × opacity」（黑底=0，预乘的定义），但 alphamerge
+                    // 只是把这份 RGB 原样接上 matte 给的 alpha，出来的流对
+                    // ffmpeg 来说是 straight alpha 语义。直接喂给 overlay 默认
+                    // 的 straight 混合，边缘的 alpha 会被多乘一次（50% 覆盖处
+                    // 只有该有亮度的一半，实测验证过）。overlay 自带的
+                    // alpha=premultiplied 选项在这张图上不生效（依赖帧的
+                    // alpha_mode 元数据协商，alphamerge 不会打这个标记，测过
+                    // 多种组合数值都不对）——改成显式按 matte 把 fill 除回
+                    // 真实色（真实色 = 255×fill/matte），这样交给 overlay 的
+                    // 就是名副其实的 straight alpha，用它默认的混合就对。
+                    let fillSource = input(for: fill)
+                    let matteSource = input(for: matte)
+                    let fillLabel = nextLabel("kf")
+                    let matteLabel = nextLabel("km")
+                    let matteRGBLabel = nextLabel("kmc")
+                    let straightLabel = nextLabel("ks")
+                    filters.append("[\(fillSource):v]fps=30,setsar=1,format=rgb24[\(fillLabel)]")
+                    filters.append("[\(matteSource):v]fps=30,setsar=1,format=gray[\(matteLabel)]")
+                    // matteRGB 单独从 matteSource 转，不能从 matteLabel 派生：
+                    // 同一条流喂给两个下游（这里 + alphamerge）会让 alphamerge
+                    // 拿到的 alpha 整段跑偏（实测 128 会变成 76），原因不明，
+                    // 两条各转各的就没事——踩过一次，别改回「省一次解码」的
+                    // 写法。
+                    filters.append("[\(matteSource):v]fps=30,setsar=1,format=rgb24[\(matteRGBLabel)]")
+                    filters.append(
+                        "[\(fillLabel)][\(matteRGBLabel)]blend=all_expr=" +
+                        "'if(gt(B,0),min(255,255*A/B),0)'[\(straightLabel)]"
+                    )
+                    filters.append(
+                        "[\(straightLabel)][\(matteLabel)]alphamerge,format=rgba," +
+                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                    )
+                    x = "0"
+                    y = "0"
                 } else {
-                    let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
-                    chain = "scale=\(overlayWidth):-2,setsar=1"
-                    let inset = Int(renderSize.width * 0.02)
-                    x = xExpression(for: clip.overlayAnchor, inset: inset)
-                    y = yExpression(for: clip.overlayAnchor, inset: inset)
+                    // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
+                    let end = clip.sourceStart + clip.sourceDuration
+                    let chain: String
+                    if clip.hasVisualTransform {
+                        let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
+                        chain = transformed.chain
+                        x = transformed.overlayX
+                        y = transformed.overlayY
+                    } else {
+                        let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
+                        chain = "scale=\(overlayWidth):-2,setsar=1"
+                        let inset = Int(renderSize.width * 0.02)
+                        x = xExpression(for: clip.overlayAnchor, inset: inset)
+                        y = yExpression(for: clip.overlayAnchor, inset: inset)
+                    }
+                    filters.append(
+                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
+                        "\(chain)," +
+                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                    )
                 }
-                filters.append(
-                    "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
-                    "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=30," +
-                    "\(chain)," +
-                    "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
-                )
                 let outV = nextLabel("v")
                 filters.append(
                     "[\(video)][\(scaled)]overlay=x=\(x):y=\(y):eof_action=pass:" +
@@ -475,9 +600,10 @@ enum VideoEditExportGraph {
         if settings.stripMetadata { args += ["-map_metadata", "-1"] }
         if settings.fastStart { args += ["-movflags", "+faststart"] }
         args += ["-t", fmt(total)]
-        args.append(output.path)
+        args.append(tempOutput.path)
 
-        return Plan(arguments: args, workspace: workspace, totalDuration: total)
+        workspaceOwnershipTransferred = true
+        return Plan(arguments: args, workspace: workspace, totalDuration: total, tempOutput: tempOutput)
     }
 
     // MARK: 小工具

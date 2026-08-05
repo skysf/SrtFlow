@@ -852,6 +852,7 @@ private struct ClipBlockView: View {
         // 分割模式下移动手势整个停掉（.subviews 保留上面的点击）：
         // 只 guard 回调的话，4pt 的手抖仍会被手势吃掉，本该落下的那一刀就没了。
         .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
+        .overlay(alignment: .bottomLeading) { keyframeMarkers }
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
         .onHover(perform: updateSplitCursor)
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
@@ -956,6 +957,29 @@ private struct ClipBlockView: View {
                 dragVisualStart = nil
                 onDragEnd()
             }
+    }
+
+    /// 关键帧菱形：贴着块的底边标出每个关键帧的位置（所有属性轨的并集）。
+    @ViewBuilder
+    private var keyframeMarkers: some View {
+        if let animation = clip.animation, !animation.isEmpty, height > 26 {
+            ZStack(alignment: .bottomLeading) {
+                Color.clear
+                ForEach(Array(animation.allKeyTimes.enumerated()), id: \.offset) { _, sourceTime in
+                    let x = (clip.timelineTime(atSource: sourceTime) - clip.timelineStart) * pps
+                    if x >= -0.5, x <= width + 0.5 {
+                        Image(systemName: "diamond.fill")
+                            .font(.system(size: 6))
+                            .foregroundStyle(.white.opacity(0.95))
+                            .shadow(color: .black.opacity(0.7), radius: 0.7)
+                            .offset(x: x - 3, y: -2)
+                    }
+                }
+            }
+            .frame(width: width, height: height, alignment: .bottomLeading)
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .allowsHitTesting(false)
+        }
     }
 
     /// 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。

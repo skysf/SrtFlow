@@ -44,7 +44,9 @@
 自检命令：`swift run SrtFlowCoreChecks`（核心库）、
 `scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
 `scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
-源码在 `checks/PreviewComposition/`）
+源码在 `checks/PreviewComposition/`）、
+`scripts/check-export-alpha-compositing.sh`（导出画中画动画的 fill+matte 合成，
+真跑一遍项目自带 ffmpeg 量输出像素，纯 shell 不依赖 Swift 编译）
 
 ## 架构与实现决策（docs/architecture/）
 
@@ -60,6 +62,9 @@
 - [preview-free-transform.md](docs/architecture/preview-free-transform.md) —
   预览区变换框与 `ClipPlacement`：归一化摆放、九宫格互斥、预览/导出两条管线
   同账（导出用 overlay 不用 pad）；**改预览合成/导出滤镜图/变换框前必读**
+- [keyframe-animation.md](docs/architecture/keyframe-animation.md) —
+  关键帧动画：源时间锚定（变速/分割自动正确）、切片规则（旋转 ≤6°/片）、
+  导出走 AVFoundation 预渲染 + 画中画 fill+matte；**改动画/预渲染前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -83,6 +88,17 @@
 - [2026-08-04-transform-review.md](docs/bugfixes/2026-08-04-transform-review.md) —
   Transform 评审返工三连：加字段必须升 formatVersion（旧版拒开胜过静默毁字段）、
   叠化「垫底=精确」的前提被变换破坏、缓存文件要「临时名→校验→原子替换」
+- [2026-08-04-prerender-avfoundation-pitfalls.md](docs/bugfixes/2026-08-04-prerender-avfoundation-pitfalls.md) —
+  预渲染两坑：空轨在 AVPlayer 能播但导出报 "Operation Stopped"；
+  backgroundColor 的 alpha 被忽略 → 带透明的产物走 fill+matte 双渲染
+- [2026-08-05-export-prerender-review.md](docs/bugfixes/2026-08-05-export-prerender-review.md) —
+  导出评审三轮六连：预渲染失败删用户目标文件、画中画边缘因预乘 alpha 被
+  多乘一次而变暗（`alpha=premultiplied` 实测不生效，改手动除回真实色）、
+  预渲染 Stop 无效+泄漏临时文件；复审又抓到三个：Stop 点在 build() 期间
+  崩溃整个 App（对未起跑的 session 调 cancelExport() 再 export()，这个
+  修了两版——原子登记不够，`exportAsynchronously` 的启动动作必须进临界区）、
+  修复本身把 fill 的 opacity 除没了（除法只测了 coverage 没测 opacity）、
+  ffmpeg 成功后提交前还有一条没查的取消窗口
 
 ## 根目录既有文档
 
