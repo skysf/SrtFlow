@@ -306,7 +306,9 @@ Task {
 
         // E. 画中画预渲染（fill + matte）：默认合成器出不了透明背景
         //    （backgroundColor 只支持不透明色），所以蒙版单独渲 —— 验证
-        //    fill 中心有内容、matte 的白块盖在正确位置（含不透明度烘焙）。
+        //    fill、matte 都烘焙了同一份不透明度（ffmpeg 那边靠 matte 把
+        //    fill 除回真实色，两边不带同一份 opacity 权重就除不对，见
+        //    docs/bugfixes/2026-08-05-export-prerender-review.md）。
         do {
             let info = MediaInfo(
                 duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
@@ -330,7 +332,10 @@ Task {
                 let centerRegion = CGRect(x: w * 0.45, y: h * 0.45, width: w * 0.1, height: h * 0.1)
                 let cornerRegion = CGRect(x: 0, y: 0, width: max(2, w * 0.08), height: max(2, h * 0.08))
                 let fillCenter = averageRGBA(fillFrame, region: centerRegion)
-                check(fillCenter.red > 0.85, "fill 中心应全亮（不透明度不许压在 fill 上），实测 \(fillCenter.red)")
+                check(
+                    fillCenter.red > 0.4 && fillCenter.red < 0.6,
+                    "fill 中心要跟 matte 一样烘焙 50% 不透明度（除回真实色时两边权重得对得上），实测 \(fillCenter.red)"
+                )
                 let matteCenter = averageRGBA(matteFrame, region: centerRegion)
                 let matteCorner = averageRGBA(matteFrame, region: cornerRegion)
                 check(
