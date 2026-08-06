@@ -43,9 +43,13 @@ struct VideoEditView: View {
             project.undoManager = undoManager
             installEventMonitor()
             // GUI 冒烟测试的导入钩子：环境变量不设就完全不生效。
+            // 可以用 : 分隔多个路径（PATH 惯例），addMedia 按类型分流 —— 想验
+            // 字幕相关的界面就再挂一个 .srt，否则拿不到「有字幕」的状态。
             if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_VIDEO"],
                !smoke.isEmpty, project.state.isEmpty {
-                project.addMedia(urls: [URL(fileURLWithPath: smoke)])
+                let urls = smoke.split(separator: ":")
+                    .map { URL(fileURLWithPath: String($0)) }
+                project.addMedia(urls: urls)
             }
         }
         .onDisappear {
@@ -208,7 +212,11 @@ struct VideoEditView: View {
     /// 多条重叠 cue 全部显示，顺序走第 9 节合同（与烧录共用同一排序实现）；
     /// 轨道选择（原文/译文/双语）跟随 project.subtitlePreviewTrack。
     private var currentSubtitleText: String? {
-        guard let doc = project.state.subtitleDocument(for: project.subtitlePreviewTrack) else {
+        // 选中的轨道可能已经不在了（译文被删、或工程重开时 subtitlePreviewTrack
+        // 还留着旧值），这时 subtitleDocument(for:) 返回 nil。直接跟着返回 nil 会让
+        // 预览字幕无声无息地整个消失 —— 回退到原文轨，宁可显示原文也不要空白。
+        guard let doc = project.state.subtitleDocument(for: project.subtitlePreviewTrack)
+            ?? project.state.subtitleDocument(for: .original) else {
             return nil
         }
         let active = SubtitleOverlap.active(at: clock.time, in: doc.cues)

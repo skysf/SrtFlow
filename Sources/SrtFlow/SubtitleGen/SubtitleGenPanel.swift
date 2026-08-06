@@ -47,6 +47,11 @@ private struct SubtitleGenPanelContent: View {
 
     @State private var targetLanguages: [SubtitleTranslationService.TargetLanguage] = []
     @State private var targetLanguageID = ""
+    /// 目标语言是不是用户自己选的。源语言未知时 `targetLanguages(from:)` 把全部
+    /// 语言标成 `.supported`，「已装在前」的排序退化成纯字母序，自动挑出来的
+    /// 默认值多半不是已装语言；等源语言确定、候选表重排之后必须重挑一次。
+    /// 用户手动选过就不能再动他的选择 —— 这个标志就是用来区分两者的。
+    @State private var targetLanguageIsUserPicked = false
     @State private var showsEditor = false
     /// 冒烟发现的缺口：翻译成功要有回执，不能静默回到空闲。
     @State private var lastTranslatedCount: Int?
@@ -62,14 +67,16 @@ private struct SubtitleGenPanelContent: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // 预览轨道选择（消费者清单 8.9 之一）。
-            if hasSubtitle {
+            // 只在真有译文时才出现：segmented 样式下 SwiftUI 不认逐项 .disabled
+            // （已知怪癖），没译文却留着「译文/双语」两段，点下去
+            // subtitleDocument(for:) 返回 nil，预览字幕会整个消失且毫无提示。
+            // 没有译文时本来也无从选择，与其摆一个点了会出事的控件不如不显示。
+            if hasSubtitle && hasTranslation {
                 // 键不能用 "Original"：strings 表里那条是编码设置的「保持原样」。
                 Picker("Preview track", selection: $project.subtitlePreviewTrack) {
                     Text("Original text").tag(SubtitleTrackChoice.original)
                     Text("Translated text").tag(SubtitleTrackChoice.translation)
-                        .disabled(!hasTranslation)
                     Text("Bilingual").tag(SubtitleTrackChoice.bilingual)
-                        .disabled(!hasTranslation)
                 }
                 .pickerStyle(.segmented)
             }
@@ -110,7 +117,10 @@ private struct SubtitleGenPanelContent: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Picker("Target language", selection: $targetLanguageID) {
+                Picker("Target language", selection: Binding(
+                    get: { targetLanguageID },
+                    set: { targetLanguageID = $0; targetLanguageIsUserPicked = true }
+                )) {
                     ForEach(targetLanguages) { target in
                         Text(target.needsDownload
                             ? String(format: L10n("%@ (needs download)"), target.displayName)
@@ -178,11 +188,16 @@ private struct SubtitleGenPanelContent: View {
 
     private func reloadTargets() async {
         targetLanguages = await translationService.targetLanguages(from: sourceLanguage)
-        if targetLanguageID.isEmpty || !targetLanguages.contains(where: { $0.id == targetLanguageID }) {
-            targetLanguageID = project.state.subtitleCompanion?.targetLanguage
-                .flatMap { tag in targetLanguages.first { $0.id.hasPrefix(tag) }?.id }
-                ?? targetLanguages.first?.id ?? ""
-        }
+        // 候选表重排后，只有「用户自己选过且仍然有效」的值才保留原样；自动挑的
+        // 默认值必须跟着重排走，否则源语言未知时按字母序挑中的那个会一直粘着，
+        // 等源语言确定、已装语言排到最前面了也不会被换掉（见
+        // targetLanguageIsUserPicked 的说明）。
+        let stillValid = !targetLanguageID.isEmpty
+            && targetLanguages.contains { $0.id == targetLanguageID }
+        guard !stillValid || !targetLanguageIsUserPicked else { return }
+        targetLanguageID = project.state.subtitleCompanion?.targetLanguage
+            .flatMap { tag in targetLanguages.first { $0.id.hasPrefix(tag) }?.id }
+            ?? targetLanguages.first?.id ?? ""
     }
 
     // MARK: 生成（macOS 26+）
