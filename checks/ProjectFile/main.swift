@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // 工程存盘 / 素材重链接的自检。编译方式见同目录的 run.sh。
 
@@ -356,7 +357,7 @@ do {
     """.utf8).write(to: ok)
     check((try? VideoEditProjectIO.load(from: ok)) != nil, "旧版本（v1）的工程要能打开")
 
-    // 回归：新工程写盘必须带**当前**版本号，且 Transform 字段起码是 v2。
+    // 回归：新工程写盘必须带**基线**版本号，且 Transform 字段起码是 v2。
     // 写成 v1 的话，只认 v1 的旧版会照常打开，然后在下一次自动保存时把
     // placement/rotation/opacity/flip/crop 全部静默删光。
     let media = dir.appendingPathComponent("v2.mp4")
@@ -366,13 +367,88 @@ do {
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: saved)) as? [String: Any]
     checkEqual(
         raw?["formatVersion"] as? Int,
-        VideoEditProjectFile.currentFormatVersion,
-        "写盘要带当前格式版本"
+        VideoEditProjectFile.baselineFormatVersion,
+        "普通工程写盘要带基线格式版本"
     )
     check(
-        VideoEditProjectFile.currentFormatVersion >= 3,
+        VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
     )
+}
+
+// MARK: - 15. formatVersion 按需写入：v4 只留给真用了关联字幕的工程
+
+do {
+    let dir = root.appendingPathComponent("on-demand-v4")
+    let media = dir.appendingPathComponent("a.mp4")
+    makeFile(media)
+    let project = dir.appendingPathComponent("p.srtflowproj")
+
+    func savedVersion() throws -> Int? {
+        let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+        return raw?["formatVersion"] as? Int
+    }
+
+    // 没碰过新功能的工程：写 v3，往返后还是 v3。
+    var state = timeline(mainMedia: [media])
+    let cueA = SubtitleCue(index: 1, start: 0, end: 2, text: "hello")
+    let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
+    state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
+    try VideoEditProjectIO.save(state, to: project)
+    checkEqual(try savedVersion(), 3, "只有原文轨（无 companion）的工程仍写 v3")
+
+    var roundtrip = try VideoEditProjectIO.load(from: project).timeline
+    try VideoEditProjectIO.save(roundtrip, to: project)
+    checkEqual(try savedVersion(), 3, "v3 工程往返后不能被抬版本")
+
+    // 挂上译文轨：写 v4，且译文/meta 往返无损。
+    var translationDoc = SubtitleDocumentModel(cues: [cueA, cueB])
+    translationDoc.cues[0].text = "你好"
+    translationDoc.cues[1].text = "世界"
+    roundtrip.subtitleCompanion = SubtitleCompanion(
+        translation: translationDoc,
+        targetLanguage: "zh-Hans",
+        sourceLanguage: "en",
+        origin: .imported,
+        cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
+    )
+    try VideoEditProjectIO.save(roundtrip, to: project)
+    checkEqual(try savedVersion(), 4, "带译文轨的工程要写 v4")
+
+    let loaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(loaded.subtitleCompanion?.translation?.cues.count, 2, "译文轨要存住")
+    checkEqual(loaded.subtitleCompanion?.translation?.cues.first?.id, cueA.id, "译文 cue 与原文共 ID")
+    checkEqual(loaded.subtitleCompanion?.translation?.cues.first?.text, "你好", "译文文本要存住")
+    checkEqual(loaded.subtitleCompanion?.targetLanguage, "zh-Hans", "目标语言要存住")
+    checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.recognitionConfidence, 0.9, "cueMeta 要存住")
+    checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.translationStale, true, "stale 标记要存住")
+
+    // 删光 v4 数据：下一次保存自动降回 v3（按需定版每次重算）。
+    var cleared = loaded
+    cleared.subtitleCompanion = nil
+    try VideoEditProjectIO.save(cleared, to: project)
+    checkEqual(try savedVersion(), 3, "删光关联字幕后要降回 v3")
+
+    // v4 文件本版能开；v5 拒开（闸门以 reader 上限比较）。
+    check(VideoEditProjectFile.latestFormatVersion == 4, "reader 上限应是 v4")
+    let v5 = dir.appendingPathComponent("v5.srtflowproj")
+    try Data("""
+    { "formatVersion": 5, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v5)
+    check((try? VideoEditProjectIO.load(from: v5)) == nil, "v5 工程必须拒开")
+
+    // 读盘规范化：孤儿译文 cue / 孤儿 meta（原文里没有的 ID）要被清掉。
+    var dirty = cleared
+    let ghost = SubtitleCue(index: 1, start: 9, end: 10, text: "幽灵")
+    dirty.subtitleCompanion = SubtitleCompanion(
+        translation: SubtitleDocumentModel(cues: [ghost]),
+        cueMeta: [ghost.id: CueMeta(), cueA.id: CueMeta(translationStale: true)]
+    )
+    try VideoEditProjectIO.save(dirty, to: project)
+    let normalized = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(normalized.subtitleCompanion?.translation, nil, "失锚的译文 cue 读盘要清掉")
+    checkEqual(normalized.subtitleCompanion?.cueMeta.count, 1, "孤儿 meta 读盘要清掉")
+    check(normalized.subtitleCompanion?.cueMeta[cueA.id] != nil, "锚得上的 meta 要留下")
 }
 
 // MARK: - 14. 关键帧锚在源时间：插值、变速、分割语义

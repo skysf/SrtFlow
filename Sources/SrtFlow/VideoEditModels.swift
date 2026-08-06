@@ -542,6 +542,9 @@ struct TimelineState: Hashable, Sendable {
 
     var subtitle: SubtitleDocumentModel?
     var subtitleURL: URL?
+    /// 原文字幕的伴随状态（译文轨/cueMeta/生成参数）。原文永远在 `subtitle`；
+    /// 这是 v4-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
+    var subtitleCompanion: SubtitleCompanion?
     /// 画面上的形状标注。
     var shapes: [ShapeAnnotation] = []
     /// 输出画面比例（预览和导出共用）。
@@ -972,7 +975,7 @@ extension EditLane: Codable {
 extension TimelineState: Codable {
     private enum CodingKeys: String, CodingKey {
         case mainClips, mainHidden, overlayTracks, audioTracks
-        case subtitle, subtitleURL, shapes, canvasRatio
+        case subtitle, subtitleURL, subtitleCompanion, shapes, canvasRatio
     }
 
     init(from decoder: Decoder) throws {
@@ -984,6 +987,7 @@ extension TimelineState: Codable {
         audioTracks = try c.decodeIfPresent([EditLane].self, forKey: .audioTracks) ?? []
         subtitle = try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .subtitle)
         subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
+        subtitleCompanion = try c.decodeIfPresent(SubtitleCompanion.self, forKey: .subtitleCompanion)
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
         canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
     }
@@ -996,6 +1000,10 @@ extension TimelineState: Codable {
         try c.encode(audioTracks, forKey: .audioTracks)
         try c.encodeIfPresent(subtitle, forKey: .subtitle)
         try c.encodeIfPresent(subtitleURL, forKey: .subtitleURL)
+        // 空 companion 不落盘：否则一个从未用过新功能的工程也会被抬进 v4。
+        if subtitleCompanion?.hasPersistentData == true {
+            try c.encodeIfPresent(subtitleCompanion, forKey: .subtitleCompanion)
+        }
         try c.encode(shapes, forKey: .shapes)
         try c.encode(canvasRatio, forKey: .canvasRatio)
     }

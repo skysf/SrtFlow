@@ -93,6 +93,10 @@ final class VideoEditProject: ObservableObject {
         documentGeneration &+= 1
         for task in importTasks { task.cancel() }
         importTasks.removeAll()
+        // 字幕生成/翻译也绑工程：切走就取消，别让旧任务白跑完整个素材、
+        // 还占着串行槽挡住新工程的生成。取消对空闲任务是无害的 no-op。
+        if #available(macOS 26.0, *) { TranscriptionTask.shared.cancel() }
+        if #available(macOS 15.0, *) { TranslationJobCoordinator.shared.cancel() }
     }
 
     /// 后台任务回来时先问一句：我还是当初那个工程吗？
@@ -153,6 +157,10 @@ final class VideoEditProject: ObservableObject {
     /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
     /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
     @Published var activeTool: TimelineTool = .select
+
+    /// 预览显示哪条字幕轨（原文/译文/双语）。运行时偏好，不进工程文件；
+    /// 烧录导出的轨道选择在导出面板单独选。
+    @Published var subtitlePreviewTrack: SubtitleTrackChoice = .original
 
     // 三个开关，对应截图里的磁吸、吸附、链接。
     @Published var magnetEnabled = true {
@@ -552,6 +560,8 @@ final class VideoEditProject: ObservableObject {
             perform { state in
                 state.subtitle = document
                 state.subtitleURL = url
+                // 换了原文轨（新 cue ID），旧译文/cueMeta 全部失锚，同一事务清掉。
+                state.subtitleCompanion = nil
             }
         } catch {
             notice = error.localizedDescription
@@ -562,6 +572,7 @@ final class VideoEditProject: ObservableObject {
         perform { state in
             state.subtitle = nil
             state.subtitleURL = nil
+            state.subtitleCompanion = nil
         }
     }
 
