@@ -131,6 +131,12 @@
   catch 面 = 责任面、错误路径禁止返回成功零值、预览堆叠方向要对齐
   libass（最早在最底）、缓存读时 touch 才是真 LRU + checksum 信封；
   共性：每轮修复自身就是下一轮 P1 的攻击面
+- [2026-08-06-build-version-and-shell-traps.md](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md) —
+  打包脚本写死 `VERSION:-0.3.0` 默认值，发到 0.4.1 后不传 VERSION 就静默打出贴错
+  版本号的 DMG（dist/ 里真有两个）；改成兜底取 git tag。修它时又踩两个 shell 陷阱：
+  裸 `$VAR` 紧跟中文会把多字节首字节吃进变量名（`set -u` 直接挂，与 bash 版本/
+  locale 无关），`pipefail` 下 `VAR="$(a|b)"` 会在赋值处就死掉、绕开自己写的报错。
+  **改 `.sh` 前必读**
 
 ## 根目录既有文档
 

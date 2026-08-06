@@ -2,8 +2,8 @@
 # SrtFlow 打包脚本（仅依赖 Command Line Tools，无需完整 Xcode）
 #
 # 用法：
-#   scripts/build-app.sh            # 构建 release、组装 SrtFlow.app、生成 DMG
-#   VERSION=1.0.0 scripts/build-app.sh
+#   VERSION=1.0.0 scripts/build-app.sh   # 正式发版：显式指定版本号
+#   scripts/build-app.sh                 # 开发版：版本号取最近的 git tag
 #
 # 产物：
 #   dist/SrtFlow.app
@@ -12,8 +12,31 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 APP_NAME=SrtFlow
-VERSION="${VERSION:-0.3.0}"
 DIST=dist
+
+# 版本号不写死默认值：以前是 VERSION="${VERSION:-0.3.0}"，发到 0.4.1 了那行还留在
+# 0.3.0，不传 VERSION 就会打出贴着旧版本号的包（dist/ 里真出现过这种产物）。
+# 改成兜底取最近的 tag —— 它跟着发布自动走，不会腐烂；HEAD 领先 tag 时明确警告。
+#
+# 注意下面凡是紧跟中文的变量都写成 ${VAR} 而不是裸 $VAR：bash 展开裸变量名时会把
+# 多字节字符的首字节也算进名字里（"v$VERSION，" 去找的是 VERSION\xef），配上
+# set -u 就是 unbound variable 当场挂掉。与 bash 版本、locale 都无关，5.3 照样中。
+# 本仓库的 .sh 全是中文提示，加变量时先想一下这条。详见
+# docs/bugfixes/2026-08-06-build-version-and-shell-traps.md
+if [ -z "${VERSION:-}" ]; then
+  # pipefail 下 git 失败会让整条赋值以 128 退出、走不到下面的报错，所以兜 || true
+  VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)"
+  if [ -z "${VERSION}" ]; then
+    echo "✗ 未传 VERSION，也取不到 git tag（不在 git 仓库？）。" >&2
+    echo "  请显式指定：VERSION=x.y.z $0" >&2
+    exit 1
+  fi
+  AHEAD="$(git rev-list --count "v${VERSION}..HEAD" 2>/dev/null || echo 0)"
+  if [ "${AHEAD}" -gt 0 ]; then
+    echo "⚠️  未传 VERSION，回退到最近的 tag v${VERSION}，但 HEAD 已领先 ${AHEAD} 个提交。"
+    echo "    这是开发版产物；正式发版请显式指定：VERSION=x.y.z $0"
+  fi
+fi
 
 echo "==> swift build -c release (arm64, -O)"
 swift build -c release --arch arm64
