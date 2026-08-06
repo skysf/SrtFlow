@@ -50,6 +50,11 @@
 
 ## 规划（docs/plans/）
 
+- [2026-08-06-native-screen-recording.md](docs/plans/2026-08-06-native-screen-recording.md) —
+  Edit Video 原生录屏完整方案（ScreenCaptureKit 整屏/窗口/单屏区域、电脑声音 +
+  独立麦克风轨、录前选保存位置、主轨末尾导入、工程 24/30/60 fps、全局提升到
+  macOS 15）：**待实施**；开工前先完成文中 Phase 0 的来源权限/控制窗排除、
+  AAC/时钟、封装和多屏实测门槛
 - [2026-08-06-native-subtitle-generation.md](docs/plans/2026-08-06-native-subtitle-generation.md) —
   原生字幕生成（SpeechAnalyzer 转写 + Translation 翻译、canonical 原文 +
   companion 译文轨、按需 formatVersion v4、sidecar 词级缓存）：**主体已实现**
