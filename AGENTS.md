@@ -142,6 +142,11 @@
   字母序，且自动挑的默认值会一直粘着等不到重挑）、对每个语言都假称「需要下载」、
   segmented 样式下逐项 `.disabled` 不生效导致点一下预览字幕静默消失。
   教训：占位值不许参与排序/判断/对用户断言；「默认值」和「用户的选择」必须可区分
+- [2026-08-06-stale-bundled-license-notice.md](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md) —
+  换成 AGPL-3.0 之后，打出来的包里那份授权声明仍写着 MIT：它由
+  `vendor-ffmpeg.sh` 生成、`vendor/` 又不入库，只在**重新下载 ffmpeg** 时才刷新，
+  `git grep` 也查不到。修法是加 `--readme-only` 模式，打包时现生成再拷。
+  教训：改生成器 ≠ 改产物；全仓文案替换要额外查一遍 .gitignore 覆盖的产物目录
 
 ## 根目录既有文档
 
