@@ -10,14 +10,19 @@ struct VideoEditProjectFile: Codable {
     /// 就是让旧版拒绝打开新工程，而不是打开后在下一次自动保存时把不认识的
     /// 字段悄悄删光（新版读旧版永远宽容，随便开）。
     /// 版本史：v1 首版；v2 自由摆放（placement）+ Transform
-    /// （rotationDegrees/opacity/flip/crop）；v3 关键帧动画（animation）。
+    /// （rotationDegrees/opacity/flip/crop）；v3 关键帧动画（animation）；
+    /// v4 关联字幕 companion（译文轨/cueMeta，**按需写入**）。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
     /// 时间线里每个素材路径配一份定位信息，素材被改名/移动后靠它找回来。
     var media: [MediaRecord]
 
-    static let currentFormatVersion = 3
+    /// reader 认识的最高版本（闸门比较对象）。
+    static let latestFormatVersion = 4
+    /// writer 的基线版本：没有 v4-only 数据的工程一律写它，旧版照常能开。
+    /// 具体判据见 `TimelineState.requiresFormatVersion4`（登记清单在那边）。
+    static let baselineFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
     private enum CodingKeys: String, CodingKey {
@@ -25,7 +30,9 @@ struct VideoEditProjectFile: Codable {
     }
 
     init(timeline: TimelineState, media: [MediaRecord]) {
-        formatVersion = Self.currentFormatVersion
+        // 按需定版：每次保存重算。用户删光 v4 数据后自然降回 v3。
+        formatVersion = timeline.requiresFormatVersion4
+            ? Self.latestFormatVersion : Self.baselineFormatVersion
         savedAt = Date()
         self.timeline = timeline
         self.media = media
@@ -178,7 +185,7 @@ enum VideoEditProjectIO {
         }
         // 未来版本的工程可能有这版看不懂的语义。硬打开的话，自动保存会把不认识的
         // 字段**删掉**，等于悄悄毁掉用户在新版里做的活。
-        guard file.formatVersion <= VideoEditProjectFile.currentFormatVersion else {
+        guard file.formatVersion <= VideoEditProjectFile.latestFormatVersion else {
             throw IOError(message: String(
                 format: L10n("“%@” was made by a newer version of SrtFlow."),
                 url.lastPathComponent
@@ -186,6 +193,8 @@ enum VideoEditProjectIO {
         }
 
         var timeline = file.timeline
+        // 关联字幕（v4）：译文/cueMeta 必须锚在现有原文 cue 上，坏数据当场清掉。
+        timeline.normalizeSubtitleCompanion()
         let projectDirectory = url.deletingLastPathComponent()
         let stored = Dictionary(file.media.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         var records: [String: MediaRecord] = [:]

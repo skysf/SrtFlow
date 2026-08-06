@@ -768,6 +768,8 @@ struct VideoEditExportSheet: View {
 
     /// 只导出选中的内容（单段、多段、纯音频都行）。
     @State private var selectionOnly = false
+    /// 字幕矩阵：烧录轨道选择 + 独立文件（SubtitleGen/SubtitleExportSection.swift）。
+    @State private var subtitleOptions = SubtitleExportOptions()
 
     private var exportState: TimelineState {
         project.stateForExport(selectionOnly: selectionOnly && !project.selectedClipIDs.isEmpty)
@@ -808,11 +810,9 @@ struct VideoEditExportSheet: View {
             Divider()
 
             VStack(alignment: .leading, spacing: 10) {
-                if project.state.subtitle != nil {
-                    Label("Subtitles are burned in with the Burn In tool's current style.", systemImage: "captions.bubble")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                SubtitleExportSection(
+                    project: project, options: $subtitleOptions, exportState: exportState
+                )
                 if exporter.isExporting {
                     ProgressView(value: exporter.progress) {
                         Text(String(format: L10n("Exporting… %@"), MediaFormatting.percent(exporter.progress)))
@@ -863,7 +863,9 @@ struct VideoEditExportSheet: View {
     }
 
     private func startExport() {
-        let state = exportState
+        var state = exportState
+        // 烧录矩阵：按选择把 subtitle 换成合成文档（原文/译文/双语），选无则清掉。
+        state.subtitle = subtitleOptions.burnDocument(state: state)
         let audioOnly = VideoEditExportGraph.isAudioOnly(state)
         let panel = NSSavePanel()
         panel.allowedContentTypes = [audioOnly ? .mpeg4Audio : .mpeg4Movie]

@@ -14,6 +14,7 @@ struct VideoEditView: View {
 
     @Environment(\.undoManager) private var undoManager
     @State private var showsExportSheet = false
+    @State private var showsSubtitlePanel = false
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
     @State private var eventMonitor: Any?
@@ -58,6 +59,9 @@ struct VideoEditView: View {
         .sheet(isPresented: $showsExportSheet) {
             VideoEditExportSheet(project: project, exporter: exporter)
         }
+        .sheet(isPresented: $showsSubtitlePanel) {
+            SubtitleGenPanel(project: project)
+        }
         // Export 放窗口右上角的工具栏，随时够得着。
         .toolbar {
             // 工程名下拉放最左边，它就是这个编辑器的文件菜单。
@@ -69,6 +73,13 @@ struct VideoEditView: View {
                     ProgressView(value: exporter.progress)
                         .frame(width: 80)
                 }
+                Button {
+                    showsSubtitlePanel = true
+                } label: {
+                    Label("Subtitles", systemImage: "captions.bubble")
+                }
+                .disabled(project.state.isEmpty)
+                .help("Generate, translate, and edit subtitle tracks")
                 Button {
                     showsExportSheet = true
                 } label: {
@@ -165,9 +176,9 @@ struct VideoEditView: View {
                         .foregroundStyle(.secondary)
                 }
                 ShapeOverlayCanvas(project: project, boxSize: size)
-                if let cue = currentSubtitleCue {
+                if let text = currentSubtitleText {
                     BurnInSubtitleOverlay(
-                        text: SubtitleSerializer.plainText(cue.text),
+                        text: text,
                         style: burnInQueue.burnInStyle,
                         scale: size.height / Double(BurnInStyle.referenceHeight),
                         boxSize: size
@@ -193,11 +204,23 @@ struct VideoEditView: View {
         return CGSize(width: width, height: height)
     }
 
-    /// 播放头此刻的字幕（字幕轨直接按时间线时间对齐）。
-    private var currentSubtitleCue: SubtitleCue? {
-        guard let cues = project.state.subtitle?.cues else { return nil }
-        let time = clock.time
-        return cues.last { $0.start <= time && time < $0.end }
+    /// 播放头此刻的字幕文本（字幕轨直接按时间线时间对齐）。
+    /// 多条重叠 cue 全部显示，顺序走第 9 节合同（与烧录共用同一排序实现）；
+    /// 轨道选择（原文/译文/双语）跟随 project.subtitlePreviewTrack。
+    private var currentSubtitleText: String? {
+        guard let doc = project.state.subtitleDocument(for: project.subtitlePreviewTrack) else {
+            return nil
+        }
+        let active = SubtitleOverlap.active(at: clock.time, in: doc.cues)
+        guard !active.isEmpty else { return nil }
+        // doc.cues 已按合同排序，active 保序。overlay 文本块底部对齐，
+        // 而 libass 把最早的事件排在最底、后来的往上叠 —— 所以显示时要
+        // 倒序拼行（合同序的第一条落在最后一行 = 画面最底），预览和
+        // 烧录的堆叠方向才一致。
+        let text = active.reversed().map { SubtitleSerializer.plainText($0.text) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+        return text.isEmpty ? nil : text
     }
 
     private var transport: some View {

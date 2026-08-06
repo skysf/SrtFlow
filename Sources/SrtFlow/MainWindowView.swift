@@ -95,6 +95,11 @@ struct MainWindowView: View {
         // 标题栏的副标题要自己查表：它是桥到 AppKit 窗口上的，不走 SwiftUI 的
         // 环境 locale，交给 LocalizedStringKey 的话中文界面下会漏成英文。
         .navigationSubtitle(L10n(state.section.title))
+        // Translation Host：常驻零尺寸视图，字幕翻译的 session 只能活在它的
+        // translationTask 闭包里（SubtitleGen/TranslationHost.swift）。
+        .background {
+            if #available(macOS 15.0, *) { TranslationHostView() }
+        }
         .onAppear {
             toolchain.resolveIfNeeded()
             // 启动时就是被文件唤起的，这时中转站里已经有东西了。
