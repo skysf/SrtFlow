@@ -218,7 +218,7 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 | 体积/性能 | App 壳本体仍约 400 KB，加上随包 ffmpeg 后 `.app` 约 **50 MB**、DMG 约 **23 MB**。实测原生 arm64 比系统里的 x86_64（Rosetta）版快约 **2.1 倍**（30 秒 1080p，crf 23 + preset slow：14.7s vs 31.0s，输出体积相同） |
 | 时间线捏合缩放 | **只能用 local NSEvent monitor**（`TimelineMagnificationBridge`），一切靠命中/响应链的方案真机必失败。2026-08-03 硬件实测定案；原因、失败方案清单与回归清单见 `docs/architecture/timeline-pinch-zoom.md` |
 | 公证分发 | 自用/朋友分享可直接用（右键打开）；CLT 自带 `notarytool`，有 Developer ID 后可公证 |
-| 授权 | 本体 MIT；随包 ffmpeg 为 GPLv2+，以独立进程调用、不做链接，两者互不影响。分发时随包提供其许可与源码途径 |
+| 授权 | 本体 **AGPL-3.0**（分发衍生作品须同样以 AGPL-3.0 开源）；随包 ffmpeg 为 GPLv2+，以独立进程调用、不做链接。分发时随包提供其许可与源码途径 |
 
 ---
 

@@ -143,7 +143,8 @@ back to `/opt/homebrew`, `/usr/local`, and `PATH`, and tells you when the
 ffmpeg it found is translated or lacks libass.
 
 This costs about 49 MB of app size. ffmpeg is licensed under the GPL v2 or
-later, independently of SrtFlow's own MIT licence; see `vendor/README.md` (also
+later; SrtFlow itself is licensed under the AGPL v3 and invokes ffmpeg as a
+separate process rather than linking against it. See `vendor/README.md` (also
 copied into the app as `ffmpeg-LICENSE.md`) for the version, source, and licence
 details.
 
@@ -263,9 +264,9 @@ VideoToolbox 才接受。
 开箱即用且跑满速度。如果包内没有，SrtFlow 会依次回退到 `/opt/homebrew`、
 `/usr/local` 和 `PATH`，并在找到的 ffmpeg 是转译版或缺 libass 时明确提示。
 
-代价是 App 体积增加约 49 MB。ffmpeg 采用 GPL v2 或更高版本授权，与 SrtFlow
-自身的 MIT 授权相互独立；版本、来源与许可详情见 `vendor/README.md`
-（同时会拷进 App 内的 `ffmpeg-LICENSE.md`）。
+代价是 App 体积增加约 49 MB。ffmpeg 采用 GPL v2 或更高版本授权；SrtFlow 自身
+采用 AGPL v3 授权，并以独立进程调用 ffmpeg，不与其链接。版本、来源与许可详情
+见 `vendor/README.md`（同时会拷进 App 内的 `ffmpeg-LICENSE.md`）。
 
 ### 隐私
 
@@ -276,4 +277,16 @@ SrtFlow 完全在本地运行，不包含账号、分析、遥测或网络服务
 
 ## License
 
-SrtFlow is available under the [MIT License](LICENSE).
+Copyright (c) 2026 SrtFlow contributors.
+
+SrtFlow is licensed under the [GNU Affero General Public License v3.0](LICENSE)
+(AGPL-3.0). You may use, modify, and redistribute it under those terms; any
+derivative work you distribute — or make available to users over a network —
+must also be released under the AGPL-3.0, with source. The bundled ffmpeg is a
+separate program under the GPL v2 or later, invoked as a subprocess; see
+[About the bundled ffmpeg](#about-the-bundled-ffmpeg).
+
+SrtFlow 以 [GNU Affero 通用公共许可证第 3 版](LICENSE)（AGPL-3.0）授权。你可以
+使用、修改、再分发，但分发的衍生作品（含通过网络提供给用户的版本）同样要以
+AGPL-3.0 授权并提供源码。随包的 ffmpeg 是以独立进程调用的另一个程序，采用
+GPLv2+ 授权。

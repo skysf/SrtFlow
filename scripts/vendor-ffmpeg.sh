@@ -15,7 +15,7 @@
 #   FFMPEG_SHA256=<hash> scripts/vendor-ffmpeg.sh
 #                                               # 上游更新构建后覆盖校验值
 #
-# ffmpeg 采用 GPLv2+ 授权，与本项目的 MIT 授权相互独立：App 以独立进程调用它，
+# ffmpeg 采用 GPLv2+ 授权，本项目采用 AGPL-3.0：App 以独立进程调用 ffmpeg，
 # 不做链接。分发时需同时提供 ffmpeg 的许可与源码获取途径，见 vendor/README.md。
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -134,8 +134,8 @@ cat > "$VENDOR_DIR/README.md" <<EOF
 - 源码：https://ffmpeg.org/download.html ，对应版本源码见
   https://github.com/FFmpeg/FFmpeg
 
-SrtFlow 本体以 MIT 授权，通过**独立进程**调用 ffmpeg，不与其链接，因此两者
-授权互不影响。分发包含 ffmpeg 的构建版本时，需一并提供上述许可与源码途径。
+SrtFlow 本体以 AGPL-3.0 授权，通过**独立进程**调用 ffmpeg，不与其链接。
+分发包含 ffmpeg 的构建版本时，需一并提供上述许可与源码途径。
 运行 \`ffmpeg -L\` 可查看完整许可文本。
 EOF
 
