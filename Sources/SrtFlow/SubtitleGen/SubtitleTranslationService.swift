@@ -112,6 +112,9 @@ final class SubtitleTranslationService: ObservableObject {
     struct TargetLanguage: Identifiable, Hashable {
         var language: Locale.Language
         var status: LanguageAvailability.Status
+        /// 源语言还没确定时根本查不出可用性，`status` 只是个占位的 `.supported`。
+        /// 那种情况下不能对用户断言「需要下载」—— 本机已装的语言也会被这么标。
+        var statusIsKnown: Bool = true
         var id: String { language.maximalIdentifier }
 
         var displayName: String {
@@ -119,10 +122,27 @@ final class SubtitleTranslationService: ObservableObject {
             return Locale.current.localizedString(forIdentifier: identifier) ?? identifier
         }
 
-        var needsDownload: Bool { status == .supported }
+        var needsDownload: Bool { statusIsKnown && status == .supported }
     }
 
-    /// 目标语言候选：按「已装在前、可下载在后」排；unsupported 不出现。
+    /// 系统首选语言的名次表（语言码 → 名次，越小越靠前）。
+    ///
+    /// 光按「已装在前、其余字母序」排是不够的：源语言还没确定时（挂一份现成
+    /// 字幕直接翻译就属于这种），下面会把全表标成 `.supported`，排序退化成纯
+    /// 字母序，第一个是「阿拉伯语（阿联酋）(需要下载)」—— 它就这么成了默认的
+    /// 目标语言，用户点一下 Translate All 就在下载阿拉伯语模型。而这个面板最
+    /// 常见的用法恰恰是把外语字幕翻成自己的语言，所以再兜一层系统首选语言。
+    private static var preferredLanguageRanks: [String: Int] {
+        var ranks: [String: Int] = [:]
+        for (index, identifier) in Locale.preferredLanguages.enumerated() {
+            guard let code = Locale(identifier: identifier).language.languageCode?.identifier
+            else { continue }
+            if ranks[code] == nil { ranks[code] = index }
+        }
+        return ranks
+    }
+
+    /// 目标语言候选：按「已装 → 系统首选 → 字母序」排；unsupported 不出现。
     func targetLanguages(from source: String?) async -> [TargetLanguage] {
         let availability = LanguageAvailability()
         let sourceLanguage = source.map(Locale.Language.init(identifier:))
@@ -130,15 +150,24 @@ final class SubtitleTranslationService: ObservableObject {
         for language in await availability.supportedLanguages {
             let status = await availability.status(from: sourceLanguage ?? language, to: language)
             if sourceLanguage == nil {
-                // 没有源语言时只列全量支持语言（状态标成 supported，选定源语言后再精确）。
-                result.append(TargetLanguage(language: language, status: .supported))
+                // 没有源语言时只列全量支持语言（状态占位，选定源语言后再精确）。
+                result.append(
+                    TargetLanguage(language: language, status: .supported, statusIsKnown: false)
+                )
             } else if status != .unsupported {
                 result.append(TargetLanguage(language: language, status: status))
             }
         }
+        let ranks = Self.preferredLanguageRanks
+        func preferredRank(_ target: TargetLanguage) -> Int {
+            target.language.languageCode.flatMap { ranks[$0.identifier] } ?? Int.max
+        }
         return result.sorted {
             if ($0.status == .installed) != ($1.status == .installed) {
                 return $0.status == .installed
+            }
+            if preferredRank($0) != preferredRank($1) {
+                return preferredRank($0) < preferredRank($1)
             }
             return $0.displayName < $1.displayName
         }

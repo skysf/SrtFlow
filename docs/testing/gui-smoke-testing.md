@@ -25,9 +25,11 @@
 
 - `SRTFLOW_FFMPEG=<repo>/vendor/ffmpeg` —— 临时目录的拷贝找不到随包 ffmpeg，
   会报"视频引擎有问题/无 libass"，用它指回去。
-- `SRTFLOW_SMOKE_VIDEO=<视频路径>` —— 进入 Edit Video 时项目为空则自动导入该
-  视频上主轨。NSOpenPanel 自动化（⌘⇧G 输路径）不可靠，别再试；文件对话框类
-  交互一律靠这个钩子或留给用户手测。
+- `SRTFLOW_SMOKE_VIDEO=<路径>[:<路径>...]` —— 进入 Edit Video 时项目为空则自动
+  导入这些文件，按 `:` 分隔（PATH 惯例），`addMedia` 按类型分流。**要验字幕相关
+  的界面就再挂一个 `.srt`**（`smoke.mp4:smoke.srt`），否则拿不到「有字幕」的
+  状态，字幕面板里大半控件都不出现。NSOpenPanel 自动化（⌘⇧G 输路径）不可靠，
+  别再试；文件对话框类交互一律靠这个钩子或留给用户手测。
 - 测试视频用 vendor/ffmpeg 现造：`-f lavfi -i testsrc2=... -c:v h264_videotoolbox`。
 
 ## 三、驱动与截图
