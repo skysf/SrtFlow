@@ -75,7 +75,11 @@ mkdir -p "$APP/Contents/Helpers"
 cp vendor/ffmpeg "$APP/Contents/Helpers/ffmpeg"
 chmod +x "$APP/Contents/Helpers/ffmpeg"
 # GPL 合规：许可说明随包，方便使用者查到 ffmpeg 的授权与源码途径。
-[ -f vendor/README.md ] && cp vendor/README.md "$APP/Contents/Resources/ffmpeg-LICENSE.md"
+# 每次打包都重新生成再拷：vendor/ 不入库，这份文案原本只在重新获取 ffmpeg 时
+# 写一次，仓库换了授权它不会跟着变 —— 0.5.0 打包实测撞过（LICENSE 已经是
+# AGPL-3.0，包里这份仍写着 MIT）。这是给用户看的授权声明，不能拷陈的。
+scripts/vendor-ffmpeg.sh --readme-only
+cp vendor/README.md "$APP/Contents/Resources/ffmpeg-LICENSE.md"
 
 # 图标：脚本生成 iconset → iconutil 合成 icns（仓库中不放二进制图标文件）
 echo "==> 生成图标"

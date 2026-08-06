@@ -10,6 +10,7 @@
 # 用法：
 #   scripts/vendor-ffmpeg.sh                    # 下载 + 校验 + 安装到 vendor/
 #   scripts/vendor-ffmpeg.sh --force            # 忽略已有文件，重新获取
+#   scripts/vendor-ffmpeg.sh --readme-only      # 只重写 vendor/README.md（许可说明）
 #   FFMPEG_LOCAL=/path/to/ffmpeg scripts/vendor-ffmpeg.sh
 #                                               # 用本地自建的 ffmpeg，跳过下载
 #   FFMPEG_SHA256=<hash> scripts/vendor-ffmpeg.sh
@@ -30,6 +31,40 @@ FFMPEG_SHA256="${FFMPEG_SHA256:-ebb82529562b71170807bbc6b0e7eb4f0b13af8cbb0e085b
 
 FORCE=0
 [ "${1:-}" = "--force" ] && FORCE=1
+
+# 随包的许可说明（GPL 合规：注明版本、许可与源码获取途径）。
+# 它同时也是**给用户看的 SrtFlow 授权声明**，会被 build-app.sh 拷进 App 里，
+# 所以每次打包都要重新生成 —— 见 --readme-only。
+write_readme() {
+    cat > "$VENDOR_DIR/README.md" <<EOF
+# vendor/
+
+此目录存放随 SrtFlow 一起分发的第三方可执行文件，**不纳入版本控制**
+（见 .gitignore）。用 \`scripts/vendor-ffmpeg.sh\` 重新获取。
+
+## ffmpeg
+
+- 版本：$FFMPEG_VERSION_LABEL
+- 来源：$FFMPEG_URL
+- 许可：GNU General Public License v2 或更高版本（GPLv2+）
+- 源码：https://ffmpeg.org/download.html ，对应版本源码见
+  https://github.com/FFmpeg/FFmpeg
+
+SrtFlow 本体以 AGPL-3.0 授权，通过**独立进程**调用 ffmpeg，不与其链接。
+分发包含 ffmpeg 的构建版本时，需一并提供上述许可与源码途径。
+运行 \`ffmpeg -L\` 可查看完整许可文本。
+EOF
+}
+
+# 只重写许可说明，不碰二进制。打包脚本每次都调它：vendor/ 不入库，这份文案
+# 以前只在重新获取 ffmpeg 时才写一次，仓库换了授权它却留在旧文案上 ——
+# 0.5.0 打包实测撞过（LICENSE 已是 AGPL-3.0，包里仍写着 MIT）。
+if [ "${1:-}" = "--readme-only" ]; then
+    mkdir -p "$VENDOR_DIR"
+    write_readme
+    echo "已刷新 $VENDOR_DIR/README.md"
+    exit 0
+fi
 
 # 校验一个 ffmpeg 二进制是否满足要求：arm64 + libass + libx264 + videotoolbox。
 verify_binary() {
@@ -119,25 +154,7 @@ xattr -c "$DEST" 2>/dev/null || true
 echo "==> 校验产物"
 verify_binary "$DEST" || exit 1
 
-# 随包的许可说明（GPL 合规：注明版本、许可与源码获取途径）。
-cat > "$VENDOR_DIR/README.md" <<EOF
-# vendor/
-
-此目录存放随 SrtFlow 一起分发的第三方可执行文件，**不纳入版本控制**
-（见 .gitignore）。用 \`scripts/vendor-ffmpeg.sh\` 重新获取。
-
-## ffmpeg
-
-- 版本：$FFMPEG_VERSION_LABEL
-- 来源：$FFMPEG_URL
-- 许可：GNU General Public License v2 或更高版本（GPLv2+）
-- 源码：https://ffmpeg.org/download.html ，对应版本源码见
-  https://github.com/FFmpeg/FFmpeg
-
-SrtFlow 本体以 AGPL-3.0 授权，通过**独立进程**调用 ffmpeg，不与其链接。
-分发包含 ffmpeg 的构建版本时，需一并提供上述许可与源码途径。
-运行 \`ffmpeg -L\` 可查看完整许可文本。
-EOF
+write_readme
 
 echo
 echo "完成：$DEST"
