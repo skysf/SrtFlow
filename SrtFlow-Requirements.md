@@ -178,6 +178,14 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 中英双语。可跟随系统，也可在应用内随时切换（首页底部下拉，或「设置…」⌘,）。
 应用自身文字立即切换；菜单栏等 AppKit 部件下次启动生效。
 
+### 4.9 字幕生成与翻译（本机）
+
+从视频/音频直接生成字幕：用系统 SpeechAnalyzer 本机转写出原文轨（canonical），
+可再用系统 Translation 生成译文轨（companion）；两轨在双轨编辑器里对照编辑，
+按导出矩阵分别导出。全程在本机完成，不上传音视频。能力按 macOS 14/15/26 分层，
+缺模型时给出明确的安装与降级路径。设计与实现细节见
+[docs/plans/2026-08-06-native-subtitle-generation.md](docs/plans/2026-08-06-native-subtitle-generation.md)。
+
 ---
 
 ## 5. 文档模型（高自由度设计）
@@ -209,7 +217,7 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 | 工具链 | **仅 Command Line Tools**（Swift 6，含完整 macOS SDK 与 SwiftUI），**不需要完整 Xcode** |
 | 构建 | SwiftPM：`swift build -c release --arch arm64`（仅 Apple Silicon，单架构保持小体积） |
 | 代码结构 | `SrtFlowCore`（解析/序列化 + 编码参数与样式模型，纯逻辑可独立测试）+ `SrtFlow`（SwiftUI App 壳）+ `SrtFlowCoreChecks`（自检） |
-| 测试 | CLT 不含 XCTest，核心库用 `swift run SrtFlowCoreChecks` 自检（**184 项断言**） |
+| 测试 | CLT 不含 XCTest，核心库用 `swift run SrtFlowCoreChecks` 自检（**290 项断言**）；另有工程存盘、预览合成、导出 alpha 合成三套 `scripts/check-*.sh`，清单见 AGENTS.md |
 | 视频引擎 | **随包自带原生 arm64 ffmpeg**（含 libass/libx264/VideoToolbox），放 `Contents/Helpers/ffmpeg`，以独立进程调用；`scripts/vendor-ffmpeg.sh` 负责下载 + SHA-256 校验 + 能力检测。包内没有时回退 `/opt/homebrew` → `/usr/local` → `PATH`，并在找到的是转译版或缺 libass 时提示 |
 | 媒体信息 | 用 **AVFoundation** 读时长/分辨率/帧率/编解码器（正确处理竖拍旋转），因此不必再带 49 MB 的 ffprobe；AVFoundation 打不开的容器（mkv 等）退回解析 `ffmpeg -i` 的输出 |
 | 打包 | `scripts/build-app.sh`：手写 `Info.plist` 组装 `.app` → 拷入 ffmpeg → **先签嵌套二进制再签外层** → `hdiutil` 生成 DMG |
@@ -234,7 +242,6 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 ## 8. 非目标（当前版本不做或未要求）
 
 - 未要求必须上架 Mac App Store
-- 未要求自动语音识别生成字幕
 - 未要求云同步 / 账号系统
 - 无时间戳 Text **不做**自动按时长拆条（明确为手动改时间）
 - 压缩**不做** HEVC 档与「指定目标体积」的两遍码率模式（评估后未选）
@@ -261,5 +268,8 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 
 ## 10. 待确认
 
-无。两项新功能（视频压缩、字幕烧制）已实现并通过真实素材端到端验证；
-核心库自检 184 项全绿。
+字幕生成（§4.9）主体已实现并通过端到端冒烟，但仍有产品待拍板项（分段默认
+阈值、生成后 cue 不自动跟随的取舍、告警图标呈现等），清单见
+[docs/plans/2026-08-06-native-subtitle-generation.md](docs/plans/2026-08-06-native-subtitle-generation.md)
+的 17.3。其余功能（视频压缩、字幕烧制、视频剪辑）已实现并通过真实素材端到端
+验证；核心库自检 290 项全绿。
