@@ -33,7 +33,11 @@ vendor/ffmpeg（`Contents/Helpers/`）→ 生成图标 → **先签嵌套二进�
 （顺序反了外层签名立即失效）→ `hdiutil` 生成 DMG。
 
 产物：`dist/SrtFlow.app`（约 52 MB）、`dist/SrtFlow-<版本>-arm64.dmg`。
-版本号：`VERSION=x.y.z ./scripts/build-app.sh`，默认见脚本。
+
+版本号：**正式发版必须显式传** `VERSION=x.y.z ./scripts/build-app.sh`。不传时
+脚本兜底取最近的 git tag，并在 HEAD 领先该 tag 时警告「这是开发版产物」——
+以前这里是写死的默认值，发到 0.4.1 了还停在 0.3.0，打出过贴错版本号的包，
+见 [bugfixes/2026-08-06-build-version-and-shell-traps.md](../bugfixes/2026-08-06-build-version-and-shell-traps.md)。
 
 ## 产物验收清单
 
