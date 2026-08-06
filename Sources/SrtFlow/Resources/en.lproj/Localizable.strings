@@ -264,6 +264,8 @@
 "Add or remove a keyframe at the playhead" = "Add or remove a keyframe at the playhead";
 "Previous keyframe" = "Previous keyframe";
 "Next keyframe" = "Next keyframe";
+"Increase by 1" = "Increase by 1";
+"Decrease by 1" = "Decrease by 1";
 "Could not prepare the animated clip %@ for export." = "Could not prepare the animated clip %@ for export.";
 "Line" = "Line";
 "Rectangle" = "Rectangle";

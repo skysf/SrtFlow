@@ -65,6 +65,9 @@
 - [keyframe-animation.md](docs/architecture/keyframe-animation.md) —
   关键帧动画：源时间锚定（变速/分割自动正确）、切片规则（旋转 ≤6°/片）、
   导出走 AVFoundation 预渲染 + 画中画 fill+matte；**改动画/预渲染前必读**
+- [inspector-scrub-number-field.md](docs/architecture/inspector-scrub-number-field.md) —
+  Inspector 数值框：离散/live 两条写入路径、拖调取消收尾、拒绝自动聚焦、
+  cursor rect 局部光标；**改数值框/拖调/Transform 写入入口前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -91,6 +94,10 @@
 - [2026-08-04-prerender-avfoundation-pitfalls.md](docs/bugfixes/2026-08-04-prerender-avfoundation-pitfalls.md) —
   预渲染两坑：空轨在 AVPlayer 能播但导出报 "Operation Stopped"；
   backgroundColor 的 alpha 被忽略 → 带透明的产物走 fill+matte 双渲染
+- [2026-08-05-inspector-scrub-field-gestures.md](docs/bugfixes/2026-08-05-inspector-scrub-field-gestures.md) —
+  Inspector 数值框拖调完全无效：`currentEditor()` 对没在编辑的字段也返回非
+  nil、检查器出现时字段被自动聚焦进编辑态；另修 ±1px 被固定归一化容差吞掉
+  （容差必须亚像素）。长期约束见 architecture/inspector-scrub-number-field
 - [2026-08-05-export-prerender-review.md](docs/bugfixes/2026-08-05-export-prerender-review.md) —
   导出评审三轮六连：预渲染失败删用户目标文件、画中画边缘因预乘 alpha 被
   多乘一次而变暗（`alpha=premultiplied` 实测不生效，改手动除回真实色）、

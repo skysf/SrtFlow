@@ -264,6 +264,8 @@
 "Add or remove a keyframe at the playhead" = "在播放头处添加或删除关键帧";
 "Previous keyframe" = "上一个关键帧";
 "Next keyframe" = "下一个关键帧";
+"Increase by 1" = "增加 1";
+"Decrease by 1" = "减少 1";
 "Could not prepare the animated clip %@ for export." = "动画片段 %@ 导出预渲染失败。";
 "Line" = "线条";
 "Rectangle" = "长方形";
