@@ -986,6 +986,7 @@ do {
 // 录屏与工程帧率的检查放在 ScreenRecordingChecks.swift 里（顶层脚本作用域
 // 塞太多断言会把 Swift 类型检查拖垮，实测卡 20 分钟没编完）。
 runScreenRecordingChecks()
+runLanguageDetectionChecks()
 
 if failures == 0 {
     print("All \(checks) checks passed.")

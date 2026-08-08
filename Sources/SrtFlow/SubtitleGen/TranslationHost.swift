@@ -210,6 +210,24 @@ struct TranslationHostView: View {
 @available(macOS 15.0, *)
 enum TranslationErrorText {
     static func describe(_ error: Error) -> String {
+        // 系统的 TranslationError 各种失败共用一句「Unable to Translate」
+        // （NSError code 恒为 1，localizedDescription 分不出原因，2026-08-09
+        // 实测）。用公开静态实例 + ~= 区分，翻成能行动的话；预检
+        // （TranslationPreflight）拦掉可预判的配对错误，这里兜运行期漏网的。
+        // 静态实例是 26+ 的 API：15–25 只能原样透传系统文案。
+        if #available(macOS 26.0, *) {
+            if TranslationError.notInstalled ~= error {
+                return L10n("The translation model isn't installed. Try again and approve the model download when it appears.")
+            }
+            if TranslationError.unsupportedLanguagePairing ~= error
+                || TranslationError.unsupportedSourceLanguage ~= error
+                || TranslationError.unsupportedTargetLanguage ~= error {
+                return L10n("Translation between these two languages isn't supported on this Mac.")
+            }
+            if TranslationError.unableToIdentifyLanguage ~= error {
+                return L10n("Couldn't identify the subtitle language, so it can't be translated automatically.")
+            }
+        }
         let text = error.localizedDescription
         if text.isEmpty {
             return L10n("Translation failed for an unknown reason.")

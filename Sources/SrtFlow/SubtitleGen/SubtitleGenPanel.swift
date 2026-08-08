@@ -81,9 +81,15 @@ private struct SubtitleGenPanelContent: View {
                 .pickerStyle(.segmented)
             }
 
-            translationSection
-            Divider()
+            // 生成区在前（2026-08-09 案例）：面板的第一入口是「从音频生成」，
+            // 翻译区在没有字幕轨之前整个不出现 —— 不摆一个无从选择的目标
+            // 语言，更不允许一个没露过面的自动预选值驱动任何翻译。
             generationSection
+
+            if hasSubtitle {
+                Divider()
+                translationSection
+            }
 
             if hasSubtitle {
                 Divider()
@@ -109,62 +115,57 @@ private struct SubtitleGenPanelContent: View {
 
     // MARK: 翻译（macOS 15+）
 
+    /// 只在真有字幕轨时渲染（body 侧 hasSubtitle 门控）。
     @ViewBuilder private var translationSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Translate").font(.subheadline).bold()
-            if !hasSubtitle {
-                Text("Attach or generate a subtitle track first.")
+            Picker("Target language", selection: Binding(
+                get: { targetLanguageID },
+                set: { targetLanguageID = $0; targetLanguageIsUserPicked = true }
+            )) {
+                ForEach(targetLanguages) { target in
+                    Text(target.needsDownload
+                        ? String(format: L10n("%@ (needs download)"), target.displayName)
+                        : target.displayName
+                    ).tag(target.id)
+                }
+            }
+
+            if case .running(let completed, let total) = coordinator.phase {
+                HStack(spacing: 8) {
+                    ProgressView(value: Double(completed), total: Double(max(total, 1)))
+                    Text("\(completed)/\(total)")
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                    Button("Stop") { coordinator.cancel() }
+                        .controlSize(.small)
+                }
+            } else {
+                HStack {
+                    Button("Translate All") {
+                        translate(scope: .all)
+                    }
+                    .disabled(targetLanguageID.isEmpty)
+                    Button("Translate Missing & Stale") {
+                        translate(scope: .staleOrMissing)
+                    }
+                    .disabled(targetLanguageID.isEmpty)
+                }
+                Text("Translation runs entirely on this Mac. The system may download language models first.")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            if let count = lastTranslatedCount {
+                Label(String(format: L10n("Translated %d cues."), count), systemImage: "checkmark.circle.fill")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                Picker("Target language", selection: Binding(
-                    get: { targetLanguageID },
-                    set: { targetLanguageID = $0; targetLanguageIsUserPicked = true }
-                )) {
-                    ForEach(targetLanguages) { target in
-                        Text(target.needsDownload
-                            ? String(format: L10n("%@ (needs download)"), target.displayName)
-                            : target.displayName
-                        ).tag(target.id)
-                    }
-                }
-
-                if case .running(let completed, let total) = coordinator.phase {
-                    HStack(spacing: 8) {
-                        ProgressView(value: Double(completed), total: Double(max(total, 1)))
-                        Text("\(completed)/\(total)")
-                            .font(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(.secondary)
-                        Button("Stop") { coordinator.cancel() }
-                            .controlSize(.small)
-                    }
-                } else {
-                    HStack {
-                        Button("Translate All") {
-                            translate(scope: .all)
-                        }
-                        .disabled(targetLanguageID.isEmpty)
-                        Button("Translate Missing & Stale") {
-                            translate(scope: .staleOrMissing)
-                        }
-                        .disabled(targetLanguageID.isEmpty)
-                    }
-                    Text("Translation runs entirely on this Mac. The system may download language models first.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                if let count = lastTranslatedCount {
-                    Label(String(format: L10n("Translated %d cues."), count), systemImage: "checkmark.circle.fill")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                if let error = translationService.lastError {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .lineLimit(3)
-                }
+            }
+            if let error = translationService.lastError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(3)
             }
         }
     }
@@ -206,7 +207,11 @@ private struct SubtitleGenPanelContent: View {
         if #available(macOS 26.0, *) {
             TranscriptionSection(
                 project: project,
-                targetLanguageID: targetLanguageID.isEmpty ? nil : targetLanguageID
+                targetLanguages: targetLanguages,
+                targetLanguageID: Binding(
+                    get: { targetLanguageID },
+                    set: { targetLanguageID = $0; targetLanguageIsUserPicked = true }
+                )
             )
         } else {
             VStack(alignment: .leading, spacing: 4) {
@@ -224,10 +229,11 @@ private struct SubtitleGenPanelContent: View {
 @available(macOS 26.0, *)
 private struct TranscriptionSection: View {
     @ObservedObject var project: VideoEditProject
-    var targetLanguageID: String?
+    var targetLanguages: [SubtitleTranslationService.TargetLanguage]
+    @Binding var targetLanguageID: String
 
     @ObservedObject private var task = TranscriptionTask.shared
-    @State private var sourceLocaleID = ""
+    @State private var sourceLocaleID = TranscriptionTask.autoDetectLocaleID
     @State private var supportedLocales: [Locale] = []
     @State private var translateAfter = false
     @State private var showsReplaceConfirm = false
@@ -241,10 +247,10 @@ private struct TranscriptionSection: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                Picker("Spoken language", selection: $sourceLocaleID) {
-                    if sourceLocaleID.isEmpty {
-                        Text("Choose…").tag("")
-                    }
+                // 默认自动检测（两段式：探针转写 + 置信度裁决，TranscriptionTask）。
+                // 素材元数据不再预填 Picker，而是作为检测的最高优先级候选。
+                Picker("Source language", selection: $sourceLocaleID) {
+                    Text("Auto-detect").tag(TranscriptionTask.autoDetectLocaleID)
                     ForEach(supportedLocales, id: \.identifier) { locale in
                         Text(Locale.current.localizedString(forIdentifier: locale.identifier)
                             ?? locale.identifier
@@ -254,7 +260,20 @@ private struct TranscriptionSection: View {
                 Toggle("Translate after generating", isOn: $translateAfter)
                     .toggleStyle(.checkbox)
                     .font(.caption)
-                    .disabled(targetLanguageID == nil)
+                    .disabled(targetLanguages.isEmpty)
+                if translateAfter {
+                    // 目标语言必须当着用户的面选定（2026-08-09 案例）：一个
+                    // 没露过面的自动预选值曾把英文字幕拿去翻成英语，爆出系统
+                    // 的泛化「Unable to Translate」。
+                    Picker("Target language", selection: $targetLanguageID) {
+                        ForEach(targetLanguages) { target in
+                            Text(target.needsDownload
+                                ? String(format: L10n("%@ (needs download)"), target.displayName)
+                                : target.displayName
+                            ).tag(target.id)
+                        }
+                    }
+                }
 
                 if task.isRunning {
                     VStack(alignment: .leading, spacing: 6) {
@@ -284,11 +303,9 @@ private struct TranscriptionSection: View {
                         Label("Generate Subtitles", systemImage: "waveform.and.mic")
                     }
                     // 门槛 = 有实际可听的 clip（与转写任务同一份合同）——
-                    // 纯音频工程也能生成，不看有没有主视频。
-                    .disabled(
-                        sourceLocaleID.isEmpty
-                            || TranscriptionTask.soundClips(in: project.state).isEmpty
-                    )
+                    // 纯音频工程也能生成，不看有没有主视频。源语言不再是
+                    // 门槛：默认的「自动检测」永远是合法选择。
+                    .disabled(TranscriptionTask.soundClips(in: project.state).isEmpty)
                     stageResultText
                 }
             }
@@ -308,6 +325,7 @@ private struct TranscriptionSection: View {
     private var stageText: String {
         switch task.stage {
         case .idle: return ""
+        case .detectingLanguage: return L10n("Detecting spoken language…")
         case .preparingModels: return L10n("Preparing speech model…")
         case .readingAudio(let name): return String(format: L10n("Reading audio of “%@”…"), name)
         case .transcribing(let name): return String(format: L10n("Transcribing “%@”…"), name)
@@ -318,6 +336,13 @@ private struct TranscriptionSection: View {
     }
 
     @ViewBuilder private var stageResultText: some View {
+        if let note = task.translationSkipNote {
+            // 翻译被如实跳过（字幕已是目标语言）：通知，不是错误。
+            Label(note, systemImage: "info.circle")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
         if !task.skippedAssets.isEmpty {
             Label(
                 String(
@@ -353,39 +378,15 @@ private struct TranscriptionSection: View {
         TranscriptionTask.shared.start(
             project: project,
             sourceLocaleID: sourceLocaleID,
-            targetLanguageID: translateAfter ? targetLanguageID : nil
+            targetLanguageID: translateAfter && !targetLanguageID.isEmpty
+                ? targetLanguageID : nil
         )
     }
 
-    /// 语言列表全部来自运行时查询；metadata 只做预填（V1 合同）。
+    /// 语言列表全部来自运行时查询；素材元数据不再预填 Picker（迁去当
+    /// 自动检测的最高优先级候选，TranscriptionTask.metadataLanguageTag）。
     private func loadLocales() async {
         supportedLocales = await SpeechTranscriptionService.supportedLocales()
             .sorted { $0.identifier < $1.identifier }
-        guard sourceLocaleID.isEmpty else { return }
-        if let tag = await metadataLanguageTag(),
-           let match = await SpeechTranscriptionService.matchedLocale(for: tag) {
-            sourceLocaleID = supportedLocales.first {
-                $0.identifier == match.identifier
-            }?.identifier ?? ""
-        }
-    }
-
-    /// 第一段有声素材的音轨语言 metadata（没有就留给用户手选）。
-    private func metadataLanguageTag() async -> String? {
-        let clips = project.state.mainClips
-            + project.state.audioTracks.flatMap(\.clips)
-        for clip in clips where clip.stillImageURL == nil {
-            let asset = AVURLAsset(url: clip.sourceURL)
-            guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
-                continue
-            }
-            if let tag = try? await track.load(.extendedLanguageTag), tag != "und" {
-                return tag
-            }
-            if let code = try? await track.load(.languageCode), code != "und" {
-                return code
-            }
-        }
-        return nil
     }
 }

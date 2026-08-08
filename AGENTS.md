@@ -133,6 +133,11 @@
   `committed` 以时间线为准）、PNG 归属与清理、波纹只到主轨+音频、抽帧零容差
   与叠化区禁用、关键帧烘成静态值、纯值变换必须留在 `VideoEditTimelineEdits`；
   **改定格/静帧管线/时间线插入前必读**
+- [subtitle-language-flow.md](docs/architecture/subtitle-language-flow.md) —
+  字幕面板语言流：目标语言必须当着用户的面选定、翻译入口一律预检
+  （同语种/unsupported 提交前拦下）、生成后翻译遇同语种=跳过不是失败、
+  TranslationError 不许原样透传、Auto-detect 两段式检测合同与人肉回归清单；
+  **改字幕面板/翻译服务/转写任务的语言逻辑前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -305,6 +310,15 @@
   在开文件那一步就死。教训：修完性能要再量一次**边际**成本；性能断言用
   「多出来的 119 帧 ≤ 一次解码」这种自校准判据，别写死秒数；tile grid 型 heic
   不许用 `-filter_complex "[0:v]"` 绕（会把 4000×3000 悄悄变成一块 512×512 瓦片）
+- [2026-08-09-subtitle-translate-after-same-language.md](docs/bugfixes/2026-08-09-subtitle-translate-after-same-language.md) —
+  生成后翻译报「Unable to Translate」：目标语言在 Picker 未渲染时被自动敲定，
+  英语系统上恰好等于源语言 → en→en 自我配对；系统对一切配对失败只回同一句
+  通用文案、且无物可下载所以永远不弹下载确认，用户把红字安在了失败后才显示
+  出来的中文头上。修成：目标语言必须可见才可被消费 + TranslationPreflight
+  提交前预检 + 同语种按跳过处理 + 错误按 cause 分类；同时源语言默认
+  Auto-detect（两段式探针检测）。教训：不可见的控件不许持有可生效的选择；
+  上一次修复选出的"好默认值"换条路径就是事故值；「没弹下载确认」是无物可
+  下载路径的**特征**而不是故障。长期约束见 architecture/subtitle-language-flow
 
 ## 根目录既有文档
 

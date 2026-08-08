@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import SrtFlowCore
 
@@ -15,6 +16,7 @@ final class TranscriptionTask: ObservableObject {
 
     enum Stage: Equatable {
         case idle
+        case detectingLanguage
         case preparingModels
         case readingAudio(String)
         case transcribing(String)
@@ -25,6 +27,13 @@ final class TranscriptionTask: ObservableObject {
         case cancelled
     }
 
+    /// 源语言 Picker 里「自动检测」的哨兵值。
+    static let autoDetectLocaleID = "auto"
+
+    /// 自动检测的探针窗口时长（秒）。产品参数：够长到词数可判，
+    /// 够短到多候选探针仍在秒级。
+    static let detectionProbeSeconds = 20.0
+
     @Published private(set) var stage: Stage = .idle
     /// 总进度 0–1，单调不倒退（计划 10.2）。
     @Published private(set) var progress: Double = 0
@@ -32,6 +41,9 @@ final class TranscriptionTask: ObservableObject {
     @Published private(set) var volatileText: String?
     /// 读不了的素材：跳过并明示，不中断整个任务（全失效才 failed）。
     @Published private(set) var skippedAssets: [String] = []
+    /// 「生成后顺便翻译」被如实跳过的原因（例如字幕已是目标语言）。
+    /// 不算失败，但也绝不伪装成翻译发生过 —— 单独一条通知展示。
+    @Published private(set) var translationSkipNote: String?
 
     var isRunning: Bool {
         switch stage {
@@ -76,6 +88,7 @@ final class TranscriptionTask: ObservableObject {
         progress = 0
         volatileText = nil
         skippedAssets = []
+        translationSkipNote = nil
         let generation = project.documentGeneration
         let state = project.state
 
@@ -109,10 +122,12 @@ final class TranscriptionTask: ObservableObject {
                     return
                 }
                 self.setProgress(0.9)
+                // 源语言一律取转写实际用的 locale（自动检测时 sourceLocaleID
+                // 只是 "auto" 哨兵，真语言在 harvest 里）。
+                let resolvedSource = harvest.locale.language.minimalIdentifier
                 project.replaceSubtitleForGeneration(
                     result.document,
-                    sourceLanguage: Locale(identifier: sourceLocaleID)
-                        .language.minimalIdentifier,
+                    sourceLanguage: resolvedSource,
                     generation: GenerationSnapshot(
                         module: SpeechTranscriptionService.transcriberKind,
                         segmentationConfigVersion: SubtitleSegmentationConfig.version,
@@ -121,13 +136,24 @@ final class TranscriptionTask: ObservableObject {
                     cueMeta: result.meta
                 )
 
-                if let targetLanguageID, #available(macOS 15.0, *) {
+                if let targetLanguageID, #available(macOS 15.0, *),
+                   TranslationPreflight.isSameTranslationLanguage(
+                       harvest.locale.language,
+                       Locale.Language(identifier: targetLanguageID)
+                   ) {
+                    // 字幕已经是目标语言（2026-08-09 案例的核心场景）：如实
+                    // 跳过并说明，不算失败，也不把 en→en 交给系统去爆
+                    // 「Unable to Translate」。
+                    self.translationSkipNote = String(
+                        format: L10n("Subtitles are already in %@ — translation skipped."),
+                        TranslationPreflight.displayName(of: harvest.locale.language)
+                    )
+                } else if let targetLanguageID, #available(macOS 15.0, *) {
                     self.stage = .translating
                     let outcome = await SubtitleTranslationService.shared.translateCurrentSubtitle(
                         project: project,
                         scope: .all,
-                        sourceLanguage: Locale(identifier: sourceLocaleID)
-                            .language.minimalIdentifier,
+                        sourceLanguage: resolvedSource,
                         targetLanguage: targetLanguageID
                     )
                     // 翻译没成不许伪装成功：字幕已生成并保留，但结局要如实报。
@@ -210,15 +236,20 @@ final class TranscriptionTask: ObservableObject {
                 "Speech transcription isn't available on this Mac."
             ))
         }
-        guard let locale = await SpeechTranscriptionService.matchedLocale(for: sourceLocaleID) else {
+        let clips = Self.soundClips(in: state)
+        guard !clips.isEmpty else {
+            throw TaskError(message: L10n("No audible clips to transcribe."))
+        }
+        let locale: Locale
+        if sourceLocaleID == Self.autoDetectLocaleID {
+            locale = try await detectSourceLocale(state: state, clips: clips, token: token)
+        } else if let matched = await SpeechTranscriptionService.matchedLocale(for: sourceLocaleID) {
+            locale = matched
+        } else {
             throw TaskError(message: String(
                 format: L10n("Speech transcription doesn't support “%@” on this Mac."),
                 sourceLocaleID
             ))
-        }
-        let clips = Self.soundClips(in: state)
-        guard !clips.isEmpty else {
-            throw TaskError(message: L10n("No audible clips to transcribe."))
         }
 
         // ① 模型。下载进度折进总进度 0.02–0.1 段，不再完成前一直停 0；
@@ -262,6 +293,126 @@ final class TranscriptionTask: ObservableObject {
             await service.releaseModel(locale: locale)
             throw error
         }
+    }
+
+    // MARK: 源语言自动检测（两段式：候选模型分别转写探针，按置信度裁决）
+
+    /// macOS 26 的 SpeechTranscriber 必须显式给语言、系统没有音频语言识别，
+    /// 所以自动检测 = 探针转写 + 打分。候选按优先级：素材元数据指名的语言
+    /// （允许触发模型下载）→ 系统首选 → 其余已装语言（这两类必须已装，
+    /// 探针不为它们下载模型），去重后上限 3。单候选直接采用；多候选各转写
+    /// 同一段探针音频，SubtitleLanguageDetection 裁决（评分合同在 SrtFlowCore，
+    /// SrtFlowCoreChecks 有用例）。
+    private func detectSourceLocale(
+        state: TimelineState,
+        clips: [SoundClip],
+        token: ExportCancellationToken
+    ) async throws -> Locale {
+        stage = .detectingLanguage
+        if token.isCancelled { throw CancellationError() }
+        setProgress(0.01)
+
+        let metadataTag = await Self.metadataLanguageTag(state: state)
+        var priorityIDs: [(id: String, allowsDownload: Bool)] = []
+        if let metadataTag { priorityIDs.append((metadataTag, true)) }
+        priorityIDs += Locale.preferredLanguages.map { ($0, false) }
+        let installed = await SpeechTranscriptionService.installedLocales()
+        priorityIDs += installed.map { ($0.identifier, false) }
+
+        var seen = Set<String>()
+        var candidates: [Locale] = []
+        for entry in priorityIDs {
+            guard candidates.count < 3 else { break }
+            guard let matched = await SpeechTranscriptionService.matchedLocale(for: entry.id),
+                  !seen.contains(matched.identifier) else { continue }
+            guard entry.allowsDownload
+                || installed.contains(where: { $0.identifier == matched.identifier }) else {
+                continue
+            }
+            seen.insert(matched.identifier)
+            candidates.append(matched)
+        }
+        guard !candidates.isEmpty else {
+            throw TaskError(message: L10n(
+                "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded."
+            ))
+        }
+        if candidates.count == 1 { return candidates[0] }
+
+        // 探针音频：第一段真实存在的素材开头 detectionProbeSeconds 秒。
+        guard let probeClip = clips.first(where: {
+            FileManager.default.fileExists(atPath: $0.url.path)
+        }) else {
+            throw TaskError(message: L10n(
+                "None of the audio sources could be read. Relink the missing media and try again."
+            ))
+        }
+        let probeRange = SourceRange(
+            start: probeClip.sourceStart,
+            end: probeClip.sourceStart + min(Self.detectionProbeSeconds, probeClip.sourceDuration)
+        )
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SrtFlow-ASR-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+        let probeFile = try await AudioWindowReader.extract(
+            assetURL: probeClip.url, range: probeRange, into: tempDirectory,
+            isCancelled: { token.isCancelled }
+        )
+
+        var results: [SubtitleLanguageDetection.Candidate] = []
+        for candidate in candidates {
+            if token.isCancelled { throw CancellationError() }
+            do {
+                try await service.ensureModel(locale: candidate) { _ in }
+            } catch {
+                if token.isCancelled || Task.isCancelled { throw CancellationError() }
+                // 单个候选的模型装不上不致命：剩下的候选照样能裁决。
+                continue
+            }
+            do {
+                let words = try await service.transcribe(
+                    fileURL: probeFile, locale: candidate, sourceOffset: probeRange.start
+                )
+                results.append(SubtitleLanguageDetection.Candidate(
+                    localeIdentifier: candidate.identifier, words: words
+                ))
+                await service.releaseModel(locale: candidate)
+            } catch {
+                await service.releaseModel(locale: candidate)
+                if token.isCancelled || Task.isCancelled { throw CancellationError() }
+                // 转写栈的故障如实上抛，不许伪装成「检测不出语言」。
+                throw error
+            }
+        }
+        if token.isCancelled { throw CancellationError() }
+        guard let verdict = SubtitleLanguageDetection.pick(results),
+              let winner = candidates.first(where: { $0.identifier == verdict.localeIdentifier })
+        else {
+            throw TaskError(message: L10n(
+                "Couldn't confidently detect the spoken language. Pick it in the panel and generate again."
+            ))
+        }
+        return winner
+    }
+
+    /// 第一段有声素材的音轨语言 metadata（自动检测候选的最高优先级；
+    /// 之前在面板里做 Picker 预填，现随「自动检测」迁到任务侧）。
+    private static func metadataLanguageTag(state: TimelineState) async -> String? {
+        let clips = state.mainClips + state.audioTracks.flatMap(\.clips)
+        for clip in clips where clip.stillImageURL == nil {
+            let asset = AVURLAsset(url: clip.sourceURL)
+            guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
+                continue
+            }
+            if let tag = try? await track.load(.extendedLanguageTag), tag != "und" {
+                return tag
+            }
+            if let code = try? await track.load(.languageCode), code != "und" {
+                return code
+            }
+        }
+        return nil
     }
 
     /// 持有租约期间的主体：账本查缺 → 逐窗抽音频/转写/落盘。
