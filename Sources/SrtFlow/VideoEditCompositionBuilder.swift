@@ -189,6 +189,11 @@ enum VideoEditCompositionBuilder {
         from state: TimelineState,
         renderSizeOverride: CGSize? = nil
     ) async -> Built? {
+        // 主轨按数组顺序进 A/B 轨，插入游标只会前进：乱序的输入会让
+        // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
+        // 改动入口已维持有序，这里再守一道 —— 画中画轨（下面）同款 sorted。
+        var state = state
+        state.sortMainClipsByStart()
         guard !state.isEmpty else { return nil }
 
         let composition = AVMutableComposition()
@@ -543,13 +548,11 @@ enum VideoEditCompositionBuilder {
             target = clip.animatedPlacement(atTimeline: clip.timelineStart, canvas: renderSize, isOverlay: isOverlay)
                 .frame(in: renderSize)
         } else if isOverlay {
-            let scale = renderSize.width * clip.overlayFraction / source.width
-            let size = CGSize(width: source.width * scale, height: source.height * scale)
-            let origin = clip.overlayAnchor.origin(
-                canvas: renderSize,
-                overlay: size,
-                inset: renderSize.width * 0.02
+            let inset = renderSize.width * 0.02
+            let size = OverlayAnchor.defaultSize(
+                display: source.size, canvas: renderSize, fraction: clip.overlayFraction, inset: inset
             )
+            let origin = clip.overlayAnchor.origin(canvas: renderSize, overlay: size, inset: inset)
             target = CGRect(origin: origin, size: size)
         } else {
             let scale = min(renderSize.width / source.width, renderSize.height / source.height)

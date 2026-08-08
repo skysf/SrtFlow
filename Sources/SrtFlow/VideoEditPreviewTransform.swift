@@ -17,6 +17,9 @@ struct ClipTransformCanvas: View {
 
     private static let space = "clipTransformCanvas"
 
+    /// 中心参考线的亮灭（竖线, 横线），拖动/缩放中由变换框回报。
+    @State private var centerGuides = (vertical: false, horizontal: false)
+
     /// 此刻画面上可见的段，最上层的排最前（画中画行号大的在上，主轨垫底）。
     private struct VisibleClip {
         var clip: EditClip
@@ -64,6 +67,7 @@ struct ClipTransformCanvas: View {
                     movable: true,
                     rotationDegrees: selection.clip.animatedRotation(atTimeline: clock.displayTime),
                     onTap: { location in selectClip(at: location) },
+                    onCenterGuides: { centerGuides = (vertical: $0, horizontal: $1) },
                     onChange: { newRect in
                         project.livePlace(
                             selection.clip.id,
@@ -73,6 +77,12 @@ struct ClipTransformCanvas: View {
                     onEnd: { project.endLiveEdit() }
                 )
             }
+
+            CenterGuideLines(
+                canvas: boxSize,
+                showVertical: centerGuides.vertical,
+                showHorizontal: centerGuides.horizontal
+            )
         }
         .frame(width: boxSize.width, height: boxSize.height)
         .coordinateSpace(name: Self.space)
@@ -172,6 +182,9 @@ struct ResizableFrameBox: View {
     var rotationDegrees: Double = 0
     /// 框内单击（没构成拖动）转给外层重新点选用；nil 就不拦。
     var onTap: ((CGPoint) -> Void)?
+    /// 中心对齐参考线：给了回调就启用 —— 移动时吸附画布中心并回报
+    /// (竖线亮?, 横线亮?)，缩放时只在恰好对中的时候亮线。手势结束回报双灭。
+    var onCenterGuides: ((Bool, Bool) -> Void)?
     /// 拖动中的回调，给的是**绝对**的新框（未旋转坐标系）。
     let onChange: (CGRect) -> Void
     let onEnd: () -> Void
@@ -228,10 +241,17 @@ struct ResizableFrameBox: View {
             .onChanged { value in
                 if startRect == nil { startRect = rect }
                 guard let start = startRect else { return }
-                onChange(start.offsetBy(dx: value.translation.width, dy: value.translation.height))
+                var next = start.offsetBy(dx: value.translation.width, dy: value.translation.height)
+                if let onCenterGuides {
+                    let snapped = CenterSnap.snap(next, in: bounds)
+                    next = snapped.rect
+                    onCenterGuides(snapped.snappedX, snapped.snappedY)
+                }
+                onChange(next)
             }
             .onEnded { _ in
                 startRect = nil
+                onCenterGuides?(false, false)
                 onEnd()
             }
     }
@@ -252,10 +272,16 @@ struct ResizableFrameBox: View {
                     .onChanged { value in
                         if startRect == nil { startRect = rect }
                         guard let start = startRect else { return }
-                        onChange(resized(start, handle: handle, translation: derotated(value.translation)))
+                        let next = resized(start, handle: handle, translation: derotated(value.translation))
+                        if let onCenterGuides {
+                            let aligned = CenterSnap.aligned(next, in: bounds)
+                            onCenterGuides(aligned.x, aligned.y)
+                        }
+                        onChange(next)
                     }
                     .onEnded { _ in
                         startRect = nil
+                        onCenterGuides?(false, false)
                         onEnd()
                     }
             )

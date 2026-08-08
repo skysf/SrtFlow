@@ -1084,10 +1084,22 @@ private struct ClipBlockView: View {
             }
         }
         Divider()
+        if let url = revealTarget {
+            Button("Show in Finder") { revealInFinder(url) }
+            Divider()
+        }
         Button("Delete", role: .destructive) {
             project.select(clip.id, additive: false)
             project.deleteSelected()
         }
+    }
+
+    /// 揭示目标：图片素材优先原图（`sourceURL` 是生成的静帧缓存视频），
+    /// 原图不在了退回缓存视频；都不在（素材丢失）就不出这一项。
+    private var revealTarget: URL? {
+        [clip.stillImageURL, clip.sourceURL]
+            .compactMap { $0 }
+            .first { FileManager.default.fileExists(atPath: $0.path) }
     }
 }
 

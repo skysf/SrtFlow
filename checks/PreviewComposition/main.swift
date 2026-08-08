@@ -42,20 +42,22 @@ struct SolidVideoError: Error, CustomStringConvertible {
     let description: String
 }
 
-func makeSolidVideo(white: Double, seconds: Double, name: String) async throws -> URL {
+func makeSolidVideo(
+    white: Double, seconds: Double, name: String, size: CGSize = CGSize(width: 64, height: 36)
+) async throws -> URL {
     let url = root.appendingPathComponent(name)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
         AVVideoCodecKey: AVVideoCodecType.h264,
-        AVVideoWidthKey: 64,
-        AVVideoHeightKey: 36
+        AVVideoWidthKey: Int(size.width),
+        AVVideoHeightKey: Int(size.height)
     ])
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(
         assetWriterInput: input,
         sourcePixelBufferAttributes: [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-            kCVPixelBufferWidthKey as String: 64,
-            kCVPixelBufferHeightKey as String: 36
+            kCVPixelBufferWidthKey as String: Int(size.width),
+            kCVPixelBufferHeightKey as String: Int(size.height)
         ]
     )
     writer.add(input)
@@ -212,6 +214,64 @@ Task {
             check(mid > 0.9, "仅翻转的白→白叠化中点不许变暗，实测 \(mid)")
         } else {
             check(false, "仅翻转场景合成失败")
+        }
+
+        // 3. 主轨数组乱序（磁吸关掉拖动过的时间线）：A/B 轨插入必须按时间
+        //    顺序，否则 `insertTimeRange` 会把同槽已插好的段往后挤 ——
+        //    回归现象是排在数组前面、时间靠后的段所在的时刻一片黑。
+        do {
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var state = TimelineState()
+            state.mainClips = [
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 8, info: info),
+                EditClip(sourceURL: white2, sourceDuration: 4, timelineStart: 4, info: info),
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            ]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                for at in [1.0, 5.0, 10.0] {
+                    let level = await averageBrightness(built, at: at)
+                    check(level > 0.9, "主轨数组乱序时 \(at)s 处也必须全亮，实测 \(level)")
+                }
+            } else {
+                check(false, "主轨乱序场景合成失败")
+            }
+        }
+
+        // 4. 画中画默认布局：竖版素材按「画布宽 40%」算出的高度会爆出画布，
+        //    必须整体等比收进画布（上下各留 2% 边距）。黑色竖版画中画叠在
+        //    白色主轨上，整幅亮度 = 1 - 黑块占比，算出来就能分辨有没有收：
+        //    没收（黑块被画布裁掉一截）≈0.61，收了 ≈0.73。
+        do {
+            let portrait = try await makeSolidVideo(
+                white: 0, seconds: 4, name: "portrait.mp4", size: CGSize(width: 36, height: 64)
+            )
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var portraitInfo = info
+            portraitInfo.displaySize = CGSize(width: 36, height: 64)
+            var state = TimelineState()
+            state.mainClips = [
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            ]
+            state.overlayTracks = [EditLane(clips: [
+                EditClip(sourceURL: portrait, sourceDuration: 4, timelineStart: 0, info: portraitInfo)
+            ])]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let level = await averageBrightness(built, at: 2)
+                check(
+                    level > 0.69 && level < 0.77,
+                    "竖版画中画默认布局要等比收进画布，实测亮度 \(level)（未收≈0.61）"
+                )
+            } else {
+                check(false, "竖版画中画场景合成失败")
+            }
         }
 
         // A. 不透明度关键帧：1→0 匀减，中点该是半亮（验证斜坡 × 黑底轨）。

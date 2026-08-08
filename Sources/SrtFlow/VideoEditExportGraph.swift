@@ -60,6 +60,10 @@ enum VideoEditExportGraph {
         output: URL,
         cancellation: ExportCancellationToken? = nil
     ) async throws -> Plan {
+        // 主轨的黑场补齐和 xfade 链都按数组顺序算，乱序输入会算出负时长的
+        // 黑场/错位的转场。与预览合成同款防御（见 CompositionBuilder.build）。
+        var state = state
+        state.sortMainClipsByStart()
         // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
         // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
         // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
@@ -411,8 +415,12 @@ enum VideoEditExportGraph {
                         y = transformed.overlayY
                     } else {
                         let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
-                        chain = "scale=\(overlayWidth):-2,setsar=1"
                         let inset = Int(renderSize.width * 0.02)
+                        // 高度上限与预览同账（OverlayAnchor.defaultSize）：竖版素材
+                        // 不许爆出画布，decrease 只缩不放，横版素材产物不变。
+                        let maxHeight = max(Int(((renderSize.height - Double(inset) * 2) / 2).rounded() * 2), 2)
+                        chain = "scale=w=\(overlayWidth):h=\(maxHeight):" +
+                            "force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1"
                         x = xExpression(for: clip.overlayAnchor, inset: inset)
                         y = yExpression(for: clip.overlayAnchor, inset: inset)
                     }

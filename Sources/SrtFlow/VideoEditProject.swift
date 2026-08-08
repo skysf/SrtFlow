@@ -348,6 +348,9 @@ final class VideoEditProject: ObservableObject {
                 let clamped = Self.clampedStart(state, id: follower, proposed: target)
                 state.update(follower) { $0.timelineStart = clamped }
             }
+            // 磁吸关掉的拖动只改了 timelineStart，数组顺序要跟着时间走
+            //（磁吸开的分支 packMain 之后本来就有序，这里是幂等的）。
+            state.sortMainClipsByStart()
         }
     }
 
@@ -871,6 +874,8 @@ final class VideoEditProject: ObservableObject {
                 let clamped = Self.clampedStart(state, id: id, proposed: moved.timelineStart)
                 state.update(id) { $0.timelineStart = clamped }
             }
+            // 磁吸关掉落到主轨是裸 append，数组顺序要跟着时间走。
+            state.sortMainClipsByStart()
             state.pruneEmptyTracks()
         }
         selectedClipIDs = [id]
