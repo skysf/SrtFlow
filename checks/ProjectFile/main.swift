@@ -556,8 +556,128 @@ do {
     checkEqual(state.mainClips[0].stillImageURL, newImage, "重链接要换掉原图路径")
 
     let pending = VideoEditProjectIO.refreshStillClips(in: &state)
-    checkEqual(pending, [newImage], "新原图没有静帧缓存，应当报出来重转")
+    checkEqual(pending.map(\.image), [newImage], "新原图没有静帧缓存，应当报出来重转")
     checkEqual(state.mainClips[0].needsStillConversion, true, "对不上缓存就该标成待转换")
+    // 没有 info（或 info 在照片上限之内）时按照片政策重转。
+    checkEqual(pending.first?.nativeResolution, false, "普通图片段按照片政策重转")
+}
+
+// MARK: - 12b. 定格帧重转时要保住原生分辨率
+//
+// 回归：定格帧是不缩放转的（Retina 录屏定格不能糊）。缓存被系统清掉后重转时，
+// 政策必须跟着走，否则会被悄悄按「照片」政策压到 1080p。判据是存进工程文件的
+// 静帧尺寸 —— 超过照片上限就说明当初是按原生尺寸转的。
+
+do {
+    var state = TimelineState()
+    let frame = URL(fileURLWithPath: "/project/clip-freeze-00m03s21.png")
+    var clip = EditClip(
+        sourceURL: URL(fileURLWithPath: "/caches/gone-still.mp4"),
+        sourceDuration: 2,
+        info: MediaInfo(
+            duration: 60,
+            displaySize: CGSize(width: 3456, height: 2234),
+            frameRate: 2,
+            videoCodec: "h264",
+            audioCodec: nil,
+            hasAudio: false,
+            audioCanCopyToMP4: false,
+            fileBytes: 1024
+        ),
+        stillImageURL: frame
+    )
+    clip.needsStillConversion = false
+    state.mainClips = [clip]
+
+    let pending = VideoEditProjectIO.refreshStillClips(in: &state)
+    checkEqual(pending.map(\.image), [frame], "静帧缓存没了要报出来重转")
+    checkEqual(pending.first?.nativeResolution, true, "超过照片上限的静帧要按原生尺寸重转")
+}
+
+// MARK: - 12c. 同一张 PNG 既当定格素材又当普通图片时，两条政策不能串线
+//
+// 回归：用户完全可能把工程文件夹里那张定格 PNG 再拖进时间线当普通图片。
+// 那就是同一个 stillImageURL、两条分辨率政策。重转任务必须按 (图, 政策) 分成
+// 两项，否则后跑完的那项会把两边都改成自己的产物，另一半拿到错误分辨率的静帧。
+
+do {
+    var state = TimelineState()
+    let shared = URL(fileURLWithPath: "/project/shot-freeze-00m01s00.png")
+
+    func stillClip(width: Double, height: Double) -> EditClip {
+        var clip = EditClip(
+            sourceURL: URL(fileURLWithPath: "/caches/gone-\(Int(width)).mp4"),
+            sourceDuration: 2,
+            info: MediaInfo(
+                duration: 60,
+                displaySize: CGSize(width: width, height: height),
+                frameRate: 2,
+                videoCodec: "h264",
+                audioCodec: nil,
+                hasAudio: false,
+                audioCanCopyToMP4: false,
+                fileBytes: 1024
+            ),
+            stillImageURL: shared
+        )
+        clip.needsStillConversion = false
+        return clip
+    }
+
+    // 一段是定格（原生 2560×1440），一段是同一张图当普通照片拖进来（1080p）。
+    state.mainClips = [stillClip(width: 2560, height: 1440), stillClip(width: 1920, height: 1080)]
+
+    let pending = VideoEditProjectIO.refreshStillClips(in: &state)
+    checkEqual(pending.count, 2, "同一张图的两条政策要分成两项重转任务")
+    checkEqual(Set(pending.map(\.image)), [shared], "两项指的是同一张原图")
+    checkEqual(Set(pending.map(\.nativeResolution)), [true, false], "两项的政策必须一原生一照片")
+
+    // 落地只更新同政策的段：把「原生」那项的产物接上去，照片那段必须一动不动。
+    let nativeVideo = URL(fileURLWithPath: "/caches/fresh-native.mp4")
+    VideoEditProjectIO.attachStill(nativeVideo, forImage: shared, nativeResolution: true, in: &state)
+    checkEqual(state.mainClips[0].sourceURL, nativeVideo, "原生政策的段要接上原生产物")
+    checkEqual(state.mainClips[0].needsStillConversion, false, "接上了就不再是待转换")
+    check(state.mainClips[1].sourceURL != nativeVideo,
+          "照片政策的段绝不能被原生产物顶掉（否则分辨率和 info 都对不上）")
+    checkEqual(state.mainClips[1].needsStillConversion, true, "照片政策的段仍在等自己那项")
+
+    let photoVideo = URL(fileURLWithPath: "/caches/fresh-photo.mp4")
+    VideoEditProjectIO.attachStill(photoVideo, forImage: shared, nativeResolution: false, in: &state)
+    checkEqual(state.mainClips[1].sourceURL, photoVideo, "照片政策的段接自己那项")
+    checkEqual(state.mainClips[0].sourceURL, nativeVideo, "原生那段不受第二项影响")
+}
+
+// MARK: - 12d. 两份缓存同时存在时，命中要按政策路由
+//
+// 回归：以前 cachedStillVideo「两条都查、原生优先」，同一张 PNG 被两种政策共用时
+// 照片段也会拿到原生版本。这里真造两份缓存文件，钉住各走各的。
+
+do {
+    let image = root.appendingPathComponent("shared-cache-probe.png")
+    makeFile(image, bytes: 4096)
+
+    guard let nativePath = StillImageClipFactory.cacheFileURL(for: image, nativeResolution: true),
+          let photoPath = StillImageClipFactory.cacheFileURL(for: image, nativeResolution: false) else {
+        check(false, "拿不到缓存路径")
+        exit(1)
+    }
+    check(nativePath != photoPath, "两条政策的缓存文件名必须不同，否则会互相覆盖")
+
+    // 先只造原生那份：照片政策必须查不到（以前会错误命中原生）。
+    makeFile(nativePath, bytes: 128)
+    defer { try? manager.removeItem(at: nativePath) }
+    checkEqual(StillImageClipFactory.cachedStillVideo(for: image, nativeResolution: true), nativePath,
+               "原生政策命中原生缓存")
+    checkEqual(StillImageClipFactory.cachedStillVideo(for: image, nativeResolution: false), nil,
+               "只有原生缓存时，照片政策必须判定为缺失并重转")
+
+    // 两份都在：各走各的。
+    makeFile(photoPath, bytes: 128)
+    defer { try? manager.removeItem(at: photoPath) }
+    checkEqual(StillImageClipFactory.cachedStillVideo(for: image, nativeResolution: false), photoPath,
+               "照片政策命中照片缓存")
+    checkEqual(StillImageClipFactory.cachedStillVideo(for: image, nativeResolution: true), nativePath,
+               "原生政策仍命中原生缓存")
 }
 
 // MARK: - 13. 选中导出：画中画升主轨要丢自由摆放

@@ -190,24 +190,29 @@ extension VideoEditProject {
     // MARK: - 图片段的静帧
 
     /// 静帧缓存被系统清掉了就重转一遍。图片本身还在工程里记着，用户无感。
-    private func regenerateStills(_ images: [URL], generation: Int) async {
+    private func regenerateStills(_ requests: [StillRegeneration], generation: Int) async {
         guard let ffmpeg = await awaitVideoEngine() else {
             guard isCurrentGeneration(generation) else { return }
             notice = L10n("The video engine isn’t available, so image clips couldn’t be prepared.")
             return
         }
-        for image in images {
+        for request in requests {
+            let image = request.image
             guard isCurrentGeneration(generation) else { return }
-            guard let still = try? await StillImageClipFactory.stillVideo(for: image, ffmpeg: ffmpeg)
-            else { continue }
+            guard let still = try? await StillImageClipFactory.stillVideo(
+                for: image,
+                ffmpeg: ffmpeg,
+                nativeResolution: request.nativeResolution
+            ) else { continue }
             guard isCurrentGeneration(generation) else { return }
             applyDocumentRepair { state in
-                for clip in state.allClips where clip.stillImageURL == image {
-                    state.update(clip.id) { pending in
-                        pending.sourceURL = still
-                        pending.needsStillConversion = false
-                    }
-                }
+                // 只认同政策的段，理由见 `attachStill`（纯值函数，自检里有回归）。
+                VideoEditProjectIO.attachStill(
+                    still,
+                    forImage: image,
+                    nativeResolution: request.nativeResolution,
+                    in: &state
+                )
             }
         }
     }
@@ -383,7 +388,7 @@ extension VideoEditProject {
             }
         }
 
-        var pendingStills: [URL] = []
+        var pendingStills: [StillRegeneration] = []
         applyDocumentRepair { state in
             for (old, new) in relinked { state.replaceMedia(old, with: new) }
             // 重链接的要是图片，换掉的只是 `stillImageURL`，`sourceURL` 还指着
@@ -459,7 +464,7 @@ extension VideoEditProject {
         let applicable = moved.filter { current.contains($0.key) }
 
         if !applicable.isEmpty {
-            var pendingStills: [URL] = []
+            var pendingStills: [StillRegeneration] = []
             applyDocumentRepair { state in
                 for (old, new) in applicable { state.replaceMedia(old, with: new) }
                 // 找回来的要是图片，静帧缓存要重新对一次（同 promptRelink）。

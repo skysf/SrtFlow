@@ -218,6 +218,11 @@
 "Undo" = "撤销";
 "Redo" = "重做";
 "Split at playhead (⌘B)" = "在播放头处分割（⌘B）";
+"Freeze the frame at the playhead (⇧⌘F)" = "定格播放头处的画面（⇧⌘F）";
+"Could not read the frame at the playhead from %@." = "无法从 %@ 读取播放头处的那一帧。";
+"Could not save the freeze frame to %@." = "无法把定格画面保存到 %@。";
+"The clip changed while the freeze frame was being prepared. Try again." = "定格准备期间这段素材被改动了，请重试。";
+"This clip has no frame exactly at the playhead, so the nearest one was used." = "这段素材在播放头处没有正好一帧，已改用最近的一帧。";
 "Delete everything left of the playhead in this clip" = "删掉这段里播放头左边的部分";
 "Delete everything right of the playhead in this clip" = "删掉这段里播放头右边的部分";
 "Delete the selection" = "删除选中项";
