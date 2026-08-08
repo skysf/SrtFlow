@@ -899,6 +899,12 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 字幕轨的整轨隐藏/显示（轨道头的眼睛）。语义与其他轨道一致：预览和
+    /// 导出都跳过。字幕不参与 AV 合成，不用重建预览播放器。
+    func toggleSubtitleHidden() {
+        perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
+    }
+
     /// 画布**被用户改过多少次**。
     ///
     /// 录屏导入要判断「能不能自动套用录制比例」。只比对比例**值**不够：

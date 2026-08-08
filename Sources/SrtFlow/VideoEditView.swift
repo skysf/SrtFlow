@@ -268,8 +268,9 @@ struct VideoEditView: View {
         // 选中的轨道可能已经不在了（译文被删、或工程重开时 subtitlePreviewTrack
         // 还留着旧值），这时 subtitleDocument(for:) 返回 nil。直接跟着返回 nil 会让
         // 预览字幕无声无息地整个消失 —— 回退到原文轨，宁可显示原文也不要空白。
-        guard let doc = project.state.subtitleDocument(for: project.subtitlePreviewTrack)
-            ?? project.state.subtitleDocument(for: .original) else {
+        // visible 变体：字幕轨隐藏（眼睛）时预览一律不画（与烧录同一份合同）。
+        guard let doc = project.state.visibleSubtitleDocument(for: project.subtitlePreviewTrack)
+            ?? project.state.visibleSubtitleDocument(for: .original) else {
             return nil
         }
         // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。

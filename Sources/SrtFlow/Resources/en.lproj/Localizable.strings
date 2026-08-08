@@ -310,6 +310,8 @@
 
 "Play (Space)" = "Play (Space)";
 "Hide or show this track (V)" = "Hide or show this track (V)";
+"Hide or show subtitles" = "Hide or show subtitles";
+"Subtitle track is hidden — nothing will be burned." = "Subtitle track is hidden — nothing will be burned.";
 "%d clips selected" = "%d clips selected";
 "Drag any selected clip to move them together. Export can render just the selection." = "Drag any selected clip to move them together. Export can render just the selection.";
 "Full timeline" = "Full timeline";

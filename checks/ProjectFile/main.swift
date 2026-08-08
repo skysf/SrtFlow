@@ -461,6 +461,33 @@ do {
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.recognitionConfidence, 0.9, "cueMeta 要存住")
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.translationStale, true, "stale 标记要存住")
 
+    // 字幕轨的眼睛（subtitleHidden，2026-08-09）：往返存住 + 缺键回退 false +
+    // 可见性合同（预览/烧录共用 visible 变体，数据面不受影响）。
+    var hiddenState = loaded
+    hiddenState.subtitleHidden = true
+    try VideoEditProjectIO.save(hiddenState, to: project)
+    let hiddenLoaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(hiddenLoaded.subtitleHidden, true, "subtitleHidden 往返要存住")
+    check(hiddenLoaded.visibleSubtitleDocument(for: .original) == nil,
+          "隐藏时 visible 变体必须为 nil（预览与烧录同一份合同）")
+    check(hiddenLoaded.subtitleDocument(for: .original) != nil,
+          "隐藏不动数据面（独立字幕文件导出仍可用）")
+    var shownState = hiddenLoaded
+    shownState.subtitleHidden = false
+    check(shownState.visibleSubtitleDocument(for: .original) != nil,
+          "显示时 visible 变体要给文档")
+    // 旧工程没有这个键：必须回退 false，不许拒开。
+    var rawJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    if var timelineJSON = rawJSON?["timeline"] as? [String: Any] {
+        timelineJSON.removeValue(forKey: "subtitleHidden")
+        rawJSON?["timeline"] = timelineJSON
+        try JSONSerialization.data(withJSONObject: rawJSON!).write(to: project)
+        let legacy = try VideoEditProjectIO.load(from: project).timeline
+        checkEqual(legacy.subtitleHidden, false, "旧工程缺 subtitleHidden 键回退 false")
+    } else {
+        check(false, "工程文件的 timeline 键结构变了，本用例需要跟进")
+    }
+
     // 删光 v4 数据后仍然是 v5：帧率是**无条件**的 v5 字段（每个工程都有帧率，
     // 而 v4 及更早把帧率硬编码成 30），所以新版 writer 一律写 v5，不再降级。
     var cleared = loaded

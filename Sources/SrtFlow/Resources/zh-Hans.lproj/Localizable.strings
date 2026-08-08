@@ -310,6 +310,8 @@
 
 "Play (Space)" = "播放（空格）";
 "Hide or show this track (V)" = "隐藏/显示这条轨道（V）";
+"Hide or show subtitles" = "隐藏/显示字幕";
+"Subtitle track is hidden — nothing will be burned." = "字幕轨已隐藏 —— 不会烧录进导出。";
 "%d clips selected" = "已选中 %d 段";
 "Drag any selected clip to move them together. Export can render just the selection." = "拖动任意选中段可整组移动。导出时可以只导出选中的内容。";
 "Full timeline" = "完整时间线";

@@ -103,7 +103,11 @@ struct VideoEditTimelineView: View {
             isHidden: project.state.mainHidden
         ))
         if project.state.subtitle != nil {
-            result.append(RowSpec(id: "subtitle", icon: "captions.bubble", height: 22, slot: nil, isSubtitle: true))
+            result.append(RowSpec(
+                id: "subtitle", icon: "captions.bubble", height: 22, slot: nil,
+                isSubtitle: true,
+                isHidden: project.state.subtitleHidden
+            ))
         }
         for index in project.state.audioTracks.indices {
             result.append(RowSpec(
@@ -192,6 +196,18 @@ struct VideoEditTimelineView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help("Hide or show this track (V)")
+                            } else if row.isSubtitle {
+                                // 字幕轨的眼睛：语义与其他轨道一致（预览+导出
+                                // 都跳过），只是隐藏状态不挂在 slot 上。
+                                Button {
+                                    project.toggleSubtitleHidden()
+                                } label: {
+                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Hide or show subtitles")
                             }
                         }
                     }
@@ -437,6 +453,8 @@ struct VideoEditTimelineView: View {
                 }
             }
         }
+        // 隐藏中：灰显，与其他轨道的隐藏观感一致。
+        .opacity(project.state.subtitleHidden ? 0.35 : 1)
     }
 
     // MARK: - 播放头
