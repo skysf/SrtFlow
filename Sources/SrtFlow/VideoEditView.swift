@@ -438,6 +438,11 @@ struct VideoEditView: View {
             }
             .keyboardShortcut("b", modifiers: [.command])
             .disabled(!canSplit)
+            ToolbarIcon(icon: "snowflake", help: "Freeze the frame at the playhead (⇧⌘F)") {
+                project.freezeFrameAtPlayhead()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(!project.canFreezeFrame)
             ToolbarIcon(icon: "delete.left", help: "Delete everything left of the playhead in this clip") {
                 project.trimToPlayhead(keepRight: true)
             }

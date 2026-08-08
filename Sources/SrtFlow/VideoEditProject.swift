@@ -191,6 +191,15 @@ final class VideoEditProject: ObservableObject {
     /// 正在后台导入的素材数（图片转静帧、探测时长时给个转圈，别让人以为拖丢了）。
     @Published private(set) var importingCount = 0
 
+    /// 定格正在跑（抽帧 → 写图 → 转码 → 提交）。单飞开关，只由
+    /// `VideoEditFreezeFrame` 写：期间按钮置灰，连按 ⇧⌘F 不会并发出两段。
+    @Published var isFreezing = false
+
+    // 转圈计数的增减。`importingCount` 的 setter 是 private，别的文件里的后台
+    // 流程（定格）经这两个口子记账。
+    func beginBackgroundImport() { importingCount += 1 }
+    func endBackgroundImport() { importingCount = max(0, importingCount - 1) }
+
     /// 预览播放器。0.05s 的回调间隔，字幕叠层和播放头才跟得上。
     let clock = PlayerClock(observationInterval: 0.05)
 
@@ -399,8 +408,12 @@ final class VideoEditProject: ObservableObject {
         var next = state
         var changed = false
         for clip in next.allClips where clip.needsStillConversion {
+            // 查缓存要带上这一段自己的分辨率政策，见 `needsNativeResolution` 的注释。
             guard let image = clip.stillImageURL,
-                  let video = StillImageClipFactory.cachedStillVideo(for: image) else { continue }
+                  let video = StillImageClipFactory.cachedStillVideo(
+                    for: image,
+                    nativeResolution: StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize)
+                  ) else { continue }
             let info = infoCache[video]
             next.update(clip.id) { pending in
                 pending.sourceURL = video
@@ -617,7 +630,7 @@ final class VideoEditProject: ObservableObject {
 
         perform { state in
             for id in targets {
-                Self.split(&state, clipID: id, at: time)
+                state.split(clipID: id, at: time)
             }
         }
     }
@@ -628,59 +641,11 @@ final class VideoEditProject: ObservableObject {
         let targets = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
         perform { state in
             for member in targets {
-                Self.split(&state, clipID: member, at: time)
+                state.split(clipID: member, at: time)
             }
         }
     }
 
-    private static func split(_ state: inout TimelineState, clipID: UUID, at time: Double) {
-        guard let location = state.location(of: clipID) else { return }
-        var clips = state[track: location.track]
-        var left = clips[location.clipIndex]
-        guard left.contains(time: time) else { return }
-
-        let leftSourceLength = (time - left.timelineStart) * left.speed
-        var right = left
-        // 右半是新的一段，得有自己的身份，链接组保持一致。
-        right = EditClip(
-            sourceURL: left.sourceURL,
-            isAudioOnly: left.isAudioOnly,
-            sourceStart: left.sourceStart + leftSourceLength,
-            sourceDuration: left.sourceDuration - leftSourceLength,
-            speed: left.speed,
-            timelineStart: time,
-            isMuted: left.isMuted,
-            volume: left.volume,
-            linkGroup: left.linkGroup,
-            transitionAfter: left.transitionAfter,
-            transitionDuration: left.transitionDuration,
-            overlayFraction: left.overlayFraction,
-            overlayAnchor: left.overlayAnchor,
-            placement: left.placement,
-            rotationDegrees: left.rotationDegrees,
-            opacity: left.opacity,
-            flippedHorizontally: left.flippedHorizontally,
-            flippedVertically: left.flippedVertically,
-            crop: left.crop,
-            // 关键帧锚在源时间上：两半带同一份轨，各自只播自己窗口内的段落，
-            // 接缝处数值天然连续。
-            animation: left.animation,
-            info: left.info,
-            audioAssetDuration: left.audioAssetDuration,
-            // 图片段的身份必须跟过来：`sourceURL` 只是随时会被系统清掉的静帧缓存，
-            // 丢了 `stillImageURL` 的话，右半段会把缓存 mp4 当真实素材写进工程 ——
-            // 缓存一清这段就再也无法从原图重建了。
-            stillImageURL: left.stillImageURL
-        )
-        right.needsStillConversion = left.needsStillConversion
-        left.sourceDuration = leftSourceLength
-        // 切口是硬切，原来的转场跟着右半走。
-        left.transitionAfter = .none
-
-        clips[location.clipIndex] = left
-        clips.insert(right, at: location.clipIndex + 1)
-        state[track: location.track] = clips
-    }
 
     /// 裁掉播放头左边（或右边）的部分。作用于选中段，其次是播放头下的主轨段。
     func trimToPlayhead(keepRight: Bool) {
@@ -1052,7 +1017,8 @@ final class VideoEditProject: ObservableObject {
 
     // MARK: - 素材探测
 
-    private func probeVideo(_ url: URL) async -> MediaInfo? {
+    /// 定格（`VideoEditFreezeFrame`）也要探测生成出来的静帧视频，所以不是 private。
+    func probeVideo(_ url: URL) async -> MediaInfo? {
         if let cached = infoCache[url] { return cached }
         let result = await MediaProbe.probe(url: url, ffmpeg: MediaToolchain.shared.runtime?.url)
         if case .success(let info) = result {

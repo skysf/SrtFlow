@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// 一个 `.srtflowproj` 工程文件。
@@ -132,8 +133,8 @@ enum VideoEditProjectIO {
         var missingMedia: [URL]
         /// 有素材是靠书签/相对路径/搜名字找回来的 —— 路径变了，该重新存一次盘。
         var didRelink: Bool
-        /// 静帧缓存没了、需要重新转的图片段。
-        var stillsToRegenerate: [URL]
+        /// 静帧缓存没了、需要重新转的图片段（带当初用的分辨率政策）。
+        var stillsToRegenerate: [StillRegeneration]
         /// 读到的素材定位表（键是**解析之后**的路径）。存盘时要拿它来兜底，
         /// 不然这次没找到的素材，书签会被下一次自动保存抹掉。
         var records: [String: MediaRecord]
@@ -383,17 +384,22 @@ enum VideoEditProjectIO {
     /// 打开工程和**手动重链接图片**之后都要走一遍：重链接只换了 `stillImageURL`，
     /// `sourceURL` 还指着旧的（多半已经不存在的）缓存文件。
     @discardableResult
-    nonisolated static func refreshStillClips(in timeline: inout TimelineState) -> [URL] {
-        var needsRegeneration: [URL] = []
+    nonisolated static func refreshStillClips(in timeline: inout TimelineState) -> [StillRegeneration] {
+        var needsRegeneration: [StillRegeneration] = []
 
         func repair(_ clip: inout EditClip) {
             guard let image = clip.stillImageURL else { return }
-            if let cached = StillImageClipFactory.cachedStillVideo(for: image) {
+            // 这一段当初按哪条分辨率政策转的，从存进工程文件的静帧尺寸反推。
+            // 查缓存和重转都必须带上它，否则同一张 PNG 被两种政策共用时会串线
+            // （定格段被悄悄降成 1080p，或者照片段拿到原生版本）。
+            let native = StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize)
+            if let cached = StillImageClipFactory.cachedStillVideo(for: image, nativeResolution: native) {
                 clip.sourceURL = cached
                 clip.needsStillConversion = false
             } else {
                 clip.needsStillConversion = true
-                if !needsRegeneration.contains(image) { needsRegeneration.append(image) }
+                let request = StillRegeneration(image: image, nativeResolution: native)
+                if !needsRegeneration.contains(request) { needsRegeneration.append(request) }
             }
         }
 
@@ -410,4 +416,35 @@ enum VideoEditProjectIO {
         }
         return needsRegeneration
     }
+
+    /// 把转好的静帧视频接到引用这张原图、**且政策一致**的段上。
+    ///
+    /// 政策过滤是重点：同一张 PNG 可能既被定格段（原生）又被普通图片段
+    /// （照片政策）引用，两项任务各转各的。不过滤的话，后跑完的那项会把
+    /// **所有**引用改成自己的产物，另一半就拿到了错误分辨率的静帧，
+    /// 连 `info.displaySize` 都跟着对不上。
+    nonisolated static func attachStill(
+        _ video: URL,
+        forImage image: URL,
+        nativeResolution: Bool,
+        in timeline: inout TimelineState
+    ) {
+        for clip in timeline.allClips
+        where clip.stillImageURL == image
+            && StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize) == nativeResolution {
+            timeline.update(clip.id) { pending in
+                pending.sourceURL = video
+                pending.needsStillConversion = false
+            }
+        }
+    }
+}
+
+/// 需要重新转的一个图片段：原图 + 当初用的分辨率政策。
+///
+/// **政策是键的一部分**：同一张 PNG 可能同时被定格段（原生）和普通图片段
+/// （照片政策）引用，那就是两项各转各的任务，落地时也只更新同政策的段。
+struct StillRegeneration: Hashable, Sendable {
+    var image: URL
+    var nativeResolution: Bool
 }

@@ -1,3 +1,4 @@
+import CoreGraphics
 import CryptoKit
 import Foundation
 
@@ -15,27 +16,81 @@ enum StillImageClipFactory {
     /// 静帧段的总长度，也是图片段最长能拖到的时长。
     static let stillDuration = 60.0
 
+    /// **照片**路径的缩放上限：静帧不需要 4K，编得快、拖得动。
+    ///
+    /// 定格帧只在**真的超过这个上限时**才走 `nativeResolution: true` —— 它的尺寸
+    /// 天然被源视频约束住，再缩一道只会让 Retina 录屏的定格糊掉一格。
+    static let photoMaxWidth = 1920.0
+    static let photoMaxHeight = 1080.0
+
+    /// 这个尺寸需要走原生政策吗。
+    ///
+    /// **这是两条政策之间唯一的判据，所有地方都必须用它**，理由是它对
+    /// 「源尺寸」和「产物尺寸」给出同一个答案，于是政策可以从工程文件里存着的
+    /// `info.displaySize` 反推出来（缓存被系统清掉后要按原政策重转，
+    /// 见 `VideoEditProjectIO.refreshStillClips`）：
+    ///
+    /// - 超过上限 → 走原生 → 产物尺寸 = 源尺寸，仍然超过上限 ✓
+    /// - 不超过上限 → 走照片政策，而 `force_original_aspect_ratio=decrease`
+    ///   只会缩小不会放大，所以产物 = 源，仍然不超过上限 ✓
+    ///
+    /// 也就是说尺寸没过线时两条政策产出完全一样，那就统一用照片政策，
+    /// 免得同一张图在两个缓存文件之间来回横跳。
+    static func needsNativeResolution(for size: CGSize?) -> Bool {
+        guard let size else { return false }
+        // 留 1px 余量：偶数宽高的 pad 可能让尺寸差一格。
+        return size.width > photoMaxWidth + 1 || size.height > photoMaxHeight + 1
+    }
+
     /// 已经转过就直接给（同步、零开销）。撤销后修补占位块时用。
-    static func cachedStillVideo(for image: URL) -> URL? {
-        guard let directory = try? cacheDirectory() else { return nil }
-        let output = directory.appendingPathComponent("\(cacheKey(for: image))-v2.mp4")
+    ///
+    /// **必须显式说明是哪条政策**。以前这里「两条都查、原生优先」，同一张 PNG
+    /// 既被当定格素材又被用户当普通图片拖进来时会串线：两个缓存都在就都拿原生，
+    /// 只剩照片缓存就把定格段悄悄降成 1080p。
+    static func cachedStillVideo(for image: URL, nativeResolution: Bool) -> URL? {
+        guard let output = cacheFileURL(for: image, nativeResolution: nativeResolution) else { return nil }
         return FileManager.default.fileExists(atPath: output.path) ? output : nil
     }
 
-    static func stillVideo(for image: URL, ffmpeg: URL) async throws -> URL {
+    /// 这张图这条政策的缓存**应该**在哪（不管在不在）。
+    ///
+    /// 单独开一个口子是给自检用的：命中路由要真造两份缓存文件才测得出来，
+    /// 而指纹公式不该在测试里抄一遍（抄了就会在公式改动时静默假绿）。
+    static func cacheFileURL(for image: URL, nativeResolution: Bool) -> URL? {
+        guard let directory = try? cacheDirectory() else { return nil }
+        return directory.appendingPathComponent(
+            fileName(key: cacheKey(for: image), nativeResolution: nativeResolution)
+        )
+    }
+
+    static func stillVideo(for image: URL, ffmpeg: URL, nativeResolution: Bool = false) async throws -> URL {
         let directory = try cacheDirectory()
-        // 文件名带参数版本：编码参数变了旧缓存就作废。
-        let output = directory.appendingPathComponent("\(cacheKey(for: image))-v2.mp4")
+        let output = directory.appendingPathComponent(
+            fileName(key: cacheKey(for: image), nativeResolution: nativeResolution)
+        )
         if FileManager.default.fileExists(atPath: output.path) { return output }
 
-        // 大图先收到 1080p 级别：静帧不需要 4K，编得快、拖得动。
         // 宽高都得是偶数，yuv420p 的要求。
-        let filter = "scale=trunc(min(iw\\,1920)/2)*2:trunc(min(ih\\,1080)/2)*2:force_original_aspect_ratio=decrease,pad=ceil(iw/2)*2:ceil(ih/2)*2"
+        let evenSize = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
+        let filter = nativeResolution
+            ? evenSize
+            : "scale=trunc(min(iw\\,\(Int(photoMaxWidth)))/2)*2:trunc(min(ih\\,\(Int(photoMaxHeight)))/2)*2:force_original_aspect_ratio=decrease,\(evenSize)"
+
+        // 先写临时文件、成功后原子改名。直接写最终路径的话，转码被中断（切工程、
+        // 退出 App、磁盘满）会留下一个**永远命中**的半成品 mp4 —— 之后这张图
+        // 每次都解析到那段坏视频，还没有任何线索。
+        let temporary = directory.appendingPathComponent("partial-\(UUID().uuidString).mp4")
+
+        // 输入帧率必须**显式跟着输出帧率走**：`-loop 1` 的 image2 demuxer 默认
+        // 25fps，不写 `-framerate` 的话 ffmpeg 要把这张图解码 25×60=1500 次，
+        // 再丢到只剩 120 帧输出 —— 4K 图实测 19.4s，加上这一个参数变 2.2s。
+        // （换硬件编码器只有 20.5s，瓶颈根本不在编码。）
+        //
         // 2fps 就够了：画面是死的，预览和导出都会重新对齐帧率。
-        // 60s × 2fps = 120 帧，拖进来几乎立等可取 —— 30fps 那版要等好几秒。
         let arguments = [
             "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
             "-loop", "1",
+            "-framerate", "2",
             "-i", image.path,
             "-t", String(Int(stillDuration)),
             "-r", "2",
@@ -43,11 +98,36 @@ enum StillImageClipFactory {
             "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "18",
             "-pix_fmt", "yuv420p",
             "-an",
-            output.path
+            temporary.path
         ]
 
-        try await run(ffmpeg: ffmpeg, arguments: arguments, imageName: image.lastPathComponent)
+        do {
+            try await run(ffmpeg: ffmpeg, arguments: arguments, imageName: image.lastPathComponent)
+        } catch {
+            try? FileManager.default.removeItem(at: temporary)
+            throw error
+        }
+
+        // 直接搬，不做「先查存在再搬」—— 那之间有 TOCTOU：同一张图的两个并发
+        // 转换可能同时通过检查，后搬的那个会白白报错，哪怕缓存其实已经好了。
+        // 搬失败就看目标在不在：在，说明别人先到了，用他的（自己的临时文件扔掉）。
+        do {
+            try FileManager.default.moveItem(at: temporary, to: output)
+        } catch {
+            try? FileManager.default.removeItem(at: temporary)
+            guard FileManager.default.fileExists(atPath: output.path) else { throw error }
+        }
         return output
+    }
+
+    /// 缓存文件名。带参数版本号：编码参数变了旧缓存就作废。
+    /// 两种分辨率政策分开存，互不覆盖。
+    ///
+    /// 照片这条从 `-v2` 升到 `-v3` 不是因为编码参数变了（`-framerate` 不改输出），
+    /// 而是要作废**升级前可能留下的半成品**：那时候是直接往最终路径写、只用
+    /// `fileExists` 判命中，转码被中断就会留下一个永远命中的坏文件。
+    private static func fileName(key: String, nativeResolution: Bool) -> String {
+        nativeResolution ? "\(key)-native-v1.mp4" : "\(key)-v3.mp4"
     }
 
     private static func cacheDirectory() throws -> URL {

@@ -53,7 +53,9 @@
 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数、真跑、数帧，源素材故意造成
 10fps 以排除源帧透传）、
 `checks/no-hardcoded-fps.sh`（扫描守卫：Video Edit 管线里不许再写死帧率，
-帧率必须来自 `TimelineState.frameRate`；用文件系统枚举，未跟踪的新文件也覆盖）
+帧率必须来自 `TimelineState.frameRate`；用文件系统枚举，未跟踪的新文件也覆盖）、
+`scripts/check-freeze-frame.sh`（定格的时间线变换：分割+同轨让位+音轨波纹+
+叠化区判定+关键帧烘焙，纯值函数无 GUI 无 ffmpeg，源码在 `checks/FreezeFrame/`）
 
 ## 规划（docs/plans/）
 
@@ -72,6 +74,10 @@
   （2026-08-06，含端到端冒烟）。原「基线 .v14 / 按 macOS 14/15/26 分层」已被
   录屏功能的**全局 macOS 15** 取代（2026-08-07，见其顶部注记）：现行分层
   **15/26**，翻译自基线可用、生成需 26+；改这块前必读，剩余实机验证项见其 17.2/17.3
+- [2026-08-08-freeze-frame.md](docs/plans/2026-08-08-freeze-frame.md) —
+  定格（工具栏雪花 / ⇧⌘F）：**已实现并实机验证**（2026-08-08）。产品参数、
+  评审后改掉的提交模型与分辨率政策、已知代价都在正文；长期约束见
+  [freeze-frame.md](docs/architecture/freeze-frame.md)
 
 ## 实施报告（docs/reports/）
 
@@ -107,6 +113,11 @@
 - [inspector-scrub-number-field.md](docs/architecture/inspector-scrub-number-field.md) —
   Inspector 数值框：离散/live 两条写入路径、拖调取消收尾、拒绝自动聚焦、
   cursor rect 局部光标；**改数值框/拖调/Transform 写入入口前必读**
+- [freeze-frame.md](docs/architecture/freeze-frame.md) —
+  定格：复用图片素材管线不写合成器、**转码成功后一次性提交**（CAS + 单飞 +
+  `committed` 以时间线为准）、PNG 归属与清理、波纹只到主轨+音频、抽帧零容差
+  与叠化区禁用、关键帧烘成静态值、纯值变换必须留在 `VideoEditTimelineEdits`；
+  **改定格/静帧管线/时间线插入前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -254,6 +265,11 @@
   `displayTime` 给画面叠层）+ ⌫ 删不掉选中剪辑（keyCode 51/117 没人接）。
   教训：「预览跟手」和「移动播放头」是两个语义；快捷键和按钮必须指向同一个
   入口；合成点击滞后与 hover 不可注入的边界并入 gui-smoke-testing
+- [2026-08-08-still-clip-loop-decode-slow.md](docs/bugfixes/2026-08-08-still-clip-loop-decode-slow.md) —
+  图片转静帧慢 20 倍（4K 图 19.4s）：`-loop 1` 的 image2 输入帧率默认 25fps，
+  1500 次解码只为 120 帧输出；补 `-framerate 2` 后连原生 4K 都比原来的 1080p
+  快 9 倍。教训：循环单图的命令必须显式写死输入帧率（差价完全不体现在产物上）；
+  换硬件编码器两分钟就证伪了「编码器慢」；顺带修了半成品缓存（原子改名）
 
 ## 根目录既有文档
 

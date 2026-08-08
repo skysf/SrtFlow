@@ -218,6 +218,11 @@
 "Undo" = "Undo";
 "Redo" = "Redo";
 "Split at playhead (⌘B)" = "Split at playhead (⌘B)";
+"Freeze the frame at the playhead (⇧⌘F)" = "Freeze the frame at the playhead (⇧⌘F)";
+"Could not read the frame at the playhead from %@." = "Could not read the frame at the playhead from %@.";
+"Could not save the freeze frame to %@." = "Could not save the freeze frame to %@.";
+"The clip changed while the freeze frame was being prepared. Try again." = "The clip changed while the freeze frame was being prepared. Try again.";
+"This clip has no frame exactly at the playhead, so the nearest one was used." = "This clip has no frame exactly at the playhead, so the nearest one was used.";
 "Delete everything left of the playhead in this clip" = "Delete everything left of the playhead in this clip";
 "Delete everything right of the playhead in this clip" = "Delete everything right of the playhead in this clip";
 "Delete the selection" = "Delete the selection";
