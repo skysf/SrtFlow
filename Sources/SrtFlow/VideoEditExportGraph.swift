@@ -110,7 +110,9 @@ enum VideoEditExportGraph {
                 style: subtitleStyle,
                 fontFileURL: subtitleFontURL,
                 aspectRatio: renderSize.width / max(1, renderSize.height),
-                title: state.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow"
+                title: state.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow",
+                // 工程级布局覆盖：与预览的 BurnInSubtitleOverlay.layout 同一份。
+                layout: state.subtitleLayout
             )
             workspace = prepared.directory
         } else {

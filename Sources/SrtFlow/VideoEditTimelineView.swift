@@ -439,15 +439,23 @@ struct VideoEditTimelineView: View {
                 .frame(width: contentWidth)
             if let cues = project.state.subtitle?.cues {
                 ForEach(cues) { cue in
+                    let selected = project.selectedSubtitleCueID == cue.id
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.orange.opacity(0.45))
+                        .fill(Color.orange.opacity(selected ? 0.8 : 0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(.white, lineWidth: selected ? 1.2 : 0)
+                        )
                         .frame(
                             width: max(2, (cue.end - cue.start) * pps),
                             height: 14
                         )
                         .offset(x: cue.start * pps, y: 4)
                         .onTapGesture {
+                            // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
+                            // 带进这条字幕，画面上立刻有字可调。
                             clock.seek(to: cue.start + 0.05)
+                            project.selectSubtitleCue(cue.id)
                         }
                         .help(SubtitleSerializer.plainText(cue.text))
                 }

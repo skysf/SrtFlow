@@ -987,6 +987,7 @@ do {
 // 塞太多断言会把 Swift 类型检查拖垮，实测卡 20 分钟没编完）。
 runScreenRecordingChecks()
 runLanguageDetectionChecks()
+runSubtitleLayoutChecks()
 
 if failures == 0 {
     print("All \(checks) checks passed.")

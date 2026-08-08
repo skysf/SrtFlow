@@ -250,7 +250,13 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
     ///   - cues: 字幕条目。
     ///   - aspectRatio: 视频宽高比，用来算虚拟画布的宽度。
     ///   - title: 写进 Script Info 的标题。
-    public func assDocument(cues: [SubtitleCue], aspectRatio: Double, title: String = "SrtFlow") -> String {
+    ///   - layout: 工程级布局覆盖（视频编辑器的拖框产物）；nil = 全局样式原样。
+    public func assDocument(
+        cues: [SubtitleCue],
+        aspectRatio: Double,
+        title: String = "SrtFlow",
+        layout: SubtitleLayout? = nil
+    ) -> String {
         let height = Self.referenceHeight
         let safeAspect = aspectRatio.isFinite && aspectRatio > 0.1 ? aspectRatio : 16.0 / 9.0
         // 宽度取偶数，免得出现 1706.67 这种不整的画布宽。
@@ -270,7 +276,7 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
                 copy.rawOverride = nil
                 return copy
             },
-            styles: [assStyle],
+            styles: [assStyle(layout: layout)],
             format: .ass,
             title: title
         )

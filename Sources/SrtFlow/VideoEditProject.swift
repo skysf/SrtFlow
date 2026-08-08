@@ -148,6 +148,8 @@ final class VideoEditProject: ObservableObject {
 
     /// 点选：普通点是单选，⌘/⇧点是加选或取消。
     func select(_ id: UUID, additive: Bool) {
+        // 剪辑选择与字幕 cue 选择互斥（预览上两种框不能同时出现）。
+        selectedSubtitleCueID = nil
         if additive {
             if selectedClipIDs.contains(id) {
                 selectedClipIDs.remove(id)
@@ -903,6 +905,21 @@ final class VideoEditProject: ObservableObject {
     /// 导出都跳过。字幕不参与 AV 合成，不用重建预览播放器。
     func toggleSubtitleHidden() {
         perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
+    }
+
+    /// 轨道上选中的字幕 cue（点选出预览拖框用）。不持久化；选中剪辑时清掉。
+    @Published var selectedSubtitleCueID: UUID?
+
+    /// 预览拖框实时写入工程级字幕布局（liveApply 连续编辑，松手
+    /// endLiveEdit(rebuildsPreview: false) 合成一步撤销；字幕不参与 AV 合成）。
+    func liveSetSubtitleLayout(_ layout: SubtitleLayout) {
+        liveApply { $0.subtitleLayout = layout }
+    }
+
+    /// 点选字幕 cue：与剪辑选择互斥。
+    func selectSubtitleCue(_ id: UUID) {
+        selectedSubtitleCueID = id
+        selectedClipIDs = []
     }
 
     /// 画布**被用户改过多少次**。

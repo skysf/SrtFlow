@@ -115,6 +115,8 @@ struct ClipTransformCanvas: View {
             project.select(hit.clip.id, additive: false)
         } else {
             project.selectedClipIDs = []
+            // 点空白也退出字幕拖框（点选剪辑时由 select(_:additive:) 清）。
+            project.selectedSubtitleCueID = nil
         }
     }
 }

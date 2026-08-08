@@ -363,6 +363,12 @@ struct BurnInSubtitleOverlay: View {
     let style: BurnInStyle
     let scale: Double
     let boxSize: CGSize
+    /// 工程级布局覆盖（视频编辑器的拖框产物，SrtFlowCore/SubtitleLayout）。
+    /// 有它时锚定固定为底部中心、边距/字号倍率全听它的 —— 与 ASS 侧
+    /// `assStyle(layout:)` 是同一份合同。烧录工具的预览不传（nil）。
+    var layout: SubtitleLayout? = nil
+    /// 文本块实测尺寸的回报（字幕拖框要用块高定框）。
+    var onBlockSize: ((CGSize) -> Void)? = nil
 
     /// 八个方向，对角线用 0.707 让描边圆一点。
     private static let outlineOffsets: [CGPoint] = [
@@ -376,20 +382,48 @@ struct BurnInSubtitleOverlay: View {
         ZStack(alignment: alignment) {
             Color.clear
             block
-                .padding(.leading, style.position.column == 0 ? horizontalMargin : 0)
-                .padding(.trailing, style.position.column == 2 ? horizontalMargin : 0)
-                .padding(.bottom, style.position.row == 0 ? verticalMargin : 0)
-                .padding(.top, style.position.row == 2 ? verticalMargin : 0)
+                .padding(.leading, leadingPad)
+                .padding(.trailing, trailingPad)
+                .padding(.bottom, bottomPad)
+                .padding(.top, topPad)
         }
         .frame(width: boxSize.width, height: boxSize.height)
         .allowsHitTesting(false)
+        .onPreferenceChange(SubtitleBlockSizeKey.self) { size in
+            onBlockSize?(size)
+        }
     }
 
     private var block: some View {
         strokedText
             .padding(boxPadding)
             .background { boxBackground }
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(key: SubtitleBlockSizeKey.self, value: proxy.size)
+                }
+            }
             .frame(maxWidth: usableWidth, alignment: frameAlignment)
+    }
+
+    private var leadingPad: Double {
+        if let layout { return Double(layout.marginLeft) * scale }
+        return style.position.column == 0 ? horizontalMargin : 0
+    }
+
+    private var trailingPad: Double {
+        if let layout { return Double(layout.marginRight) * scale }
+        return style.position.column == 2 ? horizontalMargin : 0
+    }
+
+    private var bottomPad: Double {
+        if let layout { return Double(layout.marginBottom) * scale }
+        return style.position.row == 0 ? verticalMargin : 0
+    }
+
+    private var topPad: Double {
+        guard layout == nil else { return 0 }
+        return style.position.row == 2 ? verticalMargin : 0
     }
 
     private var strokedText: some View {
@@ -422,7 +456,9 @@ struct BurnInSubtitleOverlay: View {
     }
 
     private var font: Font {
-        var result = Font.custom(style.fontName, size: style.fontSize * scale)
+        var result = Font.custom(
+            style.fontName, size: style.fontSize * (layout?.fontScale ?? 1) * scale
+        )
         if style.bold { result = result.weight(.bold) }
         if style.italic { result = result.italic() }
         return result
@@ -452,12 +488,16 @@ struct BurnInSubtitleOverlay: View {
     private var horizontalMargin: Double { Double(style.marginHorizontal) * scale }
     private var verticalMargin: Double { Double(style.marginVertical) * scale }
 
-    /// 两侧边距同时决定长句在哪里换行。
+    /// 两侧边距同时决定长句在哪里换行（布局覆盖时左右可以不对称）。
     private var usableWidth: Double {
-        max(20, boxSize.width - 2 * horizontalMargin)
+        if layout != nil {
+            return max(20, boxSize.width - leadingPad - trailingPad)
+        }
+        return max(20, boxSize.width - 2 * horizontalMargin)
     }
 
     private var alignment: Alignment {
+        if layout != nil { return .bottom }
         switch (style.position.column, style.position.row) {
         case (0, 0): return .bottomLeading
         case (1, 0): return .bottom
@@ -472,6 +512,7 @@ struct BurnInSubtitleOverlay: View {
     }
 
     private var frameAlignment: Alignment {
+        guard layout == nil else { return .center }
         switch style.position.column {
         case 0: return .leading
         case 2: return .trailing
@@ -480,11 +521,20 @@ struct BurnInSubtitleOverlay: View {
     }
 
     private var textAlignment: TextAlignment {
+        guard layout == nil else { return .center }
         switch style.position.column {
         case 0: return .leading
         case 2: return .trailing
         default: return .center
         }
+    }
+}
+
+/// BurnInSubtitleOverlay 文本块实测尺寸（字幕拖框定高用）。
+private struct SubtitleBlockSizeKey: PreferenceKey {
+    static let defaultValue: CGSize = .zero
+    static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
+        value = nextValue()
     }
 }
 

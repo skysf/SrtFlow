@@ -476,6 +476,26 @@ do {
     shownState.subtitleHidden = false
     check(shownState.visibleSubtitleDocument(for: .original) != nil,
           "显示时 visible 变体要给文档")
+    // 工程级字幕布局覆盖（subtitleLayout）：往返无损；没设置就不落键。
+    var layoutState = loaded
+    layoutState.subtitleLayout = SubtitleLayout(
+        marginLeft: 130, marginRight: 70, marginBottom: 210, fontScale: 1.25
+    )
+    try VideoEditProjectIO.save(layoutState, to: project)
+    let layoutLoaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(
+        layoutLoaded.subtitleLayout,
+        layoutState.subtitleLayout,
+        "subtitleLayout 往返要无损"
+    )
+    try VideoEditProjectIO.save(loaded, to: project)
+    let noLayout = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    let noLayoutTimeline = noLayout?["timeline"] as? [String: Any]
+    check(
+        noLayoutTimeline?["subtitleLayout"] == nil,
+        "没设置布局覆盖的工程不落 subtitleLayout 键"
+    )
+
     // 旧工程没有这个键：必须回退 false，不许拒开。
     var rawJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     if var timelineJSON = rawJSON?["timeline"] as? [String: Any] {

@@ -138,6 +138,12 @@
   （同语种/unsupported 提交前拦下）、生成后翻译遇同语种=跳过不是失败、
   TranslationError 不许原样透传、Auto-detect 两段式检测合同与人肉回归清单；
   **改字幕面板/翻译服务/转写任务的语言逻辑前必读**
+- [subtitle-track-visibility-and-layout.md](docs/architecture/subtitle-track-visibility-and-layout.md) —
+  字幕轨可见性与工程级布局：眼睛走 `visibleSubtitleDocument` 单一收口
+  （文件导出故意豁免）、SubtitleLayout 只有 1080p 基准一种坐标系且预览与
+  ASS 共用同一份、覆盖后锚定固定底部中心、拖框语义（框体=移动/边=换行
+  宽度/角=等比字号）、分段默认单行 + 参数集版本合同；
+  **改字幕轨 UI/预览叠层/烧录样式/分段默认值前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
