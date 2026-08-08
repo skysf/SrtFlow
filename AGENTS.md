@@ -242,6 +242,11 @@
   Phase 0 的「启动器 + 负载」防 TCC 方案对完整 App 不适用（`execv` 后
   `Bundle.main` 变成负载目录，随包 ffmpeg 找不到）。
   **改 coordinator/恢复/退出/导入路径前必读**
+- [2026-08-08-runtime-media-relink.md](docs/bugfixes/2026-08-08-runtime-media-relink.md) —
+  工程开着时素材被改名/挪走：预览黑屏零提示、剪辑块一直挂旧名，用户以为是变速
+  弄坏了视频。根因是四层重链接只在打开工程时跑；修法是抽出 `relocateMedia`
+  在 App 激活和预览重建时重核对。教训：「打开时校验过」≠「一直有效」；
+  静默跳过必须有人在上游补提示；缩略图是缓存、不代表素材还在
 
 ## 根目录既有文档
 

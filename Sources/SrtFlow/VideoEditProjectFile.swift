@@ -255,10 +255,42 @@ enum VideoEditProjectIO {
         case missing
     }
 
+    /// 运行中重核对一批素材（App 激活、预览重建时调）：跟打开工程完全同一套
+    /// 四层线索。找回来的以「旧 → 新」报告，四层都翻不到的进 missing，
+    /// 原地没动的两边都不出现。纯函数，只读文件系统，不碰任何共享状态。
+    nonisolated static func relocateMedia(
+        urls: [URL],
+        records: [String: MediaRecord],
+        projectDirectory: URL?
+    ) -> (moved: [URL: URL], missing: [URL]) {
+        var moved: [URL: URL] = [:]
+        var missing: [URL] = []
+        var knownDirectories = [projectDirectory].compactMap { $0 }
+        var budget = searchEntryBudget
+        for original in urls {
+            // 没存过盘的素材没有记录（书签在存盘时才建），退化成只查原路径。
+            let record = records[original.path] ?? MediaRecord(url: original, projectDirectory: nil)
+            switch resolve(
+                record,
+                projectDirectory: projectDirectory,
+                knownDirectories: knownDirectories,
+                budget: &budget
+            ) {
+            case .found(let resolved, let didMove):
+                if didMove { moved[original] = resolved }
+                let directory = resolved.deletingLastPathComponent()
+                if !knownDirectories.contains(directory) { knownDirectories.append(directory) }
+            case .missing:
+                missing.append(original)
+            }
+        }
+        return (moved, missing)
+    }
+
     /// 四层线索依次试，越靠前越快。
     private nonisolated static func resolve(
         _ record: MediaRecord,
-        projectDirectory: URL,
+        projectDirectory: URL?,
         knownDirectories: [URL],
         budget: inout Int
     ) -> Resolution {
@@ -283,7 +315,8 @@ enum VideoEditProjectIO {
         }
 
         // 3. 相对工程文件的位置：工程和素材整个文件夹一起被搬走/拷到别的机器。
-        if let relative = record.relativePath {
+        //    未命名工程连位置都还没有，这层和第 4 层的「工程目录」线索自然缺席。
+        if let relative = record.relativePath, let projectDirectory {
             let candidate = URL(
                 fileURLWithPath: relative,
                 relativeTo: projectDirectory

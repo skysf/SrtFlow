@@ -415,6 +415,83 @@ extension VideoEditProject {
             })
         }
     }
+
+    // MARK: - 运行中的素材核对
+
+    /// 工程开着的时候素材也会在访达里被改名、挪走。以前只有**打开工程**才跑
+    /// 四层线索，运行中失踪只会让预览重建时静默跳过那段 —— 黑屏零提示，轨道
+    /// 缩略图还是缓存的旧画面，看着一切正常。这里把同一套线索在运行中也跑：
+    /// 跟得上的当场改引用（轨道块名字随 `sourceURL` 现算，立刻显示新名字），
+    /// 跟不上的进 `missingMedia` 亮出重链接条。App 激活和每次预览重建各触发
+    /// 一次；素材都在原地时就是每素材一次 fileExists 的开销。
+    func revalidateMediaLocations() {
+        guard mediaRevalidateTask == nil else { return }
+        guard !state.isEmpty else {
+            if !missingMedia.isEmpty { missingMedia = [] }
+            return
+        }
+        let urls = state.mediaURLs
+        let records = mediaRecords
+        let projectDirectory = documentURL?.deletingLastPathComponent()
+        let generation = documentGeneration
+        mediaRevalidateTask = Task { [weak self] in
+            // 四层线索可能要翻目录，跟 openProject 一样别占主线程。
+            let outcome = await Task.detached(priority: .utility) {
+                VideoEditProjectIO.relocateMedia(
+                    urls: urls,
+                    records: records,
+                    projectDirectory: projectDirectory
+                )
+            }.value
+            guard let self else { return }
+            // 先放开单飞再落账：落账会触发重建 → 重建又触发核对，那次要能起飞，
+            // 它会核出「全部原地命中」从而收敛，不会循环。
+            self.mediaRevalidateTask = nil
+            guard self.isCurrentGeneration(generation) else { return }
+            self.applyMediaRelocation(moved: outcome.moved, missing: outcome.missing)
+        }
+    }
+
+    /// 把核对结果落回工程。**await 回来的世界可能已经变了**（编辑没停、
+    /// 甚至换了素材）：只对此刻仍被时间线引用的路径动手。
+    private func applyMediaRelocation(moved: [URL: URL], missing: [URL]) {
+        let current = Set(state.mediaURLs)
+        let applicable = moved.filter { current.contains($0.key) }
+
+        if !applicable.isEmpty {
+            var pendingStills: [URL] = []
+            applyDocumentRepair { state in
+                for (old, new) in applicable { state.replaceMedia(old, with: new) }
+                // 找回来的要是图片，静帧缓存要重新对一次（同 promptRelink）。
+                pendingStills = VideoEditProjectIO.refreshStillClips(in: &state)
+            }
+            // 定位表跟 promptRelink 同一套账：键换成新路径，旧记录当兜底。
+            let projectDirectory = documentURL?.deletingLastPathComponent()
+            for (old, new) in applicable {
+                let previous = mediaRecords.removeValue(forKey: old.path)
+                mediaRecords[new.path] = MediaRecord(
+                    url: new,
+                    projectDirectory: projectDirectory,
+                    previous: previous
+                )
+            }
+            // 路径变了立刻回存，跟打开工程时 didRelink 的处理一致。
+            if documentURL != nil {
+                hasUnsavedChanges = true
+                flushAutosave()
+            }
+            if !pendingStills.isEmpty {
+                let generation = documentGeneration
+                trackImportTask(Task {
+                    await regenerateStills(pendingStills, generation: generation)
+                })
+            }
+        }
+
+        // 丢失名单以本次核对为准：被挪回原位/找回来的自动消条。
+        let stillMissing = missing.filter { current.contains($0) }
+        if missingMedia != stillMissing { missingMedia = stillMissing }
+    }
 }
 
 // MARK: - 最近打开

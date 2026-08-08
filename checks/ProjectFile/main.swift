@@ -603,6 +603,66 @@ do {
     checkEqual(pips.overlayTracks.first?.clips.first?.placement, place, "另一条画中画的摆放不该被牵连")
 }
 
+// MARK: - 16. 运行中重核对（relocateMedia）：工程开着时素材被改名/挪走
+//
+// 回归：以前四层线索只在**打开工程**时跑。运行中把素材改名+移动后，预览重建
+// 按死路径加载失败、整段静默变黑（轨道缩略图是缓存看着正常），且 missingMedia
+// 永远不更新 —— 用户以为是变速把视频弄坏了。relocateMedia 就是给运行中重核对
+// 用的同一套线索。
+
+do {
+    let dir = root.appendingPathComponent("runtime-relocate")
+    let media = dir.appendingPathComponent("live.mp4")
+    makeFile(media)
+    let project = dir.appendingPathComponent("p.srtflowproj")
+    // 存一次盘拿到内存里的定位表 —— 这就是工程开着时 mediaRecords 的状态。
+    let records = try VideoEditProjectIO.save(timeline(mainMedia: [media]), to: project)
+
+    // 用户在访达里改名 + 挪去别的文件夹（同一个卷）。
+    let renamed = root.appendingPathComponent("runtime-elsewhere/renamed-live.mp4")
+    try manager.createDirectory(
+        at: renamed.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try manager.moveItem(at: media, to: renamed)
+
+    let outcome = VideoEditProjectIO.relocateMedia(
+        urls: [media],
+        records: records,
+        projectDirectory: dir
+    )
+    checkEqual(
+        outcome.moved[media]?.standardizedFileURL.path,
+        renamed.standardizedFileURL.path,
+        "运行中改名+移动要靠书签跟过去"
+    )
+    check(outcome.missing.isEmpty, "跟上了就不算丢失")
+
+    // 未命名工程（还没有工程目录）：书签这层不依赖工程位置，照样要能跟。
+    let untitled = VideoEditProjectIO.relocateMedia(
+        urls: [media],
+        records: records,
+        projectDirectory: nil
+    )
+    checkEqual(
+        untitled.moved[media]?.standardizedFileURL.path,
+        renamed.standardizedFileURL.path,
+        "没有工程目录时书签线索也要生效"
+    )
+
+    // 真没了：报 missing，不许乱配。
+    try manager.removeItem(at: renamed)
+    let gone = VideoEditProjectIO.relocateMedia(urls: [media], records: records, projectDirectory: dir)
+    check(gone.moved.isEmpty, "文件删了不该报找回")
+    checkEqual(gone.missing, [media], "文件删了要老实报丢失")
+
+    // 原地没动：两个名单都空 —— 这是高频路径，不能有任何动静。
+    let still = dir.appendingPathComponent("still-here.mp4")
+    makeFile(still)
+    let quiet = VideoEditProjectIO.relocateMedia(urls: [still], records: [:], projectDirectory: dir)
+    check(quiet.moved.isEmpty && quiet.missing.isEmpty, "原地未动的素材不该有任何动静")
+}
+
 try? manager.removeItem(at: root)
 
 print("\(checks) checks, \(failures) failures")
