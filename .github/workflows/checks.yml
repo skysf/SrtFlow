@@ -1,0 +1,39 @@
+# 每个 PR（以及合并进 main 后）跑全部自检：scripts/check-all.sh。
+# main 禁直推、必须走 PR —— 在这个闸口挂检查，「合并前必绿」就不靠自觉了。
+#
+# vendor/ffmpeg 不入库（见 .gitignore），按 vendor-ffmpeg.sh 的内容做缓存键：
+# 脚本没变（上游 URL/校验值没变）就复用缓存，变了才重新下载。
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check-all:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 缓存 SwiftPM 构建产物
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+
+      - name: 缓存 vendor/ffmpeg
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: vendor
+          key: ffmpeg-${{ hashFiles('scripts/vendor-ffmpeg.sh') }}
+
+      - name: 获取 ffmpeg（缓存未命中时）
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: scripts/vendor-ffmpeg.sh
+
+      - name: 全部自检
+        run: scripts/check-all.sh

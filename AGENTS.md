@@ -7,7 +7,10 @@
 
 1. **修复任何 bug 后，必须在 `docs/bugfixes/` 写一份案例**（按
    [TEMPLATE.md](docs/bugfixes/TEMPLATE.md)：症状 → 根因 → 修复 → 验证 → 教训），
-   文件名 `YYYY-MM-DD-<slug>.md`，并在下方索引里补一行。
+   文件名 `YYYY-MM-DD-<slug>.md`，并在下方索引里补一行。**自检够得着的层面
+   还必须落一条会红的守卫**进对应 check，并做反向验证（临时撤掉修复、确认
+   守卫真的红过再恢复 —— 没红过的守卫就是假绿）；自动化够不着的
+   （手势手感、TCC、系统 UI）落进对应架构文档的回归清单，发版前人肉过。
 2. 案例中沉淀出的**长期约束**（"这里只能这样做"）单独落到 `docs/architecture/`，
    案例里链接过去，避免只存在于一次性记录中。
 3. 新增其他文档归入 `docs/` 对应分类目录，并回本文件补一行索引。
@@ -41,7 +44,11 @@
   真实窗口冒烟测试全流程：改名启动避同名进程、按窗口 ID 截图、事件注入边界、
   `SRTFLOW_SMOKE_VIDEO` / `SRTFLOW_FFMPEG` 环境变量钩子
 
-自检命令：`swift run SrtFlowCoreChecks`（核心库）、
+**一条命令跑全部：`scripts/check-all.sh`**（聚合下面所有自检 + 扫描守卫，
+任何一项红整体就红；CI 在每个 PR 上跑同一条命令，见
+`.github/workflows/checks.yml` —— 改完代码、发 PR 前先本地跑它）。
+
+单项自检：`swift run SrtFlowCoreChecks`（核心库）、
 `scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
 `scripts/check-player-clock.sh`（预览时钟的悬停预览 peek 状态机：播放头不被
 悬停拖走、seek/播放/换片终结 peek，源码在 `checks/PlayerClock/`）、
