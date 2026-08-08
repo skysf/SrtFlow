@@ -608,6 +608,8 @@ private struct ShapeOverlayCanvas: View {
 
     /// 拖动开始时的中心（归一化），增量都相对它算。
     @State private var dragOrigin: CGPoint?
+    /// 中心参考线的亮灭（竖线, 横线）。
+    @State private var centerGuides = (vertical: false, horizontal: false)
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -625,10 +627,17 @@ private struct ShapeOverlayCanvas: View {
                     handles: resizeHandles(shape),
                     keepAspectOnCorners: true,
                     movable: false,
+                    onCenterGuides: { centerGuides = (vertical: $0, horizontal: $1) },
                     onChange: { newRect in applyShapeResize(shape, newRect) },
                     onEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
             }
+
+            CenterGuideLines(
+                canvas: boxSize,
+                showVertical: centerGuides.vertical,
+                showHorizontal: centerGuides.horizontal
+            )
         }
         .frame(width: boxSize.width, height: boxSize.height)
     }
@@ -714,8 +723,19 @@ private struct ShapeOverlayCanvas: View {
                         project.selectedShapeID = shape.id
                     }
                     guard let origin = dragOrigin else { return }
-                    let nx = origin.x + value.translation.width / boxSize.width
-                    let ny = origin.y + value.translation.height / boxSize.height
+                    // 接近画布中心时吸附并亮参考线，和剪辑变换框同一套手感。
+                    let size = shape.frame(in: boxSize).size
+                    var proposed = CGRect(
+                        x: (origin.x + value.translation.width / boxSize.width) * boxSize.width - size.width / 2,
+                        y: (origin.y + value.translation.height / boxSize.height) * boxSize.height - size.height / 2,
+                        width: size.width,
+                        height: size.height
+                    )
+                    let snapped = CenterSnap.snap(proposed, in: boxSize)
+                    proposed = snapped.rect
+                    centerGuides = (vertical: snapped.snappedX, horizontal: snapped.snappedY)
+                    let nx = proposed.midX / boxSize.width
+                    let ny = proposed.midY / boxSize.height
                     project.liveApply { state in
                         state.updateShape(shape.id) {
                             $0.centerX = min(max(nx, 0), 1)
@@ -725,6 +745,7 @@ private struct ShapeOverlayCanvas: View {
                 }
                 .onEnded { _ in
                     dragOrigin = nil
+                    centerGuides = (vertical: false, horizontal: false)
                     project.endLiveEdit(rebuildsPreview: false)
                 }
         )
