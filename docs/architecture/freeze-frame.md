@@ -93,6 +93,24 @@
 ⚠️ 顺带一提：**现有的 ⌘B 分割本身也有这个长度重算行为**，只是它不推音频，
 所以没有「承诺了同步却做不到」的问题。哪天要给分割加音频波纹，先回来读这一节。
 
+## 4a2. 静帧转码命令：解一帧 + `loop` 复制，且只用通用 demuxer 选项
+
+`StillImageClipFactory.conversionArguments()` 是这条命令的唯一出处（自检
+`checks/StillClipEncode` 直接拿它去真跑）。两条硬约束，都是踩出来的：
+
+1. **只解一帧，其余 119 帧用 `loop` 滤镜复制**，不许用 `-loop 1` 让 demuxer 重放
+   输入。`-loop` 的语义是重放，每个输出帧都要重新解码 + 重新缩放一次 ——
+   5MB 图 5s、9.5MB 图 8.8s，而产物一模一样。配套必须有 `-frames:v`
+   （不是 `-t`）截断：`loop` 复制完之后会把输入剩下的帧接着往下吐，动图/多页图
+   会超过 `stillDuration`。
+2. **只能用所有 demuxer 都认的选项**。`-loop` / `-framerate` 是 image2 专属，
+   gif（gif demuxer）和 heic（mov demuxer）会在开文件那一步就死；输入帧率用
+   `-r`。tile grid 型 heic 目前仍不支持，**不许**用 `-filter_complex "[0:v]"`
+   绕 —— `[0:v]` 拿到的是单块瓦片，会把大图悄悄变成 512×512。
+
+改这条命令前读 [案例](../bugfixes/2026-08-08-still-clip-decode-per-frame.md)：
+它同时记了「性能断言为什么用边际成本而不是绝对秒数/比值」。
+
 ## 4b. 分辨率政策只有一个判据
 
 `StillImageClipFactory.needsNativeResolution(for:)` 是**两条政策之间唯一的判据**，

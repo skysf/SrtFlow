@@ -16,6 +16,13 @@ enum StillImageClipFactory {
     /// 静帧段的总长度，也是图片段最长能拖到的时长。
     static let stillDuration = 60.0
 
+    /// 静帧段的帧率。画面是死的，2fps 就够 —— 预览和导出都会按工程帧率重新对齐。
+    static let stillFrameRate = 2.0
+
+    /// 产物的帧数。**只有第一帧是解码出来的**，其余全靠滤镜里的 `loop` 复制，
+    /// 见 `conversionArguments`。
+    static var stillFrameCount: Int { Int(stillDuration * stillFrameRate) }
+
     /// **照片**路径的缩放上限：静帧不需要 4K，编得快、拖得动。
     ///
     /// 定格帧只在**真的超过这个上限时**才走 `nativeResolution: true` —— 它的尺寸
@@ -63,6 +70,45 @@ enum StillImageClipFactory {
         )
     }
 
+    /// 生产用的 ffmpeg 参数。
+    ///
+    /// **自检直接拿这个函数去真跑**（`checks/StillClipEncode`）：命令不许在测试里
+    /// 抄第二份，抄了就会在参数改动时静默假绿 —— 上一次「输入帧率」的性能 bug
+    /// 就是因为没人对着真实参数量过时间。
+    static func conversionArguments(image: URL, output: URL, nativeResolution: Bool) -> [String] {
+        // 宽高都得是偶数，yuv420p 的要求。
+        let evenSize = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
+        let filter = nativeResolution
+            ? evenSize
+            : "scale=trunc(min(iw\\,\(Int(photoMaxWidth)))/2)*2:trunc(min(ih\\,\(Int(photoMaxHeight)))/2)*2:force_original_aspect_ratio=decrease,\(evenSize)"
+
+        return [
+            "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+            // 输入侧的帧率，必须和输出侧的 `-r` 写同一个值：不一致的话输出端要么
+            // 丢帧要么补帧，中间那段解码是白烧的（旧代码 `-loop 1` 的 image2
+            // demuxer 默认 25fps，白解码 1380 帧再丢掉）。
+            //
+            // 用 `-r` 而不是 `-framerate`：`-framerate` 只有 image2 有，gif 和
+            // heic（走 mov demuxer）上会直接 "Option framerate not found" 开不了文件。
+            "-r", String(Int(stillFrameRate)),
+            "-i", image.path,
+            // **只解码一帧，其余 119 帧由 `loop` 复制**。这条命令的快慢全在这里：
+            // 以前靠 `-loop 1` 让 demuxer 反复吐同一张图（`-loop` 的语义是重放
+            // 整个输入），每一帧都要重新解一次 PNG/JPEG 再缩放一次 ——
+            // 4000×3000 PNG 实测 4.8s、6000×4500 PNG 8.8s，现在分别是 0.37s 和
+            // 0.63s，产物逐字节相同。
+            "-vf", "\(filter),loop=loop=\(stillFrameCount - 1):size=1:start=0",
+            // 帧数硬上限。`loop` 复制完那一帧之后会把输入剩下的帧接着往下吐，
+            // 多帧输入（动图 gif/webp、多页 tif）不截断就会超过 stillDuration。
+            "-frames:v", String(stillFrameCount),
+            "-r", String(Int(stillFrameRate)),
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "18",
+            "-pix_fmt", "yuv420p",
+            "-an",
+            output.path
+        ]
+    }
+
     static func stillVideo(for image: URL, ffmpeg: URL, nativeResolution: Bool = false) async throws -> URL {
         let directory = try cacheDirectory()
         let output = directory.appendingPathComponent(
@@ -70,36 +116,16 @@ enum StillImageClipFactory {
         )
         if FileManager.default.fileExists(atPath: output.path) { return output }
 
-        // 宽高都得是偶数，yuv420p 的要求。
-        let evenSize = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
-        let filter = nativeResolution
-            ? evenSize
-            : "scale=trunc(min(iw\\,\(Int(photoMaxWidth)))/2)*2:trunc(min(ih\\,\(Int(photoMaxHeight)))/2)*2:force_original_aspect_ratio=decrease,\(evenSize)"
-
         // 先写临时文件、成功后原子改名。直接写最终路径的话，转码被中断（切工程、
         // 退出 App、磁盘满）会留下一个**永远命中**的半成品 mp4 —— 之后这张图
         // 每次都解析到那段坏视频，还没有任何线索。
         let temporary = directory.appendingPathComponent("partial-\(UUID().uuidString).mp4")
 
-        // 输入帧率必须**显式跟着输出帧率走**：`-loop 1` 的 image2 demuxer 默认
-        // 25fps，不写 `-framerate` 的话 ffmpeg 要把这张图解码 25×60=1500 次，
-        // 再丢到只剩 120 帧输出 —— 4K 图实测 19.4s，加上这一个参数变 2.2s。
-        // （换硬件编码器只有 20.5s，瓶颈根本不在编码。）
-        //
-        // 2fps 就够了：画面是死的，预览和导出都会重新对齐帧率。
-        let arguments = [
-            "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
-            "-loop", "1",
-            "-framerate", "2",
-            "-i", image.path,
-            "-t", String(Int(stillDuration)),
-            "-r", "2",
-            "-vf", filter,
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "18",
-            "-pix_fmt", "yuv420p",
-            "-an",
-            temporary.path
-        ]
+        let arguments = conversionArguments(
+            image: image,
+            output: temporary,
+            nativeResolution: nativeResolution
+        )
 
         do {
             try await run(ffmpeg: ffmpeg, arguments: arguments, imageName: image.lastPathComponent)
@@ -126,6 +152,10 @@ enum StillImageClipFactory {
     /// 照片这条从 `-v2` 升到 `-v3` 不是因为编码参数变了（`-framerate` 不改输出），
     /// 而是要作废**升级前可能留下的半成品**：那时候是直接往最终路径写、只用
     /// `fileExists` 判命中，转码被中断就会留下一个永远命中的坏文件。
+    ///
+    /// 改成「解一帧 + `loop` 复制」时**故意没有再升版本**：新旧命令的产物逐字节
+    /// 相同（自检里对着 md5 量过），升版本只会让所有人白重转一遍。改编码参数
+    /// （尺寸、码率、帧率、codec）时才必须升。
     private static func fileName(key: String, nativeResolution: Bool) -> String {
         nativeResolution ? "\(key)-native-v1.mp4" : "\(key)-v3.mp4"
     }
