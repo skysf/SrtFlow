@@ -43,6 +43,8 @@
 
 自检命令：`swift run SrtFlowCoreChecks`（核心库）、
 `scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
+`scripts/check-player-clock.sh`（预览时钟的悬停预览 peek 状态机：播放头不被
+悬停拖走、seek/播放/换片终结 peek，源码在 `checks/PlayerClock/`）、
 `scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
 源码在 `checks/PreviewComposition/`）、
 `scripts/check-export-alpha-compositing.sh`（导出画中画动画的 fill+matte 合成，
@@ -247,6 +249,11 @@
   弄坏了视频。根因是四层重链接只在打开工程时跑；修法是抽出 `relocateMedia`
   在 App 激活和预览重建时重核对。教训：「打开时校验过」≠「一直有效」；
   静默跳过必须有人在上游补提示；缩略图是缓存、不代表素材还在
+- [2026-08-08-hover-ghost-playhead-and-delete-key.md](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) —
+  悬停扫块把用户点定的播放头拖走（修成 peek + 影子指针：`time` 是播放头、
+  `displayTime` 给画面叠层）+ ⌫ 删不掉选中剪辑（keyCode 51/117 没人接）。
+  教训：「预览跟手」和「移动播放头」是两个语义；快捷键和按钮必须指向同一个
+  入口；合成点击滞后与 hover 不可注入的边界并入 gui-smoke-testing
 
 ## 根目录既有文档
 

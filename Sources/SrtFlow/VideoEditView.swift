@@ -157,6 +157,16 @@ struct VideoEditView: View {
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
+            // ⌫ / fn⌫：删掉选中的剪辑或形状，和工具栏 trash 按钮同一个动作。
+            // 按 keyCode 认（51 = delete，117 = forward delete）——
+            // charactersIgnoringModifiers 那边是控制字符，走字符串会一团糟。
+            if event.keyCode == 51 || event.keyCode == 117 {
+                guard !project.selectedClipIDs.isEmpty || project.selectedShapeID != nil else {
+                    return event
+                }
+                project.deleteSelected()
+                return nil
+            }
             switch event.charactersIgnoringModifiers?.lowercased() {
             case " ":
                 if !project.state.isEmpty { clock.togglePlayback() }
@@ -262,7 +272,8 @@ struct VideoEditView: View {
             ?? project.state.subtitleDocument(for: .original) else {
             return nil
         }
-        let active = SubtitleOverlap.active(at: clock.time, in: doc.cues)
+        // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。
+        let active = SubtitleOverlap.active(at: clock.displayTime, in: doc.cues)
         guard !active.isEmpty else { return nil }
         // doc.cues 已按合同排序，active 保序。overlay 文本块底部对齐，
         // 而 libass 把最早的事件排在最底、后来的往上叠 —— 所以显示时要
@@ -596,12 +607,13 @@ private struct ShapeOverlayCanvas: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
-            ForEach(project.visibleShapes(at: project.clock.time)) { shape in
+            // displayTime：悬停预览时形状的出没要跟画面那一帧走。
+            ForEach(project.visibleShapes(at: project.clock.displayTime)) { shape in
                 shapeView(shape)
             }
             // 选中形状的变换框：线条只给左右（改长度），正方形只给四角（保形），
             // 长方形全套八个。移动仍走形状本体的拖动手势，框体不拦事件。
-            if let shape = project.selectedShape, shape.contains(time: project.clock.time) {
+            if let shape = project.selectedShape, shape.contains(time: project.clock.displayTime) {
                 ResizableFrameBox(
                     rect: resizeBoxRect(shape),
                     bounds: boxSize,

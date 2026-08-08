@@ -261,6 +261,7 @@ struct VideoEditTimelineView: View {
                 }
             }
 
+            hoverPointer
             playhead
         }
         .contentShape(Rectangle())
@@ -439,6 +440,20 @@ struct VideoEditTimelineView: View {
     }
 
     // MARK: - 播放头
+
+    /// 悬停预览的影子指针：半透明细线、没有把手 —— 只说明「画面此刻在看这儿」。
+    /// 真播放头（白色实线 + 把手）留在用户点定的位置，点击才会把它移过来。
+    @ViewBuilder
+    private var hoverPointer: some View {
+        if let peek = clock.peekTime {
+            Rectangle()
+                .fill(.white.opacity(0.5))
+                .frame(width: 1)
+                .frame(maxHeight: .infinity, alignment: .top)
+                .offset(x: peek * pps - 0.5)
+                .allowsHitTesting(false)
+        }
+    }
 
     private var playhead: some View {
         let x = clock.time * pps
@@ -942,6 +957,9 @@ private struct ClipBlockView: View {
             .onChanged { value in
                 if dragStartOrigin == nil {
                     dragStartOrigin = clip.timelineStart
+                    // 开始拖动就收掉悬停预览，画面回播放头 —— 拖动过程里
+                    // hover 回调被上面的 guard 挡住，不会再把 peek 顶回来。
+                    project.clock.endPeek()
                     // 拖一个没选中的块 = 单选它；拖已选中的块 = 整组一起动。
                     if !project.selectedClipIDs.contains(clip.id) {
                         project.select(clip.id, additive: false)
@@ -1000,14 +1018,20 @@ private struct ClipBlockView: View {
         }
     }
 
-    /// 鼠标扫过视频块时，画面直接滚到指的那一帧（播放中和拖动中不抢）。
-    /// 不做节流：`precise: false` 走 PlayerClock 的链式 seek，天然限流。
+    /// 鼠标扫过视频块时，画面滚到指的那一帧**看一眼**（peek）：真播放头原地
+    /// 不动，时间线上另画一根影子指针，鼠标离开就把画面滚回播放头。
+    /// 以前这里直接 seek —— 用户点好的播放头位置会被悬停悄悄拖走。
+    /// 不做节流：peek 走 PlayerClock 的链式 seek，天然限流。
     private func hoverScrub(_ phase: HoverPhase) {
         guard !clip.isAudioOnly, !isAudioRow else { return }
-        guard case .active(let point) = phase else { return }
-        guard !project.clock.isPlaying, dragStartOrigin == nil, !isTrimming else { return }
-        let x = min(max(0, point.x), width)
-        project.clock.seek(to: clip.timelineStart + x / pps, precise: false)
+        switch phase {
+        case .active(let point):
+            guard !project.clock.isPlaying, dragStartOrigin == nil, !isTrimming else { return }
+            let x = min(max(0, point.x), width)
+            project.clock.peek(at: clip.timelineStart + x / pps)
+        case .ended:
+            project.clock.endPeek()
+        }
     }
 
     @ViewBuilder
@@ -1026,6 +1050,7 @@ private struct ClipBlockView: View {
                     // 鼠标位移的一半，且每 tick 在两个位置间振荡（闪烁）。
                     DragGesture(minimumDistance: 2, coordinateSpace: .global)
                         .onChanged { value in
+                            if !isTrimming { project.clock.endPeek() }
                             isTrimming = true
                             onTrim(leading, value.translation.width / pps)
                         }

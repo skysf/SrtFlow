@@ -7,6 +7,13 @@ final class PlayerClock: ObservableObject {
     @Published private(set) var time: TimeInterval = 0
     @Published private(set) var hasVideo = false
     @Published private(set) var isPlaying = false
+    /// 悬停预览（peek）此刻指着哪：非 nil 时画面显示的是这里的帧，而 `time`
+    /// （真播放头）原地不动。时间线用它画那根半透明的影子指针。
+    @Published private(set) var peekTime: TimeInterval?
+
+    /// 预览画面此刻实际显示的时间：悬停预览优先，否则就是播放头。
+    /// 叠在画面上的东西（字幕、形状、变换框）读这个才和帧对得上。
+    var displayTime: TimeInterval { peekTime ?? time }
 
     let player = AVPlayer()
     private var timeObserver: Any?
@@ -24,7 +31,10 @@ final class PlayerClock: ObservableObject {
             forInterval: CMTime(seconds: observationInterval, preferredTimescale: 600),
             queue: .main
         ) { [weak self] cmTime in
-            self?.time = cmTime.seconds
+            guard let self else { return }
+            // 悬停预览期间播放器在别处扫帧，这些回调不能写回播放头 ——
+            // 否则播放头还是会被悬停拖走，peek 就白做了。
+            if self.peekTime == nil { self.time = cmTime.seconds }
         }
         // 播放/暂停按钮要跟着实际状态走：播到片尾时 rate 会自己变 0，
         // 光靠自己按下去的那一下记状态会不准。
@@ -47,6 +57,7 @@ final class PlayerClock: ObservableObject {
 
     func attach(url: URL, autoplay: Bool = true) {
         pendingScrubTarget = nil
+        peekTime = nil
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         hasVideo = true
         time = 0
@@ -57,6 +68,7 @@ final class PlayerClock: ObservableObject {
     /// 播放头交给调用方自己恢复。
     func attachItem(_ item: AVPlayerItem) {
         pendingScrubTarget = nil
+        peekTime = nil
         player.replaceCurrentItem(with: item)
         hasVideo = true
     }
@@ -65,6 +77,7 @@ final class PlayerClock: ObservableObject {
         player.pause()
         player.replaceCurrentItem(with: nil)
         pendingScrubTarget = nil
+        peekTime = nil
         hasVideo = false
         time = 0
     }
@@ -74,6 +87,9 @@ final class PlayerClock: ObservableObject {
     ///   注意不能退回「就近关键帧」的粗定位：合成条目的关键帧隔好几秒一个，
     ///   拖动中画面会看起来纹丝不动（docs/bugfixes/2026-08-03-scrub-preview-keyframe-snap.md）。
     func seek(to seconds: TimeInterval, precise: Bool = true) {
+        // 任何真正的定位（点标尺、拖播放头、点字幕……）都终结悬停预览：
+        // 播放头就该移过去，影子指针消失。
+        peekTime = nil
         let clamped = max(0, seconds)
         time = clamped
         if precise {
@@ -110,8 +126,39 @@ final class PlayerClock: ObservableObject {
         }
     }
 
+    // MARK: 悬停预览（peek）
+
+    /// 画面滚到指的那一帧看一眼，但**不动播放头**。走链式 seek 防洪，
+    /// 和拖动扫帧同一条路（docs/bugfixes/2026-08-03-scrub-preview-keyframe-snap.md）。
+    func peek(at seconds: TimeInterval) {
+        let clamped = max(0, seconds)
+        peekTime = clamped
+        scrub(to: clamped)
+    }
+
+    /// 悬停结束：影子指针消失，画面滚回播放头。没在 peek 时是无害的 no-op。
+    func endPeek() {
+        guard peekTime != nil else { return }
+        peekTime = nil
+        scrub(to: time)
+    }
+
     func togglePlayback() {
-        if player.rate > 0 { player.pause() } else { player.play() }
+        if player.rate > 0 {
+            player.pause()
+        } else {
+            // 悬停预览把画面带去了别处：播放必须从**播放头**起，先precise跳回去。
+            // seek 后紧跟 play 是安全的（play 不取消在飞的 seek，完成后从目标续播）。
+            if peekTime != nil {
+                peekTime = nil
+                pendingScrubTarget = nil
+                player.seek(
+                    to: CMTime(seconds: time, preferredTimescale: 600),
+                    toleranceBefore: .zero, toleranceAfter: .zero
+                )
+            }
+            player.play()
+        }
     }
 
     func pause() { player.pause() }

@@ -24,7 +24,7 @@ struct ClipTransformCanvas: View {
     }
 
     private var visibleClips: [VisibleClip] {
-        let time = clock.time
+        let time = clock.displayTime
         var result: [VisibleClip] = []
         for lane in project.state.overlayTracks.reversed() where !lane.isHidden {
             for clip in lane.clips where isOnScreen(clip, at: time) {
@@ -54,7 +54,7 @@ struct ClipTransformCanvas: View {
 
             if let selection = selectedVisibleClip() {
                 let rect = selection.clip
-                    .animatedPlacement(atTimeline: clock.time, canvas: boxSize, isOverlay: selection.isOverlay)
+                    .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize, isOverlay: selection.isOverlay)
                     .frame(in: boxSize)
                 ResizableFrameBox(
                     rect: rect,
@@ -62,7 +62,7 @@ struct ClipTransformCanvas: View {
                     handles: FrameHandle.all,
                     keepAspectOnCorners: true,
                     movable: true,
-                    rotationDegrees: selection.clip.animatedRotation(atTimeline: clock.time),
+                    rotationDegrees: selection.clip.animatedRotation(atTimeline: clock.displayTime),
                     onTap: { location in selectClip(at: location) },
                     onChange: { newRect in
                         project.livePlace(
@@ -87,10 +87,10 @@ struct ClipTransformCanvas: View {
     private func selectClip(at location: CGPoint) {
         let hit = visibleClips.first { visible in
             let rect = visible.clip
-                .animatedPlacement(atTimeline: clock.time, canvas: boxSize, isOverlay: visible.isOverlay)
+                .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize, isOverlay: visible.isOverlay)
                 .frame(in: boxSize)
             // 旋转过的段：把点反着转回未旋转坐标系再判定。
-            let degrees = visible.clip.animatedRotation(atTimeline: clock.time)
+            let degrees = visible.clip.animatedRotation(atTimeline: clock.displayTime)
             guard abs(degrees) > 0.01 else { return rect.contains(location) }
             let angle = -degrees * .pi / 180
             let dx = location.x - rect.midX

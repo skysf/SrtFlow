@@ -44,10 +44,22 @@
 
 - **可注入**：滚轮（含 Ctrl+滚轮缩放）、点击、拖动——公开 CGEvent API。
   注入滚轮前先 CGWarpMouseCursorPosition 到目标点。
+- **合成点击会滞留到下一批事件才生效**（2026-08-08 实测）：click 的效果经常
+  等到**再来一次注入**才显现 —— 连环盲点会把「上一击的效果」误判成「这一击
+  没效果」，然后点开完全无关的控件。对策：每次 click 后补发一个无害的
+  mouseMoved 当 flush，**并截图核实状态后再做下一步**；事件构造用
+  `CGEventSource(stateID: .hidSystemState)` + `mach_absolute_time()` 时间戳 +
+  `mouseEventClickState=1`。副屏负坐标不是问题；键盘 `postToPid` 一直可靠
+  （修饰键设 `event.flags = .maskCommand`，Esc=53、⌫=51、Z=6 可发 ⌘Z）。
+  System Events 的 `click at {x,y}` 走 AX 动作，是备用点击路径（SwiftUI 的
+  剪辑块会被解析成 AX button）。
 - **不可注入**：真实 magnify 捏合事件公开 API 造不出来（type 29 私有字段的
   hack 不可靠）。捏合的最终验证只能：用户按一次，或
   `log stream --predicate 'category == "timeline-zoom"'` 实时确认。
   **`log show` 事后查 ad-hoc 调试拷贝查不到任何日志**，别浪费时间。
+  **SwiftUI 的 hover（`onContinuousHover`/`onHover`）对合成 mouseMoved 也不
+  响应**（2026-08-08 实测：warp 到位 + 连发 move 均不触发 tracking area）——
+  悬停类交互与捏合同级：状态机用自检钉住，手感留给用户真机过。
 - **注入前查窗口叠放**：按坐标遍历 CGWindowList 确认目标点没被别的窗口盖住
   ——cmux 终端自己就常盖在上面，事件会全进错窗口，且截图（按窗口 ID）看不出
   任何异常，极易误判"注入无效"。
