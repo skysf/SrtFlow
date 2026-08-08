@@ -12,8 +12,12 @@
   这一条定了，变速/裁头尾/分割全都自动正确：分割后两半带同一份轨、各播
   自己窗口内的段落、接缝数值连续（有 check 守着）。时间线 ↔ 源的换算走
   `sourceTime(atTimeline:)` / `timelineTime(atSource:)`。
-- 线性插值、两端夹紧；半帧（1/60s）内重写同一时刻是**替换**不是堆积
-  （连续拖动反复落同一帧靠它幂等）。
+- 线性插值、两端夹紧；半帧内重写同一时刻是**替换**不是堆积
+  （连续拖动反复落同一帧靠它幂等）。**容差自 2026-08-07 起不再是写死的 1/60s**：
+  工程有 24/30/60 可选帧率后，容差=工程半帧，且**分空间** —— source 侧
+  `半帧 × |speed|`、timeline 侧只用半帧，详见
+  [project-frame-rate.md](project-frame-rate.md)（30 fps 工程的半帧恰为 1/60，
+  行为与迁移前一致）。
 - 空轨回落到静态字段：`animatedPlacement/Rotation/Opacity(atTimeline:)` 是
   唯一取值口，预览合成、交互框、Inspector 数值都从这里读。
 - 工程格式 **v3**；升轨（selectionForExport）丢 animation（相对画布的属性）。
@@ -45,8 +49,9 @@ ffmpeg 做不了干净的逐帧缩放（流尺寸中途不能变）和透明度�
 在 `plan()` 里先用**预览同一套合成代码**渲成中间片（预览=导出按构造一致），
 再当普通素材进 ffmpeg 图：
 
-- **主轨段**：黑底 ProRes 422 一条，`fps=30,setsar=1,format=yuv420p` 后直接
-  进 concat/xfade 链。声音不进中间片，音频链照旧读原素材。
+- **主轨段**：黑底 ProRes 422 一条，`fps=<工程帧率>,setsar=1,format=yuv420p`
+  后直接进 concat/xfade 链（帧率取 `state.frameRate`，写死会被
+  `checks/no-hardcoded-fps.sh` 拦下）。声音不进中间片，音频链照旧读原素材。
 - **画中画段**：默认合成器的 `backgroundColor` **只支持不透明色（alpha 被
   忽略，文档明说）**，透明背景根本出不来 —— 走 fill + matte 双渲染：
   fill 是内容压黑底，**带完整不透明度**（静态 + 动画）；matte 是纯白素材

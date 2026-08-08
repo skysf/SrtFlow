@@ -60,6 +60,22 @@ entirely on your own Mac, with no cloud services.
 - Batch queue with per-file progress, speed, ETA, and size saving.
 - The equivalent ffmpeg command is shown and can be copied to a terminal.
 
+**Record the screen**
+
+- Record an entire display, a single window, or a custom region, straight into
+  the Edit Video timeline.
+- Computer audio is captured by default, including sound SrtFlow itself is
+  playing. The microphone is optional and lands on its own linked audio track,
+  so you can adjust narration without touching the screen audio.
+- The recording follows the project frame rate, and captures real pixels — a
+  Retina display is recorded at its full resolution, not half.
+- The floating Stop controls never appear in the recording. When you record a
+  custom region, everything outside it dims while recording so you can see
+  exactly what is being captured — that overlay is not recorded either.
+- You pick where to save before recording starts; the location is remembered.
+  If the app quits mid-recording, the partial file is offered back on next
+  launch instead of being silently discarded.
+
 **Interface**
 
 - One window. Compress, burn-in, and batch conversion are sections in a left
@@ -75,7 +91,7 @@ entirely on your own Mac, with no cloud services.
 ### Requirements
 
 - Apple silicon Mac
-- macOS 14 Sonoma or later
+- macOS 15 Sequoia or later
 - Xcode Command Line Tools with Swift 5.9 or later
 
 ### Build and test
@@ -200,6 +216,17 @@ SrtFlow 是一款轻量、原生的 macOS 字幕与视频工具。
 - 批量队列，逐个显示进度、速度、剩余时间和体积节省。
 - 界面上直接显示等效的 ffmpeg 命令，可复制到终端使用。
 
+**录屏**
+
+- 可录整块显示器、单个窗口或自定义区域，录完直接进「视频剪辑」的时间线。
+- 默认录电脑声音（包含 SrtFlow 自己正在播放的声音）。麦克风可选，录进**单独一条
+  关联音轨**，调旁白音量不影响画面声音。
+- 帧率跟随工程；按**真实像素**捕获 —— Retina 屏录出来是满分辨率，不是一半。
+- 浮动的停止控件不会进画面。录自定义区域时，区域之外会盖一层浅遮罩，录制全程
+  都看得出边界在哪 —— 这层遮罩同样不会被录进去。
+- 开录前就选好保存位置，并记住上次用的目录。录制中途 App 意外退出时，下次启动
+  会把那份未完成的文件交还给你处置，而不是悄悄丢掉。
+
 **界面**
 
 - 一个窗口。压缩、烧字幕、批量转换是左侧边栏里的三栏，切换只要点一下；
@@ -211,7 +238,7 @@ SrtFlow 是一款轻量、原生的 macOS 字幕与视频工具。
 ### 构建要求
 
 - Apple 芯片 Mac
-- macOS 14 Sonoma 或更高版本
+- macOS 15 Sequoia 或更高版本
 - Swift 5.9 或更高版本的 Xcode Command Line Tools
 
 ### 构建与自检

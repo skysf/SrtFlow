@@ -10,7 +10,7 @@
 |----|------|
 | 名称 | **SrtFlow** |
 | 平台 | macOS（Apple Silicon / M 系列） |
-| 最低系统 | macOS 14 Sonoma 起 |
+| 最低系统 | macOS 15 Sequoia 起（录屏需要 ScreenCaptureKit）|
 | 形态 | **文档型**应用（打开文件 → 查看/编辑 → 保存） |
 | 分发 | 本地自用优先，最终提供 **DMG**；之后可分享给朋友 |
 | 开源 | 上传 GitHub 开源；**不包含个人信息与私密信息** |
@@ -182,7 +182,8 @@ Text **可能带时间，也可能不带时间**。至少支持这两种常见�
 
 从视频/音频直接生成字幕：用系统 SpeechAnalyzer 本机转写出原文轨（canonical），
 可再用系统 Translation 生成译文轨（companion）；两轨在双轨编辑器里对照编辑，
-按导出矩阵分别导出。全程在本机完成，不上传音视频。能力按 macOS 14/15/26 分层，
+按导出矩阵分别导出。全程在本机完成，不上传音视频。能力按 macOS 15/26 分层
+（全局最低系统已提升到 15，翻译自基线即可用；语音生成需 26+），
 缺模型时给出明确的安装与降级路径。设计与实现细节见
 [docs/plans/2026-08-06-native-subtitle-generation.md](docs/plans/2026-08-06-native-subtitle-generation.md)。
 

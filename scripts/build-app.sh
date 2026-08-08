@@ -136,7 +136,7 @@ SrtFlow — 首次打开必读 / Read Me First
 
 软件里也会把这一行显示给你，旁边还有直接打开系统设置的按钮。
 
-运行要求：Apple 芯片（M 系列）Mac，macOS 14 Sonoma 或更新版本。
+运行要求：Apple 芯片（M 系列）Mac，macOS 15 Sequoia 或更新版本。
 不需要额外安装 ffmpeg 或任何其他依赖，全部功能都在包内。
 
 
@@ -166,7 +166,7 @@ press Return, and reopen SrtFlow:
 
 The app shows you the same line, next to a button that opens System Settings.
 
-Requirements: an Apple silicon (M-series) Mac running macOS 14 Sonoma or later.
+Requirements: an Apple silicon (M-series) Mac running macOS 15 Sequoia or later.
 No need to install ffmpeg or anything else — everything is inside the app.
 READMEEOF
 DMG="$DIST/$APP_NAME-$VERSION-arm64.dmg"

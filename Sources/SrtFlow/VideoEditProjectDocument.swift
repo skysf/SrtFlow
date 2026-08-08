@@ -41,6 +41,15 @@ extension VideoEditProject {
     ///
     /// 退出 App（`applicationShouldTerminate`）也走这里，所以不是 private。
     func prepareToCloseDocument() -> Bool {
+        // 录制期间禁止切换工程。**挂在这里而不是按钮的 disabled 上** ——
+        // 计划 §11.3 要求「实际执行入口」再校验一次：New / Open / Open Recent /
+        // Finder 外部打开 / 退出全都经过这个方法，菜单置灰挡不住这些路径。
+        // `.importing` / `.partialRecovery` 也算录制中：文件写完了但入轨事务
+        // 没提交、或用户还没处置 partial，此时切工程素材会进错工程。
+        if #available(macOS 15.0, *), ScreenRecordingCoordinator.shared.locksProjectSwitching {
+            notice = L10n("Stop the screen recording first.")
+            return false
+        }
         if documentURL != nil {
             // flushAutosave 失败时已经把原因写进 notice 了，这里别再覆盖。
             return flushAutosave()

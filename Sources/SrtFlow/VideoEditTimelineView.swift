@@ -965,7 +965,14 @@ private struct ClipBlockView: View {
         if let animation = clip.animation, !animation.isEmpty, height > 26 {
             ZStack(alignment: .bottomLeading) {
                 Color.clear
-                ForEach(Array(animation.allKeyTimes.enumerated()), id: \.offset) { _, sourceTime in
+                ForEach(
+                    Array(animation.allKeyTimes(
+                        tolerance: KeyframeTrack.sourceTolerance(
+                            frameRate: project.state.frameRate, speed: clip.speed
+                        )
+                    ).enumerated()),
+                    id: \.offset
+                ) { _, sourceTime in
                     let x = (clip.timelineTime(atSource: sourceTime) - clip.timelineStart) * pps
                     if x >= -0.5, x <= width + 0.5 {
                         Image(systemName: "diamond.fill")

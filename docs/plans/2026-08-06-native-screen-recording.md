@@ -2,7 +2,12 @@
 
 > 日期：2026-08-06
 >
-> 状态：方案已定，尚未实施
+> 状态：**Phase 0–5 主链路已实机验收通过**（整屏 / 麦克风 / 自定义区域），
+> 计划 §17.4 的完整矩阵（窗口来源、多屏、崩溃恢复、长时录制）仍未跑完。
+> 进度、实测证据与被证伪条目的完整清单见
+> [实施报告](../reports/2026-08-06-native-screen-recording-implementation-report.md)；
+> 本文与报告冲突处**以报告为准**。正文中已按 §17.1 的要求回填实测订正（标
+> 【Phase 0 实测订正】）。
 >
 > 范围：只规划 Edit Video 内的原生录屏、项目帧率与相关工程集成；本文不代表功能已完成
 
@@ -345,9 +350,12 @@ v1–v4 工程若字段缺失也解码为 `.fps24`。`selectionForExport` 必须
   当 pixels。
 - 保持来源比例；单窗口在录制中改变大小时继续缩放进启动时冻结的输出尺寸，不动态
   重建 writer。输出背景明确设为不透明黑色，避免 H.264 路径误解释透明像素。
-- 在真正启动前以 `AVAssetWriter.canApply` 验证 H.264 设置。5K / 超宽显示器若硬件
-  编码器不接受原始尺寸，按比例缩小到可接受的最大偶数尺寸，并在倒计时前显示
-  “实际将录制为 W×H”；不能用一个未经验证的固定最大值静默裁切。
+- 【Phase 0 实测订正】`AVAssetWriter.canApply` **不能**当尺寸门槛：实测它对
+  1080p 到 8K（含奇数宽）全部返回 true，只做设置字典的形状校验。真实约束是
+  **硬件 H.264 编码器单边 ≤ 4096**（M1 实测，`RequireHardwareAcceleratedVideoEncoder`
+  在 4200×2362 报 -12903；与总像素无关 —— 5120×1440 像素比 4K 少也落软件编码）。
+  实现用 `ScreenRecordingCoordinateMapper.fitToHardwareEncoder`（等比缩到单边
+  ≤4096 的最大偶数尺寸），并在倒计时前显示“实际将录制为 W×H”。
 - H.264 采用较高质量的屏幕内容码率，按像素数 × fps 的有界规则计算；最大关键帧
   间隔为约 1 秒，兼顾文字清晰度和进入编辑器后的 seek。具体上下界由 Phase 0 的
   1080p / 4K / 5K 文本滚动样本定值。
@@ -419,10 +427,14 @@ delegate 只做轻量校验和转发；所有写入进入 `ScreenRecordingWriter
 4. 仅接受 ScreenCaptureKit frame status 为 complete / started 的可用帧；blank、
    idle、suspended 不能当正常画面写入。
 
-macOS 15 的 `.screen`、`.audio`、`.microphone` 是否在所有设备上直接共享同一 PTS
-epoch，必须结合 `SCStream.synchronizationClock` 实测。若麦克风使用不同 epoch，
-就在开始阶段求一次稳定 offset 并冻结，绝不能用“各自第一帧都设为 0”的方式把真实
-启动差抹掉。
+【Phase 0 实测订正】本机实测三路 PTS **共享同一时基**（mach 绝对时间；
+`synchronizationClock` 与 host clock 不是同一对象但背靠背连读差恒为 0），
+不需要 epoch 换算 —— 但**麦克风的 timescale 是 48000、另两路是 1e9**，比较前
+必须换算。共同零点直接取第一个到达采样的 PTS，各路写入前统一减 T0；
+「各自第一帧都设为 0」依然禁止（会把真实启动差抹掉）。
+另：声学测得麦克风内容比系统声音早约 69 ms（AAC 净贡献仅约 9.8 ms），但该值
+含扬声器/声程/输入缓冲等环境成分，**不得当常量补偿写进实现**；30 分钟实测
+无累积漂移。
 
 ### 8.3 对齐验收标准
 
@@ -508,11 +520,17 @@ Stop 必须幂等，且严格按以下顺序：
 stream 中断还能执行 partial finalize，但进程崩溃 / 强制结束来不及运行任何清理。
 为避免隐藏临时文件永久残留：
 
-1. 创建 writer 前，把唯一 active session manifest 写入 UserDefaults，至少记录
-   session UUID、开始时间、主 / mic 临时 URL 和最终目标 URL；只登记本 session
-   精确路径，不登记目录或匹配模式。
-2. 每次路径或提交状态变化都把 manifest 作为一个完整值覆盖更新；正常成功、明确
-   丢弃或已完成失败清理后才删除记录。
+1. 【Phase 2 实测订正】创建 writer 前，把唯一 active session manifest 写入
+   **`ScreenRecordingManifestStore`（单 JSON 文件 + 原子写），不是 UserDefaults**
+   —— `UserDefaults.set` 内存立即生效、磁盘**异步**写入（Apple 文档明说），
+   拿它当 journal 栅栏时「set 返回 → rename → 崩溃」意向可能根本没落盘。
+   至少记录 session UUID、开始时间、主 / mic 临时 URL 和最终目标 URL；
+   只登记本 session 精确路径，不登记目录或匹配模式。
+2. 提交按 **journal 协议**推进（每次 rename **之前**先 `persist()` 意向、
+   成功返回才允许 rename），见 `ScreenRecordingManifest.CommitStage`。
+   **删除记录的唯一判据是 `ScreenRecordingRecoveryLedger.canClearManifest`**
+   —— 要求每一路都既「现场有结论」又「处置已了结」；只看文件现场不够
+   （writing 崩溃留下的 partial 现场正常，但用户还没决定怎么处理它）。
 3. App 下次启动先读取这一条 manifest：不存在的路径直接清账；存在的主临时文件用
    `AVURLAsset` 验证，可读 partial 提示恢复 / 保存，无有效 video track 的精确删除；
    mic 只有在能与有效主文件建立对应关系时才提示恢复。
@@ -761,7 +779,7 @@ entitlement，不顺手开启整套 App Sandbox。
 | importing | document generation 不符 | 保留文件，不写错误工程 |
 | importing | 工程事务失败 | 文件保留，工程回滚；提供稍后手动导入路径 |
 | quitting | Stop / Quit 竞争 | 只 finalize 一次，最终只 reply terminate 一次 |
-| 下次启动 | UserDefaults 中存在活跃 session manifest | 只检查其中点名的路径；有效 partial 提示恢复，无效临时文件精确删除，绝不 glob 扫目录 |
+| 下次启动 | `ScreenRecordingManifestStore` 中存在活跃 session manifest（**不是 UserDefaults**） | 只检查其中点名的路径；裁决 = stage × 目录观察（区分「缺失」与「卷不可达」）；有效 partial 提示恢复，无效临时文件精确删除，绝不 glob 扫目录；清账须过 `canClearManifest` |
 
 ## 17. 测试与验证计划
 
@@ -964,10 +982,10 @@ Quit 不会同步杀进程，manifest 恢复不会波及其他文件。
 | --- | --- | --- |
 | 把 picker 授权和宽泛屏幕 TCC 当成同一路径 | 单窗口被无谓拦截，或整屏 / 区域排除控制窗失败 | 按来源分层；单窗口保留 picker filter，整屏 / 区域在 Phase 0 实测重建 filter 的权限与错误 |
 | picker filter 无法同时满足整屏来源和动态控制窗排除 | 要么录入 Stop 窗，要么需要更宽权限 | 先建 Stop 窗再构造最终 filter；Phase 0 寻找稳定公开的 picker-scoped 路径，找不到则以不录入控制窗为优先并准确提示权限 |
-| mic 与 screen PTS epoch 不同 | 独立轨开头错位 | Phase 0 对照 synchronization clock，固化 offset 算法 |
+| mic 与 screen PTS epoch 不同 | 独立轨开头错位 | 【Phase 0 已销】实测三路同时基，无需 offset；仅 timescale 不同（mic 48000）需换算。**不固化任何 offset 常量** |
 | m4a 折叠首尾空隙 | sidecar 看似同起点但内容提前 | writer / composition 实测，必要时只补缺失静音 |
 | AAC encoder priming 约 2112 samples | 24 fps 下仅编码延迟就可能超过一帧同步预算 | 用 edit list / sample group 表达；验收比较解码 PCM 峰值，不硬减固定样本数 |
-| 5K H.264 尺寸不受支持 | starting 失败 | `canApply` 预检并等比缩至已验证尺寸 |
+| 5K H.264 尺寸不受支持 | 静默掉进软件编码器（CPU 飙升/掉帧），**不是失败** | 【Phase 0 已销】`canApply` 已证伪（对 8K 也 true）；按**单边 ≤4096** 等比缩（`fitToHardwareEncoder`），与总像素无关 |
 | 多屏坐标系翻转 / 偏移 | 录错区域 | 纯函数测试 + 像素网格实录 |
 | 控制窗 exclusion 失效 | 控制 UI 入画 | 开始前取得 window ID、重建 filter、端到端实录 |
 | 音频背压 | 缺音 / 漂移 | 有界 backlog，超限显式 partial，不静默 drop |
@@ -975,7 +993,7 @@ Quit 不会同步杀进程，manifest 恢复不会波及其他文件。
 | 导入时工程已变化 | 素材进入错误工程 | UI guard + document generation 双层校验 |
 | 用户录制期间修改画布后又改回 | 空工程导入误覆盖用户选择 | request 保存比例快照和 `canvasEditGeneration`，值与 generation 都未变才自动设置 |
 | 开录前估算低估或录制期磁盘耗尽 | writer 失败、partial 丢失 | 阈值预检 + 低频运行期监测 + ENOSPC partial；不承诺事前算出最终体积 |
-| App 崩溃遗留隐藏临时文件 | 文件永不回收或宽泛清理误删用户文件 | UserDefaults 保存精确 session manifest；下次启动只验证 / 处理点名路径，禁止 glob |
+| App 崩溃遗留隐藏临时文件 | 文件永不回收或宽泛清理误删用户文件 | 【Phase 2 订正】`ScreenRecordingManifestStore`（原子写单文件，**非 UserDefaults**）保存精确 session manifest；下次启动只验证 / 处理点名路径，禁止 glob；清账须过 `canClearManifest`（现场有结论 **且** 处置已了结）|
 | 最低系统升级牵动字幕路径 | 回归现有功能 | 独立 baseline phase，保留 macOS 26 capability guards |
 | AEC 期望膨胀 | 工期和质量不可控 | 明确非目标，独立轨 + 耳机提示 |
 

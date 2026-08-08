@@ -34,15 +34,16 @@ extension VideoEditProject {
         let scaleAnimated = hasKeyframes(clip, .scale)
         guard positionAnimated || scaleAnimated, playheadInsideClip(clip) else { return nil }
         let source = clip.sourceTime(atTimeline: clock.time)
+        let tol = sourceTolerance(for: clip)
         return { c in
             var animation = c.animation ?? ClipAnimation()
             if positionAnimated {
-                animation.centerX.set(clamped.centerX, atSourceTime: source)
-                animation.centerY.set(clamped.centerY, atSourceTime: source)
+                animation.centerX.set(clamped.centerX, atSourceTime: source, tolerance: tol)
+                animation.centerY.set(clamped.centerY, atSourceTime: source, tolerance: tol)
             }
             if scaleAnimated {
-                animation.width.set(clamped.width, atSourceTime: source)
-                animation.height.set(clamped.height, atSourceTime: source)
+                animation.width.set(clamped.width, atSourceTime: source, tolerance: tol)
+                animation.height.set(clamped.height, atSourceTime: source, tolerance: tol)
             }
             c.animation = animation
             if !positionAnimated || !scaleAnimated {
@@ -125,10 +126,11 @@ extension VideoEditProject {
         let normalized = abs(clamped) < 0.01 ? 0 : clamped
         if hasKeyframes(clip, .rotation), playheadInsideClip(clip) {
             let source = clip.sourceTime(atTimeline: clock.time)
+            let tol = sourceTolerance(for: clip)
             return { state in
                 state.update(id) { c in
                     var animation = c.animation ?? ClipAnimation()
-                    animation.rotation.set(normalized, atSourceTime: source)
+                    animation.rotation.set(normalized, atSourceTime: source, tolerance: tol)
                     c.animation = animation
                 }
             }
@@ -152,10 +154,11 @@ extension VideoEditProject {
         let clamped = min(max(opacity.isFinite ? opacity : 1, 0), 1)
         if hasKeyframes(clip, .opacity), playheadInsideClip(clip) {
             let source = clip.sourceTime(atTimeline: clock.time)
+            let tol = sourceTolerance(for: clip)
             return { state in
                 state.update(id) { c in
                     var animation = c.animation ?? ClipAnimation()
-                    animation.opacity.set(clamped, atSourceTime: source)
+                    animation.opacity.set(clamped, atSourceTime: source, tolerance: tol)
                     c.animation = animation
                 }
             }

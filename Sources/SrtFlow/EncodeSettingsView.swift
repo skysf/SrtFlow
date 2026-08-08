@@ -1,9 +1,16 @@
 import SwiftUI
 import SrtFlowCore
 
-/// 压缩和烧字幕共用的一套导出设置。
+/// 压缩、烧字幕、剪辑导出共用的一套导出设置。
 struct EncodeSettingsView: View {
     @Binding var settings: VideoEncodeSettings
+    /// 分辨率/帧率两个控件是否显示。
+    ///
+    /// 压缩与烧字幕真的消费这两个值（它们是「只降不升」的上限）；**Video Edit
+    /// 导出不消费** —— 那条管线按工程画布尺寸和工程帧率自己建滤镜图。以前照样
+    /// 把控件显示出来，等于给了用户一个不存在的控制承诺（计划 §3.3 点名）。
+    /// 剪辑导出传 false，改为在外面显示工程的固定输出规格。
+    var showsScalingLimits = true
 
     var body: some View {
         Form {
@@ -55,21 +62,23 @@ struct EncodeSettingsView: View {
                     )
                 }
 
-                Picker("Resolution", selection: $settings.resolution) {
-                    ForEach(ResolutionLimit.allCases, id: \.self) { option in
-                        // displayName 是普通 String，Text(String) 不查本地化表，
-                        // 必须显式包一层 LocalizedStringKey。
-                        Text(LocalizedStringKey(option.displayName)).tag(option)
+                if showsScalingLimits {
+                    Picker("Resolution", selection: $settings.resolution) {
+                        ForEach(ResolutionLimit.allCases, id: \.self) { option in
+                            // displayName 是普通 String，Text(String) 不查本地化表，
+                            // 必须显式包一层 LocalizedStringKey。
+                            Text(LocalizedStringKey(option.displayName)).tag(option)
+                        }
                     }
-                }
-                Picker("Frame rate", selection: $settings.frameRate) {
-                    ForEach(FrameRateLimit.allCases, id: \.self) { option in
-                        Text(LocalizedStringKey(option.displayName)).tag(option)
+                    Picker("Frame rate", selection: $settings.frameRate) {
+                        ForEach(FrameRateLimit.allCases, id: \.self) { option in
+                            Text(LocalizedStringKey(option.displayName)).tag(option)
+                        }
                     }
+                    Text("Resolution and frame rate are only ever lowered, never raised.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                Text("Resolution and frame rate are only ever lowered, never raised.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
 
             Section("Audio") {

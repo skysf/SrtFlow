@@ -1,6 +1,10 @@
 import AVFoundation
 import CoreGraphics
 import Foundation
+import SrtFlowCore
+
+// 自检里所有 clip 都是 speed=1；用 30fps 半帧＝迁移前写死的 1/60，行为不变。
+let kfTol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: 1)
 
 // 预览合成（叠化 × Transform）的自检：真的建 AVComposition、真的取帧、
 // 真的量像素。编译方式见 scripts/check-preview-composition.sh。
@@ -13,6 +17,10 @@ import Foundation
 
 var failures = 0
 var checks = 0
+
+func checkEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String, line: Int = #line) {
+    check(actual == expected, "\(message): got \(actual), expected \(expected)", line: line)
+}
 
 func check(_ condition: Bool, _ message: String, line: Int = #line) {
     checks += 1
@@ -27,7 +35,8 @@ func check(_ condition: Bool, _ message: String, line: Int = #line) {
 let root = FileManager.default.temporaryDirectory
     .appendingPathComponent("srtflow-previewcheck-\(UUID().uuidString)", isDirectory: true)
 try! FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-defer { try? FileManager.default.removeItem(at: root) }
+// 顶层 defer 会被结尾的 exit() 绕过（exit 不跑 defer）——
+// 实测这个检查攒了 52 个 srtflow-previewcheck-* 临时目录。显式清理。
 
 struct SolidVideoError: Error, CustomStringConvertible {
     let description: String
@@ -215,8 +224,8 @@ Task {
             )
             var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
             var animation = ClipAnimation()
-            animation.opacity.set(1, atSourceTime: 0)
-            animation.opacity.set(0, atSourceTime: 4)
+            animation.opacity.set(1, atSourceTime: 0, tolerance: kfTol)
+            animation.opacity.set(0, atSourceTime: 4, tolerance: kfTol)
             clip.animation = animation
             state.mainClips = [clip]
             if let built = await VideoEditCompositionBuilder.build(from: state) {
@@ -240,10 +249,10 @@ Task {
             )
             var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
             var animation = ClipAnimation()
-            animation.width.set(0.2, atSourceTime: 0)
-            animation.width.set(1.0, atSourceTime: 4)
-            animation.height.set(0.2, atSourceTime: 0)
-            animation.height.set(1.0, atSourceTime: 4)
+            animation.width.set(0.2, atSourceTime: 0, tolerance: kfTol)
+            animation.width.set(1.0, atSourceTime: 4, tolerance: kfTol)
+            animation.height.set(0.2, atSourceTime: 0, tolerance: kfTol)
+            animation.height.set(1.0, atSourceTime: 4, tolerance: kfTol)
             clip.animation = animation
             state.mainClips = [clip]
             if let built = await VideoEditCompositionBuilder.build(from: state) {
@@ -266,8 +275,8 @@ Task {
             )
             var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
             var animation = ClipAnimation()
-            animation.rotation.set(0, atSourceTime: 0)
-            animation.rotation.set(90, atSourceTime: 4)
+            animation.rotation.set(0, atSourceTime: 0, tolerance: kfTol)
+            animation.rotation.set(90, atSourceTime: 4, tolerance: kfTol)
             clip.animation = animation
             state.mainClips = [clip]
             if let built = await VideoEditCompositionBuilder.build(from: state) {
@@ -288,13 +297,14 @@ Task {
             )
             var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
             var animation = ClipAnimation()
-            animation.width.set(0.2, atSourceTime: 0)
-            animation.width.set(1.0, atSourceTime: 4)
-            animation.height.set(0.2, atSourceTime: 0)
-            animation.height.set(1.0, atSourceTime: 4)
+            animation.width.set(0.2, atSourceTime: 0, tolerance: kfTol)
+            animation.width.set(1.0, atSourceTime: 4, tolerance: kfTol)
+            animation.height.set(0.2, atSourceTime: 0, tolerance: kfTol)
+            animation.height.set(1.0, atSourceTime: 4, tolerance: kfTol)
             clip.animation = animation
             let intermediate = try await AnimatedClipPrerenderer.renderMain(
-                clip: clip, renderSize: CGSize(width: 64, height: 36), into: root
+                clip: clip, renderSize: CGSize(width: 64, height: 36),
+                frameRate: .fps30, into: root
             )
             if let frame = await frameImage(fromFile: intermediate, at: 2) {
                 let probe = averageRGBA(frame, region: CGRect(x: 0, y: 0, width: frame.width, height: frame.height))
@@ -319,11 +329,12 @@ Task {
             pip.placement = ClipPlacement(centerX: 0.5, centerY: 0.5, width: 0.5, height: 0.5)
             pip.opacity = 0.5
             var animation = ClipAnimation()
-            animation.centerX.set(0.5, atSourceTime: 0)
-            animation.centerX.set(0.5, atSourceTime: 4)
+            animation.centerX.set(0.5, atSourceTime: 0, tolerance: kfTol)
+            animation.centerX.set(0.5, atSourceTime: 4, tolerance: kfTol)
             pip.animation = animation
             let pair = try await AnimatedClipPrerenderer.renderOverlay(
-                clip: pip, renderSize: CGSize(width: 64, height: 36), into: root
+                clip: pip, renderSize: CGSize(width: 64, height: 36),
+                frameRate: .fps30, into: root
             )
             if let fillFrame = await frameImage(fromFile: pair.fill, at: 2),
                let matteFrame = await frameImage(fromFile: pair.matte, at: 2) {
@@ -367,6 +378,97 @@ Task {
         } else {
             check(false, "半透明场景合成失败")
         }
+
+        // ---- 工程帧率：24 / 30 / 60 各自的 frameDuration 与真实出帧数 ----
+        // 计划 §17.3：2 秒素材，24/30/60 分别应得 48/60/120 帧。
+        // 这里走的是真实的 VideoEditCompositionBuilder（预览与预渲染共用的那条）。
+        do {
+            let src = try await makeSolidVideo(white: 1, seconds: 2, name: "fps-src.mp4")
+            let info = MediaInfo(
+                duration: 2, displaySize: CGSize(width: 320, height: 180), frameRate: 30,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var measuredByRate: [Int: Double] = [:]
+            for (rate, expected) in [(ProjectFrameRate.fps24, 48),
+                                     (.fps30, 60),
+                                     (.fps60, 120)] {
+                var state = TimelineState()
+                state.frameRate = rate
+                state.mainClips = [
+                    EditClip(sourceURL: src, sourceDuration: 2, timelineStart: 0, info: info)
+                ]
+                guard let built = try await VideoEditCompositionBuilder.build(from: state),
+                      let vc = built.videoComposition else {
+                    check(false, "\(rate.fps)fps 合成失败")
+                    continue
+                }
+                // 1) frameDuration 必须等于工程帧率
+                checkEqual(
+                    vc.frameDuration.timescale, Int32(rate.fps),
+                    "\(rate.fps)fps 的 frameDuration.timescale"
+                )
+                checkEqual(vc.frameDuration.value, 1, "\(rate.fps)fps 的 frameDuration.value")
+
+                // 2) 真导出一遍再数帧。
+                //
+                // 注意不能用 AVAssetReaderVideoCompositionOutput 数：直通合成
+                // （单段、无动画无转场）下它按**源帧**透传，frameDuration 不生效 ——
+                // 实测 10fps 的 2 秒素材在 24/30/60 三档下都只出 20 帧。
+                // 真实导出（预渲染走的就是这条）才会按 frameDuration 重采样。
+                let outURL = root.appendingPathComponent("fps-out-\(rate.fps).mov")
+                try? FileManager.default.removeItem(at: outURL)
+                guard let session = AVAssetExportSession(
+                    asset: built.composition, presetName: AVAssetExportPresetAppleProRes422LPCM
+                ) else {
+                    check(false, "\(rate.fps)fps 建不出导出会话")
+                    continue
+                }
+                session.videoComposition = vc
+                do {
+                    try await session.export(to: outURL, as: .mov)
+                } catch {
+                    check(false, "\(rate.fps)fps 导出失败：\(error)")
+                    continue
+                }
+                let outAsset = AVURLAsset(url: outURL)
+                guard let outTrack = try await outAsset.loadTracks(withMediaType: .video).first else {
+                    check(false, "\(rate.fps)fps 产物没有视频轨")
+                    continue
+                }
+                let reader = try AVAssetReader(asset: outAsset)
+                let out = AVAssetReaderTrackOutput(track: outTrack, outputSettings: nil)
+                reader.add(out)
+                reader.startReading()
+                var frames = 0
+                while out.copyNextSampleBuffer() != nil { frames += 1 }
+                reader.cancelReading()
+                // 断言真实契约：帧数 ÷ 实际时长 ≈ 工程帧率。
+                // 不直接比「应得 N 帧」——源素材末帧时长会外延，合成比标称的
+                // 2.0s 略长（实测 24fps 得 51 帧而非 48），那是素材边界不是帧率错。
+                let outDur = try await outAsset.load(.duration).seconds
+                let measured = Double(frames) / max(outDur, 0.001)
+                measuredByRate[rate.fps] = measured
+                // 容差 10%：三档实测都有 +2~3 帧的固定溢出（AVFoundation 在
+                // 指令边界补帧），24fps 得 51 帧 = 25.5fps。10% 既容得下这个
+                // 系统性溢出，又远小于相邻档之间 25% 的差距。
+                check(
+                    abs(measured - Double(rate.fps)) / Double(rate.fps) < 0.10,
+                    "\(rate.fps)fps 导出的实际帧率应≈\(rate.fps)"
+                        + "（实得 \(frames) 帧 / \(String(format: "%.3f", outDur))s"
+                        + " = \(String(format: "%.2f", measured)) fps，理论 \(expected) 帧）"
+                )
+            }
+            // 更强的回归信号：三档必须明显区分。若哪天帧率又被写死，
+            // 三档会得到**相同**的帧数，上面的百分比断言可能还侥幸过关。
+            if let f24 = measuredByRate[24], let f30 = measuredByRate[30],
+               let f60 = measuredByRate[60] {
+                check(f30 > f24 * 1.15, "30fps 的出帧率要明显高于 24fps（\(f30) vs \(f24)）")
+                check(f60 > f30 * 1.5, "60fps 的出帧率要明显高于 30fps（\(f60) vs \(f30)）")
+            } else {
+                check(false, "三档帧率没有全部测到")
+            }
+        }
     } catch {
         check(false, "自检执行失败：\(error)")
     }
@@ -376,4 +478,5 @@ semaphore.wait()
 
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
+try? FileManager.default.removeItem(at: root)
 exit(failures == 0 ? 0 : 1)

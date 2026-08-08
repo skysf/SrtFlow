@@ -23,7 +23,13 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+	<string>15.0</string>
+	<key>NSScreenCaptureUsageDescription</key>
+	<string>SrtFlow records the display, window or region you pick into a video track. Everything stays on this Mac — nothing is uploaded.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>SrtFlow records the sound your computer is playing into the video. Everything stays on this Mac — nothing is uploaded.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>SrtFlow records your narration into a separate audio track while screen recording. This is off by default and only runs when you turn it on.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>UTExportedTypeDeclarations</key>

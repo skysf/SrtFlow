@@ -15,6 +15,7 @@ struct VideoEditView: View {
     @Environment(\.undoManager) private var undoManager
     @State private var showsExportSheet = false
     @State private var showsSubtitlePanel = false
+    @ObservedObject private var recordingCoordinator = ScreenRecordingCoordinator.shared
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
     @State private var eventMonitor: Any?
@@ -66,6 +67,36 @@ struct VideoEditView: View {
         .sheet(isPresented: $showsSubtitlePanel) {
             SubtitleGenPanel(project: project)
         }
+        // 录制设置页 = `state == .configuring` 的投影。会话一旦被撤销
+        // （Quit、失败、取消），页自己就关了。
+        .sheet(isPresented: Binding(
+            get: { recordingCoordinator.state == .configuring },
+            set: { if !$0 { recordingCoordinator.cancelConfiguring() } }
+        )) {
+            ScreenRecordingSetupView(project: project)
+        }
+        // partial 结果：**工程锁还在**，用户必须先处置（计划 §11.4）。
+        .sheet(item: Binding(
+            get: { recordingCoordinator.pendingPartial.map(IdentifiedRecording.init) },
+            set: { _ in }
+        )) { item in
+            ScreenRecordingPartialSheet(result: item.result) { shouldImport in
+                Task { await recordingCoordinator.resolvePartial(import: shouldImport) }
+            }
+        }
+        // 崩溃恢复：启动时发现上次的残留。三选一，「保留」绝不删文件。
+        .sheet(item: Binding(
+            get: { recordingCoordinator.pendingRecovery },
+            set: { _ in }
+        )) { recovery in
+            ScreenRecordingRecoverySheet(recovery: recovery) { decision in
+                Task { await recordingCoordinator.resolveRecovery(decision) }
+            }
+        }
+        .task {
+            // 启动恢复：只处理 manifest 点名的精确路径，禁止 glob。
+            await recordingCoordinator.recoverIfNeeded()
+        }
         // Export 放窗口右上角的工具栏，随时够得着。
         .toolbar {
             // 工程名下拉放最左边，它就是这个编辑器的文件菜单。
@@ -76,6 +107,18 @@ struct VideoEditView: View {
                 if exporter.isExporting {
                     ProgressView(value: exporter.progress)
                         .frame(width: 80)
+                }
+                if #available(macOS 15.0, *) {
+                    Button {
+                        // 设置页的显隐**完全由 coordinator 状态决定**（见下面的
+                        // sheet 绑定），这里只推状态，不另外拿一个本地开关 ——
+                        // 两份真相会让「会话被撤销但页还开着」这种状态存在。
+                        recordingCoordinator.begin()
+                    } label: {
+                        Label("Record Screen", systemImage: "record.circle")
+                    }
+                    .help("Record the screen into this project")
+                    .disabled(recordingCoordinator.isBusy)
                 }
                 Button {
                     showsSubtitlePanel = true
@@ -274,6 +317,28 @@ struct VideoEditView: View {
             .fixedSize()
             .help("Canvas aspect ratio")
 
+            // 工程帧率：预览、导出、预渲染、关键帧容差全都跟它走。
+            Menu {
+                ForEach(ProjectFrameRate.allCases) { rate in
+                    Button {
+                        project.setFrameRate(rate)
+                    } label: {
+                        if project.state.frameRate == rate {
+                            Label(rate.title, systemImage: "checkmark")
+                        } else {
+                            Text(rate.title)
+                        }
+                    }
+                }
+            } label: {
+                Label(project.state.frameRate.title, systemImage: "speedometer")
+                    .font(.caption)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .disabled(recordingCoordinator.isBusy)
+            .help("Project frame rate — preview, export and keyframes all follow it")
+
             if project.isRebuildingPreview {
                 ProgressView().controlSize(.mini)
             }
@@ -290,11 +355,16 @@ struct VideoEditView: View {
             Spacer()
 
             if let notice = project.notice {
+                // **不要 lineLimit(1) + 截断。** 权限指引这类文案被切成半句
+                // （「SrtFlow doesn't have permi...on, turn it off and on again.」）
+                // 等于没报 —— 用户看不到该去哪、该做什么。给两行并允许换行。
                 Text(notice)
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 420, alignment: .leading)
+                    .help(notice)
                 Button {
                     project.notice = nil
                 } label: {
@@ -643,4 +713,15 @@ private struct ShapeOverlayCanvas: View {
         )
         .onTapGesture { project.selectedShapeID = shape.id }
     }
+}
+
+
+/// `sheet(item:)` 需要 Identifiable。`ScreenRecordingResult` 是纯值类型，
+/// 不给它硬塞 id —— 在这里包一层。
+@available(macOS 15.0, *)
+struct IdentifiedRecording: Identifiable {
+    let result: ScreenRecordingResult
+    var id: String { result.mainURL.path }
+
+    init(_ result: ScreenRecordingResult) { self.result = result }
 }

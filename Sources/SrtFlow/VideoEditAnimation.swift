@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // MARK: - 关键帧动画（Transform 面板四行：位置/缩放/旋转/不透明度）
 //
@@ -17,8 +18,22 @@ struct Keyframe: Hashable, Sendable {
 struct KeyframeTrack: Hashable, Sendable {
     private(set) var keys: [Keyframe] = []
 
-    /// 半帧（30fps 的一半）以内算同一帧：反复写同一时刻是替换不是堆积。
-    static let timeTolerance = 1.0 / 60
+    /// 半帧以内算同一帧：反复写同一时刻是替换不是堆积。
+    ///
+    /// **容差要分空间**（关键，容易写错）：
+    /// - 本类型的 `keys[].time` 是 **source time**（素材内时间，锚定素材本身，
+    ///   变速/分割后依然正确）。source time 比 timeline time 快 `speed` 倍，
+    ///   所以「timeline 上的半帧」在 source 空间里是 `半帧 × |speed|`。
+    /// - 而 ‹ › 跳帧是先把 source time 映射回 timeline time 再比较的，
+    ///   那一侧**只用工程半帧，不再乘 speed**（乘了就是重复折算）。
+    ///
+    /// 因此所有按时刻匹配的方法都要求显式传 tolerance —— 不给默认值，
+    /// 逼调用方想清楚自己在哪个空间。
+    ///
+    /// 历史值是写死的 `1.0 / 60`，恰好等于 30 fps 的半帧；30 fps 工程行为不变。
+    static func sourceTolerance(frameRate: ProjectFrameRate, speed: Double) -> Double {
+        frameRate.halfFrameTolerance * max(abs(speed), 0.0001)
+    }
 
     var isEmpty: Bool { keys.isEmpty }
 
@@ -37,12 +52,12 @@ struct KeyframeTrack: Hashable, Sendable {
         return last.value
     }
 
-    func key(atSourceTime time: Double) -> Keyframe? {
-        keys.first { abs($0.time - time) < Self.timeTolerance }
+    func key(atSourceTime time: Double, tolerance: Double) -> Keyframe? {
+        keys.first { abs($0.time - time) < tolerance }
     }
 
-    mutating func set(_ value: Double, atSourceTime time: Double) {
-        if let index = keys.firstIndex(where: { abs($0.time - time) < Self.timeTolerance }) {
+    mutating func set(_ value: Double, atSourceTime time: Double, tolerance: Double) {
+        if let index = keys.firstIndex(where: { abs($0.time - time) < tolerance }) {
             keys[index].value = value
         } else {
             keys.append(Keyframe(time: time, value: value))
@@ -50,8 +65,8 @@ struct KeyframeTrack: Hashable, Sendable {
         }
     }
 
-    mutating func remove(atSourceTime time: Double) {
-        keys.removeAll { abs($0.time - time) < Self.timeTolerance }
+    mutating func remove(atSourceTime time: Double, tolerance: Double) {
+        keys.removeAll { abs($0.time - time) < tolerance }
     }
 
     init(keys: [Keyframe] = []) {
@@ -75,11 +90,12 @@ struct ClipAnimation: Hashable, Sendable {
     }
 
     /// 所有轨的关键帧时刻去重升序（时间线块上画菱形、‹ › 跳帧用）。
-    var allKeyTimes: [Double] {
+    /// 这里比较的是 source time，去重容差要用 source 空间的（含 speed）。
+    func allKeyTimes(tolerance: Double) -> [Double] {
         var times: [Double] = []
         for track in [centerX, centerY, width, height, rotation, opacity] {
             for key in track.keys
-            where !times.contains(where: { abs($0 - key.time) < KeyframeTrack.timeTolerance }) {
+            where !times.contains(where: { abs($0 - key.time) < tolerance }) {
                 times.append(key.time)
             }
         }
