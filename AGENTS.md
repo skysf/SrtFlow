@@ -55,7 +55,11 @@
 `checks/no-hardcoded-fps.sh`（扫描守卫：Video Edit 管线里不许再写死帧率，
 帧率必须来自 `TimelineState.frameRate`；用文件系统枚举，未跟踪的新文件也覆盖）、
 `scripts/check-freeze-frame.sh`（定格的时间线变换：分割+同轨让位+音轨波纹+
-叠化区判定+关键帧烘焙，纯值函数无 GUI 无 ffmpeg，源码在 `checks/FreezeFrame/`）
+叠化区判定+关键帧烘焙，纯值函数无 GUI 无 ffmpeg，源码在 `checks/FreezeFrame/`）、
+`scripts/check-still-clip-encode.sh`（**图片转静帧的真实产物**：拿
+`StillImageClipFactory.conversionArguments()` 的生产参数真跑，量帧数/时长/两条
+尺寸政策/首尾帧 PSNR/动图截断，还有一条**边际耗时**断言守「一张图只解一次」，
+源码在 `checks/StillClipEncode/`）
 
 ## 规划（docs/plans/）
 
@@ -270,6 +274,15 @@
   1500 次解码只为 120 帧输出；补 `-framerate 2` 后连原生 4K 都比原来的 1080p
   快 9 倍。教训：循环单图的命令必须显式写死输入帧率（差价完全不体现在产物上）；
   换硬件编码器两分钟就证伪了「编码器慢」；顺带修了半成品缓存（原子改名）
+- [2026-08-08-still-clip-decode-per-frame.md](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) —
+  同一条命令的第二次性能修复：5MB 图进时间线仍要 5 秒、预览黑屏。`-loop 1` 的
+  语义是「重放整个输入」，于是同一张图被解了 120 次（上一次只对齐了次数，
+  没质疑重放本身）。改成**解一帧 + `loop` 滤镜复制** + `-frames:v` 截断，
+  5.4MB 图 5s → 0.5s、9.5MB 图 8.8s → 0.63s，产物逐字节相同（缓存版本故意不升）。
+  顺带修好 gif/heic：`-loop`/`-framerate` 是 image2 专属选项，这两类格式以前
+  在开文件那一步就死。教训：修完性能要再量一次**边际**成本；性能断言用
+  「多出来的 119 帧 ≤ 一次解码」这种自校准判据，别写死秒数；tile grid 型 heic
+  不许用 `-filter_complex "[0:v]"` 绕（会把 4000×3000 悄悄变成一块 512×512 瓦片）
 
 ## 根目录既有文档
 
