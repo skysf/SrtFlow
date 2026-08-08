@@ -12,28 +12,42 @@ on:
 
 jobs:
   check-all:
-    runs-on: macos-15
+    # 必须 macos-26：字幕生成用了 macOS 26 的 SpeechAnalyzer API，
+    # macos-15 镜像默认 Xcode 16（SDK 15）编不过完整 app target ——
+    # 首跑 6 项齐红就是它（SrtFlowCore 不碰这些 API 所以核心检查过了）。
+    runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
-      - name: 缓存 SwiftPM 构建产物
+      - name: Toolchain versions (diagnostics)
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Cache SwiftPM build products
         uses: actions/cache@v4
         with:
           path: .build
           key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
           restore-keys: swiftpm-${{ runner.os }}-
 
-      - name: 缓存 vendor/ffmpeg
+      - name: Cache vendor/ffmpeg
         id: ffmpeg-cache
         uses: actions/cache@v4
         with:
           path: vendor
           key: ffmpeg-${{ hashFiles('scripts/vendor-ffmpeg.sh') }}
 
-      - name: 获取 ffmpeg（缓存未命中时）
+      - name: Fetch ffmpeg (on cache miss)
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: scripts/vendor-ffmpeg.sh
 
-      - name: 全部自检
+      # 单独一步冷编译：编译错误在自己的步骤里完整可见，
+      # 也给后面的 check-all 暖好构建缓存。
+      - name: Build (cold compile, errors visible here)
+        run: swift build --arch arm64
+
+      - name: Run all checks
         run: scripts/check-all.sh

@@ -48,6 +48,7 @@ run_check() {
 # Rosetta 终端下必须显式 --arch arm64（见 docs/build/），各子脚本已各自处理。
 run_check "SrtFlowCoreChecks（核心库）" swift run --arch arm64 SrtFlowCoreChecks
 run_check "no-hardcoded-fps（扫描守卫）" checks/no-hardcoded-fps.sh
+run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-build-output.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh

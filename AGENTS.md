@@ -281,6 +281,11 @@
   1500 次解码只为 120 帧输出；补 `-framerate 2` 后连原生 4K 都比原来的 1080p
   快 9 倍。教训：循环单图的命令必须显式写死输入帧率（差价完全不体现在产物上）；
   换硬件编码器两分钟就证伪了「编码器慢」；顺带修了半成品缓存（原子改名）
+- [2026-08-08-ci-first-run-sdk-and-swallowed-errors.md](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) —
+  CI 首跑 6 项齐红且日志零错误：`swift build >/dev/null` 吞掉 SwiftPM 走
+  stdout 的诊断 + macos-15 runner 没有 macOS 26 SDK；修成 macos-26 镜像 +
+  失败倾倒输出 + `no-swallowed-build-output` 扫描守卫。教训：部分绿比全红
+  更有迷惑性；首个 PR 就是 CI 的验收测试
 - [2026-08-08-main-track-array-order-black-frame.md](docs/bugfixes/2026-08-08-main-track-array-order-black-frame.md) —
   图片进主轨黑屏、转画中画就好：磁吸关掉的拖动让主轨**数组顺序 ≠ 时间顺序**，
   A/B 轨游标式插入被 `insertTimeRange` 挤歪（画中画路径有 sorted、主轨没有）；
