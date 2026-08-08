@@ -16,9 +16,13 @@
 1. `ClipBlockView.hoverScrub` 里悬停直接调 `clock.seek(precise: false)` ——
    `seek` 的语义就是移动播放头（写 `time`），预览跟手的代价是播放头被劫持。
    当时只有一根指针的概念，没有「看一眼但不落脚」的语义。
-2. 键盘 monitor（`VideoEditView.handleEvent`）只认了空格 / V / A / B 四个键，
-   ⌫（keyCode 51）落进 `default:` 原样放行，没有任何人接。`deleteSelected()`
-   一直存在，只是键盘没接上 —— 又一例「功能写对了但没被接上」。
+2. 其实早就「接过」：视图上挂着 `.onDeleteCommand { project.deleteSelected() }`
+   （`VideoEditView.swift:63`）。但 `onDeleteCommand` 走的是 SwiftUI 焦点链
+   （responder chain 的 `deleteBackward:`），这个窗口里没有任何可聚焦的
+   SwiftUI 元素持有键盘焦点，它**一次都不会触发** —— 挂着一行看似接上的
+   代码，比完全没接更能骗过 review。而真正在收键盘的 local monitor
+   （`handleEvent`）只认了空格 / V / A / B，⌫（keyCode 51）落进 `default:`
+   原样放行。又一例「功能写对了但没被接上」，且这次「接上」的假象是双重的。
 
 ## 修复
 
@@ -59,8 +63,10 @@
 - 画面叠层（字幕/形状/变换框）跟 **displayTime**，播放头语义跟 **time** ——
   新增任何读时间的 UI 前先分清楚它属于哪边，混用会出现「画面是 15s、
   字幕是 8s」的错帧。
-- 键盘快捷键的「没实现」和「实现了没接上」外观完全一样；加新动作时
-  在 `handleEvent` 里搜一遍有没有对应按键，工具栏按钮和快捷键必须指向
+- 键盘快捷键的「没实现」和「实现了没接上」外观完全一样；这个窗口的键盘
+  入口**只有 local monitor（`handleEvent`）一个**，`.onDeleteCommand` /
+  `.keyboardShortcut` 这类依赖 SwiftUI 焦点的修饰符在这里不会触发，
+  别再往上挂；加新动作去 `handleEvent`，工具栏按钮和快捷键必须指向
   **同一个**入口函数。
 - 冒烟注入的新边界（合成点击滞后要 flush、hover 发不出来）已并入
   [gui-smoke-testing](../testing/gui-smoke-testing.md)。
