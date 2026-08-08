@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreVideo
 import Foundation
+import SrtFlowCore
 
 /// 预览合成的纯色底素材：64×36 的两帧纯色 H.264，AVAssetWriter 直接生成，
 /// 不依赖 ffmpeg。黑底垫在半透明合成下面；白底给关键帧画中画的蒙版
@@ -422,7 +423,8 @@ enum VideoEditCompositionBuilder {
             videoComposition = buildVideoComposition(
                 placed: placed,
                 renderSize: renderSize,
-                totalDuration: state.duration
+                totalDuration: state.duration,
+                frameRate: state.frameRate
             )
         }
 
@@ -670,11 +672,14 @@ enum VideoEditCompositionBuilder {
     private static func buildVideoComposition(
         placed: [PlacedClip],
         renderSize: CGSize,
-        totalDuration: Double
+        totalDuration: Double,
+        frameRate: ProjectFrameRate
     ) -> AVMutableVideoComposition {
         let videoComposition = AVMutableVideoComposition()
         videoComposition.renderSize = renderSize
-        videoComposition.frameDuration = CMTime(value: 1, timescale: 30)
+        // 工程帧率是唯一事实来源；这里以前写死 1/30。
+        let d = frameRate.frameDurationRational
+        videoComposition.frameDuration = CMTime(value: d.value, timescale: d.timescale)
 
         var boundaries: Set<Double> = [0, totalDuration]
         for item in placed {
@@ -688,7 +693,7 @@ enum VideoEditCompositionBuilder {
                 boundaries.insert(item.end - fadeOut.duration)
                 boundaries.insert(item.end - fadeOut.duration / 2)
             }
-            addAnimationBoundaries(for: item, into: &boundaries)
+            addAnimationBoundaries(for: item, frameRate: frameRate, into: &boundaries)
         }
         let times = boundaries.filter { $0 >= 0 && $0 <= totalDuration }.sorted()
 
@@ -748,7 +753,7 @@ enum VideoEditCompositionBuilder {
     /// 只要在每个关键帧处断片；旋转斜坡是矩阵线性插值（走弦不走弧，角度大了
     /// 明显缩小变形），相邻帧之间按 ≤6°/片加密；不透明度动画和转场衰减相乘
     /// 是二次曲线，斜坡只会线性，转场窗口内按 0.1s 加密补齐。
-    private static func addAnimationBoundaries(for item: PlacedClip, into boundaries: inout Set<Double>) {
+    private static func addAnimationBoundaries(for item: PlacedClip, frameRate: ProjectFrameRate, into boundaries: inout Set<Double>) {
         guard let animation = item.clip.animation, !animation.isEmpty else { return }
         let clip = item.clip
 
@@ -758,7 +763,9 @@ enum VideoEditCompositionBuilder {
             }
         }
 
-        for sourceTime in animation.allKeyTimes {
+        // source 空间去重容差含 speed（见 KeyframeTrack.sourceTolerance）
+        let keyTol = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
+        for sourceTime in animation.allKeyTimes(tolerance: keyTol) {
             insert(clip.timelineTime(atSource: sourceTime))
         }
 

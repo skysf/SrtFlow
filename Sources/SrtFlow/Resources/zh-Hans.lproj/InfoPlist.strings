@@ -1,0 +1,7 @@
+/* 系统权限弹窗里显示的用途说明。
+   这些键必须放 InfoPlist.strings（不是 Localizable.strings）——
+   系统读 Info.plist 的本地化只认这个文件名。 */
+
+"NSScreenCaptureUsageDescription" = "SrtFlow 会把你选中的显示器、窗口或区域录进视频轨。全程在本机完成，不上传任何内容。";
+"NSAudioCaptureUsageDescription" = "SrtFlow 会把电脑正在播放的声音一起录进视频。全程在本机完成，不上传任何内容。";
+"NSMicrophoneUsageDescription" = "SrtFlow 会在录屏时把你的解说录成一条独立音轨。默认关闭，只有你打开时才会录。";

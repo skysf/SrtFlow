@@ -19,9 +19,9 @@ struct VideoEditProjectFile: Codable {
     var media: [MediaRecord]
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 4
-    /// writer 的基线版本：没有 v4-only 数据的工程一律写它，旧版照常能开。
-    /// 具体判据见 `TimelineState.requiresFormatVersion4`（登记清单在那边）。
+    static let latestFormatVersion = 5
+    /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
+    /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5`（登记清单在那边）。
     static let baselineFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
@@ -30,9 +30,12 @@ struct VideoEditProjectFile: Codable {
     }
 
     init(timeline: TimelineState, media: [MediaRecord]) {
-        // 按需定版：每次保存重算。用户删光 v4 数据后自然降回 v3。
-        formatVersion = timeline.requiresFormatVersion4
-            ? Self.latestFormatVersion : Self.baselineFormatVersion
+        // 定版：帧率是无条件的 v5 数据（每个工程都有帧率，且旧版会按 30 硬编码
+        // 渲染），所以**新版 writer 一律写 v5**，不再降级。
+        // 「按需定版」这个机制对 v4 仍然成立，但已被 v5 的无条件要求覆盖 ——
+        // 保留判据只为登记清单的可读性。
+        _ = timeline.requiresFormatVersion4
+        formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
         self.media = media

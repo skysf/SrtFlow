@@ -42,10 +42,11 @@ func timeline(mainMedia: [URL], subtitle: URL? = nil) -> TimelineState {
         clip.flippedHorizontally = true
         clip.crop = ClipCrop(top: 0.1, leading: 0.05)
         var animation = ClipAnimation()
-        animation.centerX.set(0.3, atSourceTime: 1)
-        animation.centerX.set(0.7, atSourceTime: 3)
-        animation.opacity.set(1, atSourceTime: 0)
-        animation.opacity.set(0.2, atSourceTime: 4)
+        let tol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: clip.speed)
+        animation.centerX.set(0.3, atSourceTime: 1, tolerance: tol)
+        animation.centerX.set(0.7, atSourceTime: 3, tolerance: tol)
+        animation.opacity.set(1, atSourceTime: 0, tolerance: tol)
+        animation.opacity.set(0.2, atSourceTime: 4, tolerance: tol)
         clip.animation = animation
         clip.info = MediaInfo(
             duration: 12,
@@ -365,10 +366,13 @@ do {
     let saved = dir.appendingPathComponent("v2.srtflowproj")
     try VideoEditProjectIO.save(timeline(mainMedia: [media]), to: saved)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: saved)) as? [String: Any]
+    // 契约已变（工程帧率落地后）：新版 writer 一律写 latest（v5）。
+    // 原本这里守的是「普通工程别被无谓抬版本」，那个目的现在由「v1–v4 老文件
+    // 仍然读得开」来守（见下方 for oldVersion 循环）。
     checkEqual(
         raw?["formatVersion"] as? Int,
-        VideoEditProjectFile.baselineFormatVersion,
-        "普通工程写盘要带基线格式版本"
+        VideoEditProjectFile.latestFormatVersion,
+        "新版写盘一律用最新格式版本"
     )
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
@@ -395,11 +399,13 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 3, "只有原文轨（无 companion）的工程仍写 v3")
+    checkEqual(try savedVersion(), 5, "只有原文轨的工程也写 v5（帧率无条件落盘）")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 3, "v3 工程往返后不能被抬版本")
+    checkEqual(try savedVersion(), 5, "往返后仍是 v5")
+    // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
+    checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
     // 挂上译文轨：写 v4，且译文/meta 往返无损。
     var translationDoc = SubtitleDocumentModel(cues: [cueA, cueB])
@@ -413,7 +419,9 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 4, "带译文轨的工程要写 v4")
+    checkEqual(try savedVersion(), 5, "带译文轨的工程写 v5（v4 的登记项已被 v5 覆盖）")
+    // requiresFormatVersion4 的登记判据本身仍要成立
+    check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
     let loaded = try VideoEditProjectIO.load(from: project).timeline
     checkEqual(loaded.subtitleCompanion?.translation?.cues.count, 2, "译文轨要存住")
@@ -423,19 +431,49 @@ do {
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.recognitionConfidence, 0.9, "cueMeta 要存住")
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.translationStale, true, "stale 标记要存住")
 
-    // 删光 v4 数据：下一次保存自动降回 v3（按需定版每次重算）。
+    // 删光 v4 数据后仍然是 v5：帧率是**无条件**的 v5 字段（每个工程都有帧率，
+    // 而 v4 及更早把帧率硬编码成 30），所以新版 writer 一律写 v5，不再降级。
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 3, "删光关联字幕后要降回 v3")
+    checkEqual(try savedVersion(), 5, "新版 writer 一律写 v5（帧率无条件落盘）")
 
-    // v4 文件本版能开；v5 拒开（闸门以 reader 上限比较）。
-    check(VideoEditProjectFile.latestFormatVersion == 4, "reader 上限应是 v4")
-    let v5 = dir.appendingPathComponent("v5.srtflowproj")
+    // v5 文件本版能开；v6 拒开（闸门以 reader 上限比较）。
+    check(VideoEditProjectFile.latestFormatVersion == 5, "reader 上限应是 v5")
+    let v6 = dir.appendingPathComponent("v6.srtflowproj")
     try Data("""
-    { "formatVersion": 5, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v5)
-    check((try? VideoEditProjectIO.load(from: v5)) == nil, "v5 工程必须拒开")
+    { "formatVersion": 6, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v6)
+    check((try? VideoEditProjectIO.load(from: v6)) == nil, "未来版本（v6）必须拒开")
+
+    // ---- 工程帧率（v5，无条件）----
+    //
+    // 反例守卫：**默认 24 也必须显式落盘并写 v5**。
+    // 若省略该键并降级成 v3，旧版会按硬编码的 30fps 打开 —— 同一文件在新旧版
+    // 出不同成片，正是版本闸门要防的语义破坏。
+    var fpsProject = cleared
+    fpsProject.frameRate = .fps24
+    try VideoEditProjectIO.save(fpsProject, to: project)
+    checkEqual(try savedVersion(), 5, "默认 24fps 也要写 v5，不能降级")
+    let savedJSON = try String(contentsOf: project, encoding: .utf8)
+    check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
+    checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
+               "默认帧率要能原样读回")
+
+    fpsProject.frameRate = .fps60
+    try VideoEditProjectIO.save(fpsProject, to: project)
+    checkEqual(try savedVersion(), 5, "非默认帧率同样是 v5")
+    checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
+
+    // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
+    for oldVersion in [1, 3, 4] {
+        let old = dir.appendingPathComponent("v\(oldVersion).srtflowproj")
+        try Data("""
+        { "formatVersion": \(oldVersion), "timeline": { "mainClips": [] }, "media": [] }
+        """.utf8).write(to: old)
+        checkEqual(try VideoEditProjectIO.load(from: old).timeline.frameRate, .fps24,
+                   "v\(oldVersion) 缺帧率键时读回 24")
+    }
 
     // 读盘规范化：孤儿译文 cue / 孤儿 meta（原文里没有的 ID）要被清掉。
     var dirty = cleared
@@ -454,23 +492,28 @@ do {
 // MARK: - 14. 关键帧锚在源时间：插值、变速、分割语义
 
 do {
+    // 容差分空间：这些用例都是 speed=1，用 30fps 半帧（等于迁移前写死的 1/60），
+    // 行为与迁移前一致。带 speed 的用例另见下方。
+    let tol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: 1)
     var track = KeyframeTrack()
-    track.set(10, atSourceTime: 1)
-    track.set(30, atSourceTime: 3)
+    track.set(10, atSourceTime: 1, tolerance: tol)
+    track.set(30, atSourceTime: 3, tolerance: tol)
     checkEqual(track.value(atSourceTime: 2), 20, "两帧中点线性插值")
     checkEqual(track.value(atSourceTime: 0), 10, "首帧之前夹紧")
     checkEqual(track.value(atSourceTime: 9), 30, "末帧之后夹紧")
-    track.set(99, atSourceTime: 3.001)
+    track.set(99, atSourceTime: 3.001, tolerance: tol)
     checkEqual(track.keys.count, 2, "半帧内重写是替换不是堆积")
     checkEqual(track.value(atSourceTime: 3), 99, "替换后取新值")
-    track.remove(atSourceTime: 1)
+    track.remove(atSourceTime: 1, tolerance: tol)
     checkEqual(track.keys.count, 1, "按时刻删除")
 
     // 变速：源锚定 → 时间线映射跟着速度换算。
     var clip = EditClip(sourceURL: URL(fileURLWithPath: "/m/a.mp4"), sourceDuration: 8, speed: 2, timelineStart: 5)
     var animation = ClipAnimation()
-    animation.opacity.set(1, atSourceTime: 0)
-    animation.opacity.set(0, atSourceTime: 8)
+    // speed=2 → source 空间容差是工程半帧的两倍
+    let speedTol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: clip.speed)
+    animation.opacity.set(1, atSourceTime: 0, tolerance: speedTol)
+    animation.opacity.set(0, atSourceTime: 8, tolerance: speedTol)
     clip.animation = animation
     // 2 倍速：时间线 5+2=7s 处对应源 4s → 不透明度 0.5。
     checkEqual(clip.animatedOpacity(atTimeline: 7), 0.5, "变速下按源时间取动画值")

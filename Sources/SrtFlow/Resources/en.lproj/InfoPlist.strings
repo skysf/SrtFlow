@@ -1,0 +1,7 @@
+/* 系统权限弹窗里显示的用途说明。
+   这些键必须放 InfoPlist.strings（不是 Localizable.strings）——
+   系统读 Info.plist 的本地化只认这个文件名。 */
+
+"NSScreenCaptureUsageDescription" = "SrtFlow records the display, window or region you pick into a video track. Everything stays on this Mac — nothing is uploaded.";
+"NSAudioCaptureUsageDescription" = "SrtFlow records the sound your computer is playing into the video. Everything stays on this Mac — nothing is uploaded.";
+"NSMicrophoneUsageDescription" = "SrtFlow records your narration into a separate audio track while screen recording. This is off by default and only runs when you turn it on.";

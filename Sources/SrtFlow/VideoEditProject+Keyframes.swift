@@ -36,15 +36,16 @@ extension VideoEditProject {
     func isOnKeyframe(_ clip: EditClip, _ property: KeyframeProperty) -> Bool {
         guard let live = state.clip(with: clip.id), let animation = live.animation else { return false }
         let source = live.sourceTime(atTimeline: clock.time)
+        let tol = sourceTolerance(for: live)
         switch property {
         case .position:
-            return animation.centerX.key(atSourceTime: source) != nil
-                || animation.centerY.key(atSourceTime: source) != nil
+            return animation.centerX.key(atSourceTime: source, tolerance: tol) != nil
+                || animation.centerY.key(atSourceTime: source, tolerance: tol) != nil
         case .scale:
-            return animation.width.key(atSourceTime: source) != nil
-                || animation.height.key(atSourceTime: source) != nil
-        case .rotation: return animation.rotation.key(atSourceTime: source) != nil
-        case .opacity: return animation.opacity.key(atSourceTime: source) != nil
+            return animation.width.key(atSourceTime: source, tolerance: tol) != nil
+                || animation.height.key(atSourceTime: source, tolerance: tol) != nil
+        case .rotation: return animation.rotation.key(atSourceTime: source, tolerance: tol) != nil
+        case .opacity: return animation.opacity.key(atSourceTime: source, tolerance: tol) != nil
         }
     }
 
@@ -72,12 +73,13 @@ extension VideoEditProject {
     func seekToAdjacentKeyframe(_ id: UUID, _ property: KeyframeProperty?, forward: Bool) {
         guard let clip = state.clip(with: id), let animation = clip.animation else { return }
         let sourceTimes: [Double]
+        let tol = sourceTolerance(for: clip)
         switch property {
-        case nil: sourceTimes = animation.allKeyTimes
+        case nil: sourceTimes = animation.allKeyTimes(tolerance: tol)
         case .position:
-            sourceTimes = merged(animation.centerX, animation.centerY)
+            sourceTimes = merged(animation.centerX, animation.centerY, tolerance: tol)
         case .scale:
-            sourceTimes = merged(animation.width, animation.height)
+            sourceTimes = merged(animation.width, animation.height, tolerance: tol)
         case .rotation: sourceTimes = animation.rotation.keys.map(\.time)
         case .opacity: sourceTimes = animation.opacity.keys.map(\.time)
         }
@@ -86,8 +88,9 @@ extension VideoEditProject {
             .sorted()
         let now = clock.time
         let target = forward
-            ? times.first { $0 > now + KeyframeTrack.timeTolerance }
-            : times.last { $0 < now - KeyframeTrack.timeTolerance }
+            // 这里 times 已经映射回 timeline time，只用工程半帧，**不再乘 speed**
+            ? times.first { $0 > now + state.frameRate.halfFrameTolerance }
+            : times.last { $0 < now - state.frameRate.halfFrameTolerance }
         if let target {
             clock.seek(to: min(max(target, 0), duration), precise: true)
         }
@@ -131,10 +134,16 @@ extension VideoEditProject {
 
     // MARK: 内部
 
-    private func merged(_ a: KeyframeTrack, _ b: KeyframeTrack) -> [Double] {
+    /// 工程帧率 + 该 clip 的 speed 决定的 source 空间容差。所有按 source time
+    /// 匹配关键帧的地方都必须用它（见 KeyframeTrack.sourceTolerance 的说明）。
+    func sourceTolerance(for clip: EditClip) -> Double {
+        KeyframeTrack.sourceTolerance(frameRate: state.frameRate, speed: clip.speed)
+    }
+
+    private func merged(_ a: KeyframeTrack, _ b: KeyframeTrack, tolerance: Double) -> [Double] {
         var times = a.keys.map(\.time)
         for key in b.keys
-        where !times.contains(where: { abs($0 - key.time) < KeyframeTrack.timeTolerance }) {
+        where !times.contains(where: { abs($0 - key.time) < tolerance }) {
             times.append(key.time)
         }
         return times
@@ -150,21 +159,22 @@ extension VideoEditProject {
         )
         let rotation = clip.animatedRotation(atTimeline: t)
         let opacityValue = clip.animatedOpacity(atTimeline: t)
+        let tol = sourceTolerance(for: clip)
         perform { state in
             state.update(id) { c in
                 var animation = c.animation ?? ClipAnimation()
                 for property in properties {
                     switch property {
                     case .position:
-                        animation.centerX.set(placement.centerX, atSourceTime: source)
-                        animation.centerY.set(placement.centerY, atSourceTime: source)
+                        animation.centerX.set(placement.centerX, atSourceTime: source, tolerance: tol)
+                        animation.centerY.set(placement.centerY, atSourceTime: source, tolerance: tol)
                     case .scale:
-                        animation.width.set(placement.width, atSourceTime: source)
-                        animation.height.set(placement.height, atSourceTime: source)
+                        animation.width.set(placement.width, atSourceTime: source, tolerance: tol)
+                        animation.height.set(placement.height, atSourceTime: source, tolerance: tol)
                     case .rotation:
-                        animation.rotation.set(rotation, atSourceTime: source)
+                        animation.rotation.set(rotation, atSourceTime: source, tolerance: tol)
                     case .opacity:
-                        animation.opacity.set(opacityValue, atSourceTime: source)
+                        animation.opacity.set(opacityValue, atSourceTime: source, tolerance: tol)
                     }
                 }
                 c.animation = animation
@@ -182,14 +192,15 @@ extension VideoEditProject {
         )
         let rotation = clip.animatedRotation(atTimeline: t)
         let opacityValue = clip.animatedOpacity(atTimeline: t)
+        let tol = sourceTolerance(for: clip)
         perform { state in
             state.update(id) { c in
                 guard var animation = c.animation else { return }
                 for property in properties {
                     switch property {
                     case .position:
-                        animation.centerX.remove(atSourceTime: source)
-                        animation.centerY.remove(atSourceTime: source)
+                        animation.centerX.remove(atSourceTime: source, tolerance: tol)
+                        animation.centerY.remove(atSourceTime: source, tolerance: tol)
                         if animation.centerX.isEmpty, animation.centerY.isEmpty {
                             var frozen = c.placement ?? placement
                             frozen.centerX = placement.centerX
@@ -197,8 +208,8 @@ extension VideoEditProject {
                             c.placement = frozen
                         }
                     case .scale:
-                        animation.width.remove(atSourceTime: source)
-                        animation.height.remove(atSourceTime: source)
+                        animation.width.remove(atSourceTime: source, tolerance: tol)
+                        animation.height.remove(atSourceTime: source, tolerance: tol)
                         if animation.width.isEmpty, animation.height.isEmpty {
                             var frozen = c.placement ?? placement
                             frozen.width = placement.width
@@ -206,10 +217,10 @@ extension VideoEditProject {
                             c.placement = frozen
                         }
                     case .rotation:
-                        animation.rotation.remove(atSourceTime: source)
+                        animation.rotation.remove(atSourceTime: source, tolerance: tol)
                         if animation.rotation.isEmpty { c.rotationDegrees = rotation }
                     case .opacity:
-                        animation.opacity.remove(atSourceTime: source)
+                        animation.opacity.remove(atSourceTime: source, tolerance: tol)
                         if animation.opacity.isEmpty { c.opacity = opacityValue }
                     }
                 }

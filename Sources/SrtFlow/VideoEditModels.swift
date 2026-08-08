@@ -549,6 +549,9 @@ struct TimelineState: Hashable, Sendable {
     var shapes: [ShapeAnnotation] = []
     /// 输出画面比例（预览和导出共用）。
     var canvasRatio: CanvasRatio = .auto
+    /// 工程帧率：预览合成、两条导出管线、预渲染、关键帧容差的唯一事实来源。
+    /// 这是 v5-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
+    var frameRate: ProjectFrameRate = .fallback
 
     var isEmpty: Bool {
         mainClips.isEmpty && overlayTracks.allSatisfy(\.clips.isEmpty)
@@ -746,6 +749,8 @@ extension TimelineState {
             }
         }
         sub.canvasRatio = canvasRatio
+        // 帧率必须跟着走：漏了这一行，选段导出会退回默认 24，与工程规格不符。
+        sub.frameRate = frameRate
         // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
         if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
             sub.packMain()
@@ -976,6 +981,7 @@ extension TimelineState: Codable {
     private enum CodingKeys: String, CodingKey {
         case mainClips, mainHidden, overlayTracks, audioTracks
         case subtitle, subtitleURL, subtitleCompanion, shapes, canvasRatio
+        case frameRate
     }
 
     init(from decoder: Decoder) throws {
@@ -990,6 +996,8 @@ extension TimelineState: Codable {
         subtitleCompanion = try c.decodeIfPresent(SubtitleCompanion.self, forKey: .subtitleCompanion)
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
         canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
+        // v1–v4 没有这个字段，缺失即回退 24（与 ProjectFrameRate.fallback 一致）。
+        frameRate = try c.decodeIfPresent(ProjectFrameRate.self, forKey: .frameRate) ?? .fallback
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1006,6 +1014,9 @@ extension TimelineState: Codable {
         }
         try c.encode(shapes, forKey: .shapes)
         try c.encode(canvasRatio, forKey: .canvasRatio)
+        // **无条件**写帧率：旧版把帧率硬编码成 30，省略这个键会让默认 24 的
+        // 工程在旧版里按 30 渲染（见 VideoEditFormatVersion 的说明）。
+        try c.encode(frameRate, forKey: .frameRate)
     }
 }
 

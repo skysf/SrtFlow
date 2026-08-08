@@ -44,7 +44,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 用户在「未命名工程要不要保存」上点了取消，就取消退出。
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         MainActor.assumeIsolated {
-            VideoEditProject.shared.prepareToCloseDocument() ? .terminateNow : .terminateCancel
+            // 有录制在跑时先停录、等 finalize 和导入决策 —— 那是异步的，
+            // 所以返回 .terminateLater，由 coordinator 唯一一次 reply
+            // （计划 §12.2；反复按 Quit 靠 finishTerminationWait 幂等）。
+            if #available(macOS 15.0, *) {
+                let coordinator = ScreenRecordingCoordinator.shared
+                // 返回 false = 需要异步收尾，由 coordinator 唯一一次 reply，
+                // 那条路径自己会走文档那一关。返回 true = 会话已撤销/本来就空闲，
+                // **仍要继续往下走 prepareToCloseDocument()** —— 直接
+                // `.terminateNow` 会跳过未命名工程的保存询问（复审 P1-1）。
+                if coordinator.isBusy, !coordinator.prepareToTerminate() {
+                    return .terminateLater
+                }
+            }
+            return VideoEditProject.shared.prepareToCloseDocument() ? .terminateNow : .terminateCancel
         }
     }
 }

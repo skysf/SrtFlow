@@ -914,11 +914,34 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 画布**被用户改过多少次**。
+    ///
+    /// 录屏导入要判断「能不能自动套用录制比例」。只比对比例**值**不够：
+    /// 用户在录制期间改成 16:9 又改回 auto，值没变但他其实动过 —— 那就不该
+    /// 再被自动覆盖（计划 §20 点名的用例）。所以值和这个代号都没变才算数。
+    /// 不持久化：只在本次会话内有意义。
+    @Published private(set) var canvasEditGeneration = 0
+
     /// 画布比例：预览和导出共用，改动可撤销。
     func setCanvasRatio(_ ratio: CanvasRatio) {
+        canvasEditGeneration += 1
         perform { $0.canvasRatio = ratio }
         // 立刻更新预览框的形状，不等合成重建。
         renderSize = VideoEditCompositionBuilder.renderSize(for: state)
+    }
+
+    /// 工程帧率：预览合成、两条导出管线、预渲染、关键帧容差的唯一事实来源。
+    /// 改动可撤销。`perform` 默认就会 scheduleRebuild —— 必须重建，否则
+    /// videoComposition 还停在旧的 frameDuration 上。
+    func setFrameRate(_ rate: ProjectFrameRate) {
+        // 帧率在 request 生成后冻结：录制中改它会让已冻结的捕获配置与工程不一致
+        // （计划 §11.3）。菜单已置灰，这里是**执行入口**的二道闸。
+        if #available(macOS 15.0, *), ScreenRecordingCoordinator.shared.isBusy {
+            notice = L10n("The frame rate is locked while recording.")
+            return
+        }
+        guard rate != state.frameRate else { return }
+        perform { $0.frameRate = rate }
     }
 
     /// V 键：切换选中剪辑所在的轨；什么都没选就切主轨。

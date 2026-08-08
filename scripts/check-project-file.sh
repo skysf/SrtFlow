@@ -14,7 +14,7 @@ cd "$(dirname "$0")/.."
 
 # Rosetta 终端下必须显式指定 arm64，否则会去编 x86_64（见 docs/build/）。
 ARCH_FLAG="--arch arm64"
-TRIPLE="arm64-apple-macosx14.0"
+TRIPLE="arm64-apple-macosx15.0"
 
 echo "==> swift build ${ARCH_FLAG}（拿 SrtFlowCore 的模块和目标文件）"
 swift build ${ARCH_FLAG} >/dev/null

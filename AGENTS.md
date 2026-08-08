@@ -46,20 +46,36 @@
 `scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
 源码在 `checks/PreviewComposition/`）、
 `scripts/check-export-alpha-compositing.sh`（导出画中画动画的 fill+matte 合成，
-真跑一遍项目自带 ffmpeg 量输出像素，纯 shell 不依赖 Swift 编译）
+真跑一遍项目自带 ffmpeg 量输出像素，纯 shell 不依赖 Swift 编译）、
+`scripts/check-export-frame-rate.sh`（**真实生产导出滤镜**的帧率回归：调
+`VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数、真跑、数帧，源素材故意造成
+10fps 以排除源帧透传）、
+`checks/no-hardcoded-fps.sh`（扫描守卫：Video Edit 管线里不许再写死帧率，
+帧率必须来自 `TimelineState.frameRate`；用文件系统枚举，未跟踪的新文件也覆盖）
 
 ## 规划（docs/plans/）
 
 - [2026-08-06-native-screen-recording.md](docs/plans/2026-08-06-native-screen-recording.md) —
   Edit Video 原生录屏完整方案（ScreenCaptureKit 整屏/窗口/单屏区域、电脑声音 +
   独立麦克风轨、录前选保存位置、主轨末尾导入、工程 24/30/60 fps、全局提升到
-  macOS 15）：**待实施**；开工前先完成文中 Phase 0 的来源权限/控制窗排除、
-  AAC/时钟、封装和多屏实测门槛
+  macOS 15）：**Phase 0–4 代码完成、Phase 5 待实机验证**（自动化验证已过，
+  真机 picker/TCC/多屏/音频/长时仍未跑）。计划正文有若干条已被 Phase 0 实测推翻（`canApply` 预检、
+  固定 69ms 补偿、`SCDisplay.width` 当像素用等）——
+  **当前状态与实测结论一律以
+  [实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)
+  为准**
 - [2026-08-06-native-subtitle-generation.md](docs/plans/2026-08-06-native-subtitle-generation.md) —
   原生字幕生成（SpeechAnalyzer 转写 + Translation 翻译、canonical 原文 +
   companion 译文轨、按需 formatVersion v4、sidecar 词级缓存）：**主体已实现**
-  （2026-08-06，含端到端冒烟），构建基线不动（tools 5.9 / .v14），能力按
-  macOS 14/15/26 分层；改这块前必读，剩余实机验证项见其 17.2/17.3
+  （2026-08-06，含端到端冒烟）。原「基线 .v14 / 按 macOS 14/15/26 分层」已被
+  录屏功能的**全局 macOS 15** 取代（2026-08-07，见其顶部注记）：现行分层
+  **15/26**，翻译自基线可用、生成需 26+；改这块前必读，剩余实机验证项见其 17.2/17.3
+
+## 实施报告（docs/reports/）
+
+- [2026-08-06-native-screen-recording-implementation-report.md](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
+  原生录屏 Phase 0–5 的实施记录：环境基线、每项硬门槛的真实结果与证据、偏差、
+  阻塞项；**状态与「哪些已验证/未验证」以本报告为准**
 
 ## 架构与实现决策（docs/architecture/）
 
@@ -78,6 +94,14 @@
 - [keyframe-animation.md](docs/architecture/keyframe-animation.md) —
   关键帧动画：源时间锚定（变速/分割自动正确）、切片规则（旋转 ≤6°/片）、
   导出走 AVFoundation 预渲染 + 画中画 fill+matte；**改动画/预渲染前必读**
+- [project-frame-rate.md](docs/architecture/project-frame-rate.md) —
+  工程帧率的唯一事实来源（`TimelineState.frameRate`）、v5 无条件落盘、关键帧
+  容差**分空间**（source 侧 × |speed|、timeline 侧不乘）、各回归各守什么与
+  各自的局限；**改帧率/关键帧容差/导出滤镜前必读**
+- [screen-recording-lifecycle.md](docs/architecture/screen-recording-lifecycle.md) —
+  录屏状态机（写盘期无直达 `.failed`、importing/partialRecovery 持锁）、提交
+  journal（rename 前先 persist、恢复=stage×目录观察、卷不可达不清 manifest）、
+  请求快照（全 `let`、显式 sessionID）；**改录屏生命周期/恢复/状态机前必读**
 - [inspector-scrub-number-field.md](docs/architecture/inspector-scrub-number-field.md) —
   Inspector 数值框：离散/live 两条写入路径、拖调取消收尾、拒绝自动聚焦、
   cursor rect 局部光标；**改数值框/拖调/Transform 写入入口前必读**
@@ -152,6 +176,72 @@
   `vendor-ffmpeg.sh` 生成、`vendor/` 又不入库，只在**重新下载 ffmpeg** 时才刷新，
   `git grep` 也查不到。修法是加 `--readme-only` 模式，打包时现生成再拷。
   教训：改生成器 ≠ 改产物；全仓文案替换要额外查一遍 .gitignore 覆盖的产物目录
+- [2026-08-07-screen-recording-foundation-review.md](docs/bugfixes/2026-08-07-screen-recording-foundation-review.md) —
+  录屏地基复审抓出七个问题，**其中四个是测试成功地守住了错误行为**（假绿）：
+  工程 v5 把「默认值省略不写」当无害（旧版按硬编码 30fps 打开 = 同一文件出不同
+  成片）、多屏翻转轴用了并集顶边而**错误公式同样自反**所以往返测试测不出、
+  alpha 三档参数化因脚本抛异常没落盘却报告「全过」、磁盘开录阈值 200MB 低于
+  运行期警戒线 500MB、坐标入口文档说返回 nil 实现却静默裁剪、扫描守卫用
+  `git ls-files` 漏掉未跟踪文件、把声学测得的 69ms 当成通用常量补偿。
+  教训：**往返/自反断言几乎测不出正确性，必须有外部真值对账**；
+  每个守卫都要反向验证；脚本改完先验证落盘再报告。第二轮又修 3 个 P1：
+  写盘期不得有直达 `.failed`（解锁态）的边、manifest 要 journal 式记 rename
+  意向（两步操作中间全是崩溃窗）、「快照」必须类型上不可变（全 `let`）。
+  第三轮再修 3 个 P1：**UserDefaults 是异步落盘，不能当持久化栅栏**（改单文件
+  原子写的 ManifestStore）、已提交阶段也要实测 final 在不在且「缺失」≠「卷不
+  可达」、manifest 身份与路径全 `let`；另修 `exit()` 绕过顶层 `defer` 的
+  自检泄漏（previewcheck 攒了 52 个目录）。第四轮修「拿文件现场当清账判据」——
+  能否清 manifest = 现场有结论 **且** 流程走完，缺一维就会留下孤儿文件；
+  并清掉 canonical 计划里被否方案的旧合同。
+  **加自检/守卫/状态机前必读**
+- [2026-08-07-screen-recording-phase2-4-review.md](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md) —
+  Phase 2–4 复审的 8 个 P1。**病根是"纯函数写对了但没被接上"**：
+  `canClearManifest` 生产代码一次没调、`displayLocalRect` 就在那里却给了
+  `sourceRect` 全局坐标（主屏原点为零所以看不出、副屏录错区域）。
+  另有：恢复弹窗写着「Keep file only」实际删文件（**直接数据丢失**）、
+  先 commit 后 probe 让损坏文件覆盖用户目标文件、配置期 Quit 落进
+  `default:` 静默 return 导致 `.terminateLater` 永远收不到 reply（死锁）、
+  收尾后直接 reply 跳过 `prepareToCloseDocument()`（未命名工程不问保存）、
+  picker 前抢读 `SCShareableContent` 让 clean TCC 首跑必废、同尺寸双屏取
+  `first` 会录错屏、`.started` 帧被当 idle 丢、idle 帧时间戳不记导致静止画面
+  录出 0 秒、writer 停止没有采样队列栅栏、错误只写进已经关掉的设置页。
+  教训：**自检覆盖的是「函数算得对不对」，不是「有没有被调用、参数对不对」**；
+  验证必须在破坏之前；用户没确认过的覆盖一律避让；按钮文案就是合同；
+  涉及异步 reply 的状态机分支必须穷举，不能留 `default:`。
+  **同日第二轮**又抓出 8 个静态可判定的 P1：`MediaProbe` 无视频轨就抛错，
+  拿它探纯音频 sidecar → **麦克风轨永远进不了时间线**；`offerSalvage` 的
+  `main: nil` 被回退成不存在的路径 → **自检覆盖到的那一格，生产代码照样删
+  用户的 mic 录音**；避让后的目标名在落 `committing` 意向**之后**才决定 →
+  journal 身份被破坏；commit 失败仍清账；`recoverIfNeeded` 挂在会重跑的
+  视图 task 上 → 录制中切回来会处理**当前正在写的** manifest；恢复导入
+  期间无工程锁也无 generation CAS；`didStopWithError` 先置空 `stream` →
+  后续 `stop()` 的采样队列栅栏整段跳过；音频成功契约从不验证。
+  教训：**复用工具函数前先读它的前置条件**；**断言产出正确答案 ≠ 消费端
+  用对了它**；「先落意向」的意向必须**包含最终目标**；异步回调里提前置空
+  句柄会让后续清理整段失效。
+  **第三、四轮**又各修 5–6 个 P1：`defer { if isBusy { 回 idle } }` 的终点恰是
+  `.finished`/`.failed`（都不 busy）→ 状态永久卡住、按钮看着能点没反应；
+  `try? load() != nil` 让**损坏账本**被当成没账本、下次录制覆盖它；
+  **纯 mic 恢复复用 `committingMicrophone` 阶段** → `mainResolution` 无条件认定
+  主文件已提交 → 用户原有的文件被认成本次录屏；可选麦克风的 writer 构造/
+  stream 启动失败拖停主录屏；音频只验「有轨」→ 录一个包就断也算成功；
+  `try? removeItem` 后无条件清账 → 删除失败就留下无人认领的文件；
+  恢复入轨在清账**之前**进 `.finished` → Quit 时可能重复入轨。
+  教训：**收尾守卫要检查终点**；「有没有 X」不能用「能不能解析 X」代替；
+  **阶段语义不可复用**；可选通道的失败不得写进共用失败态；
+  **反证没抓到本身就是发现**（说明那条契约根本没有守卫）。
+  **第五轮是真机首测**，5 个问题当场暴露、**自检一个都没抓到**：状态机缺
+  `.choosingSource → .choosingDestination` 一条边 → `transition` 静默返回 false
+  → **录制永远不会开始**（一切都建好了，就是没按下开始）；音频容差照搬复审的
+  「一个工程帧」，而计划自己写着 AAC priming 44ms **已大于一帧** → 每次录制
+  都误报 partial；控制窗排除依赖广域授权（与 picker 路径的意义相悖）→ 改用
+  `NSWindow.sharingType = .none`；notice `lineLimit(1)` 把权限指引截成半句。
+  教训：**端到端走一遍，不能只逐条验单边**（补了 `checkStartHappyPath`）；
+  **别把 A 场景的验收标准套到 B 场景**；`@discardableResult` + 静默失败是最难
+  查的 bug。另记：系统 picker 文案不可改（只开放四个配置项）；
+  Phase 0 的「启动器 + 负载」防 TCC 方案对完整 App 不适用（`execv` 后
+  `Bundle.main` 变成负载目录，随包 ffmpeg 找不到）。
+  **改 coordinator/恢复/退出/导入路径前必读**
 
 ## 根目录既有文档
 

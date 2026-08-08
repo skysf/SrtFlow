@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import SrtFlowCore
 
 /// 导出全程（预渲染 + ffmpeg）共用的取消令牌。预渲染阶段没有 Process 可
 /// terminate，Stop 只能靠它转发到当前正在跑的 AVAssetExportSession；
@@ -78,10 +79,14 @@ enum AnimatedClipPrerenderer {
     static func renderMain(
         clip: EditClip,
         renderSize: CGSize,
+        frameRate: ProjectFrameRate,
         into workspace: URL,
         cancellation: ExportCancellationToken? = nil
     ) async throws -> URL {
         var state = TimelineState()
+        // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
+        // 帧率不一致接缝处就对不上（计划 §3.3 点名的坑）。
+        state.frameRate = frameRate
         state.mainClips = [normalized(clip)]
         return try await render(
             state: state,
@@ -97,6 +102,7 @@ enum AnimatedClipPrerenderer {
     static func renderOverlay(
         clip: EditClip,
         renderSize: CGSize,
+        frameRate: ProjectFrameRate,
         into workspace: URL,
         cancellation: ExportCancellationToken? = nil
     ) async throws -> (fill: URL, matte: URL) {
@@ -116,6 +122,9 @@ enum AnimatedClipPrerenderer {
         // 1/opacity 倍，最终合成时不透明度被抵消掉一部分甚至全部。
         // 见 docs/bugfixes/2026-08-05-export-prerender-review.md。
         var fillState = TimelineState()
+        // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
+        // 帧率不一致接缝处就对不上（计划 §3.3 点名的坑）。
+        fillState.frameRate = frameRate
         fillState.overlayTracks = [EditLane(clips: [fill])]
         let fillURL = try await render(
             state: fillState,
@@ -149,6 +158,9 @@ enum AnimatedClipPrerenderer {
         // 把每个关键帧经由时间线时刻换算到 matte 自己的源轴上。
         matte.animation = remappedAnimation(from: source, to: matte)
         var matteState = TimelineState()
+        // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
+        // 帧率不一致接缝处就对不上（计划 §3.3 点名的坑）。
+        matteState.frameRate = frameRate
         matteState.overlayTracks = [EditLane(clips: [matte])]
         let matteURL = try await render(
             state: matteState,
