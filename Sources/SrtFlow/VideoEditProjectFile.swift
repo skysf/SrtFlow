@@ -199,6 +199,8 @@ enum VideoEditProjectIO {
         var timeline = file.timeline
         // 关联字幕（v4）：译文/cueMeta 必须锚在现有原文 cue 上，坏数据当场清掉。
         timeline.normalizeSubtitleCompanion()
+        // 老版本存盘的主轨数组可能乱序（磁吸关掉的拖动不重排），打开时治好。
+        timeline.sortMainClipsByStart()
         let projectDirectory = url.deletingLastPathComponent()
         let stored = Dictionary(file.media.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         var records: [String: MediaRecord] = [:]

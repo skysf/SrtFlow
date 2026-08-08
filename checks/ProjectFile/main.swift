@@ -109,6 +109,36 @@ do {
     )
 }
 
+// MARK: - 1b. 乱序存盘的主轨 —— 打开时归一成时间顺序
+
+// 老版本磁吸关掉的拖动只改 timelineStart 不重排数组，存出来的工程主轨
+// 数组顺序 ≠ 时间顺序 —— A/B 合成轨按数组顺序插入会被挤歪（黑屏）。
+// 打开工程必须治好这种文件。
+do {
+    let dir = root.appendingPathComponent("unordered-main")
+    let media = dir.appendingPathComponent("a.mp4")
+    makeFile(media)
+    let project = dir.appendingPathComponent("p.srtflowproj")
+
+    var disordered = timeline(mainMedia: [media])
+    var late = disordered.mainClips[0]
+    late = EditClip(sourceURL: late.sourceURL, sourceDuration: 4, timelineStart: 30, info: late.info)
+    var early = disordered.mainClips[0]
+    early = EditClip(sourceURL: early.sourceURL, sourceDuration: 4, timelineStart: 20, info: early.info)
+    disordered.mainClips = [late, early]
+    try VideoEditProjectIO.save(disordered, to: project)
+    let result = try VideoEditProjectIO.load(from: project)
+
+    checkEqual(
+        result.timeline.mainClips.map(\.timelineStart), [20, 30],
+        "乱序存盘的主轨打开时要按时间顺序归一"
+    )
+    checkEqual(
+        Set(result.timeline.mainClips.map(\.id)), Set([late.id, early.id]),
+        "归一只调顺序，不许丢段"
+    )
+}
+
 // MARK: - 2. 素材改了名 —— 靠书签找回来
 
 do {

@@ -68,6 +68,23 @@ extension EditClip {
 
 extension TimelineState {
 
+    /// 把主轨数组顺序归一成时间顺序。
+    ///
+    /// 主轨的下游全都假设「数组顺序 = 时间顺序」：A/B 合成轨的插入游标只会前进
+    /// （乱序时 `insertTimeRange` 会把已插好的段往后挤 —— 表现为黑屏/画面错时）、
+    /// 转场按数组相邻配对、auto 画布取数组第一段的尺寸。磁吸开着时 `packMain()`
+    /// 维持这个不变量；磁吸关掉时拖动只改 `timelineStart`、跨轨挪动直接 append，
+    /// 顺序就散了 —— 改动入口和打开工程时都要调这里修正。
+    /// 起点相同（理论上不该有）保持原相对顺序，排序结果可复现。
+    mutating func sortMainClipsByStart() {
+        let ordered = zip(mainClips, mainClips.dropFirst())
+            .allSatisfy { $0.timelineStart <= $1.timelineStart }
+        guard !ordered else { return }
+        mainClips = mainClips.enumerated()
+            .sorted { ($0.element.timelineStart, $0.offset) < ($1.element.timelineStart, $1.offset) }
+            .map(\.element)
+    }
+
     /// 在 `time` 处把一段切成两半。左半保留原来的身份（id 不变），右半是新的一段。
     mutating func split(clipID: UUID, at time: Double) {
         guard let location = location(of: clipID) else { return }

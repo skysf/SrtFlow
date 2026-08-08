@@ -34,9 +34,22 @@
    `PlayerClock` 的链式 seek（QA1820），调用方不要自己按秒数节流（见
    [2026-08-03-scrub-preview-keyframe-snap.md](../bugfixes/2026-08-03-scrub-preview-keyframe-snap.md)）。
 
+## 主轨数组顺序 = 时间顺序（不变量）
+
+`mainClips` 的下游全按数组顺序消费：A/B 合成轨的游标式插入（乱序会被
+`insertTimeRange` 挤歪 → 黑屏）、转场按数组相邻配对、auto 画布取数组第一段。
+磁吸开着由 `packMain()` 维持；磁吸关掉的移动/跨轨落主轨必须在收尾调
+`sortMainClipsByStart()`（`liveMove`、`relocate` 已接）。打开工程时
+`VideoEditProjectIO.load` 归一治旧文件，`CompositionBuilder.build` /
+`ExportGraph.plan` 入口再各防御一次。**新加任何改 `timelineStart` 或往
+`mainClips` 里插段的入口，都要么保序要么收尾排一次**；来龙去脉见
+[2026-08-08-main-track-array-order-black-frame.md](../bugfixes/2026-08-08-main-track-array-order-black-frame.md)。
+
 ## 回归清单（改这些代码后过一遍）
 
 - 拖右把手 238pt（10s 的量，默认缩放）→ 时长正好少 10s，不是 5s。
 - 拖动中块边缘连续跟手，无跳变；缩略图/波形不闪，松手 ~200ms 后刷新。
 - 磁吸开着时移动块，邻居仍有平滑重排动画。
 - 块移动手势仍 1:1 跟手（它的 .local 依赖布局原点为 0 这条性质）。
+- 磁吸关掉把块拖成乱序再回放：预览各时刻画面都在（守卫在
+  check-preview-composition / check-project-file 里）。

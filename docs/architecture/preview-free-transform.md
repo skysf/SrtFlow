@@ -10,7 +10,11 @@
 归一化值**（宽随画布宽、高随画布高）。约定：
 
 - **nil = 默认布局**：主轨等比铺满居中；画中画走 `overlayFraction` +
-  `overlayAnchor` 九宫格。老工程、没摆过的段都是 nil。
+  `overlayAnchor` 九宫格。老工程、没摆过的段都是 nil。九宫格的尺寸是
+  「画布宽 × fraction」，但**高度会爆出画布的（竖版素材）整体等比收进画布**
+  —— 公式只有 `OverlayAnchor.defaultSize` 一份，`defaultPlacement`、
+  合成 `fittingTransform`、导出九宫格 `scale=w:h:force_original_aspect_ratio=
+  decrease` 三处必须都走它的账（横版素材算出来和收高前逐像素一致）。
 - **九宫格和自由摆放互斥**：点停靠位、动大小滑块都会把 `placement` 清回 nil
   （`setOverlayLayout` / `overlaySizeBinding`），否则那些控件看起来"失灵"。
 - 宽高**各自独立**（拉边把手允许变形），所以不能只存一个 scale。
@@ -81,6 +85,9 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
   线条只给左右把手，正方形只给四角，长方形全套。
 - 命中测试从最上层往下：画中画行号大的在上，主轨垫底；形状叠层在
   ClipTransformCanvas 之上，形状点击天然优先。
+- 中心对齐（`CenterSnap` / `CenterGuideLines`）：移动接近画布正中时吸附并亮
+  黄色横/竖参考线，缩放只在恰好对中时亮线不吸（吸中心会拽歪锚在对角的
+  手感）。剪辑变换框和形状拖动共用同一套，别各写一份阈值。
 
 ## 工程文件
 

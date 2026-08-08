@@ -31,6 +31,7 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
+  Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \

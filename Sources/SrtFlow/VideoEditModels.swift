@@ -62,6 +62,20 @@ enum OverlayAnchor: String, CaseIterable, Identifiable, Hashable, Sendable {
         }
     }
 
+    /// 画中画默认框的尺寸：按画布宽的 `fraction` 等比；高度会爆出画布的
+    /// （竖版图片/视频，40% 宽时高度能超过 16:9 画布一截）整体等比收到
+    /// 画布内（上下各留 inset）。预览默认布局、合成变换、导出九宫格
+    /// 三处必须都用同一份账 —— 见 docs/architecture/preview-free-transform.md。
+    static func defaultSize(display: CGSize, canvas: CGSize, fraction: Double, inset: Double) -> CGSize {
+        guard display.width > 0, display.height > 0 else { return .zero }
+        var scale = canvas.width * fraction / display.width
+        let maxHeight = max(canvas.height - inset * 2, 1)
+        if display.height * scale > maxHeight {
+            scale = maxHeight / display.height
+        }
+        return CGSize(width: display.width * scale, height: display.height * scale)
+    }
+
     /// 画中画左上角的位置。`inset` 是到边缘的留白，都按输出画面的像素来。
     func origin(canvas: CGSize, overlay: CGSize, inset: Double) -> CGPoint {
         let x: Double
@@ -498,9 +512,11 @@ struct EditClip: Identifiable, Hashable, Sendable {
             return ClipPlacement(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
         }
         if isOverlay {
-            let scale = canvas.width * overlayFraction / display.width
-            let size = CGSize(width: display.width * scale, height: display.height * scale)
-            let origin = overlayAnchor.origin(canvas: canvas, overlay: size, inset: canvas.width * 0.02)
+            let inset = canvas.width * 0.02
+            let size = OverlayAnchor.defaultSize(
+                display: display, canvas: canvas, fraction: overlayFraction, inset: inset
+            )
+            let origin = overlayAnchor.origin(canvas: canvas, overlay: size, inset: inset)
             return ClipPlacement(frame: CGRect(origin: origin, size: size), in: canvas)
         }
         let scale = min(canvas.width / display.width, canvas.height / display.height)

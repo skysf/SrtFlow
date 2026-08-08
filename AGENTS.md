@@ -274,6 +274,12 @@
   1500 次解码只为 120 帧输出；补 `-framerate 2` 后连原生 4K 都比原来的 1080p
   快 9 倍。教训：循环单图的命令必须显式写死输入帧率（差价完全不体现在产物上）；
   换硬件编码器两分钟就证伪了「编码器慢」；顺带修了半成品缓存（原子改名）
+- [2026-08-08-main-track-array-order-black-frame.md](docs/bugfixes/2026-08-08-main-track-array-order-black-frame.md) —
+  图片进主轨黑屏、转画中画就好：磁吸关掉的拖动让主轨**数组顺序 ≠ 时间顺序**，
+  A/B 轨游标式插入被 `insertTimeRange` 挤歪（画中画路径有 sorted、主轨没有）；
+  修成「改动入口维持 + 打开工程归一 + 消费端防御」三层。顺带修竖版画中画
+  默认布局爆出画布（`OverlayAnchor.defaultSize` 三处同账）。三条新守卫都反向
+  验证过。教训：同一份数据两条消费路径一条 sorted 一条没 sorted 就是定时炸弹
 - [2026-08-08-still-clip-decode-per-frame.md](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) —
   同一条命令的第二次性能修复：5MB 图进时间线仍要 5 秒、预览黑屏。`-loop 1` 的
   语义是「重放整个输入」，于是同一张图被解了 120 次（上一次只对齐了次数，
