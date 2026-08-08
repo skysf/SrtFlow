@@ -108,6 +108,24 @@ Finder**。App 只负责「快速回到最近那几条」。
 四层都没中才进 `missingMedia`，界面上是 `MissingMediaBar`（橙条 + Relink 菜单）。
 **素材丢了时间线不能丢** —— 剪辑照样留在轨上，重新链接后接着剪。
 
+### 运行中也要重核对（2026-08-08 起）
+
+四层线索**不只在打开工程时跑**。工程开着的时候素材照样会被改名/挪走，而预览
+重建对加载失败的段只能静默跳过 —— 没有运行中的核对就是「黑屏零提示」
+（见 [2026-08-08-runtime-media-relink](../bugfixes/2026-08-08-runtime-media-relink.md)）。
+
+- 入口：`VideoEditProject.revalidateMediaLocations()`，两个触发点 ——
+  `NSApplication.didBecomeActiveNotification`（去访达动文件必然让 App 失焦）
+  和 `scheduleRebuild()`（兜住不经过失焦的路径，保证黑屏出现的那次重建旁边
+  一定跟着一次核对）。
+- **必须与 `load` 共用同一套 `resolve` 线索**（`relocateMedia` 只是运行中的
+  入口）。两边分叉就会出现「重开能找回、运行中却报丢失」的割裂行为。
+- 单飞 + 收敛：核对改了引用会触发重建、重建又触发核对，第二轮全部原地命中
+  即停。改这段时别打破「无变化就不写 state / 不发布 missingMedia」的守卫，
+  那是收敛的前提。
+- **await 回来只对此刻仍被引用的路径动手**（编辑没停过），找回来的按
+  `promptRelink` 同一套账更新 `mediaRecords` 并立刻回存（同 `didRelink`）。
+
 几条不能改的细节：
 
 - **相对路径最多往上走三层**（`MediaRecord.relativePath`）。再远就不像「一起
@@ -194,13 +212,15 @@ Finder**。App 只负责「快速回到最近那几条」。
 
 改上述任何一块后，至少跑：
 
-1. `scripts/check-project-file.sh` —— 存取往返、四层重链接、丢失上报、宽容解码、
-   **书签保全**、版本校验、重链接后补静帧，42 项。
-   **加了新字段要往 `checks/ProjectFile/main.swift` 里补一条。**
+1. `scripts/check-project-file.sh` —— 存取往返、四层重链接（含运行中的
+   `relocateMedia`）、丢失上报、宽容解码、**书签保全**、版本校验、重链接后
+   补静帧。**加了新字段要往 `checks/ProjectFile/main.swift` 里补一条。**
 2. 真实窗口冒烟（流程见 `docs/testing/gui-smoke-testing.md`）：
    - 双击 `.srtflowproj` → 落到 Edit Video 并载入素材、画布比例正确
    - 空工程 → 起始页显示最近工程，重启 App 后还在
    - 把素材**改名** → 重开工程 → 应当**无感自动找回**（书签），且工程被回存
+   - **工程开着**把素材改名+挪走 → 切回 App → 剪辑块显示新名字、预览不黑、
+     工程被回存；把素材删掉 → 切回 App → 橙条当场出现；放回去 → 自动消条
    - 把素材**删掉** → 重开工程 → 橙条报丢失、剪辑仍在轨上
    - **冷启动**双击一个含图片段、且静帧缓存不存在的工程 → 图片段应当自动转好
      并出现在预览里（验 `awaitVideoEngine`）

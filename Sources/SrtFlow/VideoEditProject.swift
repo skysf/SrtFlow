@@ -56,8 +56,13 @@ final class VideoEditProject: ObservableObject {
     @Published var documentURL: URL?
     /// 有改动还没写进磁盘。自动保存开着的时候它只会亮一小会儿。
     @Published var hasUnsavedChanges = false
-    /// 打开工程时四层线索都没找回来的素材，界面上标红并提供重新链接。
+    /// 四层线索都没找回来的素材，界面上标红并提供重新链接。打开工程时填一次，
+    /// 之后运行中也会重核对（revalidateMediaLocations）——素材在工程开着的时候
+    /// 被挪走同样要亮出来，而不是等预览黑屏。
     @Published var missingMedia: [URL] = []
+
+    /// 运行中素材核对的单飞任务（见 `revalidateMediaLocations`）。
+    var mediaRevalidateTask: Task<Void, Never>?
 
     /// 打开/新建工程期间为真：那时候改 `state` 不该算用户的改动。
     var isLoadingDocument = false
@@ -214,6 +219,16 @@ final class VideoEditProject: ObservableObject {
         mainRowHeight = stored("editMainRowHeight", 54)
         overlayRowHeight = stored("editOverlayRowHeight", 38)
         audioRowHeight = stored("editAudioRowHeight", 34)
+
+        // 素材在工程开着的时候也可能被改名/挪走，而去访达动文件必然让 App
+        // 失焦 —— 一激活就重核对，轨道块名字和丢失提示当场跟上。
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.revalidateMediaLocations() }
+        }
     }
 
     /// 恰好选中一个时的那一个（检查器只在单选时展示细节）。
@@ -1060,6 +1075,11 @@ final class VideoEditProject: ObservableObject {
     /// 时间线一变就（去抖后）重建预览合成。播放头位置和播放状态都要还原，
     /// 不然每改一刀就跳回 0:00 没法干活。
     func scheduleRebuild() {
+        // 重建按旧路径开素材，文件被挪走的话对应时段会静默变黑（builder 对
+        // 加载失败的 clip 只能跳过）——先把素材位置重核对一遍，跟得上的当场
+        // 改引用再重建一次，跟不上的亮出丢失提示。单飞 + 无变化即收敛，
+        // 核对触发的重建不会和这里循环。
+        revalidateMediaLocations()
         rebuildGeneration += 1
         let generation = rebuildGeneration
         rebuildTask?.cancel()
