@@ -324,7 +324,24 @@
   提交前预检 + 同语种按跳过处理 + 错误按 cause 分类；同时源语言默认
   Auto-detect（两段式探针检测）。教训：不可见的控件不许持有可生效的选择；
   上一次修复选出的"好默认值"换条路径就是事故值；「没弹下载确认」是无物可
-  下载路径的**特征**而不是故障。长期约束见 architecture/subtitle-language-flow
+  下载路径的**特征**而不是故障。长期约束见 architecture/subtitle-language-flow。
+  **复审 follow-up 见下一条 —— 那次 review 并没有全过**
+- [2026-08-09-pr22-review-followups.md](docs/bugfixes/2026-08-09-pr22-review-followups.md) —
+  PR#22 复审四连：①**又忘升 formatVersion**（subtitleLayout/subtitleHidden 落了盘、
+  版本号还停在 5，旧版打开→自动保存→排版删光、导出画面跟着变；设了「不烧字幕」
+  的工程还会把字幕烧进成片），而守卫写的是 `latestFormatVersion == 5` ——
+  自反断言，忘了升照样绿；②自动检测**敢猜**：阈值 0.45 低于实测错误模型的
+  0.55（上限 0.74），`pick([错误模型])` 会成功，无 confidence 按 0.5 也过线，
+  生产代码还留着「单候选直接采用」的零证据捷径；③`metadataLanguageTag` 自己扫
+  `mainClips + audioTracks` 绕开可听合同（不看眼睛/静音、漏 overlay）——
+  隐藏英文主轨 + 可听日文 overlay 会拿英文当首选候选却用日文做探针；
+  ④三类选择（剪辑/形状/字幕 cue）互斥散在三处，漏了 shape ↔ cue 两条边，
+  切工程也漏清 cue。修法共性是**让错误写法编不过**：删掉 `detectSourceLocale`
+  的 `state:` 参数、`EditSelection` 字段全 `private(set)`、可听快照只有
+  `SubtitleAudibleClips` 一个产地；再补一段 grep 级**接线守卫**（自检编不动
+  @MainActor App 类型，「纯函数有没有被接上」只能在源码层面钉）。
+  教训：**同一个坑第二次踩说明防线建在了注释上**；阈值要由实测数据反推、
+  把判别区间本身写成断言；**「没得挑」不是「挑对了」**
 
 ## 根目录既有文档
 

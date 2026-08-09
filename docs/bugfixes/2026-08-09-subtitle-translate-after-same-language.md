@@ -1,5 +1,14 @@
 # 2026-08-09 生成后翻译报「Unable to Translate」：目标语言在隐藏状态下被敲定成了源语言
 
+> ⚠️ **本案例的修复本身在同日复审里被抓出三个 P1 + 一个 P2**，见
+> [2026-08-09-pr22-review-followups.md](2026-08-09-pr22-review-followups.md)：
+> 这里写的检测阈值 0.45 低于实测错误模型的分数（`pick` 会把错误模型判成成功）、
+> 「单候选直接采用」是零证据硬猜、metadata 查询绕开了可听合同，同批 UX 的
+> `subtitleLayout` / `subtitleHidden` 还忘了升 formatVersion。
+> **下面「验证」一节里的自检数字与结论按当时状态记录，不代表现行合同** ——
+> 现行合同以 [architecture/subtitle-language-flow.md](../architecture/subtitle-language-flow.md)
+> 与那份 follow-up 为准。
+
 ## 症状
 
 英语系统的 Mac 上，视频编辑器里对一段英文视频：

@@ -52,10 +52,30 @@ Finder**。App 只负责「快速回到最近那几条」。
 > **加字段时照这个写法加**（给默认值，不要依赖合成的 `Codable`）。Swift 合成的
 > 解码器碰到缺失的键会让**整份工程打不开** —— 这是文档格式最典型的坑。
 >
-> **同时必须把 `currentFormatVersion` +1**（只要旧版会把这个字段静默丢掉）。
+> **同时必须把 `latestFormatVersion` +1**（只要旧版会把这个字段静默丢掉）。
 > 宽容解码只保证「新版能读旧文件」；「旧版拿到新文件不毁数据」只有版本闸门
 > 能拦 —— 旧版拒开，胜过打开后在下一次自动保存时把新字段悄悄删光。
 > 见 [2026-08-04-transform-review](../bugfixes/2026-08-04-transform-review.md)。
+
+### 版本史与登记清单
+
+判据本体在 `VideoEditFormatVersion.swift`（`requiresFormatVersionN`），
+**加了新的持久字段就在那里补一行**。writer 自 v5 起一律写 latest
+（帧率是无条件数据，每个工程都有），按需定版的机制仍在，只是被它覆盖了。
+
+| 版本 | 新增的「旧版会静默丢掉」的字段 | 旧版丢了会怎样 |
+| --- | --- | --- |
+| v1 | 首版 | — |
+| v2 | `placement` + Transform 四件套（rotation/opacity/flip/crop） | 摆放与变换全没 |
+| v3 | `animation` 关键帧 | 动画全没 |
+| v4 | `subtitleCompanion`（译文轨 / cueMeta / 语言与生成参数） | 译文轨全没 |
+| v5 | `frameRate` | 旧版按硬编码 30fps 渲染 —— 同一文件出不同成片 |
+| v6 | `subtitleLayout`、`subtitleHidden` | 字幕位置/换行宽度/字号回默认（**导出画面跟着变**）；设了「不烧字幕」的工程会把字幕烧进成片 |
+
+> v6 是 2026-08-09 复审补的：两个字段在字幕轨 UX 那批里落了盘却忘了升版本，
+> 而当时的自检写的是 `latestFormatVersion == 5` —— 拿常量跟自己比是自反断言，
+> 忘了升它照样绿。**版本号这类常量，断言里要写死外部真值。**
+> 见 [2026-08-09-pr22-review-followups](../bugfixes/2026-08-09-pr22-review-followups.md)。
 
 ### 存盘必须带上一次的定位表
 
@@ -151,6 +171,9 @@ Finder**。App 只负责「快速回到最近那几条」。
 - **切工程前必须走 `closeCurrentDocument`**：作废工程代号 + 停播放 +
   `clock.detach()` + `cancelLiveEdit()` + 清选择 + 清定位表 + **清撤销栈**。
   漏掉撤销栈的话，⌘Z 能把上一条工程的内容撤回到当前工程里。
+  「清选择」走 `clearSelection()` 一个入口（剪辑/形状/字幕 cue 三类一起），
+  别在这里手抄字段名 —— 抄漏过一次（2026-08-09 复审），合同见
+  [subtitle-track-visibility-and-layout](subtitle-track-visibility-and-layout.md)。
 - flush 的三个时机：切走 Edit Video 栏（`onDisappear`）、⌘S、退出 App
   （`applicationWillTerminate`）。自动保存有 2 秒防抖，正好卡在那两秒里按 ⌘Q
   会丢改动。
@@ -214,7 +237,11 @@ Finder**。App 只负责「快速回到最近那几条」。
 
 1. `scripts/check-project-file.sh` —— 存取往返、四层重链接（含运行中的
    `relocateMedia`）、丢失上报、宽容解码、**书签保全**、版本校验、重链接后
-   补静帧。**加了新字段要往 `checks/ProjectFile/main.swift` 里补一条。**
+   补静帧。**加了新字段要往 `checks/ProjectFile/main.swift` 里补一条**，
+   升版本时还要改那批**写死版本号**的断言（写死是故意的，见上）。
+   脚本末尾另有一段**接线守卫**（grep 级）：自检编不动
+   `VideoEditProject` / `TranscriptionTask` 这类 @MainActor App 类型，
+   「纯函数有没有被调用、参数对不对」只能在源码层面钉住。
 2. 真实窗口冒烟（流程见 `docs/testing/gui-smoke-testing.md`）：
    - 双击 `.srtflowproj` → 落到 Edit Video 并载入素材、画布比例正确
    - 空工程 → 起始页显示最近工程，重启 App 后还在
