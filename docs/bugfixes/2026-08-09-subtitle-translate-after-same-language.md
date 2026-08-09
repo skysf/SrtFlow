@@ -81,7 +81,25 @@ code 恒为 1，实测），而 `TranslationErrorText.describe` 原样透传。�
     实测红 4 条。
   - `SrtFlowCoreChecks` 新增语言检测评分/裁决 12 条（总 653），把裁决阈值
     改坏实测红 4 条。
-- `swift build --arch arm64` 零错误；GUI 冒烟见本分支收尾记录。
+- `swift build --arch arm64` 零错误。
+- GUI 冒烟（真实窗口，SrtFlowDev + 合成英文语音视频，按
+  docs/testing/gui-smoke-testing.md，2026-08-09）：
+  - 面板初开只有「Generate from audio」区，Source language 默认
+    Auto-detect，看不到任何目标语言；勾选 Translate after generating
+    当场展开可见的 Target language Picker，显示的正是 **English** ——
+    原事故里那个隐藏的自动预选值，现在露面了。
+  - 保持 English 目标直接生成（= 端到端复放原事故路径）：自动检测选中
+    英语模型、生成 6 条**单行** cue，面板出现灰字 ⓘ「Subtitles are
+    already in English (Singapore) — translation skipped.」+
+    「Generated 6 cues.」—— 没有红字，没有「Unable to Translate」。
+  - 有字幕后 Translate 区才出现，目标语言「Chinese (needs download)」
+    的下载标注在源已知后是真话。
+  - 同场冒烟顺带过了字幕轨眼睛（隐藏=预览消失+行灰显+图标橙色，恢复
+    正常）与 cue 点选拖框（选中出框、拖动整体移动、位置在隐藏/显示
+    往返后保持）。
+  - 细节观察：自动检测在同为英语的候选（en_US/en_SG）间选了 en_SG ——
+    同语言变体间的置信度差是噪声，裁决结果在语言层面等价，同语种
+    判定按语言码+文字系统比较不受变体影响。
 
 ## 教训 / 防回归
 
