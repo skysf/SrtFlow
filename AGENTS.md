@@ -67,6 +67,16 @@
 帧率必须来自 `TimelineState.frameRate`；用文件系统枚举，未跟踪的新文件也覆盖）、
 `scripts/check-freeze-frame.sh`（定格的时间线变换：分割+同轨让位+音轨波纹+
 叠化区判定+关键帧烘焙，纯值函数无 GUI 无 ffmpeg，源码在 `checks/FreezeFrame/`）、
+`scripts/check-timeline-snap.sh`（拖动的吸附/对齐线/落点，84 项：**两条边都参与**
+吸附、跟着一起动的块不许当参考点也不许当障碍、整组一个 delta、跨轨要带上跟随块、
+主轨插入指示线与 `packMain` 必须同一个数（含转场收紧）；后半段跑的是生产路径
+`ClipDragPlan.make → resolve → TimelineState.applyDrag`，
+源码在 `checks/TimelineSnap/`）、
+`checks/timeline-drag-wiring.sh`（扫描守卫，7 组：自检编不动的那半边接线 ——
+被拖的块要豁免重排动画、`updateClipDrag` 里不许写 `TimelineState`、一轮拖动的
+输入必须在手势开始时冻结、落地不许再解析一次位置且正好一次 `perform`、
+移动手势必须钉在滚动视口坐标系、缩放只有一个会夹范围的入口、
+自动滚动心跳的取消兜底）、
 `scripts/check-still-clip-encode.sh`（**图片转静帧的真实产物**：拿
 `StillImageClipFactory.conversionArguments()` 的生产参数真跑，量帧数/时长/两条
 尺寸政策/首尾帧 PSNR/动图截断，还有一条**边际耗时**断言守「一张图只解一次」，
@@ -109,8 +119,10 @@
   `.srtflowproj` 工程格式、为什么不做 App 内文件夹管理、素材重链接的四层线索、
   脏标记与自动保存的唯一入口；**改工程存盘/素材路径/自动保存前必读**
 - [timeline-drag-gestures.md](docs/architecture/timeline-drag-gestures.md) —
-  块布局原点恒为 0、边缘把手手势必须 `.global` 坐标系（反馈回路）、拖动中的
-  动画豁免与异步缩略图去抖；**给时间线加把手/改拖动手势前必读**
+  **拖动过程中不写 `TimelineState`**（写了就是事件积压、块追不上光标）、手势
+  参照系必须选不会动的那个（边缘把手 `.global`／块本体钉滚动视口）、拖动中的
+  动画豁免与异步缩略图去抖、吸附两条边都参与且候选要冻住、主轨插入指示线与
+  `packMain` 同一个函数；**给时间线加把手/改拖动手势前必读**
 - [preview-free-transform.md](docs/architecture/preview-free-transform.md) —
   预览区变换框与 `ClipPlacement`：归一化摆放、九宫格互斥、预览/导出两条管线
   同账（导出用 overlay 不用 pad）；**改预览合成/导出滤镜图/变换框前必读**
@@ -379,6 +391,33 @@
   提交→回调→清空→再提交的循环，验收必须连做两次（分支上两次冒烟一次跳过
   翻译、一次是首次翻译，「第二次」从没被覆盖）；**等外部框架回调的
   continuation 一律配看门狗**
+- [2026-08-09-timeline-clip-drag-lag-and-alignment.md](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) —
+  拖轨道上的块「光标到最右、块还在中间」+ 边缘碰上了没有任何对齐提示。四条根因
+  叠在同一个手势上：①那条 0.12s 重排动画只豁免了裁切、没豁免移动 ——
+  **架构文档里白纸黑字写着这条约束，代码只做了一半，没有守卫所以没人发现**；
+  ②每一拍 `liveMove` 写 `@Published state` → 整个编辑器视图树重建 + 重挂自动保存
+  → `mouseDragged` 积压，**落后量随拖动时间累积**；③跟着一起动的伙伴（链接音频、
+  多选块）还留在吸附候选里，把块吸回上一帧的位置（鼠标越慢越粘）；④吸附只比起点，
+  块的**终点从来没参与过**，所以「右边缘贴左边缘」既不吸也不亮线。修法是把拖动
+  期间的位置降级成纯渲染偏移（`ClipDragSession`），松手才 `commitMove` 落一次；
+  吸附/对齐线抽成纯值的 `TimelineSnap`。顺带按用户拍板改了主轨磁吸为「松手才
+  归位 + 青色插入指示线」并加了边缘自动滚动。教训：**文档里的约束不配守卫，
+  第二次照样踩**；**手势路径上不要写全局模型**；「谁在动」必须只有一份名单。
+  两条新守卫（纯值 + grep 级接线）都反向验证过，另有真窗口注入冒烟。
+  **复审又在第一轮修复上抓出 2 个 P1 + 4 个 P2**（全在**落地**那一层 ——
+  第一轮只把「拖动中」修对了）：`movingIDs` 没贯穿到落地，逐块 `clampedStart`
+  把同组伙伴当障碍（多选整组拖动松手后原地不动）、跨轨只搬被拖的那个
+  （链接音频留在旧时刻 = A/V 错位）；主轨插入指示线拿**插入前**的相邻关系算，
+  有转场时指示线 8s、实际落 9.55s；自由轨还留着「只在 commit 里跑」的第二套
+  落点算法；捏合没落实 4–120 钳制（pps<1 时 1:1 跟手重新坏掉）；自动滚动心跳
+  缺取消兜底；坐标系守卫只查「有没有写 coordinateSpace」是假绿。修法是把
+  **落点解析和落地变换也纯值化**（`ClipDragPlan.make` / `.resolve` /
+  `TimelineState.applyDrag`），渲染和落地共用同一份 `DragResolution`，
+  整组一个 delta、一次 `perform`。自检 43 → 84 项，四条反向验证都红过。
+  教训：**「拖动中」修对了不等于修完了**（一次交互两条消费路径，各算一遍必分叉）；
+  **纯值化要做到落地那一层**，否则复审给的反例自检一个都够不着；
+  **反向验证没红是测试矩阵有洞**，不是代码没问题。
+  长期约束见 architecture/timeline-drag-gestures
 
 ## 根目录既有文档
 

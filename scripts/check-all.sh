@@ -49,8 +49,10 @@ run_check() {
 run_check "SrtFlowCoreChecks（核心库）" swift run --arch arm64 SrtFlowCoreChecks
 run_check "no-hardcoded-fps（扫描守卫）" checks/no-hardcoded-fps.sh
 run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-build-output.sh
+run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
+run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh

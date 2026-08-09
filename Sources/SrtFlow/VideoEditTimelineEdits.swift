@@ -210,3 +210,154 @@ extension TimelineState {
         }
     }
 }
+
+// MARK: - 跨轨落地
+
+/// 垂直拖动能落到的行。放在这里（而不是 `VideoEditProject` 里）是为了让跨轨落地
+/// 保持成纯值变换、自检够得着。
+enum TrackDropTarget: Equatable {
+    case main
+    case overlay(Int)
+    case newOverlayTop
+    case audio(Int)
+    case newAudioBottom
+}
+
+extension TimelineState {
+
+    /// 把剪辑搬到另一条轨。行的上下顺序就是画面的叠放顺序。
+    ///
+    /// 只搬**被直接拖的**那一个：跟随块（链接音频、多选的伙伴）留在各自的轨上，
+    /// 由调用方在**同一次** `perform` 里按同一个 delta 平移 —— 否则视频换轨、
+    /// 音频留在旧时刻，就是 A/V 错位。
+    ///
+    /// 到岸之后的让位仍用「挤开重叠」：目标轨上的障碍在手势开始时并不知道
+    /// （那时还不知道会落到哪条轨），所以这一步没法和拖动中的预览同源。
+    /// 同轨移动**不**走这里，它必须走 `ClipDragPlan.resolve`。
+    mutating func relocateClip(_ id: UUID, to target: TrackDropTarget, magnet: Bool) {
+        guard let clip = self.clip(with: id) else { return }
+        // 手动摘下来，先别清空轨 —— target 里的轨编号是按当前排布算的，
+        // 这时候清空轨会让编号移位插错行。收尾再统一清理。
+        if let location = location(of: id) {
+            var clips = self[track: location.track]
+            clips.remove(at: location.clipIndex)
+            self[track: location.track] = clips
+        }
+        var moved = clip
+        moved.timelineStart = max(0, clip.timelineStart)
+        moved.transitionAfter = .none
+
+        switch target {
+        case .main:
+            if magnet {
+                let rest = mainClips
+                let insertion = TimelineSnap.mainInsertion(
+                    among: rest,
+                    moving: [moved],
+                    draggedCenter: moved.timelineStart + moved.timelineDuration / 2
+                )
+                mainClips.insert(moved, at: min(insertion.index, mainClips.count))
+            } else {
+                mainClips.append(moved)
+            }
+        case .overlay(let index):
+            if overlayTracks.indices.contains(index) {
+                overlayTracks[index].clips.append(moved)
+                overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+            } else {
+                overlayTracks.append(EditLane(clips: [moved]))
+            }
+        case .newOverlayTop:
+            // 数组末尾 = 层级最高 = 显示在最上面一行。
+            overlayTracks.append(EditLane(clips: [moved]))
+        case .audio(let index):
+            if audioTracks.indices.contains(index) {
+                audioTracks[index].clips.append(moved)
+                audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+            } else {
+                audioTracks.append(EditLane(clips: [moved]))
+            }
+        case .newAudioBottom:
+            audioTracks.append(EditLane(clips: [moved]))
+        }
+
+        // 挤开重叠（主轨磁吸时 packMain 会处理）。
+        if !(target == .main && magnet) {
+            let clamped = clampedStart(id: id, proposed: moved.timelineStart)
+            update(id) { $0.timelineStart = clamped }
+        }
+        // 磁吸关掉落到主轨是裸 append，数组顺序要跟着时间走。
+        sortMainClipsByStart()
+        pruneEmptyTracks()
+    }
+
+    /// 把 `proposed` 让开同轨上别的块（重叠时往更近的那一侧躲）。
+    /// **只给跨轨落地用** —— 同轨移动的可行区间由 `ClipDragPlan` 冻结时算好。
+    func clampedStart(id: UUID, proposed: Double) -> Double {
+        guard let location = location(of: id), let clip = self.clip(with: id) else { return max(0, proposed) }
+        var start = max(0, proposed)
+        let neighbours = self[track: location.track].filter { $0.id != id }
+        let duration = clip.timelineDuration
+        for other in neighbours.sorted(by: { $0.timelineStart < $1.timelineStart }) {
+            let overlaps = start < other.timelineEnd && other.timelineStart < start + duration
+            guard overlaps else { continue }
+            // 往右让还是往左让，取决于想去的位置更靠哪边。
+            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2 {
+                start = max(0, other.timelineStart - duration)
+            } else {
+                start = other.timelineEnd
+            }
+        }
+        return start
+    }
+}
+
+// MARK: - 拖动落地（纯值变换）
+
+extension TimelineState {
+
+    /// 一轮拖动落地的全部状态变换。
+    ///
+    /// `VideoEditProject.commitDrag` 只负责把它包进**一次** `perform`
+    /// （一步撤销 + 一次预览重建）——变换本身留在这里，自检才够得着。
+    ///
+    /// 位置**只来自** `resolution`：拖动中渲染的就是这一份，落地不再算第二遍。
+    mutating func applyDrag(
+        _ plan: ClipDragPlan,
+        resolution: DragResolution,
+        crossTrack target: TrackDropTarget?,
+        magnet: Bool
+    ) {
+        // 1) 整组平移同一个 delta。逐块独立夹取会把相对错位夹坏 ——
+        //    「拖 A、B 跟着」会变成「A 被旧位置的 B 顶回原地，整组没动」。
+        for member in plan.members {
+            update(member.id) { $0.timelineStart = max(0, member.span.start + resolution.delta) }
+        }
+
+        if let target {
+            // 2) 跨轨：只搬被直接拖的那个，跟随块留在各自轨上（时刻第 1 步已定好）。
+            relocateClip(plan.draggedID, to: target, magnet: magnet)
+        } else if let insertion = resolution.mainInsertion {
+            // 3) 主轨磁吸：整组按相对顺序插进**同一条缝**，落点与拖动中那条指示线
+            //    同源（都来自 TimelineSnap.mainInsertion）。
+            let movingIDs = Set(plan.members.map(\.id))
+            let movingMain = mainClips.filter { movingIDs.contains($0.id) }
+            var clips = mainClips.filter { !movingIDs.contains($0.id) }
+            clips.insert(contentsOf: movingMain, at: min(insertion.index, clips.count))
+            mainClips = clips
+            packMain()
+            // 其他轨上的伙伴按被拖块**实际**的最终 delta 平移 —— 磁吸把它挤到哪儿，
+            // 链接的音频就跟到哪儿，不各夹各的。
+            if let moved = clip(with: plan.draggedID) {
+                let actual = moved.timelineStart - plan.draggedSpan.start
+                let mainIDs = Set(movingMain.map(\.id))
+                for member in plan.members where !mainIDs.contains(member.id) {
+                    update(member.id) { $0.timelineStart = max(0, member.span.start + actual) }
+                }
+            }
+        }
+        // 磁吸关掉的拖动只改了 timelineStart，数组顺序要跟着时间走
+        //（磁吸开的分支 packMain 之后本来就有序，这里是幂等的）。
+        sortMainClipsByStart()
+    }
+}

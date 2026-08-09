@@ -39,6 +39,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
   Sources/SrtFlow/VideoEditSelection.swift \

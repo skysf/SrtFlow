@@ -34,6 +34,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
