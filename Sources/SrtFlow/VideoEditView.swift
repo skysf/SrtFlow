@@ -481,13 +481,13 @@ struct VideoEditView: View {
             Divider().frame(height: 16)
 
             ToolbarIcon(icon: "minus.magnifyingglass", help: "Zoom out") {
-                project.pixelsPerSecond = max(4, project.pixelsPerSecond / 1.4)
+                project.setPixelsPerSecond(project.pixelsPerSecond / 1.4)
             }
-            Slider(value: $project.pixelsPerSecond, in: 4...120)
+            Slider(value: $project.pixelsPerSecond, in: VideoEditProject.zoomRange)
                 .frame(width: 84)
                 .controlSize(.mini)
             ToolbarIcon(icon: "plus.magnifyingglass", help: "Zoom in") {
-                project.pixelsPerSecond = min(120, project.pixelsPerSecond * 1.4)
+                project.setPixelsPerSecond(project.pixelsPerSecond * 1.4)
             }
         }
         .padding(.horizontal, 10)

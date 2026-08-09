@@ -12,26 +12,40 @@ struct VideoEditTimelineView: View {
     /// 光观察 project 的话时钟跳动不会触发重绘 —— 播放头就会僵在原地。
     @ObservedObject var clock: PlayerClock
 
-    /// 拖动时吸附到的参考时刻（画一条黄线）。
-    @State private var snapGuide: Double?
+    /// 正在进行的剪辑拖动。**拖动中不写 `TimelineState`**：块画在哪只由它的
+    /// `offset` 决定，松手才 `commitMove` 落一次（见
+    /// docs/architecture/timeline-drag-gestures.md）。
+    @State private var clipDrag: ClipDragSession?
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
-    /// 正在进行的水平拖动（落点时刻，跨轨落地时要用）。
-    @State private var activeDrag: (clipID: UUID, proposed: Double)?
     /// 垂直拖动瞄准的目标行（高亮它）。
     @State private var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
     /// 轨道头上下拖调行高的基准。
     @State private var headerResizeBase: Double?
-    /// 时间线横向已滚动了多少（判断播放头还在不在视野里）。
+    /// 时间线横向已滚动了多少（判断播放头还在不在视野里、拖到边缘要不要自动滚）。
     @State private var scrollOffset: Double = 0
+    /// 可见视口的宽度（自动滚动要拿它判断指针到没到边）。
+    @State private var viewportWidth: Double = 0
+    /// 拖到边缘时推 NSScrollView 的心跳。
+    @State private var autoScroller = TimelineAutoScroller()
 
-    private static let scrollSpace = "timelineScroll"
+    /// 滚动视口的命名坐标系。剪辑块的移动手势也钉在它上面（见 `moveGesture`），
+    /// 所以不能是 private。
+    fileprivate static let scrollSpace = "timelineScroll"
 
     private var pps: Double { project.pixelsPerSecond }
 
     /// 内容总宽度：留出结尾空白，方便把素材拖到最后。
+    ///
+    /// 拖动中额外给一段**弹性尾部**：自由落点的轨道（画中画/音频/磁吸关掉的主轨/
+    /// 形状）允许把块拖到现有内容之外，内容宽度按投影落点临时长出去，还留半个
+    /// 视口好继续拖；松手后由新的 `project.duration` 接管，没落地就自己缩回来。
+    /// 磁吸主轨**不给** —— 它最终只能插进现有故事线的某条缝，扩太远只会把真正的
+    /// 插入指示线滚出视野。
     private var contentWidth: Double {
-        max(600, project.duration * pps + 320)
+        let base = max(600, project.duration * pps + 320)
+        guard let drag = clipDrag, drag.allowsFreeLanding else { return base }
+        return max(base, drag.end * pps + max(320, viewportWidth * 0.5))
     }
 
     var body: some View {
@@ -175,8 +189,18 @@ struct VideoEditTimelineView: View {
                     )
                     .coordinateSpace(name: Self.scrollSpace)
                     .onPreferenceChange(TimelineScrollOffsetKey.self) { scrollOffset = $0 }
+                    .onChange(of: viewport.size.width, initial: true) { _, width in
+                        viewportWidth = width
+                    }
                     .onChange(of: clock.time) { _, newTime in
                         followPlayhead(newTime, proxy: proxy, viewportWidth: viewport.size.width)
+                    }
+                    // 视图消失（切栏目、关窗、切工程）时心跳必须跟着停 ——
+                    // 正常松手走 onEnded，这条管的是「手势没有终点」的那些死法。
+                    .onDisappear {
+                        autoScroller.stop()
+                        clipDrag = nil
+                        dragTargetRow = nil
                     }
                 }
             }
@@ -260,13 +284,24 @@ struct VideoEditTimelineView: View {
             }
             .padding(.vertical, 2)
 
-            // 吸附参考线
-            if let snapGuide {
-                Rectangle()
-                    .fill(.yellow)
-                    .frame(width: 1)
-                    .offset(x: snapGuide * pps)
+            // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
+            // 所以跨轨对齐（上面画中画的边缘对上下面主轨的边缘）一眼能看见。
+            TimelineAlignmentGuides(times: clipDrag?.guides ?? [], pixelsPerSecond: pps)
+
+            // 主轨磁吸开着时松手会插进的那条缝。拖动中主轨不再当场重排，
+            // 落点靠这条线交代（时刻由 TimelineSnap.mainInsertion 算，落地同一个函数）。
+            if let time = mainInsertionTime,
+               let layout = rowLayouts().first(where: { $0.spec.slot == .main }) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.teal)
+                    .frame(width: 3, height: layout.spec.height)
+                    .offset(x: time * pps - 1.5, y: layout.minY)
+                    .allowsHitTesting(false)
             }
+
+            // 自动滚动要直接推 NSScrollView，放个零尺寸参照物把它认出来。
+            TimelineScrollViewAccessor(scroller: autoScroller)
+                .frame(width: 0, height: 0)
 
             // 垂直拖动的目标行高亮：现有行描边，新轨画一条插入线。
             if let target = dragTargetRow {
@@ -334,26 +369,13 @@ struct VideoEditTimelineView: View {
                     height: height,
                     pps: pps,
                     isSelected: project.selectedClipIDs.contains(clip.id),
+                    dragOffset: dragOffset(for: clip),
                     project: project,
-                    onDrag: { proposed, dy in
-                        let snapped = project.snap(proposed, excluding: clip.id)
-                        snapGuide = snapped.guide
-                        activeDrag = (clip.id, snapped.time)
-                        project.liveMove(clip.id, toStart: snapped.time)
-                        dragTargetRow = verticalTarget(for: clip, slot: slot, dy: dy)
+                    onDragBegin: { beginClipDrag(clip, slot: slot) },
+                    onDragChange: { translation, pointerViewportX in
+                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
                     },
-                    onDragEnd: {
-                        snapGuide = nil
-                        if let target = dragTargetRow, let drag = activeDrag, drag.clipID == clip.id {
-                            // 跨轨：先回滚水平预挪，整个动作合成一步撤销。
-                            project.cancelLiveEdit()
-                            project.relocate(clip.id, to: target.target, start: drag.proposed)
-                        } else {
-                            project.endLiveEdit()
-                        }
-                        activeDrag = nil
-                        dragTargetRow = nil
-                    },
+                    onDragEnd: { endClipDrag() },
                     onTrim: { leading, delta in
                         project.liveTrim(clip.id, leading: leading, deltaSeconds: delta)
                     },
@@ -369,14 +391,100 @@ struct VideoEditTimelineView: View {
         }
     }
 
+    // MARK: - 剪辑拖动
+
+    /// 这个块此刻的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。
+    /// 整组共用**同一个**位移 —— 逐块各算各的会把相对错位弄坏。
+    private func dragOffset(for clip: EditClip) -> Double? {
+        dragOffset(forShape: clip.id)
+    }
+
+    /// 同上，按 id 查（形状块也走这里）。
+    private func dragOffset(forShape id: UUID) -> Double? {
+        guard let drag = clipDrag, drag.movingIDs.contains(id) else { return nil }
+        return drag.offset
+    }
+
+    private func beginClipDrag(_ clip: EditClip, slot: TrackSlot) {
+        // 开始拖动就收掉悬停预览，画面回播放头 —— 拖动过程里 hover 回调被
+        // ClipBlockView 的 guard 挡住，不会再把 peek 顶回来。
+        project.clock.endPeek()
+        // 拖一个没选中的块 = 单选它；拖已选中的块 = 整组一起动。
+        if !project.selectedClipIDs.contains(clip.id) {
+            project.select(clip.id, additive: false)
+        }
+        guard let plan = project.dragPlan(draggedID: clip.id, slot: slot) else { return }
+        clipDrag = ClipDragSession(
+            subject: .clip(slot: slot),
+            plan: plan,
+            originScrollOffset: scrollOffset
+        )
+    }
+
+    private func beginShapeDrag(_ shape: ShapeAnnotation) {
+        project.clock.endPeek()
+        project.selectedShapeID = shape.id
+        guard let plan = project.shapeDragPlan(shapeID: shape.id) else { return }
+        clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollOffset)
+    }
+
+    /// `pointerViewportX` 是指针在滚动视口里的 x（手势坐标系就钉在视口上）。
+    private func updateClipDrag(translation: CGSize, pointerViewportX: Double) {
+        guard var drag = clipDrag else { return }
+        drag.update(translation: translation, scrollOffset: scrollOffset, pixelsPerSecond: pps)
+        clipDrag = drag
+        dragTargetRow = verticalTarget(for: drag, dy: translation.height)
+        autoScroller.update(
+            pointerX: pointerViewportX,
+            viewportWidth: viewportWidth
+        ) { offset in
+            // 自动滚动那一拍指针没动，位移还是上一次那个，只有滚动量变了。
+            scrollOffset = offset
+            guard var drag = clipDrag else { return }
+            drag.update(translation: drag.translation, scrollOffset: offset, pixelsPerSecond: pps)
+            clipDrag = drag
+        }
+    }
+
+    private func endClipDrag() {
+        autoScroller.stop()
+        defer {
+            clipDrag = nil
+            dragTargetRow = nil
+        }
+        guard let drag = clipDrag else { return }
+        switch drag.subject {
+        case .shape:
+            project.commitShapeDrag(drag.plan, resolution: drag.resolution)
+        case .clip:
+            // 水平平移、跨轨搬运、磁吸插空都在 commitDrag 的**同一次 perform**
+            // 里，所以是一步撤销，也不会出现「视频换了轨、链接音频留在旧时刻」。
+            project.commitDrag(
+                drag.plan,
+                resolution: drag.resolution,
+                crossTrack: dragTargetRow?.target
+            )
+        }
+    }
+
+    /// 主轨磁吸开着时，松手会插进哪条缝。只在块留在自己轨上时给
+    /// —— 跨轨落地走 `relocate`，插入位置是另一套算法，画在这儿会说谎。
+    private var mainInsertionTime: Double? {
+        // 跨轨落地走的是另一套插入算法，这条线画出来会说谎。
+        guard dragTargetRow == nil else { return nil }
+        return clipDrag?.mainInsertionTime
+    }
+
     /// 垂直拖出 18pt 之后开始找目标行：同类行里挑离指尖最近的；
     /// 拖出最上面（视频）/最下面（音频）就是开新轨。
     private func verticalTarget(
-        for clip: EditClip,
-        slot: TrackSlot,
+        for drag: ClipDragSession,
         dy: Double
     ) -> (id: String, target: VideoEditProject.RowTarget)? {
         guard abs(dy) > 18 else { return nil }
+        // 形状只在自己那一行里横向移动，没有跨轨这回事。
+        guard let slot = drag.clipSlot,
+              let clip = project.state.clip(with: drag.draggedID) else { return nil }
         let layouts = rowLayouts()
         guard let source = layouts.first(where: { $0.spec.slot == slot }) else { return nil }
         let pointY = source.midY + dy
@@ -426,18 +534,16 @@ struct VideoEditTimelineView: View {
                     shape: shape,
                     pps: pps,
                     isSelected: project.selectedShapeID == shape.id,
+                    // 形状和剪辑走**同一套**拖动会话：冻结候选、自由落点解析、
+                    // 边缘自动滚动、松手落一次。它每一拍写的也是同一个
+                    // @Published TimelineState，「形状很轻」并不成立。
+                    dragOffset: dragOffset(forShape: shape.id),
                     onSelect: { project.selectedShapeID = shape.id },
-                    onDrag: { proposed in
-                        let snapped = project.snap(proposed, excluding: shape.id)
-                        snapGuide = snapped.guide
-                        project.liveApply { state in
-                            state.updateShape(shape.id) { $0.timelineStart = max(0, snapped.time) }
-                        }
+                    onDragBegin: { beginShapeDrag(shape) },
+                    onDragChange: { translation, pointerViewportX in
+                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
                     },
-                    onDragEnd: {
-                        snapGuide = nil
-                        project.endLiveEdit(rebuildsPreview: false)
-                    }
+                    onDragEnd: { endClipDrag() }
                 )
             }
         }
@@ -703,8 +809,15 @@ private struct TimelineMagnificationBridge: NSViewRepresentable {
 
         private func setScale(_ scale: Double) {
             guard scale.isFinite else { return }
-            pixelsPerSecond.wrappedValue = scale
-            keepAnchorFixed(atScale: scale)
+            // 夹进和工具栏同一份区间：捏合以前只查 finite，能一路缩到 1 以下，
+            // 那时块的位移换算被 max(pps, 1) 兜底，1:1 跟手就坏了。
+            let clamped = min(
+                max(scale, VideoEditProject.zoomRange.lowerBound),
+                VideoEditProject.zoomRange.upperBound
+            )
+            guard clamped != pixelsPerSecond.wrappedValue else { return }
+            pixelsPerSecond.wrappedValue = clamped
+            keepAnchorFixed(atScale: clamped)
         }
 
         private func keepAnchorFixed(atScale scale: Double) {
@@ -867,18 +980,20 @@ private struct ClipBlockView: View {
     let height: Double
     let pps: Double
     let isSelected: Bool
+    /// 拖动中的渲染位移（秒）。nil = 没在被拖。被拖的块和跟着它动的伙伴都拿它
+    /// 画位置 —— 拖动期间模型一个字都不改，所以 `timelineStart` 是拖前那个值。
+    let dragOffset: Double?
     @ObservedObject var project: VideoEditProject
-    /// (水平落点秒, 垂直位移点) —— 垂直分量用来跨轨。
-    let onDrag: (Double, Double) -> Void
+    let onDragBegin: () -> Void
+    /// (手势总位移, 指针在滚动视口里的 x)。垂直分量用来跨轨，x 用来判断到没到
+    /// 视口边缘（自动滚动）。两者都在视口坐标系里量，见 `moveGesture`。
+    let onDragChange: (CGSize, Double) -> Void
     let onDragEnd: () -> Void
     let onTrim: (Bool, Double) -> Void
     let onTrimEnd: () -> Void
 
-    /// 手势开始时的起点/状态，绝对增量都相对它算。
-    @State private var dragStartOrigin: Double?
-    /// 拖动中的视觉位置：跟手画，state 里的磁吸重排照常进行 ——
-    /// 不然拖动块每一拍都被吸回格点，看起来就是闪烁。
-    @State private var dragVisualStart: Double?
+    /// 移动手势进行中（悬停扫帧要让位，第一拍还要开一轮拖动会话）。
+    @State private var isMoving = false
     /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
     @State private var isTrimming = false
     /// 刀片工具的十字光标压没压进光标栈（离开时要弹回来）。
@@ -923,11 +1038,13 @@ private struct ClipBlockView: View {
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .contextMenu { contextMenu }
         .help(clip.name)
-        .offset(x: (dragVisualStart ?? clip.timelineStart) * pps)
-        .zIndex(dragVisualStart != nil ? 10 : 0)
-        // 邻居被磁吸重排时平滑挪过去，别硬跳。裁切中的块例外：
-        // 每个 tick 都在改 timelineStart/宽度，动画反复重定向就是「追手指」的卡顿感。
-        .animation(isTrimming ? nil : .easeOut(duration: 0.12), value: clip.timelineStart)
+        .offset(x: (clip.timelineStart + (dragOffset ?? 0)) * pps)
+        .zIndex(dragOffset != nil ? 10 : 0)
+        // 邻居被磁吸重排时平滑挪过去，别硬跳。**正在被拖/被裁的块必须豁免**：
+        // 它每一拍都在改位置，0.12s 动画反复重定向画出来的就是「低通滤波后的
+        // 鼠标」—— 手越快落后越多，这正是 2026-08-09 那个「光标到最右、块还在
+        // 中间」的 bug。约束见 docs/architecture/timeline-drag-gestures.md。
+        .animation(isTrimming || dragOffset != nil ? nil : .easeOut(duration: 0.12), value: clip.timelineStart)
     }
 
     private var background: some View {
@@ -1001,26 +1118,20 @@ private struct ClipBlockView: View {
     // MARK: 手势
 
     private var moveGesture: some Gesture {
-        DragGesture(minimumDistance: 4)
+        // 坐标系钉在**滚动视口**上，不用 `.local`：拖动会让块自己在手指底下挪窝
+        //（`.offset`），而边缘自动滚动还会把整块内容抽走 —— 两者都会污染以块
+        // 自身为参照的 translation。视口这个参照物既不随块动也不随内容滚，
+        // `value.location.x` 顺带就是指针在视口里的 x，自动滚动判边界直接拿它用。
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
             .onChanged { value in
-                if dragStartOrigin == nil {
-                    dragStartOrigin = clip.timelineStart
-                    // 开始拖动就收掉悬停预览，画面回播放头 —— 拖动过程里
-                    // hover 回调被上面的 guard 挡住，不会再把 peek 顶回来。
-                    project.clock.endPeek()
-                    // 拖一个没选中的块 = 单选它；拖已选中的块 = 整组一起动。
-                    if !project.selectedClipIDs.contains(clip.id) {
-                        project.select(clip.id, additive: false)
-                    }
+                if !isMoving {
+                    isMoving = true
+                    onDragBegin()
                 }
-                guard let origin = dragStartOrigin else { return }
-                let proposed = origin + value.translation.width / pps
-                dragVisualStart = max(0, proposed)
-                onDrag(proposed, value.translation.height)
+                onDragChange(value.translation, value.location.x)
             }
             .onEnded { _ in
-                dragStartOrigin = nil
-                dragVisualStart = nil
+                isMoving = false
                 onDragEnd()
             }
     }
@@ -1074,7 +1185,7 @@ private struct ClipBlockView: View {
         guard !clip.isAudioOnly, !isAudioRow else { return }
         switch phase {
         case .active(let point):
-            guard !project.clock.isPlaying, dragStartOrigin == nil, !isTrimming else { return }
+            guard !project.clock.isPlaying, !isMoving, !isTrimming else { return }
             let x = min(max(0, point.x), width)
             project.clock.peek(at: clip.timelineStart + x / pps)
         case .ended:
@@ -1157,11 +1268,15 @@ private struct ShapeBlockView: View {
     let shape: ShapeAnnotation
     let pps: Double
     let isSelected: Bool
+    /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。
+    let dragOffset: Double?
     let onSelect: () -> Void
-    let onDrag: (Double) -> Void
+    let onDragBegin: () -> Void
+    /// (手势总位移, 指针在滚动视口里的 x)。与剪辑块同一套语义。
+    let onDragChange: (CGSize, Double) -> Void
     let onDragEnd: () -> Void
 
-    @State private var dragStartOrigin: Double?
+    @State private var isMoving = false
 
     var body: some View {
         HStack(spacing: 3) {
@@ -1183,20 +1298,22 @@ private struct ShapeBlockView: View {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
             }
         }
-        .offset(x: shape.timelineStart * pps, y: 3)
+        .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: 3)
+        .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
         .gesture(
-            DragGesture(minimumDistance: 4)
+            // 同剪辑块：块会在手指底下挪窝、自动滚动还会把内容抽走，
+            // 坐标系必须钉在不动的滚动视口上，不能用 .local。
+            DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
                 .onChanged { value in
-                    if dragStartOrigin == nil {
-                        dragStartOrigin = shape.timelineStart
-                        onSelect()
+                    if !isMoving {
+                        isMoving = true
+                        onDragBegin()
                     }
-                    guard let origin = dragStartOrigin else { return }
-                    onDrag(origin + value.translation.width / pps)
+                    onDragChange(value.translation, value.location.x)
                 }
                 .onEnded { _ in
-                    dragStartOrigin = nil
+                    isMoving = false
                     onDragEnd()
                 }
         )

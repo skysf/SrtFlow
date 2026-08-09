@@ -609,11 +609,25 @@ struct TimelineState: Hashable, Sendable {
 
     /// 磁吸：主轨各段首尾相接，有转场的地方按转场时长叠进去。
     mutating func packMain() {
-        var cursor = 0.0
-        for index in mainClips.indices {
-            mainClips[index].timelineStart = cursor
-            cursor = mainClips[index].timelineEnd - transitionOverlap(afterMainIndex: index)
+        for (index, start) in Self.packedStarts(mainClips).enumerated() {
+            mainClips[index].timelineStart = start
         }
+    }
+
+    /// 这组块首尾相接（转场按 xfade 的收紧规则叠掉）后各自的起点。
+    ///
+    /// **磁吸排列和拖动中的主轨插入指示线共用这一份**。指示线必须在「插入之后的
+    /// 最终数组」上调它 —— 插进来的短块会改变相邻关系，能叠掉的量跟着变
+    /// （45% 是按**两边**任一段收紧的），拿插入前的数组算出来的缝会说谎。
+    static func packedStarts(_ clips: [EditClip]) -> [Double] {
+        var starts: [Double] = []
+        starts.reserveCapacity(clips.count)
+        var cursor = 0.0
+        for index in clips.indices {
+            starts.append(cursor)
+            cursor += clips[index].timelineDuration - transitionOverlap(in: clips, afterIndex: index)
+        }
+        return starts
     }
 
     /// 第 index 段和下一段之间实际叠掉的时长。
@@ -621,13 +635,20 @@ struct TimelineState: Hashable, Sendable {
     /// xfade 要求叠的部分不能超过两边任何一段，这里再收紧到 45%，
     /// 免得一段短素材被两头的转场吃光。
     func transitionOverlap(afterMainIndex index: Int) -> Double {
-        guard index >= 0, index + 1 < mainClips.count else { return 0 }
-        let clip = mainClips[index]
+        Self.transitionOverlap(in: mainClips, afterIndex: index)
+    }
+
+    /// 同上，但对任意一组「排成主轨」的块算 —— 拖动中的插入位置预览
+    /// （`TimelineSnap.mainInsertion`）要在**去掉被拖块**的数组上重算一遍游标。
+    /// 公式只有这一份：预览和 `packMain` 用同一个，才不会指示线在这、落点在那。
+    static func transitionOverlap(in clips: [EditClip], afterIndex index: Int) -> Double {
+        guard index >= 0, index + 1 < clips.count else { return 0 }
+        let clip = clips[index]
         guard clip.transitionAfter != .none else { return 0 }
         return min(
             clip.transitionDuration,
             clip.timelineDuration * 0.45,
-            mainClips[index + 1].timelineDuration * 0.45
+            clips[index + 1].timelineDuration * 0.45
         )
     }
 

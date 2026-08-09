@@ -201,7 +201,21 @@ final class VideoEditProject: ObservableObject {
     @Published var linkageEnabled = true
 
     /// 时间线缩放：一秒画多少点。
+    ///
+    /// **写它一律经 `setPixelsPerSecond`**（或本身就受限的 Slider）。捏合曾经
+    /// 直接赋值且只查 `isFinite`，能把比例压到 1 以下 —— 那时块的位移换算
+    /// （`translation / pps`）会被 `max(pps, 1)` 兜底钳住，1:1 跟手当场坏掉：
+    /// 鼠标走 100 点、块只走 50 点。
     @Published var pixelsPerSecond: Double = 24
+
+    /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份。
+    static let zoomRange: ClosedRange<Double> = 4...120
+
+    /// 唯一的缩放入口：夹进 `zoomRange`，非法值原样丢弃。
+    func setPixelsPerSecond(_ value: Double) {
+        guard value.isFinite else { return }
+        pixelsPerSecond = min(max(value, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
+    }
 
     // 各类轨道的行高。有时块太小看不清，在轨道头上下拖就能调，记住上次的值。
     @Published var mainRowHeight: Double {
@@ -333,51 +347,71 @@ final class VideoEditProject: ObservableObject {
         state = snapshot
     }
 
-    /// 拖动剪辑（实时重排版本）：磁吸开着的主轨会当场重排顺序。
+    /// 拖动剪辑**落地**：把这一组块整体挪到 `proposed`，一步撤销、一次预览重建。
+    ///
+    /// 拖动**过程**中一个字都不写进 `state` —— 块的位置在拖动期间只是渲染偏移
+    /// （见 `ClipDragSession`）。每一拍改 state 会连带整个编辑器视图树（预览区、
+    /// 检查器、所有剪辑块）重建、还要重挂一次自动保存，mouseDragged 随即积压，
+    /// 块就追不上光标了。
+    ///
     /// 多选时拖任何一个选中块，其余选中的和链接的伙伴保持相对错位一起动。
-    func liveMove(_ id: UUID, toStart proposed: Double) {
-        beginLiveEdit()
-        guard let origin = liveEditSnapshot,
-              let location = origin.location(of: id),
-              let clip = origin.clip(with: id) else { return }
-        var followers = linkageEnabled ? origin.linkedClipIDs(of: id).subtracting([id]) : []
-        if selectedClipIDs.contains(id) {
-            followers.formUnion(selectedClipIDs.subtracting([id]))
-        }
-        let offsets: [UUID: Double] = Dictionary(uniqueKeysWithValues: followers.compactMap { fid in
-            origin.clip(with: fid).map { (fid, $0.timelineStart - clip.timelineStart) }
-        })
+    /// 主轨磁吸开着时按中心插空，插入位置与拖动中那条指示线走同一个函数。
+    func commitDrag(_ plan: ClipDragPlan, resolution: DragResolution, crossTrack target: RowTarget?) {
         let magnet = magnetEnabled
-
-        liveApply { state in
-            if location.track.isMain && magnet {
-                guard let index = state.mainClips.firstIndex(where: { $0.id == id }) else { return }
-                var clips = state.mainClips
-                let moving = clips.remove(at: index)
-                let center = proposed + moving.timelineDuration / 2
-                var insertAt = clips.count
-                for (i, other) in clips.enumerated()
-                where center < other.timelineStart + other.timelineDuration / 2 {
-                    insertAt = i
-                    break
-                }
-                clips.insert(moving, at: insertAt)
-                state.mainClips = clips
-                state.packMain()
-            } else {
-                let clamped = Self.clampedStart(state, id: id, proposed: proposed)
-                state.update(id) { $0.timelineStart = clamped }
-            }
-            guard let moved = state.clip(with: id) else { return }
-            for follower in followers {
-                let target = moved.timelineStart + (offsets[follower] ?? 0)
-                let clamped = Self.clampedStart(state, id: follower, proposed: target)
-                state.update(follower) { $0.timelineStart = clamped }
-            }
-            // 磁吸关掉的拖动只改了 timelineStart，数组顺序要跟着时间走
-            //（磁吸开的分支 packMain 之后本来就有序，这里是幂等的）。
-            state.sortMainClipsByStart()
+        // 水平平移、跨轨搬运、磁吸插空全都收在**一次** perform 里：一步撤销，
+        // 也不会出现「视频换了轨、链接音频还留在旧时刻」的 A/V 错位。
+        // 状态变换本身是纯值的（`TimelineState.applyDrag`），自检够得着。
+        perform { state in
+            state.applyDrag(plan, resolution: resolution, crossTrack: target, magnet: magnet)
         }
+        if target != nil { selectedClipIDs = [plan.draggedID] }
+    }
+
+    /// 手势开始时冻结这一轮拖动的全部输入。之后每一拍只喂一个 `desiredDelta`，
+    /// 渲染和落地都走 `plan.resolve` —— 落点只有这一份算法。
+    func dragPlan(draggedID id: UUID, slot: TrackSlot) -> ClipDragPlan? {
+        let movingIDs = movingClipIDs(draggedID: id)
+        return ClipDragPlan.make(
+            in: state,
+            draggedID: id,
+            movingIDs: movingIDs,
+            candidates: snapCandidates(moving: movingIDs),
+            magnetMain: slot.isMain && magnetEnabled
+        )
+    }
+
+    /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
+    /// 自由落点、边缘自动滚动）与剪辑走**同一套**。
+    func shapeDragPlan(shapeID id: UUID) -> ClipDragPlan? {
+        guard let shape = state.shapes.first(where: { $0.id == id }) else { return nil }
+        let span = TimelineSpan(start: shape.timelineStart, end: shape.timelineEnd)
+        return ClipDragPlan(
+            draggedID: id,
+            draggedSpan: span,
+            members: [ClipDragPlan.Member(id: id, span: span, obstacles: [])],
+            candidates: snapCandidates(moving: [id]),
+            magnet: nil
+        )
+    }
+
+    /// 形状拖动落地：一步撤销，不重建预览（叠层是 SwiftUI 画的）。
+    func commitShapeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
+        perform(rebuildsPreview: false) { state in
+            for member in plan.members {
+                state.updateShape(member.id) { $0.timelineStart = max(0, member.span.start + resolution.delta) }
+            }
+        }
+    }
+
+    /// 拖 `id` 时会跟着一起动的块（含它自己）：链接组的伙伴 + 多选的其他块。
+    ///
+    /// 吸附候选、渲染偏移、落地三处必须用**同一份**名单：谁在动谁就不能同时
+    /// 当别人的对齐参考点。
+    func movingClipIDs(draggedID id: UUID) -> Set<UUID> {
+        var ids: Set<UUID> = [id]
+        if linkageEnabled { ids.formUnion(state.linkedClipIDs(of: id)) }
+        if selectedClipIDs.contains(id) { ids.formUnion(selectedClipIDs) }
+        return ids
     }
 
     /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
@@ -722,25 +756,6 @@ final class VideoEditProject: ObservableObject {
         selectedClipIDs = []
     }
 
-    /// 自由轨上的落点：不早于 0，不和同轨邻居叠。
-    private static func clampedStart(_ state: TimelineState, id: UUID, proposed: Double) -> Double {
-        guard let location = state.location(of: id), let clip = state.clip(with: id) else { return max(0, proposed) }
-        var start = max(0, proposed)
-        let neighbours = state[track: location.track].filter { $0.id != id }
-        let duration = clip.timelineDuration
-        for other in neighbours.sorted(by: { $0.timelineStart < $1.timelineStart }) {
-            let overlaps = start < other.timelineEnd && other.timelineStart < start + duration
-            guard overlaps else { continue }
-            // 往右让还是往左让，取决于想去的位置更靠哪边。
-            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2 {
-                start = max(0, other.timelineStart - duration)
-            } else {
-                start = other.timelineEnd
-            }
-        }
-        return start
-    }
-
     func setSpeed(_ id: UUID, speed: Double) {
         let clamped = min(max(speed, 0.1), 8)
         let ids = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
@@ -837,76 +852,10 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 垂直拖动的落点：某条现有轨，或者在最上/最下开一条新轨。
-    enum RowTarget: Equatable {
-        case main
-        case overlay(Int)
-        case newOverlayTop
-        case audio(Int)
-        case newAudioBottom
-    }
+    /// 垂直拖动能落到的行。定义在 `VideoEditTimelineEdits.swift`（纯值变换，
+    /// 自检够得着），这里留个别名给视图沿用旧名字。
+    typealias RowTarget = TrackDropTarget
 
-    /// 把剪辑挪到另一条轨（垂直拖动的收尾）。行的上下顺序就是画面的叠放顺序。
-    func relocate(_ id: UUID, to target: RowTarget, start proposed: Double) {
-        guard let clip = state.clip(with: id) else { return }
-        let magnet = magnetEnabled
-        perform { state in
-            // 手动摘下来，先别清空轨 —— target 里的轨编号是按当前排布算的，
-            // 这时候清空轨会让编号移位插错行。收尾再统一清理。
-            if let location = state.location(of: id) {
-                var clips = state[track: location.track]
-                clips.remove(at: location.clipIndex)
-                state[track: location.track] = clips
-            }
-            var moved = clip
-            moved.timelineStart = max(0, proposed)
-            moved.transitionAfter = .none
-
-            switch target {
-            case .main:
-                if magnet {
-                    let center = moved.timelineStart + moved.timelineDuration / 2
-                    var insertAt = state.mainClips.count
-                    for (index, other) in state.mainClips.enumerated()
-                    where center < other.timelineStart + other.timelineDuration / 2 {
-                        insertAt = index
-                        break
-                    }
-                    state.mainClips.insert(moved, at: insertAt)
-                } else {
-                    state.mainClips.append(moved)
-                }
-            case .overlay(let index):
-                if state.overlayTracks.indices.contains(index) {
-                    state.overlayTracks[index].clips.append(moved)
-                    state.overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
-                } else {
-                    state.overlayTracks.append(EditLane(clips: [moved]))
-                }
-            case .newOverlayTop:
-                // 数组末尾 = 层级最高 = 显示在最上面一行。
-                state.overlayTracks.append(EditLane(clips: [moved]))
-            case .audio(let index):
-                if state.audioTracks.indices.contains(index) {
-                    state.audioTracks[index].clips.append(moved)
-                    state.audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
-                } else {
-                    state.audioTracks.append(EditLane(clips: [moved]))
-                }
-            case .newAudioBottom:
-                state.audioTracks.append(EditLane(clips: [moved]))
-            }
-
-            // 挤开重叠（主轨磁吸时 packMain 会处理）。
-            if !(target == .main && magnet) {
-                let clamped = Self.clampedStart(state, id: id, proposed: moved.timelineStart)
-                state.update(id) { $0.timelineStart = clamped }
-            }
-            // 磁吸关掉落到主轨是裸 append，数组顺序要跟着时间走。
-            state.sortMainClipsByStart()
-            state.pruneEmptyTracks()
-        }
-        selectedClipIDs = [id]
-    }
 
     /// 整轨隐藏/显示（快捷键 V）。隐藏的轨灰显不可编辑，预览和导出都跳过。
     func toggleLaneHidden(_ slot: TrackSlot) {
@@ -1047,27 +996,14 @@ final class VideoEditProject: ObservableObject {
 
     // MARK: - 吸附
 
-    /// 拖动时把时刻吸到附近的关键点：0、播放头、别的剪辑的两端。
-    /// 返回吸附后的时刻和吸到的参考点（画参考线用）。
-    func snap(_ proposed: Double, excluding id: UUID?) -> (time: Double, guide: Double?) {
-        guard snappingEnabled else { return (max(0, proposed), nil) }
-        let threshold = 7.0 / max(pixelsPerSecond, 1)
-        var candidates: [Double] = [0, clock.time]
-        for clip in state.allClips where clip.id != id {
-            candidates.append(clip.timelineStart)
-            candidates.append(clip.timelineEnd)
-        }
-        var best: Double?
-        var bestDistance = threshold
-        for candidate in candidates {
-            let distance = abs(candidate - proposed)
-            if distance < bestDistance {
-                bestDistance = distance
-                best = candidate
-            }
-        }
-        if let best { return (max(0, best), best) }
-        return (max(0, proposed), nil)
+    /// 这一轮拖动的吸附参考点（0、播放头、时间线末尾、不动的块的两端）。
+    ///
+    /// **手势开始时算一次就冻住**，拖动中别再重算 —— 理由见
+    /// `TimelineSnap.candidates`。吸附关掉时返回空表：`TimelineSnap.resolve`
+    /// 拿到空候选就原样返回，既不吸也不亮线。
+    func snapCandidates(moving movingIDs: Set<UUID>) -> [Double] {
+        guard snappingEnabled else { return [] }
+        return TimelineSnap.candidates(in: state, moving: movingIDs, playhead: clock.time)
     }
 
     // MARK: - 素材探测
