@@ -68,6 +68,12 @@ final class SpeechTranscriptionService: @unchecked Sendable {
         await SpeechTranscriber.supportedLocales
     }
 
+    /// 已装模型的 locale。自动检测只探针这些（外加素材元数据指名的那一个）：
+    /// 探针不该为每个候选语言触发一次模型下载。
+    static func installedLocales() async -> [Locale] {
+        await SpeechTranscriber.installedLocales
+    }
+
     static func matchedLocale(for identifier: String) async -> Locale? {
         await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
     }

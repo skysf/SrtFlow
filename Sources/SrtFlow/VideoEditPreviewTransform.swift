@@ -114,7 +114,8 @@ struct ClipTransformCanvas: View {
         if let hit {
             project.select(hit.clip.id, additive: false)
         } else {
-            project.selectedClipIDs = []
+            // 点空白 = 三类选择一起退（点中剪辑时互斥由 EditSelection 负责）。
+            project.clearSelection()
         }
     }
 }

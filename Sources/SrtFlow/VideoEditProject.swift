@@ -45,7 +45,22 @@ final class VideoEditProject: ObservableObject {
     @Published private(set) var state = TimelineState() {
         // 时间线的所有写入最终都落在这里（perform / liveApply / applySnapshot
         // 都是给它赋值），所以脏标记和自动保存挂这一个点就够了。
-        didSet { documentDidChange() }
+        didSet {
+            // 同一个理由：删字幕轨、外挂新 .srt、重新生成都会换掉整轨 cue 身份，
+            // 选中的 cue 可能已经不存在了。收在这唯一入口，别指望每个改字幕的
+            // 操作各自记得清一次（PR#22 复审 P2）。
+            pruneSubtitleCueSelection()
+            documentDidChange()
+        }
+    }
+
+    /// 选中的 cue 还在不在当前原文轨上；不在就摘掉选择。
+    /// 只在真的选着 cue 时才遍历，拖布局框那种高频写入不额外付代价。
+    private func pruneSubtitleCueSelection() {
+        guard selection.subtitleCueID != nil else { return }
+        selection.pruneSubtitleCue { id in
+            state.subtitle?.cues.contains { $0.id == id } == true
+        }
     }
 
     // MARK: - 工程文档（.srtflowproj）
@@ -138,22 +153,37 @@ final class VideoEditProject: ObservableObject {
         scheduleRebuild()
     }
 
+    /// 剪辑 / 形状 / 字幕 cue 三类选择的唯一存放处。互斥规则写在
+    /// `EditSelection` 里 —— 下面三个属性只是它的门面，别在任何调用点再手写
+    /// 「顺便清一下另一类」。
+    @Published private(set) var selection = EditSelection()
+
     /// 选中的剪辑们。⌘点选可多选，拖任意一个选中块整组一起动。
-    @Published var selectedClipIDs: Set<UUID> = [] {
-        didSet { if !selectedClipIDs.isEmpty { selectedShapeID = nil } }
+    var selectedClipIDs: Set<UUID> {
+        get { selection.clipIDs }
+        set { selection.selectClips(newValue) }
     }
-    @Published var selectedShapeID: UUID? {
-        didSet { if selectedShapeID != nil { selectedClipIDs = [] } }
+    var selectedShapeID: UUID? {
+        get { selection.shapeID }
+        set { selection.selectShape(newValue) }
+    }
+    /// 轨道上选中的字幕 cue（点选出预览拖框用）。不持久化。
+    var selectedSubtitleCueID: UUID? {
+        get { selection.subtitleCueID }
+        set { selection.selectSubtitleCue(newValue) }
+    }
+
+    /// 三类选择一起清：点预览空白、切工程。
+    func clearSelection() {
+        selection.clear()
     }
 
     /// 点选：普通点是单选，⌘/⇧点是加选或取消。
     func select(_ id: UUID, additive: Bool) {
         if additive {
-            if selectedClipIDs.contains(id) {
-                selectedClipIDs.remove(id)
-            } else {
-                selectedClipIDs.insert(id)
-            }
+            var ids = selectedClipIDs
+            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+            selectedClipIDs = ids
         } else {
             selectedClipIDs = [id]
         }
@@ -400,7 +430,8 @@ final class VideoEditProject: ObservableObject {
             }
         }
         state = snapshot
-        selectedClipIDs = selectedClipIDs.filter { state.clip(with: $0) != nil }
+        // 撤销/重做可能把选中的剪辑整个撤没（cue 那一侧由 state 的 didSet 收）。
+        selection.pruneClips { state.clip(with: $0) != nil }
         // 撤销可能把「还在转静帧」的占位块带回来，转换要是早就完成了，当场补上。
         repairPendingStills()
         scheduleRebuild()
@@ -897,6 +928,23 @@ final class VideoEditProject: ObservableObject {
                 }
             }
         }
+    }
+
+    /// 字幕轨的整轨隐藏/显示（轨道头的眼睛）。语义与其他轨道一致：预览和
+    /// 导出都跳过。字幕不参与 AV 合成，不用重建预览播放器。
+    func toggleSubtitleHidden() {
+        perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
+    }
+
+    /// 预览拖框实时写入工程级字幕布局（liveApply 连续编辑，松手
+    /// endLiveEdit(rebuildsPreview: false) 合成一步撤销；字幕不参与 AV 合成）。
+    func liveSetSubtitleLayout(_ layout: SubtitleLayout) {
+        liveApply { $0.subtitleLayout = layout }
+    }
+
+    /// 点选字幕 cue：与剪辑、形状选择都互斥（互斥规则在 `EditSelection`）。
+    func selectSubtitleCue(_ id: UUID) {
+        selectedSubtitleCueID = id
     }
 
     /// 画布**被用户改过多少次**。

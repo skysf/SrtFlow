@@ -103,7 +103,11 @@ struct VideoEditTimelineView: View {
             isHidden: project.state.mainHidden
         ))
         if project.state.subtitle != nil {
-            result.append(RowSpec(id: "subtitle", icon: "captions.bubble", height: 22, slot: nil, isSubtitle: true))
+            result.append(RowSpec(
+                id: "subtitle", icon: "captions.bubble", height: 22, slot: nil,
+                isSubtitle: true,
+                isHidden: project.state.subtitleHidden
+            ))
         }
         for index in project.state.audioTracks.indices {
             result.append(RowSpec(
@@ -192,6 +196,18 @@ struct VideoEditTimelineView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help("Hide or show this track (V)")
+                            } else if row.isSubtitle {
+                                // 字幕轨的眼睛：语义与其他轨道一致（预览+导出
+                                // 都跳过），只是隐藏状态不挂在 slot 上。
+                                Button {
+                                    project.toggleSubtitleHidden()
+                                } label: {
+                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
+                                        .font(.system(size: 9))
+                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
+                                }
+                                .buttonStyle(.borderless)
+                                .help("Hide or show subtitles")
                             }
                         }
                     }
@@ -265,11 +281,9 @@ struct VideoEditTimelineView: View {
             playhead
         }
         .contentShape(Rectangle())
-        // 点空白处：取消选中。
-        .onTapGesture {
-            project.selectedClipIDs = []
-            project.selectedShapeID = nil
-        }
+        // 点空白处：三类选择一起取消（含字幕 cue —— 漏了它，拖框会在没有任何
+        // 选中项的界面上继续挂着）。
+        .onTapGesture { project.clearSelection() }
     }
 
     @ViewBuilder
@@ -423,20 +437,30 @@ struct VideoEditTimelineView: View {
                 .frame(width: contentWidth)
             if let cues = project.state.subtitle?.cues {
                 ForEach(cues) { cue in
+                    let selected = project.selectedSubtitleCueID == cue.id
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.orange.opacity(0.45))
+                        .fill(Color.orange.opacity(selected ? 0.8 : 0.45))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 3)
+                                .strokeBorder(.white, lineWidth: selected ? 1.2 : 0)
+                        )
                         .frame(
                             width: max(2, (cue.end - cue.start) * pps),
                             height: 14
                         )
                         .offset(x: cue.start * pps, y: 4)
                         .onTapGesture {
+                            // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
+                            // 带进这条字幕，画面上立刻有字可调。
                             clock.seek(to: cue.start + 0.05)
+                            project.selectSubtitleCue(cue.id)
                         }
                         .help(SubtitleSerializer.plainText(cue.text))
                 }
             }
         }
+        // 隐藏中：灰显，与其他轨道的隐藏观感一致。
+        .opacity(project.state.subtitleHidden ? 0.35 : 1)
     }
 
     // MARK: - 播放头

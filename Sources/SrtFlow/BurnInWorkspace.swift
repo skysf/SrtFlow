@@ -19,14 +19,17 @@ enum BurnInWorkspace {
         style: BurnInStyle,
         fontFileURL: URL?,
         aspectRatio: Double,
-        title: String
+        title: String,
+        layout: SubtitleLayout? = nil
     ) throws -> Prepared {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SrtFlow-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let paths = FFmpegCommand.BurnIn()
-        let ass = style.assDocument(cues: cues, aspectRatio: aspectRatio, title: title)
+        let ass = style.assDocument(
+            cues: cues, aspectRatio: aspectRatio, title: title, layout: layout
+        )
         try Data(ass.utf8).write(to: directory.appendingPathComponent(paths.assFileName))
 
         let fontsDirectory = directory.appendingPathComponent(paths.fontsDirName, isDirectory: true)

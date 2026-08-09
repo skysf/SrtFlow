@@ -396,14 +396,13 @@ do {
     let saved = dir.appendingPathComponent("v2.srtflowproj")
     try VideoEditProjectIO.save(timeline(mainMedia: [media]), to: saved)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: saved)) as? [String: Any]
-    // 契约已变（工程帧率落地后）：新版 writer 一律写 latest（v5）。
-    // 原本这里守的是「普通工程别被无谓抬版本」，那个目的现在由「v1–v4 老文件
-    // 仍然读得开」来守（见下方 for oldVersion 循环）。
-    checkEqual(
-        raw?["formatVersion"] as? Int,
-        VideoEditProjectFile.latestFormatVersion,
-        "新版写盘一律用最新格式版本"
-    )
+    // 契约已变（工程帧率落地后）：新版 writer 一律写 latest。
+    // 原本这里守的是「普通工程别被无谓抬版本」，那个目的现在由「v1–v5 老文件
+    // 仍然读得开」来守（见下方 for oldVersion 循环与 v5 老工程用例）。
+    //
+    // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
+    // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
+    checkEqual(raw?["formatVersion"] as? Int, 6, "新版写盘一律用 v6")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -429,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 5, "只有原文轨的工程也写 v5（帧率无条件落盘）")
+    checkEqual(try savedVersion(), 6, "只有原文轨的工程也写 v6（帧率/字幕布局无条件落盘）")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 5, "往返后仍是 v5")
+    checkEqual(try savedVersion(), 6, "往返后仍是 v6")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -449,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 5, "带译文轨的工程写 v5（v4 的登记项已被 v5 覆盖）")
+    checkEqual(try savedVersion(), 6, "带译文轨的工程写 v6（v4 的登记项已被 v5/v6 覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -461,20 +460,101 @@ do {
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.recognitionConfidence, 0.9, "cueMeta 要存住")
     checkEqual(loaded.subtitleCompanion?.cueMeta[cueA.id]?.translationStale, true, "stale 标记要存住")
 
-    // 删光 v4 数据后仍然是 v5：帧率是**无条件**的 v5 字段（每个工程都有帧率，
-    // 而 v4 及更早把帧率硬编码成 30），所以新版 writer 一律写 v5，不再降级。
+    // 字幕轨的眼睛（subtitleHidden，2026-08-09）：往返存住 + 缺键回退 false +
+    // 可见性合同（预览/烧录共用 visible 变体，数据面不受影响）。
+    var hiddenState = loaded
+    hiddenState.subtitleHidden = true
+    try VideoEditProjectIO.save(hiddenState, to: project)
+    let hiddenLoaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(hiddenLoaded.subtitleHidden, true, "subtitleHidden 往返要存住")
+    check(hiddenLoaded.visibleSubtitleDocument(for: .original) == nil,
+          "隐藏时 visible 变体必须为 nil（预览与烧录同一份合同）")
+    check(hiddenLoaded.subtitleDocument(for: .original) != nil,
+          "隐藏不动数据面（独立字幕文件导出仍可用）")
+    var shownState = hiddenLoaded
+    shownState.subtitleHidden = false
+    check(shownState.visibleSubtitleDocument(for: .original) != nil,
+          "显示时 visible 变体要给文档")
+    // 工程级字幕布局覆盖（subtitleLayout）：往返无损；没设置就不落键。
+    var layoutState = loaded
+    layoutState.subtitleLayout = SubtitleLayout(
+        marginLeft: 130, marginRight: 70, marginBottom: 210, fontScale: 1.25
+    )
+    try VideoEditProjectIO.save(layoutState, to: project)
+    let layoutLoaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(
+        layoutLoaded.subtitleLayout,
+        layoutState.subtitleLayout,
+        "subtitleLayout 往返要无损"
+    )
+    try VideoEditProjectIO.save(loaded, to: project)
+    let noLayout = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    let noLayoutTimeline = noLayout?["timeline"] as? [String: Any]
+    check(
+        noLayoutTimeline?["subtitleLayout"] == nil,
+        "没设置布局覆盖的工程不落 subtitleLayout 键"
+    )
+
+    // 旧工程没有这个键：必须回退 false，不许拒开。
+    var rawJSON = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    if var timelineJSON = rawJSON?["timeline"] as? [String: Any] {
+        timelineJSON.removeValue(forKey: "subtitleHidden")
+        rawJSON?["timeline"] = timelineJSON
+        try JSONSerialization.data(withJSONObject: rawJSON!).write(to: project)
+        let legacy = try VideoEditProjectIO.load(from: project).timeline
+        checkEqual(legacy.subtitleHidden, false, "旧工程缺 subtitleHidden 键回退 false")
+    } else {
+        check(false, "工程文件的 timeline 键结构变了，本用例需要跟进")
+    }
+
+    // 删光 v4 数据后仍然是 v6：帧率是**无条件**的 v5 字段（每个工程都有帧率，
+    // 而 v4 及更早把帧率硬编码成 30），字幕布局/可见性是 v6 字段，所以新版
+    // writer 一律写 latest，不再降级。
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 5, "新版 writer 一律写 v5（帧率无条件落盘）")
+    checkEqual(try savedVersion(), 6, "新版 writer 一律写 v6")
 
-    // v5 文件本版能开；v6 拒开（闸门以 reader 上限比较）。
-    check(VideoEditProjectFile.latestFormatVersion == 5, "reader 上限应是 v5")
-    let v6 = dir.appendingPathComponent("v6.srtflowproj")
+    // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
+    //
+    // 这里的数字**故意写死 6**，不引用 `latestFormatVersion`：拿常量跟自己比
+    // 是自反断言，改坏了照样绿（2026-08-07 案例的教训）。要的是外部真值。
+    //
+    // 为什么必须升版本：subtitleLayout 决定字幕的位置/换行宽度/字号，
+    // subtitleHidden 决定它烧不烧进成片。只认 v5 的旧版若照常打开这种工程，
+    // 下一次自动保存会把两个键静默删光 —— 用户调好的排版和「不要烧字幕」的
+    // 意图一起消失，且**导出画面**随之改变。
+    let v6Project = dir.appendingPathComponent("v6-layout.srtflowproj")
+    var v6State = timeline(mainMedia: [media])
+    v6State.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
+    v6State.subtitleLayout = SubtitleLayout(
+        marginLeft: 140, marginRight: 60, marginBottom: 190, fontScale: 1.4
+    )
+    v6State.subtitleHidden = true
+    try VideoEditProjectIO.save(v6State, to: v6Project)
+    let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
+    checkEqual(v6Raw?["formatVersion"] as? Int, 6, "带字幕布局的工程必须写 v6")
+    let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
+    checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "v6 往返：布局无损")
+    checkEqual(v6Loaded.subtitleHidden, true, "v6 往返：隐藏状态无损")
+
+    // v5 老工程（两个键都没有）照常打开，默认 layout=nil、hidden=false ——
+    // 宽容读取的方向不许被版本闸门带坏。
+    let v5Legacy = dir.appendingPathComponent("v5-legacy.srtflowproj")
     try Data("""
-    { "formatVersion": 6, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v6)
-    check((try? VideoEditProjectIO.load(from: v6)) == nil, "未来版本（v6）必须拒开")
+    { "formatVersion": 5, "timeline": { "mainClips": [], "frameRate": 30 }, "media": [] }
+    """.utf8).write(to: v5Legacy)
+    let legacyLoaded = try VideoEditProjectIO.load(from: v5Legacy).timeline
+    checkEqual(legacyLoaded.subtitleLayout, nil, "v5 老工程缺 subtitleLayout 键 → nil")
+    checkEqual(legacyLoaded.subtitleHidden, false, "v5 老工程缺 subtitleHidden 键 → false")
+    checkEqual(legacyLoaded.frameRate, .fps30, "v5 老工程的既有字段照常读回")
+
+    // 闸门另一侧：比 reader 上限更高的 v7 必须拒开。
+    let v7 = dir.appendingPathComponent("v7.srtflowproj")
+    try Data("""
+    { "formatVersion": 7, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v7)
+    check((try? VideoEditProjectIO.load(from: v7)) == nil, "未来版本（v7）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -484,7 +564,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 5, "默认 24fps 也要写 v5，不能降级")
+    checkEqual(try savedVersion(), 6, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -492,7 +572,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 5, "非默认帧率同样是 v5")
+    checkEqual(try savedVersion(), 6, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -811,6 +891,417 @@ do {
     makeFile(still)
     let quiet = VideoEditProjectIO.relocateMedia(urls: [still], records: [:], projectDirectory: dir)
     check(quiet.moved.isEmpty && quiet.missing.isEmpty, "原地未动的素材不该有任何动静")
+}
+
+// MARK: - 20. 字幕生成的可听快照：metadata 只许问真正会响的素材
+//
+// 回归（PR#22 复审 P1）：`metadataLanguageTag` 曾经自己扫
+// `mainClips + audioTracks` —— 不看 mainHidden、不看 lane.isHidden、
+// 不看 mute/volume，还整个漏掉带声音的 overlay。反例是「隐藏的英文主轨 +
+// 可听的日文 overlay」：英文 metadata 当上了最高优先级候选（唯一允许触发
+// 模型下载的那个），探针却抽的是日文 overlay —— 两份互相矛盾的输入。
+//
+// 这里守的**不是一个新纯函数算得对不对**，而是生产代码的取数路径：
+// `TranscriptionTask.detectSourceLocale` 只从 `SubtitleAudibleClips`
+// 拿素材（它连 TimelineState 参数都不再收），所以这两个函数上的断言就是
+// 生产接线上的断言。
+
+do {
+    let dir = root.appendingPathComponent("audible-snapshot")
+    func clip(_ name: String, hasAudio: Bool = true) -> EditClip {
+        let url = dir.appendingPathComponent(name)
+        makeFile(url)
+        var c = EditClip(sourceURL: url, sourceDuration: 10, timelineStart: 0)
+        c.info = MediaInfo(
+            duration: 10,
+            displaySize: CGSize(width: 1920, height: 1080),
+            frameRate: 30,
+            videoCodec: "h264",
+            audioCodec: "aac",
+            hasAudio: hasAudio,
+            audioCanCopyToMP4: true,
+            fileBytes: 2048
+        )
+        return c
+    }
+
+    // 反例场景：主轨（英文）整轨隐藏，可听的是 overlay（日文）与一条音频轨。
+    var state = TimelineState()
+    let hiddenMain = clip("hidden-main-en.mp4")
+    state.mainClips = [hiddenMain]
+    state.mainHidden = true
+    let audibleOverlay = clip("overlay-ja.mp4")
+    state.overlayTracks = [EditLane(clips: [audibleOverlay])]
+    let audibleAudio = clip("music.m4a")
+    state.audioTracks = [EditLane(clips: [audibleAudio])]
+
+    let clips = SubtitleAudibleClips.soundClips(in: state)
+    let ids = clips.map(\.clipID)
+    check(!ids.contains(hiddenMain.id), "隐藏主轨的素材不进可听快照")
+    check(ids.contains(audibleOverlay.id), "带声音的 overlay 必须进可听快照")
+    check(ids.contains(audibleAudio.id), "可听音频轨必须进可听快照")
+
+    let probeOrder = SubtitleAudibleClips.probeOrder(in: clips)
+    guard let firstProbe = probeOrder.first else {
+        check(false, "有可听素材时必须有探针候选")
+        fatalError("unreachable")
+    }
+    // 候选顺序与实际 probe 来源一致：metadata 第一个问的就是探针那一段。
+    checkEqual(firstProbe.clipID, audibleOverlay.id, "探针候选从可听快照第一段真实存在的素材起")
+    let order = SubtitleAudibleClips.metadataOrder(in: clips, probe: firstProbe)
+    checkEqual(order.first?.clipID, firstProbe.clipID, "metadata 查询顺序必须以探针素材打头")
+    checkEqual(order.count, clips.count, "metadata 顺序覆盖整份可听快照，不重不漏")
+    check(!order.contains { $0.clipID == hiddenMain.id }, "隐藏主轨的 metadata 不许参与检测")
+    checkEqual(Set(order.map(\.clipID)), Set(ids), "metadata 顺序是可听快照的一个排列（不许自己找素材）")
+
+    // 静音 / 零音量 / 隐藏 lane 同样出局 —— 与预览、导出同一份可听合同。
+    var muted = TimelineState()
+    var mutedClip = clip("muted.mp4")
+    mutedClip.isMuted = true
+    var zeroVolume = clip("zero-volume.mp4")
+    zeroVolume.volume = 0
+    muted.mainClips = [mutedClip, zeroVolume]
+    muted.overlayTracks = [EditLane(clips: [clip("hidden-lane.mp4")], isHidden: true)]
+    check(SubtitleAudibleClips.soundClips(in: muted).isEmpty,
+          "静音/零音量/隐藏 lane 的素材一个都不该进可听快照")
+    check(SubtitleAudibleClips.probeOrder(in: []).isEmpty, "空快照没有探针候选")
+
+    // 「有没有声音」只认 EditClip.hasAudio —— 与 CompositionBuilder 同一属性。
+    // 回归（PR#22 复审第二轮）：这里曾经写成「info 存在且 hasAudio 为假才排除」，
+    // 于是 info == nil 被当成有声音。宽容解码读回来的老工程、探测还没回来的
+    // 导入中素材全是 info == nil —— 用户**听不到**的段落照样进快照被转写。
+    var infoless = TimelineState()
+    var unknownVideo = clip("unknown-info.mp4")
+    unknownVideo.info = nil                       // 视频，探测信息未知
+    let noAudioVideo = clip("no-audio.mp4", hasAudio: false)
+    var audioOnlyNoInfo = clip("voice-only.m4a")
+    audioOnlyNoInfo.info = nil                    // 纯音频 clip 的 info 常年为 nil
+    audioOnlyNoInfo.isAudioOnly = true
+    infoless.mainClips = [unknownVideo, noAudioVideo]
+    infoless.audioTracks = [EditLane(clips: [audioOnlyNoInfo])]
+    let infolessIDs = SubtitleAudibleClips.soundClips(in: infoless).map(\.clipID)
+    check(!infolessIDs.contains(unknownVideo.id),
+          "info == nil 的视频不算可听（与 CompositionBuilder 同一份 hasAudio 合同）")
+    check(!infolessIDs.contains(noAudioVideo.id), "info 明说没有音轨的视频不算可听")
+    check(infolessIDs.contains(audioOnlyNoInfo.id),
+          "isAudioOnly 的 clip 即使 info == nil 也算可听（2026-08-06 的回退仍在）")
+    check(unknownVideo.hasAudio == false && audioOnlyNoInfo.hasAudio,
+          "EditClip.hasAudio 本身的语义没被改坏")
+
+    // 文件真不在磁盘上的素材抽不出音频，不许被选成探针。
+    var ghostState = TimelineState()
+    var ghost = clip("ghost.mp4")
+    try? manager.removeItem(at: ghost.sourceURL)
+    let realOne = clip("real.mp4")
+    ghostState.mainClips = [ghost, realOne]
+    let ghostClips = SubtitleAudibleClips.soundClips(in: ghostState)
+    checkEqual(ghostClips.count, 2, "文件不在也仍进快照（转写阶段另有跳过逻辑）")
+    checkEqual(SubtitleAudibleClips.probeOrder(in: ghostClips).first?.clipID, realOne.id,
+               "探针候选跳过磁盘上不存在的素材")
+    ghost.volume = 1  // 消掉未使用告警的同时保持 ghost 可写
+}
+
+// MARK: - 20b. 探针必须**真抽一次**才算数（不是「文件存在」就当可读）
+//
+// 回归（PR#22 复审第二轮 P2）：探针原来只挑「第一段文件存在的素材」，抽取失败
+// 就整个 Auto-detect 失败。第一段完全可能是无音轨的视频或半截文件，而后面就
+// 跟着一条正常音频轨 —— 用户手里明明有可用的声音，却被告知检测不了。
+//
+// 错误分流照 collectWindows 的责任面：素材的错换下一段，基础设施错误和取消上抛。
+
+do {
+    let dir = root.appendingPathComponent("probe-retry")
+    func soundClip(_ name: String) -> SubtitleAudibleClips.SoundClip {
+        let url = dir.appendingPathComponent(name)
+        makeFile(url)
+        return SubtitleAudibleClips.SoundClip(
+            clipID: UUID(), name: name, url: url, fingerprint: name,
+            knownAssetDuration: 30, sourceStart: 2, sourceDuration: 30,
+            timelineStart: 0, speed: 1, laneRank: 0
+        )
+    }
+    let broken = soundClip("broken.mp4")
+    let good = soundClip("good.m4a")
+    let third = soundClip("third.m4a")
+
+    struct Boom: Error {}
+
+    // 第一段读不了 → 顺延到第二段，并把跳过的记下来。
+    let picked = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good, third], probeSeconds: 20
+    ) { clip, _ in
+        if clip.clipID == broken.clipID {
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+        return clip.url
+    }
+    checkEqual(picked?.clip.clipID, good.clipID, "第一段读不出音频时探针顺延到下一段")
+    checkEqual(picked?.skipped.count, 1, "跳过的素材要记下来")
+    checkEqual(picked?.skipped.first?.name, "broken.mp4", "跳过记录带素材名")
+    // 抽取区间按 clip 自己的源起点 + 探针时长截断。
+    checkEqual(picked?.range.start, 2, "探针区间从 clip 的源起点开始")
+    checkEqual(picked?.range.end, 22, "探针区间按 probeSeconds 截断")
+
+    // 全都读不了 → nil（调用方报「素材读不了，请重新链接」）。
+    let none = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good], probeSeconds: 20
+    ) { _, _ in throw AudioWindowReader.ReadError(message: "nope") }
+    check(none == nil, "全部候选都读不出音频时返回 nil")
+
+    // 基础设施错误不许被当成「这段素材不行」吞掉 —— 必须整体失败。
+    var rethrew = false
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good], probeSeconds: 20
+        ) { _, _ in throw AudioWindowReader.InfrastructureError(message: "disk full") }
+    } catch is AudioWindowReader.InfrastructureError {
+        rethrew = true
+    } catch {}
+    check(rethrew, "基础设施错误必须直穿，不许伪装成「素材不可读」")
+
+    // 取消同样直穿。
+    var cancelled = false
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good], probeSeconds: 20
+        ) { _, _ in throw CancellationError() }
+    } catch is CancellationError {
+        cancelled = true
+    } catch {}
+    check(cancelled, "取消必须直穿")
+
+    // 第一段就能读时不该有任何跳过记录，也不该多试。
+    var attempts = 0
+    let straight = try await SubtitleAudibleClips.selectProbe(
+        in: [good, third], probeSeconds: 20
+    ) { clip, _ in attempts += 1; return clip.url }
+    checkEqual(attempts, 1, "第一段能读就不再往下试")
+    check(straight?.skipped.isEmpty == true, "没跳过任何素材时记录为空")
+    _ = Boom.self
+
+    // ---- 取消不许被跳过逻辑洗成「素材都读不了」（PR#22 复审第三轮 P2）----
+    //
+    // 跳过逻辑天生要吞错误。用户按 Stop 之后，剩下的候选照样各抛一个 ReadError，
+    // 全被吞掉就走到 return nil，调用方翻成「素材都读不了」——终态从 .cancelled
+    // 变成 .failed，用户明明是自己取消的。
+
+    // ① 任务自己的取消通道（生产是 token.isCancelled）：抽取器抛的仍是
+    //    **ReadError**，判别点就在这里 —— 结果必须是 CancellationError。
+    var tokenCancelled = false
+    var tokenAttempts = 0
+    var tokenOutcome: Error?
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good, third], probeSeconds: 20,
+            isCancelled: { tokenCancelled }
+        ) { _, _ in
+            tokenAttempts += 1
+            tokenCancelled = true   // 用户在第一段抽取期间按了 Stop
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+    } catch {
+        tokenOutcome = error
+    }
+    check(tokenOutcome is CancellationError,
+          "取消期间的 ReadError 必须归成 CancellationError，不许被吞掉继续找")
+    checkEqual(tokenAttempts, 1, "取消之后不许再试下一段")
+
+    // ② 结构化取消（Task.isCancelled）：同样不许被 ReadError 洗掉。
+    //    在闭包里就地取消当前任务 —— 比「先建 Task 再 cancel」确定得多。
+    var structuredAttempts = 0
+    let structured = await Task { () -> Error? in
+        do {
+            _ = try await SubtitleAudibleClips.selectProbe(
+                in: [broken, good, third], probeSeconds: 20
+            ) { _, _ in
+                structuredAttempts += 1
+                withUnsafeCurrentTask { $0?.cancel() }
+                throw AudioWindowReader.ReadError(message: "no audio track")
+            }
+            return nil
+        } catch {
+            return error
+        }
+    }.value
+    check(structured is CancellationError,
+          "结构化取消期间的 ReadError 同样要归成 CancellationError")
+    checkEqual(structuredAttempts, 1, "结构化取消之后不许再试下一段")
+
+    // ③ **最后一段**失败的同时取消：不许走到 return nil。
+    //    这条把「顺序错误」整个消掉 —— nil 的含义收窄成「确实全读不出音频」，
+    //    调用方再把 nil 翻成 TaskError 就永远不会冤枉取消。
+    var lateCancelled = false
+    var lateOutcome: Error?
+    var sawNil = false
+    do {
+        let result = try await SubtitleAudibleClips.selectProbe(
+            in: [broken], probeSeconds: 20, isCancelled: { lateCancelled }
+        ) { _, _ in
+            lateCancelled = true    // 唯一一段失败的同时用户按了 Stop
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+        sawNil = result == nil
+    } catch {
+        lateOutcome = error
+    }
+    check(lateOutcome is CancellationError, "最后一段失败时若已取消，必须抛取消而不是返回 nil")
+    check(!sawNil, "取消状态下不许把 nil 交给调用方（会被翻成「素材都读不了」）")
+
+    // ④ 进门就已经取消：一次抽取都不许发起（探针是 20s 音频，白跑很贵），
+    //    而且必须抛取消 —— 哪怕素材完全读得出来。
+    var preAttempts = 0
+    var preOutcome: Error?
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [good, third], probeSeconds: 20, isCancelled: { true }
+        ) { clip, _ in preAttempts += 1; return clip.url }
+    } catch {
+        preOutcome = error
+    }
+    check(preOutcome is CancellationError, "进门已取消时必须直接抛取消")
+    checkEqual(preAttempts, 0, "进门已取消时一次抽取都不许发起")
+
+    // 反过来：没有取消时，全失败仍然是 nil（调用方照旧报「素材读不了」）。
+    let genuinelyUnreadable = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good], probeSeconds: 20
+    ) { _, _ in throw AudioWindowReader.ReadError(message: "nope") }
+    check(genuinelyUnreadable == nil, "没取消时全失败仍是 nil，不许伪装成取消")
+}
+
+// MARK: - 20c. 真实媒体：无音轨的视频 → 后面的音频素材仍要能当探针
+//
+// 上面那组用注入的抽取器验分流**策略**；这一组把生产的
+// `AudioWindowReader.extract` 真接上去，喂 ffmpeg 现造的两个文件：
+// 一个**真的没有音轨**的 mp4，和一段真的有声音的 m4a。
+// 之前的守卫用 makeFile（重复字节的假文件）恰好抓不到这个回归 —— 假文件
+// 连「文件存在」这一关都过不了真实解码，测不出「存在 ≠ 可读」。
+
+do {
+    guard let mediaPath = ProcessInfo.processInfo.environment["SRTFLOW_CHECK_MEDIA"] else {
+        // 静默跳过 = 假绿。没有素材就明确失败。
+        check(false, "缺 SRTFLOW_CHECK_MEDIA：真实媒体探针守卫无法运行（脚本该现造素材）")
+        fatalError("missing SRTFLOW_CHECK_MEDIA")
+    }
+    let mediaDir = URL(fileURLWithPath: mediaPath, isDirectory: true)
+    let silentVideo = mediaDir.appendingPathComponent("silent-no-audio.mp4")
+    let realAudio = mediaDir.appendingPathComponent("real-voice.m4a")
+    check(manager.fileExists(atPath: silentVideo.path), "无音轨视频素材要在")
+    check(manager.fileExists(atPath: realAudio.path), "有声音的素材要在")
+
+    func soundClip(_ url: URL) -> SubtitleAudibleClips.SoundClip {
+        SubtitleAudibleClips.SoundClip(
+            clipID: UUID(), name: url.lastPathComponent, url: url,
+            fingerprint: url.path, knownAssetDuration: 5,
+            sourceStart: 0, sourceDuration: 5, timelineStart: 0, speed: 1, laneRank: 0
+        )
+    }
+    let noAudio = soundClip(silentVideo)
+    let voice = soundClip(realAudio)
+
+    // 「文件存在」这一关两个都过 —— 正是本回归的关键：光看存在分不出好坏。
+    checkEqual(
+        SubtitleAudibleClips.probeOrder(in: [noAudio, voice]).map(\.clipID),
+        [noAudio.clipID, voice.clipID],
+        "两个文件都存在，probeOrder 分不出谁可读（所以必须真抽一次）"
+    )
+
+    let outDir = root.appendingPathComponent("probe-real")
+    try manager.createDirectory(at: outDir, withIntermediateDirectories: true)
+    let selection = try await SubtitleAudibleClips.selectProbe(
+        in: [noAudio, voice], probeSeconds: 20
+    ) { clip, range in
+        try await AudioWindowReader.extract(
+            assetURL: clip.url, range: range, into: outDir, isCancelled: { false }
+        )
+    }
+    checkEqual(selection?.clip.clipID, voice.clipID,
+               "真实媒体：无音轨的视频被跳过，探针落到后面的音频素材")
+    checkEqual(selection?.skipped.count, 1, "真实媒体：无音轨视频要进跳过记录")
+    let extracted = selection.map { manager.fileExists(atPath: $0.file.path) } ?? false
+    check(extracted, "真实媒体：探针 CAF 要真的写出来")
+    let size = selection.flatMap {
+        (try? manager.attributesOfItem(atPath: $0.file.path)[.size] as? NSNumber)??.intValue
+    } ?? 0
+    check(size > 4096, "真实媒体：探针 CAF 不该是个空壳（实测 \(size) 字节）")
+
+    // 反向：只有无音轨的视频时必须返回 nil，不许硬凑一个探针出来。
+    let onlyBroken = try await SubtitleAudibleClips.selectProbe(
+        in: [noAudio], probeSeconds: 20
+    ) { clip, range in
+        try await AudioWindowReader.extract(
+            assetURL: clip.url, range: range, into: outDir, isCancelled: { false }
+        )
+    }
+    check(onlyBroken == nil, "真实媒体：全是无音轨素材时定不出探针")
+}
+
+// MARK: - 21. 三类选择互斥：剪辑 / 形状 / 字幕 cue
+//
+// 回归（PR#22 复审 P2）：互斥曾经散在两个 didSet 和一个入口函数里，漏了
+// 「选 cue 不清形状」和「选形状不清 cue」两条边 —— 先点形状再点 cue，
+// 预览上同时挂两套框。规则现在全在 `EditSelection` 里（字段 private(set)，
+// 只能走这几个 mutating 方法），VideoEditProject 的三个属性只是它的门面。
+
+do {
+    let clipA = UUID(), clipB = UUID(), shape = UUID(), cue = UUID(), otherCue = UUID()
+
+    // clip → 清形状 + cue
+    var s = EditSelection()
+    s.selectShape(shape)
+    s.selectClips([clipA, clipB])
+    checkEqual(s.clipIDs, [clipA, clipB], "选剪辑要生效")
+    checkEqual(s.shapeID, nil, "选剪辑清形状")
+    checkEqual(s.subtitleCueID, nil, "选剪辑清字幕 cue")
+
+    // shape → 清剪辑 + cue（原来漏的边之一）
+    s = EditSelection()
+    s.selectSubtitleCue(cue)
+    s.selectShape(shape)
+    checkEqual(s.shapeID, shape, "选形状要生效")
+    checkEqual(s.subtitleCueID, nil, "选形状必须清字幕 cue（cue→shape 方向）")
+    checkEqual(s.clipIDs, [], "选形状清剪辑")
+
+    // cue → 清剪辑 + 形状（原来漏的边之二）
+    s = EditSelection()
+    s.selectShape(shape)
+    s.selectSubtitleCue(cue)
+    checkEqual(s.subtitleCueID, cue, "选 cue 要生效")
+    checkEqual(s.shapeID, nil, "选 cue 必须清形状（shape→cue 方向）")
+    s.selectClips([clipA])
+    s.selectSubtitleCue(cue)
+    checkEqual(s.clipIDs, [], "选 cue 清剪辑")
+
+    // 取消不算改选：⌘点减到空不该顺手抹掉别的类别。
+    s = EditSelection()
+    s.selectSubtitleCue(cue)
+    s.selectClips([])
+    checkEqual(s.subtitleCueID, cue, "把剪辑选择清空不等于改选，别动 cue")
+    s.selectShape(nil)
+    checkEqual(s.subtitleCueID, cue, "把形状选择清空同理")
+
+    // 切工程：三类一起清（closeCurrentDocument 调的就是它）。
+    s = EditSelection()
+    s.selectClips([clipA])
+    s.selectShape(shape)
+    s.selectSubtitleCue(cue)
+    s.clear()
+    check(s.clipIDs.isEmpty && s.shapeID == nil && s.subtitleCueID == nil,
+          "clear() 必须三类一起清（切工程/点空白）")
+
+    // 删除或换掉字幕轨：旧 cue 身份对不上就摘掉选择，别留悬空拖框。
+    s = EditSelection()
+    s.selectSubtitleCue(cue)
+    s.pruneSubtitleCue { $0 == otherCue }
+    checkEqual(s.subtitleCueID, nil, "字幕轨换成新 cue 身份后要摘掉旧选择")
+    s.selectSubtitleCue(cue)
+    s.pruneSubtitleCue { $0 == cue }
+    checkEqual(s.subtitleCueID, cue, "cue 还在就别乱摘")
+
+    // 撤销把剪辑撤没了同理。
+    s = EditSelection()
+    s.selectClips([clipA, clipB])
+    s.pruneClips { $0 == clipA }
+    checkEqual(s.clipIDs, [clipA], "撤销后不存在的剪辑要从选择里摘掉")
 }
 
 try? manager.removeItem(at: root)

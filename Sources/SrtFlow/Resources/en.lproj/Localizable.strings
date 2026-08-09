@@ -310,6 +310,8 @@
 
 "Play (Space)" = "Play (Space)";
 "Hide or show this track (V)" = "Hide or show this track (V)";
+"Hide or show subtitles" = "Hide or show subtitles";
+"Subtitle track is hidden — nothing will be burned." = "Subtitle track is hidden — nothing will be burned.";
 "%d clips selected" = "%d clips selected";
 "Drag any selected clip to move them together. Export can render just the selection." = "Drag any selected clip to move them together. Export can render just the selection.";
 "Full timeline" = "Full timeline";
@@ -329,7 +331,6 @@
 "Bilingual" = "Bilingual";
 "Edit Subtitles…" = "Edit Subtitles…";
 "Translate" = "Translate";
-"Attach or generate a subtitle track first." = "Attach or generate a subtitle track first.";
 "Target language" = "Target language";
 "%@ (needs download)" = "%@ (needs download)";
 "Translate All" = "Translate All";
@@ -338,10 +339,20 @@
 "Translated %d cues." = "Translated %d cues.";
 "Another translation is still running." = "Another translation is still running.";
 "Translation failed for an unknown reason." = "Translation failed for an unknown reason.";
+"The subtitles are already in %@ — nothing to translate." = "The subtitles are already in %@ — nothing to translate.";
+"Translation from %1$@ to %2$@ isn't supported on this Mac." = "Translation from %1$@ to %2$@ isn't supported on this Mac.";
+"Subtitles are already in %@ — translation skipped." = "Subtitles are already in %@ — translation skipped.";
+"The translation model isn't installed. Try again and approve the model download when it appears." = "The translation model isn't installed. Try again and approve the model download when it appears.";
+"Translation between these two languages isn't supported on this Mac." = "Translation between these two languages isn't supported on this Mac.";
+"Couldn't identify the subtitle language, so it can't be translated automatically." = "Couldn't identify the subtitle language, so it can't be translated automatically.";
 "Generate from audio" = "Generate from audio";
 "Speech transcription needs macOS 26 or later." = "Speech transcription needs macOS 26 or later.";
 "Speech transcription isn't available on this Mac." = "Speech transcription isn't available on this Mac.";
-"Spoken language" = "Spoken language";
+"Source language" = "Source language";
+"Auto-detect" = "Auto-detect";
+"Detecting spoken language…" = "Detecting spoken language…";
+"Couldn't confidently detect the spoken language. Pick it in the panel and generate again." = "Couldn't confidently detect the spoken language. Pick it in the panel and generate again.";
+"Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded." = "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded.";
 "Translate after generating" = "Translate after generating";
 "Generate Subtitles" = "Generate Subtitles";
 "Replace the current subtitle track?" = "Replace the current subtitle track?";

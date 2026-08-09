@@ -61,9 +61,10 @@ struct SubtitleExportOptions {
     var files: Set<FileItem> = []
 
     /// 烧录进滤镜图的文档（选择的轨道合成 + 合同排序），选 none 得 nil。
+    /// 走 visible 变体：字幕轨隐藏（眼睛）时不烧录，与预览同一份合同。
     func burnDocument(state: TimelineState) -> SubtitleDocumentModel? {
         guard let choice = burn.trackChoice else { return nil }
-        return state.subtitleDocument(for: choice)
+        return state.visibleSubtitleDocument(for: choice)
     }
 }
 
@@ -94,9 +95,17 @@ struct SubtitleExportSection: View {
                     if !has, needsTranslation(options.burn) { options.burn = .original }
                 }
                 if options.burn != .none {
-                    Label("Burned with the Burn In tool's current style.", systemImage: "captions.bubble")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    if exportState.subtitleHidden {
+                        // 轨道头的眼睛关着：烧录合同会得到 nil（burnDocument
+                        // 走 visible 变体），这里把「为什么没烧」说出来。
+                        Label("Subtitle track is hidden — nothing will be burned.", systemImage: "eye.slash")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                    } else {
+                        Label("Burned with the Burn In tool's current style.", systemImage: "captions.bubble")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
 
                 Divider()

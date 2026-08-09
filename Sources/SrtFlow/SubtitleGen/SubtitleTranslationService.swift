@@ -51,6 +51,30 @@ final class SubtitleTranslationService: ObservableObject {
         guard let original = project.state.subtitle, !original.cues.isEmpty else {
             return .nothingToDo
         }
+        // 配对预检（2026-08-09 案例）：目标与源同语种、或配对明确不支持时，
+        // 在提交前就用能行动的文案拦下，不把系统的泛化「Unable to Translate」
+        // 丢给用户。源语言未知时放行，交给系统自己识别。
+        let targetLang = Locale.Language(identifier: targetLanguage)
+        if let source = sourceLanguage {
+            let sourceLang = Locale.Language(identifier: source)
+            if TranslationPreflight.isSameTranslationLanguage(sourceLang, targetLang) {
+                let message = String(
+                    format: L10n("The subtitles are already in %@ — nothing to translate."),
+                    TranslationPreflight.displayName(of: targetLang)
+                )
+                lastError = message
+                return .failed(message)
+            }
+            if await LanguageAvailability().status(from: sourceLang, to: targetLang) == .unsupported {
+                let message = String(
+                    format: L10n("Translation from %1$@ to %2$@ isn't supported on this Mac."),
+                    TranslationPreflight.displayName(of: sourceLang),
+                    TranslationPreflight.displayName(of: targetLang)
+                )
+                lastError = message
+                return .failed(message)
+            }
+        }
         let companion = project.state.subtitleCompanion
         let translatedIDs = Set((companion?.translation?.cues ?? []).map(\.id))
         let generation = project.documentGeneration

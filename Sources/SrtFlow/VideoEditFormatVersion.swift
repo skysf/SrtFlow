@@ -1,9 +1,13 @@
 import Foundation
 import SrtFlowCore
 
-// formatVersion 按需写入（docs/plans/2026-08-06-native-subtitle-generation.md 7.4）：
-// reader 认到 v4，writer 只在真的存在 v4-only 数据时才写 4，普通工程继续写 3 ——
-// 版本闸门只对真正用了新功能的工程关门。
+// formatVersion 的登记清单。原始机制是「按需写入」
+//（docs/plans/2026-08-06-native-subtitle-generation.md 7.4）：writer 只在真的
+// 存在高版本 only 数据时才抬版本，版本闸门只对真正用了新功能的工程关门。
+// v5（工程帧率）起这个机制被无条件要求覆盖 —— 每个工程都有帧率，所以 writer
+// 一律写 latest。下面的判据保留为**登记清单**：加新字段时先在这里回答
+// 「旧版拿到它会不会毁数据」，答案为是就开一个新版本号。
+// 长期约束见 docs/architecture/video-edit-project-file.md。
 
 extension TimelineState {
     /// 是否存在「旧版打开会被静默丢掉」的 v4-only 持久数据。
@@ -31,6 +35,26 @@ extension TimelineState {
     /// 回退只发生在**读**：v1–v4 的老文件没有这个键，按 24 回退（那些文件
     /// 本来就没有帧率语义，选 24 是产品默认值，不是在猜旧行为）。
     var requiresFormatVersion5: Bool { true }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v6-only 持久数据。
+    ///
+    /// **登记清单（新增 v6-only 字段必须同步补进来）：**
+    /// 1. `subtitleLayout` —— 工程级字幕布局覆盖（位置 / 换行宽度 / 字号倍率）。
+    /// 2. `subtitleHidden` —— 字幕轨的眼睛。
+    ///
+    /// 两个字段都是 2026-08-09 那批字幕轨 UX 加进 `TimelineState` 的，但当时
+    /// 没升版本。后果是标准的「旧版静默毁数据」：只认 v5 的旧版照常打开新工程，
+    /// 用户随手编辑一下触发自动保存，布局就被删光 —— 字幕位置/宽度/字号连同
+    /// **导出画面**一起变回默认，而 `subtitleHidden` 被抹掉还会让本该隐藏的
+    /// 字幕重新烧进成片。判断标准见
+    /// docs/bugfixes/2026-08-04-transform-review.md：问的不是「新版能不能读
+    /// 旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// 注意 `subtitleHidden` 无条件落盘（Codable 里是 `encode` 不是
+    /// `encodeIfPresent`），所以这个判据恒为真；`subtitleLayout` 仍按需写键。
+    /// 判据本身保留是为了登记清单的可读性 —— writer 的定版已被 v5 的无条件
+    /// 要求接管（一律写 latest）。
+    var requiresFormatVersion6: Bool { true }
 
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。

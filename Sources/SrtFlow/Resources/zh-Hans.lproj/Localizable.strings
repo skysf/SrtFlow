@@ -310,6 +310,8 @@
 
 "Play (Space)" = "播放（空格）";
 "Hide or show this track (V)" = "隐藏/显示这条轨道（V）";
+"Hide or show subtitles" = "隐藏/显示字幕";
+"Subtitle track is hidden — nothing will be burned." = "字幕轨已隐藏 —— 不会烧录进导出。";
 "%d clips selected" = "已选中 %d 段";
 "Drag any selected clip to move them together. Export can render just the selection." = "拖动任意选中段可整组移动。导出时可以只导出选中的内容。";
 "Full timeline" = "完整时间线";
@@ -329,7 +331,6 @@
 "Bilingual" = "双语";
 "Edit Subtitles…" = "编辑字幕…";
 "Translate" = "翻译";
-"Attach or generate a subtitle track first." = "请先挂载或生成一条字幕轨。";
 "Target language" = "目标语言";
 "%@ (needs download)" = "%@（需下载）";
 "Translate All" = "全部翻译";
@@ -338,10 +339,20 @@
 "Translated %d cues." = "已翻译 %d 条。";
 "Another translation is still running." = "已有一个翻译任务在进行中。";
 "Translation failed for an unknown reason." = "翻译失败，原因未知。";
+"The subtitles are already in %@ — nothing to translate." = "字幕已经是%@，无需翻译。";
+"Translation from %1$@ to %2$@ isn't supported on this Mac." = "这台 Mac 不支持从%1$@翻译到%2$@。";
+"Subtitles are already in %@ — translation skipped." = "字幕已经是%@，已跳过翻译。";
+"The translation model isn't installed. Try again and approve the model download when it appears." = "翻译模型尚未安装。请重试，并在系统请求时同意下载模型。";
+"Translation between these two languages isn't supported on this Mac." = "这台 Mac 不支持这两种语言之间的翻译。";
+"Couldn't identify the subtitle language, so it can't be translated automatically." = "无法识别字幕的语言，无法自动翻译。";
 "Generate from audio" = "从音频生成";
 "Speech transcription needs macOS 26 or later." = "语音转写需要 macOS 26 或更高版本。";
 "Speech transcription isn't available on this Mac." = "这台 Mac 不支持语音转写。";
-"Spoken language" = "音频语言";
+"Source language" = "源语言";
+"Auto-detect" = "自动检测";
+"Detecting spoken language…" = "正在检测音频语言…";
+"Couldn't confidently detect the spoken language. Pick it in the panel and generate again." = "无法可靠地检测音频语言。请在面板里手动选择后重新生成。";
+"Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded." = "无法检测音频语言 —— 本机没有已安装的语音模型。请手动选择语言以便下载对应模型。";
 "Translate after generating" = "生成后顺便翻译";
 "Generate Subtitles" = "生成字幕";
 "Replace the current subtitle track?" = "替换当前的字幕轨？";

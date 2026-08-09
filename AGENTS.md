@@ -133,6 +133,17 @@
   `committed` 以时间线为准）、PNG 归属与清理、波纹只到主轨+音频、抽帧零容差
   与叠化区禁用、关键帧烘成静态值、纯值变换必须留在 `VideoEditTimelineEdits`；
   **改定格/静帧管线/时间线插入前必读**
+- [subtitle-language-flow.md](docs/architecture/subtitle-language-flow.md) —
+  字幕面板语言流：目标语言必须当着用户的面选定、翻译入口一律预检
+  （同语种/unsupported 提交前拦下）、生成后翻译遇同语种=跳过不是失败、
+  TranslationError 不许原样透传、Auto-detect 两段式检测合同与人肉回归清单；
+  **改字幕面板/翻译服务/转写任务的语言逻辑前必读**
+- [subtitle-track-visibility-and-layout.md](docs/architecture/subtitle-track-visibility-and-layout.md) —
+  字幕轨可见性与工程级布局：眼睛走 `visibleSubtitleDocument` 单一收口
+  （文件导出故意豁免）、SubtitleLayout 只有 1080p 基准一种坐标系且预览与
+  ASS 共用同一份、覆盖后锚定固定底部中心、拖框语义（框体=移动/边=换行
+  宽度/角=等比字号）、分段默认单行 + 参数集版本合同；
+  **改字幕轨 UI/预览叠层/烧录样式/分段默认值前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 
@@ -305,6 +316,66 @@
   在开文件那一步就死。教训：修完性能要再量一次**边际**成本；性能断言用
   「多出来的 119 帧 ≤ 一次解码」这种自校准判据，别写死秒数；tile grid 型 heic
   不许用 `-filter_complex "[0:v]"` 绕（会把 4000×3000 悄悄变成一块 512×512 瓦片）
+- [2026-08-09-subtitle-translate-after-same-language.md](docs/bugfixes/2026-08-09-subtitle-translate-after-same-language.md) —
+  生成后翻译报「Unable to Translate」：目标语言在 Picker 未渲染时被自动敲定，
+  英语系统上恰好等于源语言 → en→en 自我配对；系统对一切配对失败只回同一句
+  通用文案、且无物可下载所以永远不弹下载确认，用户把红字安在了失败后才显示
+  出来的中文头上。修成：目标语言必须可见才可被消费 + TranslationPreflight
+  提交前预检 + 同语种按跳过处理 + 错误按 cause 分类；同时源语言默认
+  Auto-detect（两段式探针检测）。教训：不可见的控件不许持有可生效的选择；
+  上一次修复选出的"好默认值"换条路径就是事故值；「没弹下载确认」是无物可
+  下载路径的**特征**而不是故障。长期约束见 architecture/subtitle-language-flow。
+  **复审 follow-up 见下一条 —— 那次 review 并没有全过**
+- [2026-08-09-pr22-review-followups.md](docs/bugfixes/2026-08-09-pr22-review-followups.md) —
+  PR#22 复审四连：①**又忘升 formatVersion**（subtitleLayout/subtitleHidden 落了盘、
+  版本号还停在 5，旧版打开→自动保存→排版删光、导出画面跟着变；设了「不烧字幕」
+  的工程还会把字幕烧进成片），而守卫写的是 `latestFormatVersion == 5` ——
+  自反断言，忘了升照样绿；②自动检测**敢猜**：阈值 0.45 低于实测错误模型的
+  0.55（上限 0.74），`pick([错误模型])` 会成功，无 confidence 按 0.5 也过线，
+  生产代码还留着「单候选直接采用」的零证据捷径；③`metadataLanguageTag` 自己扫
+  `mainClips + audioTracks` 绕开可听合同（不看眼睛/静音、漏 overlay）——
+  隐藏英文主轨 + 可听日文 overlay 会拿英文当首选候选却用日文做探针；
+  ④三类选择（剪辑/形状/字幕 cue）互斥散在三处，漏了 shape ↔ cue 两条边，
+  切工程也漏清 cue。修法共性是**让错误写法编不过**：删掉 `detectSourceLocale`
+  的 `state:` 参数、`EditSelection` 字段全 `private(set)`、可听快照只有
+  `SubtitleAudibleClips` 一个产地；再补一段 grep 级**接线守卫**（自检编不动
+  @MainActor App 类型，「纯函数有没有被接上」只能在源码层面钉）。
+  教训：**同一个坑第二次踩说明防线建在了注释上**；阈值要由实测数据反推、
+  把判别区间本身写成断言；**「没得挑」不是「挑对了」**。
+  **第二轮又在第一轮的修复上抓出 2 个 P2**（都在 Auto-detect 路径）：
+  探针只验「文件存在」不验「音轨可读」（第一段是无音轨视频、后面有正常音频轨
+  时整个检测失败），且可听快照把 `info == nil` 当成有声音（与
+  `EditClip.hasAudio` 分叉，老工程/导入中素材全中招）；候选只按完整 locale
+  标识符去重，`en_US`/`en_SG`/`en_IN` 吃光三个名额（实测取到
+  `["en_US","zh_CN","en_IN"]`，装了日语模型也探不到日语），而
+  `installedLocales()` 的顺序本机实测还会变。修法：探针**逐段真抽一次**
+  （素材的错换下一段、基础设施错误与取消直穿）、快照改用 `clip.hasAudio`、
+  去重改按 maximal 后的「语言码+文字系统」并与翻译预检共用同一份 `languageKey`、
+  已装档排序后再截断。教训：**便宜的预筛不能当判据**；**假素材（重复字节）
+  测不出真解码**，涉及「素材可不可读」的守卫必须用 ffmpeg 现造真实媒体。
+  **第三轮再修 1 个 P2**：取消被跳过逻辑洗成「素材不可读」—— 无音轨素材在检查
+  取消**之前**就抛 ReadError，取消期间剩下的候选各抛一个、全被吞掉走到
+  `return nil`，调用方把 nil 翻成失败文案，终态从 `.cancelled` 变成
+  `.failed`。修法是 `selectProbe` 三处都查取消（每轮开头 / 吞错误之前 /
+  **返回 nil 之前**）、两条通道都问（token + `Task.checkCancellation()`）。
+  教训：**「跳过某类错误」的逻辑必须先排除取消**（取消与「这一项失败了」正交，
+  跳过逻辑会把二者压成同一分支）；**让哨兵值自带含义收窄**（nil 收窄成
+  「确实全都读不出音频」后，调用方怎么翻译都不会错，比要求调用方记得先查可靠）
+
+- [2026-08-09-translate-stuck-at-zero.md](docs/bugfixes/2026-08-09-translate-stuck-at-zero.md) —
+  第二次翻译永久卡在 0/N（用户真机 127 条 cue，en→zh）：
+  `TranslationSession.Configuration` 是**带 `version` 的值类型**，`==` 连
+  version 一起比，而每个任务都现新建一个（version 恒 0）→ 两次同语言的配置
+  **完全相等** → SwiftUI 的 `.translationTask` 判定「没变化」不重跑 action →
+  `run(session:)` 收不到 session → continuation 永久悬挂。中间那次
+  `pendingJob = nil` 救不了（它不重置 SwiftUI 记住的「上次跑过的配置」）。
+  修法：`TranslationConfigurationVendor` 一条流水线**每次 invalidate()**
+  （Apple 给的换代通道），外加起跑看门狗（10s 没人认领就如实报错，
+  只看「有没有起跑」不误伤慢任务）。教训：**值类型里的 `version` 字段就是在
+  提醒你这个值需要换代**；**「第一次成功」不能当成这条路通了** ——
+  提交→回调→清空→再提交的循环，验收必须连做两次（分支上两次冒烟一次跳过
+  翻译、一次是首次翻译，「第二次」从没被覆盖）；**等外部框架回调的
+  continuation 一律配看门狗**
 
 ## 根目录既有文档
 

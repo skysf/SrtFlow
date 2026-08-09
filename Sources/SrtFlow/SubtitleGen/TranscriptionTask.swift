@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Foundation
 import SrtFlowCore
 
@@ -15,6 +16,7 @@ final class TranscriptionTask: ObservableObject {
 
     enum Stage: Equatable {
         case idle
+        case detectingLanguage
         case preparingModels
         case readingAudio(String)
         case transcribing(String)
@@ -25,6 +27,13 @@ final class TranscriptionTask: ObservableObject {
         case cancelled
     }
 
+    /// 源语言 Picker 里「自动检测」的哨兵值。
+    static let autoDetectLocaleID = "auto"
+
+    /// 自动检测的探针窗口时长（秒）。产品参数：够长到词数可判，
+    /// 够短到多候选探针仍在秒级。
+    static let detectionProbeSeconds = 20.0
+
     @Published private(set) var stage: Stage = .idle
     /// 总进度 0–1，单调不倒退（计划 10.2）。
     @Published private(set) var progress: Double = 0
@@ -32,6 +41,9 @@ final class TranscriptionTask: ObservableObject {
     @Published private(set) var volatileText: String?
     /// 读不了的素材：跳过并明示，不中断整个任务（全失效才 failed）。
     @Published private(set) var skippedAssets: [String] = []
+    /// 「生成后顺便翻译」被如实跳过的原因（例如字幕已是目标语言）。
+    /// 不算失败，但也绝不伪装成翻译发生过 —— 单独一条通知展示。
+    @Published private(set) var translationSkipNote: String?
 
     var isRunning: Bool {
         switch stage {
@@ -76,6 +88,7 @@ final class TranscriptionTask: ObservableObject {
         progress = 0
         volatileText = nil
         skippedAssets = []
+        translationSkipNote = nil
         let generation = project.documentGeneration
         let state = project.state
 
@@ -109,10 +122,12 @@ final class TranscriptionTask: ObservableObject {
                     return
                 }
                 self.setProgress(0.9)
+                // 源语言一律取转写实际用的 locale（自动检测时 sourceLocaleID
+                // 只是 "auto" 哨兵，真语言在 harvest 里）。
+                let resolvedSource = harvest.locale.language.minimalIdentifier
                 project.replaceSubtitleForGeneration(
                     result.document,
-                    sourceLanguage: Locale(identifier: sourceLocaleID)
-                        .language.minimalIdentifier,
+                    sourceLanguage: resolvedSource,
                     generation: GenerationSnapshot(
                         module: SpeechTranscriptionService.transcriberKind,
                         segmentationConfigVersion: SubtitleSegmentationConfig.version,
@@ -121,13 +136,24 @@ final class TranscriptionTask: ObservableObject {
                     cueMeta: result.meta
                 )
 
-                if let targetLanguageID, #available(macOS 15.0, *) {
+                if let targetLanguageID, #available(macOS 15.0, *),
+                   TranslationPreflight.isSameTranslationLanguage(
+                       harvest.locale.language,
+                       Locale.Language(identifier: targetLanguageID)
+                   ) {
+                    // 字幕已经是目标语言（2026-08-09 案例的核心场景）：如实
+                    // 跳过并说明，不算失败，也不把 en→en 交给系统去爆
+                    // 「Unable to Translate」。
+                    self.translationSkipNote = String(
+                        format: L10n("Subtitles are already in %@ — translation skipped."),
+                        TranslationPreflight.displayName(of: harvest.locale.language)
+                    )
+                } else if let targetLanguageID, #available(macOS 15.0, *) {
                     self.stage = .translating
                     let outcome = await SubtitleTranslationService.shared.translateCurrentSubtitle(
                         project: project,
                         scope: .all,
-                        sourceLanguage: Locale(identifier: sourceLocaleID)
-                            .language.minimalIdentifier,
+                        sourceLanguage: resolvedSource,
                         targetLanguage: targetLanguageID
                     )
                     // 翻译没成不许伪装成功：字幕已生成并保留，但结局要如实报。
@@ -169,19 +195,9 @@ final class TranscriptionTask: ObservableObject {
 
     // MARK: 主流程
 
-    struct SoundClip {
-        var clipID: UUID
-        var name: String
-        var url: URL
-        var fingerprint: String
-        /// 探测到的素材总时长；纯音频 clip 可能拿不到（info == nil）。
-        var knownAssetDuration: Double?
-        var sourceStart: Double
-        var sourceDuration: Double
-        var timelineStart: Double
-        var speed: Double
-        var laneRank: Int
-    }
+    /// 素材侧的可听快照与探针挑选在 `SubtitleAudibleClips`（纯值逻辑，
+    /// 自检编得动 —— 见那边的文件头）。这里只借个短名字。
+    typealias SoundClip = SubtitleAudibleClips.SoundClip
 
     private struct GenerationResult {
         var document: SubtitleDocumentModel
@@ -210,15 +226,22 @@ final class TranscriptionTask: ObservableObject {
                 "Speech transcription isn't available on this Mac."
             ))
         }
-        guard let locale = await SpeechTranscriptionService.matchedLocale(for: sourceLocaleID) else {
+        let clips = SubtitleAudibleClips.soundClips(in: state)
+        guard !clips.isEmpty else {
+            throw TaskError(message: L10n("No audible clips to transcribe."))
+        }
+        let locale: Locale
+        if sourceLocaleID == Self.autoDetectLocaleID {
+            // 只把**本次任务冻结的可听快照**交给检测：它拿不到 TimelineState，
+            // 也就不可能再分叉出第二套「声音来源」（PR#22 复审 P1）。
+            locale = try await detectSourceLocale(clips: clips, token: token)
+        } else if let matched = await SpeechTranscriptionService.matchedLocale(for: sourceLocaleID) {
+            locale = matched
+        } else {
             throw TaskError(message: String(
                 format: L10n("Speech transcription doesn't support “%@” on this Mac."),
                 sourceLocaleID
             ))
-        }
-        let clips = Self.soundClips(in: state)
-        guard !clips.isEmpty else {
-            throw TaskError(message: L10n("No audible clips to transcribe."))
         }
 
         // ① 模型。下载进度折进总进度 0.02–0.1 段，不再完成前一直停 0；
@@ -262,6 +285,153 @@ final class TranscriptionTask: ObservableObject {
             await service.releaseModel(locale: locale)
             throw error
         }
+    }
+
+    // MARK: 源语言自动检测（两段式：候选模型分别转写探针，按置信度裁决）
+
+    /// macOS 26 的 SpeechTranscriber 必须显式给语言、系统没有音频语言识别，
+    /// 所以自动检测 = 探针转写 + 打分。候选按优先级：素材元数据指名的语言
+    /// （允许触发模型下载）→ 系统首选 → 其余已装语言（这两类必须已装，
+    /// 探针不为它们下载模型），去重后上限 3。
+    ///
+    /// **每个候选都要过探针，一个也不例外**（PR#22 复审 P1）。曾经写过
+    /// 「单候选直接采用」的捷径 —— 那是零证据的硬猜：候选表是「装了哪些模型」
+    /// 决定的，跟素材说什么语言毫无关系，只装了一个模型的 Mac 会把任何语言的
+    /// 视频都按那个语言整轨生成。裁决走 `SubtitleLanguageDetection.pick`
+    /// （fail-closed，评分合同在 SrtFlowCore，SrtFlowCoreChecks 有用例），
+    /// 拿不到判决就如实报「检测不出来，请手选」。
+    ///
+    /// - Parameter clips: 本次任务冻结的可听快照（`soundClips(in:)` 的产物）。
+    ///   **刻意不收 `TimelineState`**：metadata 查询、探针抽取都只能从这一份
+    ///   快照里取素材，这样「元数据指名的语言」和「探针听到的声音」在类型上
+    ///   就不可能来自两批不同的素材。
+    private func detectSourceLocale(
+        clips: [SoundClip],
+        token: ExportCancellationToken
+    ) async throws -> Locale {
+        stage = .detectingLanguage
+        if token.isCancelled { throw CancellationError() }
+        setProgress(0.01)
+
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SrtFlow-ASR-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        // 探针素材先定下来，而且是**真的抽一次音频**才算定下 ——「文件在」不等于
+        // 「音轨读得出来」。读不了的往下顺延，metadata 的查询顺序再以最终选中的
+        // 那一段为首（PR#22 复审第二轮 P2）。
+        let probe = try await SubtitleAudibleClips.selectProbe(
+            in: clips, probeSeconds: Self.detectionProbeSeconds,
+            isCancelled: { token.isCancelled }
+        ) { clip, range in
+            try await AudioWindowReader.extract(
+                assetURL: clip.url, range: range, into: tempDirectory,
+                isCancelled: { token.isCancelled }
+            )
+        }
+        // nil 只可能是「确实全都读不出音频」（selectProbe 返回 nil 前自己查过
+        // 取消）。这里再查一遍是同一条纪律的第二道：**每个 await 前后**都要问，
+        // 别让取消被翻译成失败文案。
+        if token.isCancelled { throw CancellationError() }
+        guard let probe else {
+            throw TaskError(message: L10n(
+                "None of the audio sources could be read. Relink the missing media and try again."
+            ))
+        }
+        if !probe.skipped.isEmpty {
+            skippedAssets = probe.skipped.map(\.name)
+        }
+        if token.isCancelled { throw CancellationError() }
+
+        let metadataTag = await Self.metadataLanguageTag(
+            in: SubtitleAudibleClips.metadataOrder(in: clips, probe: probe.clip)
+        )
+        // 候选来源按优先级排：元数据（唯一允许下载）→ 系统首选 → 其余已装。
+        // **已装那一档要排序**：`installedLocales()` 的顺序本机实测连续两次读
+        // 都可能不同，不排序的话「哪三个语言进探针」会随机漂移。
+        var sources: [SubtitleLanguageDetection.CandidateSource] = []
+        if let metadataTag,
+           let matched = await SpeechTranscriptionService.matchedLocale(for: metadataTag) {
+            sources.append(.init(localeIdentifier: matched.identifier, allowsDownload: true))
+        }
+        let installed = await SpeechTranscriptionService.installedLocales()
+        let installedIDs = Set(installed.map(\.identifier))
+        for id in Locale.preferredLanguages + installed.map(\.identifier).sorted() {
+            // 元数据之外的候选必须已装 —— 自动检测不许静默拉起 N 份模型下载。
+            guard let matched = await SpeechTranscriptionService.matchedLocale(for: id),
+                  installedIDs.contains(matched.identifier) else { continue }
+            sources.append(.init(localeIdentifier: matched.identifier, allowsDownload: false))
+        }
+        // 去重按**语言**不按 locale 标识符：en_US/en_SG/en_IN 是同一种语言的三个
+        // 变体，按标识符去重会让它们吃光三个名额（实测取到过
+        // ["en_US", "zh_CN", "en_IN"]），装了日语模型也永远探不到日语。
+        let candidates = SubtitleLanguageDetection.selectCandidates(sources)
+            .map { Locale(identifier: $0.localeIdentifier) }
+        guard !candidates.isEmpty else {
+            throw TaskError(message: L10n(
+                "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded."
+            ))
+        }
+
+        // **不因为「只有一个候选」跳过探针** —— 见方法头的说明。
+        let probeFile = probe.file
+        let probeRange = probe.range
+        var results: [SubtitleLanguageDetection.Candidate] = []
+        for candidate in candidates {
+            if token.isCancelled { throw CancellationError() }
+            do {
+                try await service.ensureModel(locale: candidate) { _ in }
+            } catch {
+                if token.isCancelled || Task.isCancelled { throw CancellationError() }
+                // 单个候选的模型装不上不致命：剩下的候选照样能裁决。
+                continue
+            }
+            do {
+                let words = try await service.transcribe(
+                    fileURL: probeFile, locale: candidate, sourceOffset: probeRange.start
+                )
+                results.append(SubtitleLanguageDetection.Candidate(
+                    localeIdentifier: candidate.identifier, words: words
+                ))
+                await service.releaseModel(locale: candidate)
+            } catch {
+                await service.releaseModel(locale: candidate)
+                if token.isCancelled || Task.isCancelled { throw CancellationError() }
+                // 转写栈的故障如实上抛，不许伪装成「检测不出语言」。
+                throw error
+            }
+        }
+        if token.isCancelled { throw CancellationError() }
+        guard let verdict = SubtitleLanguageDetection.pick(results),
+              let winner = candidates.first(where: { $0.identifier == verdict.localeIdentifier })
+        else {
+            throw TaskError(message: L10n(
+                "Couldn't confidently detect the spoken language. Pick it in the panel and generate again."
+            ))
+        }
+        return winner
+    }
+
+    /// 音轨语言 metadata（自动检测候选的最高优先级；之前在面板里做 Picker
+    /// 预填，现随「自动检测」迁到任务侧）。
+    ///
+    /// **只消费传进来的可听快照**，绝不回头去枚举 `TimelineState` —— 那样会
+    /// 分叉出一套无视眼睛/静音、还漏掉带声音 overlay 的「声音来源」。
+    private static func metadataLanguageTag(in clips: [SoundClip]) async -> String? {
+        for clip in clips {
+            let asset = AVURLAsset(url: clip.url)
+            guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
+                continue
+            }
+            if let tag = try? await track.load(.extendedLanguageTag), tag != "und" {
+                return tag
+            }
+            if let code = try? await track.load(.languageCode), code != "und" {
+                return code
+            }
+        }
+        return nil
     }
 
     /// 持有租约期间的主体：账本查缺 → 逐窗抽音频/转写/落盘。
@@ -405,7 +575,7 @@ final class TranscriptionTask: ObservableObject {
         harvest: Harvest,
         config: SubtitleSegmentationConfig
     ) throws -> GenerationResult {
-        let clips = Self.soundClips(in: project.state)
+        let clips = SubtitleAudibleClips.soundClips(in: project.state)
             .filter { !harvest.skippedFingerprints.contains($0.fingerprint) }
         guard !clips.isEmpty else {
             throw TaskError(message: L10n("No audible clips to transcribe."))
@@ -459,47 +629,6 @@ final class TranscriptionTask: ObservableObject {
 
     private func setProgress(_ value: Double) {
         progress = max(progress, min(value, 1))
-    }
-
-    /// 出声 clip 清单 —— 与预览/导出同一份「实际可听」合同
-    /// （VideoEditCompositionBuilder 先例）：mainHidden 跳过整个主轨、
-    /// isHidden 的 lane 当不存在、静音或音量为 0 的 clip 不算出声。
-    static func soundClips(in state: TimelineState) -> [SoundClip] {
-        var result: [SoundClip] = []
-        func add(_ clip: EditClip, laneRank: Int) {
-            guard !clip.isMuted, clip.volume > 0, clip.stillImageURL == nil else { return }
-            if let info = clip.info, !info.hasAudio { return }
-            result.append(SoundClip(
-                clipID: clip.id,
-                name: clip.name,
-                url: clip.sourceURL,
-                // 纯音频 clip 的 info 可能是 nil，指纹回退到磁盘大小/mtime，
-                // 避免「同路径换了文件还命中旧缓存」。
-                fingerprint: TranscriptSidecarStore.fingerprint(
-                    forFileAt: clip.sourceURL,
-                    knownBytes: clip.info?.fileBytes,
-                    knownDuration: clip.info?.duration
-                ),
-                knownAssetDuration: clip.info?.duration,
-                sourceStart: clip.sourceStart,
-                sourceDuration: clip.sourceDuration,
-                timelineStart: clip.timelineStart,
-                speed: clip.speed,
-                laneRank: laneRank
-            ))
-        }
-        if !state.mainHidden {
-            for clip in state.mainClips { add(clip, laneRank: 0) }
-        }
-        for (index, lane) in state.overlayTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips { add(clip, laneRank: 1 + index) }
-        }
-        for (index, lane) in state.audioTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips {
-                add(clip, laneRank: 1 + state.overlayTracks.count + index)
-            }
-        }
-        return result
     }
 
     /// 启动残留清理：上次崩溃/强退留下的 SrtFlow-ASR-* 目录。

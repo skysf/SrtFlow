@@ -38,10 +38,12 @@ public struct SubtitleSegmentationConfig: Hashable, Sendable {
     public var pauseThreshold: Double
 
     /// 参数集版本：进 GenerationSnapshot，缓存/重现用。
-    public static let version = 1
+    /// v2：默认单行（maxLineCount 2 → 1，2026-08-09 产品决定 —— 生成的字幕
+    /// 一律单行，行数上限只影响分段不影响词流缓存）。
+    public static let version = 2
 
     public init(
-        maxLineCount: Int = 2,
+        maxLineCount: Int = 1,
         maxLineLength: Int = 42,
         minCueDuration: Double = 0.7,
         maxCueDuration: Double = 7.0,

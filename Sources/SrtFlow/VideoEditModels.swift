@@ -557,6 +557,12 @@ struct TimelineState: Hashable, Sendable {
     var audioTracks: [EditLane] = []
 
     var subtitle: SubtitleDocumentModel?
+    /// 字幕轨的整轨隐藏（与 mainHidden 同语义：预览不渲染、导出不烧录；
+    /// 独立字幕文件导出不受影响 —— 那是对数据的显式操作，不是可见性）。
+    var subtitleHidden = false
+    /// 工程级字幕布局覆盖（预览拖框的产物，SrtFlowCore/SubtitleLayout）。
+    /// nil = 全局烧录样式原样；预览和烧录共用同一份。
+    var subtitleLayout: SubtitleLayout?
     var subtitleURL: URL?
     /// 原文字幕的伴随状态（译文轨/cueMeta/生成参数）。原文永远在 `subtitle`；
     /// 这是 v4-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
@@ -996,7 +1002,7 @@ extension EditLane: Codable {
 extension TimelineState: Codable {
     private enum CodingKeys: String, CodingKey {
         case mainClips, mainHidden, overlayTracks, audioTracks
-        case subtitle, subtitleURL, subtitleCompanion, shapes, canvasRatio
+        case subtitle, subtitleHidden, subtitleLayout, subtitleURL, subtitleCompanion, shapes, canvasRatio
         case frameRate
     }
 
@@ -1008,6 +1014,8 @@ extension TimelineState: Codable {
         overlayTracks = try c.decodeIfPresent([EditLane].self, forKey: .overlayTracks) ?? []
         audioTracks = try c.decodeIfPresent([EditLane].self, forKey: .audioTracks) ?? []
         subtitle = try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .subtitle)
+        subtitleHidden = try c.decodeIfPresent(Bool.self, forKey: .subtitleHidden) ?? false
+        subtitleLayout = try c.decodeIfPresent(SubtitleLayout.self, forKey: .subtitleLayout)
         subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
         subtitleCompanion = try c.decodeIfPresent(SubtitleCompanion.self, forKey: .subtitleCompanion)
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
@@ -1023,6 +1031,8 @@ extension TimelineState: Codable {
         try c.encode(overlayTracks, forKey: .overlayTracks)
         try c.encode(audioTracks, forKey: .audioTracks)
         try c.encodeIfPresent(subtitle, forKey: .subtitle)
+        try c.encode(subtitleHidden, forKey: .subtitleHidden)
+        try c.encodeIfPresent(subtitleLayout, forKey: .subtitleLayout)
         try c.encodeIfPresent(subtitleURL, forKey: .subtitleURL)
         // 空 companion 不落盘：否则一个从未用过新功能的工程也会被抬进 v4。
         if subtitleCompanion?.hasPersistentData == true {

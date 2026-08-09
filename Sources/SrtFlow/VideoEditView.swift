@@ -19,6 +19,8 @@ struct VideoEditView: View {
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
     @State private var eventMonitor: Any?
+    /// 当前字幕文本块的实测高度（overlay 回报，字幕拖框定框用）。
+    @State private var subtitleBlockHeight: Double = 0
 
     init() {
         clock = VideoEditProject.shared.clock
@@ -238,8 +240,21 @@ struct VideoEditView: View {
                         text: text,
                         style: burnInQueue.burnInStyle,
                         scale: size.height / Double(BurnInStyle.referenceHeight),
-                        boxSize: size
+                        boxSize: size,
+                        layout: project.state.subtitleLayout,
+                        onBlockSize: { subtitleBlockHeight = $0.height }
                     )
+                    // 轨道上点选了 cue：叠出工程级字幕拖框（移动/换行宽度/
+                    // 等比字号）。放最上层 —— 有选中时字幕调整优先。
+                    if let cueID = project.selectedSubtitleCueID,
+                       project.state.subtitle?.cues.contains(where: { $0.id == cueID }) == true {
+                        SubtitleFrameCanvas(
+                            project: project,
+                            boxSize: size,
+                            style: burnInQueue.burnInStyle,
+                            blockHeight: subtitleBlockHeight
+                        )
+                    }
                 }
             }
             .frame(width: size.width, height: size.height)
@@ -268,8 +283,9 @@ struct VideoEditView: View {
         // 选中的轨道可能已经不在了（译文被删、或工程重开时 subtitlePreviewTrack
         // 还留着旧值），这时 subtitleDocument(for:) 返回 nil。直接跟着返回 nil 会让
         // 预览字幕无声无息地整个消失 —— 回退到原文轨，宁可显示原文也不要空白。
-        guard let doc = project.state.subtitleDocument(for: project.subtitlePreviewTrack)
-            ?? project.state.subtitleDocument(for: .original) else {
+        // visible 变体：字幕轨隐藏（眼睛）时预览一律不画（与烧录同一份合同）。
+        guard let doc = project.state.visibleSubtitleDocument(for: project.subtitlePreviewTrack)
+            ?? project.state.visibleSubtitleDocument(for: .original) else {
             return nil
         }
         // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。
