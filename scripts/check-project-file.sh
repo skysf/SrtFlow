@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# 工程文件（.srtflowproj）存盘与素材重链接的自检。
+# 工程文件（.srtflowproj）存盘与素材重链接的自检，外加两块同样编得动的
+# 纯值合同：字幕生成的「可听快照 / 探针来源」（SubtitleAudibleClips）与
+# 三类选择的互斥（EditSelection）。
 #
 # 用法：
 #   scripts/check-project-file.sh
@@ -36,6 +38,9 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
+  Sources/SrtFlow/VideoEditSelection.swift \
+  Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptSidecarStore.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/StillImageClipFactory.swift \
   Sources/SrtFlow/AppLanguage.swift \
@@ -44,3 +49,53 @@ xcrun swiftc \
 
 echo "==> 运行"
 "$OUT"
+
+# ---- 扫描守卫：纯值合同必须真的被生产代码调用 ----
+#
+# 上面那批断言只证明「函数算得对」；VideoEditProject / TranscriptionTask 是
+# @MainActor 的 App 类型，自检编不动它们，所以「有没有被调用、参数对不对」
+# 只能在源码层面钉住。这正是 2026-08-07 Phase 2–4 那轮的病根
+#（canClearManifest 写对了却一次没被调用）。
+# 不单开一个 check-all 条目 —— 它守的就是本脚本这批合同的接线。
+echo "==> 扫描守卫：生产接线"
+WIRING_FAIL=0
+require() { # require <描述> <文件> <正则>
+  if ! grep -Eq "$3" "$2"; then
+    echo "✗ 接线守卫：$1（在 $2 里找不到 /$3/）" >&2
+    WIRING_FAIL=1
+  fi
+}
+forbid() { # forbid <描述> <文件> <正则>
+  if grep -Eq "$3" "$2"; then
+    echo "✗ 接线守卫：$1（$2 里仍有 /$3/）" >&2
+    WIRING_FAIL=1
+  fi
+}
+
+# 选择互斥：三类选择只能有 EditSelection 一个真身，清理要接在生产入口上。
+require "VideoEditProject 的选择必须由 EditSelection 持有" \
+  Sources/SrtFlow/VideoEditProject.swift 'var selection = EditSelection\(\)'
+require "state 的 didSet 要摘掉失效的字幕 cue 选择" \
+  Sources/SrtFlow/VideoEditProject.swift 'pruneSubtitleCueSelection\(\)'
+require "切工程必须三类选择一起清" \
+  Sources/SrtFlow/VideoEditProjectDocument.swift 'clearSelection\(\)'
+
+# 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
+require "detectSourceLocale 必须从 SubtitleAudibleClips 取探针" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'SubtitleAudibleClips\.detectionSources\(in:'
+require "metadata 查询必须吃 [SoundClip] 快照" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'metadataLanguageTag\(in clips: \[SoundClip\]\)'
+forbid "metadata 不许再从 TimelineState 自己枚举素材" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'state\.mainClips \+ state\.audioTracks'
+forbid "Auto-detect 不许留「单候选直接采用」的无证据捷径" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'candidates\.count == 1'
+
+if [ "$WIRING_FAIL" -ne 0 ]; then
+  echo "接线守卫失败" >&2
+  exit 1
+fi
+echo "✓ 接线守卫通过"

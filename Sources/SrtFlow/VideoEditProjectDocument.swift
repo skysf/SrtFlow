@@ -88,8 +88,10 @@ extension VideoEditProject {
         clock.pause()
         clock.detach()
         cancelLiveEdit()
-        selectedClipIDs = []
-        selectedShapeID = nil
+        // 三类选择一起清。漏掉字幕 cue 的话，新工程一开就带着上一条工程的
+        // cue ID —— 它在新轨上多半不存在，预览要么画悬空拖框，要么撞上新轨
+        // 里恰好同 ID 的条目（PR#22 复审 P2）。
+        clearSelection()
         missingMedia = []
         notice = nil
         documentURL = nil

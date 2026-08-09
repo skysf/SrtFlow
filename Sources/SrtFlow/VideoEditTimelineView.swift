@@ -281,11 +281,9 @@ struct VideoEditTimelineView: View {
             playhead
         }
         .contentShape(Rectangle())
-        // 点空白处：取消选中。
-        .onTapGesture {
-            project.selectedClipIDs = []
-            project.selectedShapeID = nil
-        }
+        // 点空白处：三类选择一起取消（含字幕 cue —— 漏了它，拖框会在没有任何
+        // 选中项的界面上继续挂着）。
+        .onTapGesture { project.clearSelection() }
     }
 
     @ViewBuilder

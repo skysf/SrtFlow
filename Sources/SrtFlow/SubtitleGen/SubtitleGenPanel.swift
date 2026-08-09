@@ -305,7 +305,7 @@ private struct TranscriptionSection: View {
                     // 门槛 = 有实际可听的 clip（与转写任务同一份合同）——
                     // 纯音频工程也能生成，不看有没有主视频。源语言不再是
                     // 门槛：默认的「自动检测」永远是合法选择。
-                    .disabled(TranscriptionTask.soundClips(in: project.state).isEmpty)
+                    .disabled(SubtitleAudibleClips.soundClips(in: project.state).isEmpty)
                     stageResultText
                 }
             }

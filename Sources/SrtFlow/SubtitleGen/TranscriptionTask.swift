@@ -195,19 +195,9 @@ final class TranscriptionTask: ObservableObject {
 
     // MARK: 主流程
 
-    struct SoundClip {
-        var clipID: UUID
-        var name: String
-        var url: URL
-        var fingerprint: String
-        /// 探测到的素材总时长；纯音频 clip 可能拿不到（info == nil）。
-        var knownAssetDuration: Double?
-        var sourceStart: Double
-        var sourceDuration: Double
-        var timelineStart: Double
-        var speed: Double
-        var laneRank: Int
-    }
+    /// 素材侧的可听快照与探针挑选在 `SubtitleAudibleClips`（纯值逻辑，
+    /// 自检编得动 —— 见那边的文件头）。这里只借个短名字。
+    typealias SoundClip = SubtitleAudibleClips.SoundClip
 
     private struct GenerationResult {
         var document: SubtitleDocumentModel
@@ -236,13 +226,15 @@ final class TranscriptionTask: ObservableObject {
                 "Speech transcription isn't available on this Mac."
             ))
         }
-        let clips = Self.soundClips(in: state)
+        let clips = SubtitleAudibleClips.soundClips(in: state)
         guard !clips.isEmpty else {
             throw TaskError(message: L10n("No audible clips to transcribe."))
         }
         let locale: Locale
         if sourceLocaleID == Self.autoDetectLocaleID {
-            locale = try await detectSourceLocale(state: state, clips: clips, token: token)
+            // 只把**本次任务冻结的可听快照**交给检测：它拿不到 TimelineState，
+            // 也就不可能再分叉出第二套「声音来源」（PR#22 复审 P1）。
+            locale = try await detectSourceLocale(clips: clips, token: token)
         } else if let matched = await SpeechTranscriptionService.matchedLocale(for: sourceLocaleID) {
             locale = matched
         } else {
@@ -300,11 +292,20 @@ final class TranscriptionTask: ObservableObject {
     /// macOS 26 的 SpeechTranscriber 必须显式给语言、系统没有音频语言识别，
     /// 所以自动检测 = 探针转写 + 打分。候选按优先级：素材元数据指名的语言
     /// （允许触发模型下载）→ 系统首选 → 其余已装语言（这两类必须已装，
-    /// 探针不为它们下载模型），去重后上限 3。单候选直接采用；多候选各转写
-    /// 同一段探针音频，SubtitleLanguageDetection 裁决（评分合同在 SrtFlowCore，
-    /// SrtFlowCoreChecks 有用例）。
+    /// 探针不为它们下载模型），去重后上限 3。
+    ///
+    /// **每个候选都要过探针，一个也不例外**（PR#22 复审 P1）。曾经写过
+    /// 「单候选直接采用」的捷径 —— 那是零证据的硬猜：候选表是「装了哪些模型」
+    /// 决定的，跟素材说什么语言毫无关系，只装了一个模型的 Mac 会把任何语言的
+    /// 视频都按那个语言整轨生成。裁决走 `SubtitleLanguageDetection.pick`
+    /// （fail-closed，评分合同在 SrtFlowCore，SrtFlowCoreChecks 有用例），
+    /// 拿不到判决就如实报「检测不出来，请手选」。
+    ///
+    /// - Parameter clips: 本次任务冻结的可听快照（`soundClips(in:)` 的产物）。
+    ///   **刻意不收 `TimelineState`**：metadata 查询、探针抽取都只能从这一份
+    ///   快照里取素材，这样「元数据指名的语言」和「探针听到的声音」在类型上
+    ///   就不可能来自两批不同的素材。
     private func detectSourceLocale(
-        state: TimelineState,
         clips: [SoundClip],
         token: ExportCancellationToken
     ) async throws -> Locale {
@@ -312,7 +313,13 @@ final class TranscriptionTask: ObservableObject {
         if token.isCancelled { throw CancellationError() }
         setProgress(0.01)
 
-        let metadataTag = await Self.metadataLanguageTag(state: state)
+        // 探针素材先定下来 —— metadata 的查询顺序以它为首。
+        guard let sources = SubtitleAudibleClips.detectionSources(in: clips) else {
+            throw TaskError(message: L10n(
+                "None of the audio sources could be read. Relink the missing media and try again."
+            ))
+        }
+        let metadataTag = await Self.metadataLanguageTag(in: sources.metadataOrder)
         var priorityIDs: [(id: String, allowsDownload: Bool)] = []
         if let metadataTag { priorityIDs.append((metadataTag, true)) }
         priorityIDs += Locale.preferredLanguages.map { ($0, false) }
@@ -337,16 +344,9 @@ final class TranscriptionTask: ObservableObject {
                 "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded."
             ))
         }
-        if candidates.count == 1 { return candidates[0] }
-
-        // 探针音频：第一段真实存在的素材开头 detectionProbeSeconds 秒。
-        guard let probeClip = clips.first(where: {
-            FileManager.default.fileExists(atPath: $0.url.path)
-        }) else {
-            throw TaskError(message: L10n(
-                "None of the audio sources could be read. Relink the missing media and try again."
-            ))
-        }
+        // 探针音频：探针素材开头 detectionProbeSeconds 秒。
+        // **不因为「只有一个候选」跳过这一段** —— 见方法头的说明。
+        let probeClip = sources.probe
         let probeRange = SourceRange(
             start: probeClip.sourceStart,
             end: probeClip.sourceStart + min(Self.detectionProbeSeconds, probeClip.sourceDuration)
@@ -396,12 +396,14 @@ final class TranscriptionTask: ObservableObject {
         return winner
     }
 
-    /// 第一段有声素材的音轨语言 metadata（自动检测候选的最高优先级；
-    /// 之前在面板里做 Picker 预填，现随「自动检测」迁到任务侧）。
-    private static func metadataLanguageTag(state: TimelineState) async -> String? {
-        let clips = state.mainClips + state.audioTracks.flatMap(\.clips)
-        for clip in clips where clip.stillImageURL == nil {
-            let asset = AVURLAsset(url: clip.sourceURL)
+    /// 音轨语言 metadata（自动检测候选的最高优先级；之前在面板里做 Picker
+    /// 预填，现随「自动检测」迁到任务侧）。
+    ///
+    /// **只消费传进来的可听快照**，绝不回头去枚举 `TimelineState` —— 那样会
+    /// 分叉出一套无视眼睛/静音、还漏掉带声音 overlay 的「声音来源」。
+    private static func metadataLanguageTag(in clips: [SoundClip]) async -> String? {
+        for clip in clips {
+            let asset = AVURLAsset(url: clip.url)
             guard let track = try? await asset.loadTracks(withMediaType: .audio).first else {
                 continue
             }
@@ -556,7 +558,7 @@ final class TranscriptionTask: ObservableObject {
         harvest: Harvest,
         config: SubtitleSegmentationConfig
     ) throws -> GenerationResult {
-        let clips = Self.soundClips(in: project.state)
+        let clips = SubtitleAudibleClips.soundClips(in: project.state)
             .filter { !harvest.skippedFingerprints.contains($0.fingerprint) }
         guard !clips.isEmpty else {
             throw TaskError(message: L10n("No audible clips to transcribe."))
@@ -610,47 +612,6 @@ final class TranscriptionTask: ObservableObject {
 
     private func setProgress(_ value: Double) {
         progress = max(progress, min(value, 1))
-    }
-
-    /// 出声 clip 清单 —— 与预览/导出同一份「实际可听」合同
-    /// （VideoEditCompositionBuilder 先例）：mainHidden 跳过整个主轨、
-    /// isHidden 的 lane 当不存在、静音或音量为 0 的 clip 不算出声。
-    static func soundClips(in state: TimelineState) -> [SoundClip] {
-        var result: [SoundClip] = []
-        func add(_ clip: EditClip, laneRank: Int) {
-            guard !clip.isMuted, clip.volume > 0, clip.stillImageURL == nil else { return }
-            if let info = clip.info, !info.hasAudio { return }
-            result.append(SoundClip(
-                clipID: clip.id,
-                name: clip.name,
-                url: clip.sourceURL,
-                // 纯音频 clip 的 info 可能是 nil，指纹回退到磁盘大小/mtime，
-                // 避免「同路径换了文件还命中旧缓存」。
-                fingerprint: TranscriptSidecarStore.fingerprint(
-                    forFileAt: clip.sourceURL,
-                    knownBytes: clip.info?.fileBytes,
-                    knownDuration: clip.info?.duration
-                ),
-                knownAssetDuration: clip.info?.duration,
-                sourceStart: clip.sourceStart,
-                sourceDuration: clip.sourceDuration,
-                timelineStart: clip.timelineStart,
-                speed: clip.speed,
-                laneRank: laneRank
-            ))
-        }
-        if !state.mainHidden {
-            for clip in state.mainClips { add(clip, laneRank: 0) }
-        }
-        for (index, lane) in state.overlayTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips { add(clip, laneRank: 1 + index) }
-        }
-        for (index, lane) in state.audioTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips {
-                add(clip, laneRank: 1 + state.overlayTracks.count + index)
-            }
-        }
-        return result
     }
 
     /// 启动残留清理：上次崩溃/强退留下的 SrtFlow-ASR-* 目录。
