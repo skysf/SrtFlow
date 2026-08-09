@@ -56,6 +56,17 @@ extension TimelineState {
     /// 要求接管（一律写 latest）。
     var requiresFormatVersion6: Bool { true }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v7-only 持久数据。
+    ///
+    /// **登记清单（新增 v7-only 字段必须同步补进来）：**
+    /// 1. `translationHidden` —— 译文字幕轨的眼睛。
+    ///
+    /// 为什么要升版本：改成「一个语言一条轨」之后，**烧录跟着眼睛走** ——
+    /// 这个键直接决定成片里有没有译文。只认 v6 的旧版打开后自动保存会把它
+    /// 删掉，用户「只烧中文」的意图就变回默认值，成片跟着变。
+    /// 判据同 `requiresFormatVersion6`：无条件落盘，恒为真。
+    var requiresFormatVersion7: Bool { true }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

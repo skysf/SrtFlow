@@ -14,7 +14,8 @@ struct VideoEditProjectFile: Codable {
     /// （rotationDegrees/opacity/flip/crop）；v3 关键帧动画（animation）；
     /// v4 关联字幕 companion（译文轨/cueMeta，**按需写入**）；
     /// v5 工程帧率（frameRate，**无条件**写入）；
-    /// v6 字幕轨的工程级布局与可见性（subtitleLayout / subtitleHidden）。
+    /// v6 字幕轨的工程级布局与可见性（subtitleLayout / subtitleHidden）；
+    /// v7 译文轨的眼睛（translationHidden）—— 一个语言一条轨、烧录跟着眼睛走。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
@@ -22,10 +23,10 @@ struct VideoEditProjectFile: Codable {
     var media: [MediaRecord]
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 6
+    static let latestFormatVersion = 7
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
-    /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6`
-    ///（登记清单在那边）。
+    /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
+    /// `...7`（登记清单在那边）。
     static let baselineFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
@@ -40,6 +41,7 @@ struct VideoEditProjectFile: Codable {
         // 保留判据只为登记清单的可读性。
         _ = timeline.requiresFormatVersion4
         _ = timeline.requiresFormatVersion6
+        _ = timeline.requiresFormatVersion7
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
@@ -201,6 +203,14 @@ enum VideoEditProjectIO {
         }
 
         var timeline = file.timeline
+        // v6 及更早没有「译文轨的眼睛」：那些版本的默认预览/烧录是**只有原文**
+        // （预览轨选择是运行时状态、默认 .original；烧录默认 Original text）。
+        // 缺键回退 false 会让升级把这些工程的成片悄悄变成双语 —— 所以按版本
+        // 显式迁移成「译文轨隐藏」，保住旧文件当初渲染出来的样子。
+        // 用户之后点一下眼睛就能把译文放出来，那是他的显式选择。
+        if file.formatVersion < 7 {
+            timeline.translationHidden = true
+        }
         // 关联字幕（v4）：译文/cueMeta 必须锚在现有原文 cue 上，坏数据当场清掉。
         timeline.normalizeSubtitleCompanion()
         // 老版本存盘的主轨数组可能乱序（磁吸关掉的拖动不重排），打开时治好。

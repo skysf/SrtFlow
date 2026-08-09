@@ -119,6 +119,22 @@ require "state 的 didSet 要摘掉失效的字幕 cue 选择" \
 require "切工程必须三类选择一起清" \
   Sources/SrtFlow/VideoEditProjectDocument.swift 'clearSelection\(\)'
 
+# 一个语言一条轨：显示/烧录只能由两只眼睛推导，不许再有第二套模式选择。
+forbid "预览轨道模式选择器已删除，不许复活" \
+  Sources/SrtFlow/VideoEditView.swift 'subtitlePreviewTrack'
+forbid "面板不许再有 Preview track 选择器" \
+  Sources/SrtFlow/SubtitleGen/SubtitleGenPanel.swift 'subtitlePreviewTrack'
+forbid "旧的按选择取可见文档的入口已废弃（会绕开眼睛推导）" \
+  Sources/SrtFlow/VideoEditView.swift 'visibleSubtitleDocument\(for:'
+require "预览必须走两只眼睛推导出的合同" \
+  Sources/SrtFlow/VideoEditView.swift 'visibleSubtitleDocument\(\)'
+require "烧录必须与预览同一份合同（眼睛说了算）" \
+  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'state\.visibleSubtitleDocument\(\)'
+forbid "导出面板不许再自己选烧哪条轨" \
+  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'enum Burn'
+require "时间线要给译文轨一只自己的眼睛" \
+  Sources/SrtFlow/VideoEditTimelineView.swift 'toggleTranslationHidden\(\)'
+
 # 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
 require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \

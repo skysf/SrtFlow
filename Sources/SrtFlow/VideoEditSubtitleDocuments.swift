@@ -21,11 +21,33 @@ extension TimelineState {
         return Int.max
     }
 
-    /// 预览与烧录共用的可见性合同：字幕轨隐藏时两边都得 nil（眼睛=整轨
-    /// 不存在，与其他轨道的隐藏语义一致）。独立字幕文件导出**不走这里** ——
-    /// 导出 .srt/.vtt 是对数据的显式操作，不是可见性。
-    func visibleSubtitleDocument(for choice: SubtitleTrackChoice) -> SubtitleDocumentModel? {
-        guard !subtitleHidden else { return nil }
+    /// 有译文轨可显示吗（译文存在**且**它的眼睛开着）。
+    var hasVisibleTranslation: Bool {
+        !translationHidden && subtitleCompanion?.translation != nil
+    }
+
+    /// 两只眼睛推导出的轨道选择。**一个语言一条轨**：
+    /// 都开=双语、只开一条=那一条、都关（或没有字幕）=nil。
+    ///
+    /// 这取代了以前的「Preview track」模式选择器：显示什么不再是一个额外的
+    /// 模式，而是「哪几条轨看得见」的自然结果，与主轨/画中画/音频的眼睛同一
+    /// 心智（2026-08-09 用户拍板）。
+    var visibleSubtitleChoice: SubtitleTrackChoice? {
+        let original = !subtitleHidden && subtitle != nil
+        switch (original, hasVisibleTranslation) {
+        case (true, true): return .bilingual
+        case (true, false): return .original
+        case (false, true): return .translation
+        case (false, false): return nil
+        }
+    }
+
+    /// 预览与烧录共用的可见性合同：**看得见的就是会被烧进成片的**。
+    /// 两只眼睛都关就是 nil（与其他轨道的隐藏语义一致）。
+    /// 独立字幕文件导出**不走这里** —— 导出 .srt/.vtt 是对数据的显式操作，
+    /// 不是可见性，故意不受眼睛影响。
+    func visibleSubtitleDocument() -> SubtitleDocumentModel? {
+        guard let choice = visibleSubtitleChoice else { return nil }
         return subtitleDocument(for: choice)
     }
 
@@ -45,4 +67,11 @@ extension TimelineState {
         document.reindex()
         return document
     }
+}
+
+/// 时间线上的字幕行属于哪条轨。**一个语言一条轨**：原文一行、译文一行，
+/// 各自一只眼睛（合同见 docs/architecture/subtitle-track-visibility-and-layout.md）。
+enum SubtitleRowKind {
+    case original
+    case translation
 }

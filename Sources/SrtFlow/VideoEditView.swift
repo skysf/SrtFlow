@@ -278,16 +278,12 @@ struct VideoEditView: View {
 
     /// 播放头此刻的字幕文本（字幕轨直接按时间线时间对齐）。
     /// 多条重叠 cue 全部显示，顺序走第 9 节合同（与烧录共用同一排序实现）；
-    /// 轨道选择（原文/译文/双语）跟随 project.subtitlePreviewTrack。
+    /// 显示什么由两条字幕轨的眼睛推导（visibleSubtitleChoice），没有模式选择器。
     private var currentSubtitleText: String? {
-        // 选中的轨道可能已经不在了（译文被删、或工程重开时 subtitlePreviewTrack
-        // 还留着旧值），这时 subtitleDocument(for:) 返回 nil。直接跟着返回 nil 会让
-        // 预览字幕无声无息地整个消失 —— 回退到原文轨，宁可显示原文也不要空白。
-        // visible 变体：字幕轨隐藏（眼睛）时预览一律不画（与烧录同一份合同）。
-        guard let doc = project.state.visibleSubtitleDocument(for: project.subtitlePreviewTrack)
-            ?? project.state.visibleSubtitleDocument(for: .original) else {
-            return nil
-        }
+        // 眼睛是唯一的判据：两只都关（或没有字幕轨）就是 nil，预览不画。
+        // 不再需要「选中的轨道已经不存在」那种回退 —— 译文被删时
+        // hasVisibleTranslation 自然为假，推导出的选择永远指向真实存在的轨。
+        guard let doc = project.state.visibleSubtitleDocument() else { return nil }
         // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。
         let active = SubtitleOverlap.active(at: clock.displayTime, in: doc.cues)
         guard !active.isEmpty else { return nil }
