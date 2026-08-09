@@ -1,8 +1,9 @@
-# 2026-08-09 PR#22 复审四连：忘升格式版本、检测敢猜、metadata 绕开可听合同、选择不互斥
+# 2026-08-09 PR#22 复审四连 + 二轮两连：忘升格式版本、检测敢猜、metadata 绕开可听合同、选择不互斥
 
 - **日期**：2026-08-09
-- **来源**：PR #22（`fix/subtitle-panel-translation-and-track-ux`）合并前复审，
-  base..b72a30b 三个 P1 + 一个 P2，均未发布即修复
+- **来源**：PR #22（`fix/subtitle-panel-translation-and-track-ux`）合并前复审。
+  第一轮 base..b72a30b 三个 P1 + 一个 P2；**第二轮又在第一轮的修复上抓出
+  两个 P2**（都在 Auto-detect 路径，见文中「第二轮复审两连」）。均未发布即修复
 - **相关**：[2026-08-09-subtitle-translate-after-same-language](2026-08-09-subtitle-translate-after-same-language.md)
   （本次是它的 follow-up）、
   [architecture/video-edit-project-file](../architecture/video-edit-project-file.md)、
@@ -104,9 +105,11 @@
 
 - 新文件 `SubtitleGen/SubtitleAudibleClips.swift`：把 `SoundClip` /
   `soundClips(in:)` 从 `TranscriptionTask` 搬出来（那个类是
-  `@available(macOS 26)` 的 `@MainActor` 状态机，自检编不动），再加
-  `detectionSources(in:)` —— 从快照里挑探针（必须是磁盘上真实存在的文件）
-  并排出 metadata 查询顺序，**探针打头**。
+  `@available(macOS 26)` 的 `@MainActor` 状态机，自检编不动），再加探针挑选与
+  metadata 查询顺序（**探针打头**）。
+  > 第一版这里叫 `detectionSources(in:)`，只看 `fileExists` 就定死探针 ——
+  > 第二轮复审把它拆成了 `probeOrder` + `selectProbe` + `metadataOrder`，
+  > 见下面「第二轮复审两连」的第五条。
 - `metadataLanguageTag(state:)` → `metadataLanguageTag(in clips: [SoundClip])`；
   `detectSourceLocale` 的 `state:` 参数**直接删掉**。它在类型上就够不着
   `TimelineState`，也就不可能再分叉出第二套声音来源 —— 比注释和 code review
@@ -139,18 +142,29 @@
 | `subtitleHidden` 缺键回退改 true、`subtitleLayout` 不落盘 | ProjectFile **4** 条 |
 | `minimumConfidence` 0.80 → 0.45 | SrtFlowCoreChecks **9** 条 |
 | `soundClips` 退回旧的「扫 mainClips+audioTracks、不看隐藏/静音」 | ProjectFile **5** 条 |
-| `detectionSources` 不看 fileExists、metadata 不以探针打头 | ProjectFile **2** 条 |
+| 探针不看 fileExists、metadata 不以探针打头 | ProjectFile **2** 条 |
 | `EditSelection` 退回散装互斥（漏两条边 + clear 漏 cue + 不 prune） | ProjectFile **4** 条 |
 | 把 `candidates.count == 1` 捷径加回去 | 接线守卫红 |
 | `closeCurrentDocument` 改回只清剪辑 | 接线守卫红 |
+| `soundClips` 退回 `info == nil 当有声音` | ProjectFile **1** 条 |
+| `selectProbe` 退回「只试第一段」 | ProjectFile **9** 条（含真实媒体 4 条） |
+| 吞掉 `InfrastructureError` | ProjectFile **1** 条 |
+| 候选去重退回按 locale 标识符 | SrtFlowCoreChecks **3** 条（复现 `["en_US","en_SG","en_IN"]`） |
+| `TranslationPreflight` 自己再实现一套 maximal 比较 | 接线守卫红 |
+| 已装语言那一档不排序 | 接线守卫红 |
 
 **接线守卫**（新增，挂在 `scripts/check-project-file.sh` 末尾，不单开
 check-all 条目）：自检编不动 `VideoEditProject` / `TranscriptionTask` 这两个
 App 类型，所以「函数被没被调用、参数对不对」在源码层面钉住 —— 要求
 `selection = EditSelection()`、`pruneSubtitleCueSelection()`、
-`clearSelection()`、`SubtitleAudibleClips.detectionSources(in:` 、
-`metadataLanguageTag(in clips: [SoundClip])` 存在，禁止
-`state.mainClips + state.audioTracks` 与 `candidates.count == 1` 再出现。
+`clearSelection()`、`SubtitleAudibleClips.selectProbe(`、
+`AudioWindowReader.extract(`、`metadataOrder(in: clips, probe:`、
+`metadataLanguageTag(in clips: [SoundClip])`、`selectCandidates(`、
+已装档的 `.sorted()`、`guard clip.hasAudio else`、
+`TranslationPreflight` 对 Core `languageKey` 的委托都存在；禁止
+`state.mainClips + state.audioTracks`、`candidates.count == 1`、
+`candidates.count < 3`、`if let info = clip.info, !info.hasAudio`、
+`TranslationPreflight` 里的 `maximalIdentifier` 再出现。
 这一条直接冲着 2026-08-07 Phase 2–4 的病根去：**纯函数写对了但没被接上**。
 
 ### 命令
@@ -158,7 +172,10 @@ App 类型，所以「函数被没被调用、参数对不对」在源码层面�
 - `swift build --arch arm64`：零错误（仅既有的 NSEvent Sendable 警告）。
 - `scripts/check-all.sh`：**11 项全绿**（脚本当前就是 11 项，本次没有新增
   第 12 项 —— 接线守卫并进了 project-file 这一项里）。
-  - `SrtFlowCoreChecks` 678 项、`check-project-file` 161 项。
+  - `SrtFlowCoreChecks` 691 项、`check-project-file` 183 项、
+    `check-translation-preflight` 8 项。
+  - `check-project-file.sh` 现在**要用 ffmpeg**（真实媒体探针那组现造素材），
+    与其他真跑 ffmpeg 的自检同一套纪律：找不到就明确失败，不静默跳过。
 - `git diff --check`：干净。
 
 ### GUI 冒烟（真实窗口，2026-08-09，macOS 26）
@@ -201,6 +218,103 @@ App 类型，所以「函数被没被调用、参数对不对」在源码层面�
   可听快照用例 + 接线守卫覆盖。
 - 「调整后导出的烧录位置/宽度/字号与预览逐像素一致」不在本次范围（原有
   人肉清单里的条目，仍待发版前过）。
+- **第二轮那两个 P2 没有可区分的真机冒烟**：试过「无音轨主轨 + 音频轨」的
+  工程，但撤掉修复重跑输出一样（`MediaProbe` 会把 `info.hasAudio` 填成 false，
+  旧过滤器同样排除它）——详见「第二轮复审两连」里的记录。这两条**只由自检
+  覆盖**，其中真实媒体那组绕开 `MediaProbe` 直接构造 `SoundClip`，撤掉修复
+  实测红 9 条。
+
+## 第二轮复审两连（第一轮修复自身的缺口，都在 Auto-detect 路径）
+
+上一轮把「素材从哪来」收进了 `SubtitleAudibleClips`，但收得不彻底 ——
+两个问题都长在那次修复自己的新代码上。
+
+### 五、[P2] 探针只验证「文件存在」，没验证「音轨可读」
+
+**症状**：时间线第一段是个**没有音轨**的视频（或半截文件），后面跟着一条
+正常的音频轨。Auto-detect 当场失败报「素材读不了」，可用户手里明明有声音。
+
+**根因**：`detectionSources` 用 `FileManager.fileExists` 挑第一段就定死探针，
+`detectSourceLocale` 只抽这一段、不重试；`AudioWindowReader` 对无音轨素材抛
+`ReadError`，一路上抛掐死整个检测。**「文件在」和「音轨读得出来」是两回事**，
+而上一轮把便宜的预筛当成了判据。
+
+同一处还有第二个口子：`soundClips` 写的是
+`if let info = clip.info, !info.hasAudio { return }` —— `info == nil` 被当成
+**有声音**。而 `EditClip.hasAudio`（CompositionBuilder / ExportGraph 用的那个）
+是 `isAudioOnly || (info?.hasAudio ?? false)`，nil 算**没声音**。宽容解码读回来
+的老工程、探测还没回来的导入中素材全是 `info == nil`，于是「可听性只有一份
+合同」在刚抽出合同的那次修复里就又分叉了一次。
+
+**当时的守卫为什么没抓到**：`checks/ProjectFile` 的 `makeFile` 只写重复字节，
+假文件连真实解码那一关都过不了 —— 它测得出「文件在不在」，测不出
+「存在 ≠ 可读」。
+
+**修复**：
+- `soundClips` 改用 `guard clip.hasAudio`，与 CompositionBuilder 同一个属性。
+- `detectionSources` 拆成 `probeOrder`（便宜预筛：文件存在的，按快照序）+
+  `selectProbe`（**逐段真的抽一次**，第一段抽成功才算定下探针）+
+  `metadataOrder(in:probe:)`（探针定下来**之后**才查 metadata）。
+- `selectProbe` 的错误分流照 `collectWindows` 的责任面：素材自己的错记进
+  `skipped` 换下一段，`InfrastructureError` 与取消**直穿**。跳过的素材名进
+  `skippedAssets`，面板照实说。
+- 新增**真实媒体守卫**：`check-project-file.sh` 用 ffmpeg 现造一个真的没有
+  音轨的 mp4 + 一段真有声音的 m4a（造完还验一遍音轨在不在），把生产的
+  `AudioWindowReader.extract` 接进 `selectProbe` 跑 —— 无音轨那段被跳过、
+  探针落到后面的音频、CAF 真的写出来且不是空壳。
+
+### 六、[P2] 同语言的地区变体吃光三个候选名额
+
+**症状**：本机实测生产算法取到 `["en_US", "zh_CN", "en_IN"]`；第一轮的 GUI
+冒烟也已经观察到 `en_US` / `en_SG` 同时参赛。三个名额被英语变体占掉两个后，
+即使装了日语模型也可能根本探不到日语。
+
+**根因**：候选去重用的是**完整 locale 标识符**（`seen.contains(matched.identifier)`），
+而 `en_US` / `en_SG` / `en_IN` 在裁决层面等价 —— 变体之间的置信度差是噪声
+（这一点第一轮的冒烟记录里已经写下来了，却没有反推到去重逻辑上）。
+第二个因素是顺序：`installedLocales()` 的返回顺序本机连续两次读都可能不同，
+截断发生在一个不确定的序列上，「哪三个语言进探针」会随机漂移。
+
+**修复**：
+- 新增 `SubtitleLanguageDetection.languageKey(of:)` —— maximal 化后的
+  **语言码 + 文字系统**，和翻译的同语种预检是**同一份实现**
+  （`TranslationPreflight.isSameTranslationLanguage` 改成委托过去，
+  `check-translation-preflight.sh` 随之链接 SrtFlowCore）。所以 zh-Hans ≠
+  zh-Hant、yue ≠ zh 在检测和翻译两边一致。
+- `selectCandidates(_:limit:)` 按这个键去重、保留优先级最高的变体、再截断到
+  `maximumCandidates = 3`；元数据候选的 `allowsDownload` 不会被后面的变体稀释。
+- 已装那一档按 identifier 排序后才进候选表，让截断作用在确定的序列上。
+
+**反红**：去重退回按标识符 → SrtFlowCoreChecks **3 条红**，第一条就复现出
+`["en_US", "en_SG", "en_IN"]`；`selectProbe` 退回「只试第一段」→ ProjectFile
+**9 条红**（含真实媒体那 4 条）；`soundClips` 退回 info 判据 → **1 条红**；
+吞掉 `InfrastructureError` → **1 条红**；`TranslationPreflight` 自己再实现一套 /
+已装档不排序 → 接线守卫红。
+
+**一次没抓到的冒烟（记下来，别当它验过）**：为了在真窗口里复现「第一段没有
+音轨」，用 ffmpeg 造了「无音轨 mp4（主轨）+ 纯音调 m4a（音频轨）」的工程跑
+Auto-detect，结果是
+「Couldn't confidently detect the spoken language.」 —— 看起来像修好了。
+**把两处修复撤掉重编再跑，输出一模一样。** 原因：导入时 `MediaProbe` 会把
+`info.hasAudio` 填成 false，旧的 `if let info, !info.hasAudio` 过滤器**同样**
+会把这段排除掉。真正会踩到旧代码的是 `info == nil`（宽容解码的老工程、探测还
+没回来的导入中素材）和「info 说有音轨、实际抽不出来」（损坏文件）这两种，
+而它们都不好在冒烟里稳定制造。所以这条回归**只由自检覆盖** —— 真实媒体那组
+直接构造 `SoundClip`，绕开 `MediaProbe`，正好命中旧代码。
+**「反证没抓到」本身就是发现**（2026-08-07 教训的复用）：一条不能区分修复
+前后的冒烟，不是证据。
+
+**教训**：
+- **便宜的预筛不能当判据。** `fileExists` 只配用来省一次 I/O，
+  「能不能用」必须由真正的那次操作回答（同 2026-08-07「『有没有 X』不能用
+  『能不能解析 X』代替」的反面）。
+- **冒烟也要做反证。** 撤掉修复重跑一遍，输出不变的冒烟等于没跑 ——
+  跟守卫必须先红过是同一条纪律。
+- **假素材测不出真解码。** 守卫里用重复字节凑出来的文件，覆盖的是路径逻辑，
+  不是媒体逻辑；涉及「素材可不可读」的合同必须有真实媒体。
+- **上一轮的观察要反推到实现上。** 「同语言变体的置信度差是噪声」这句话第一轮
+  就写进案例了，却没人回去问「那去重键为什么还是完整标识符」。
+- **抽出共享合同的那一次，最容易在自己新写的分支上再分叉一遍。**
 
 ## 教训 / 防回归
 

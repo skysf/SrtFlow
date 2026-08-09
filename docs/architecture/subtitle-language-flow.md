@@ -28,8 +28,18 @@
 5. **源语言默认 Auto-detect，检测是两段式**（macOS 26 的 SpeechTranscriber
    必须显式给语言，系统没有音频语言识别）：
    - 候选按优先级：素材音轨元数据指名的语言（唯一允许触发模型下载的候选）
-     → 系统首选 → 其余已装语言；去重、上限 3。**探针不为非元数据候选下载
+     → 系统首选 → 其余已装语言；上限 3。**探针不为非元数据候选下载
      模型** —— 自动检测不许静默拉起 N 份模型下载。
+   - **去重按语言，不按 locale 标识符**（`SubtitleLanguageDetection.selectCandidates`）：
+     `en_US` / `en_SG` / `en_IN` 是同一种语言的三个地区变体，探针对它们的裁决
+     在语言层面等价，按标识符去重会让它们**吃光三个名额**（实测生产算法取到过
+     `["en_US", "zh_CN", "en_IN"]` —— 装了日语模型也永远探不到日语）。
+     判据是 `languageKey`：maximal 化后的语言码 + 文字系统，
+     **与翻译的同语种预检共用同一份实现**（`TranslationPreflight` 委托过去），
+     所以 zh-Hans ≠ zh-Hant、yue ≠ zh 在两边一致。
+   - **截断前的顺序必须是确定的**：`installedLocales()` 的返回顺序本机实测
+     连续两次读都可能不同，已装那一档按 identifier 排序后再进候选表 ——
+     否则「哪三个语言进探针」会随机漂移，同一台机器上都不可复现。
    - **每个候选都要过探针，一个也不例外。** 曾经有过「单候选直接采用」的
      捷径，已删（2026-08-09 复审）：候选表是「这台 Mac 装了哪些模型」决定的，
      跟素材说什么语言毫无关系 —— 只装一个模型的 Mac 会把任何语言的视频都判成
@@ -57,10 +67,21 @@
    消费本次任务冻结的 `SubtitleAudibleClips.soundClips(in:)` 产物 ——
    那份快照复刻的是 CompositionBuilder 的可听合同（`mainHidden` 跳主轨、
    `lane.isHidden` 跳整轨、`isMuted || volume <= 0` 跳 clip、静帧图片段不算）。
-   - **查询顺序以真正的探针素材打头**（`detectionSources(in:)`）：metadata 是
-     最高优先级候选、还是唯一允许触发模型下载的那个，它必须来自真正会被听的
-     那段声音。反例（2026-08-09 复审的 P1）：隐藏的英文主轨 + 可听的日文
-     overlay —— 英文 metadata 当上首选候选，探针抽的却是日文 overlay。
+   - **判「有没有声音」只认 `EditClip.hasAudio`**，与 CompositionBuilder /
+     VideoEditExportGraph 同一个属性。写成「info 存在且 hasAudio 为假才排除」
+     等于把 `info == nil` 当成有声音 —— 宽容解码读回的老工程、探测还没回来的
+     导入中素材全是 nil，用户听不到的段落照样被转写。纯音频 clip 的 nil info
+     由 `hasAudio` 里的 `isAudioOnly ||` 兜住（2026-08-06 那条回退还在）。
+   - **「文件存在」不等于「音轨可读」。** 探针要按快照顺序**逐段真的抽一次**
+     （`SubtitleAudibleClips.selectProbe`）：无音轨的视频、半截文件都是文件
+     存在的，只挑第一段又不重试的话，后面明明有正常音频轨，整个 Auto-detect
+     却当场失败。错误分流照 `collectWindows` 的责任面 —— **素材自己的错换下
+     一段，基础设施错误和取消直穿**，不许把「磁盘满」报成「素材不可读」。
+   - **查询顺序以最终选定的探针打头**（`metadataOrder(in:probe:)`，
+     在探针定下来**之后**才查）：metadata 是最高优先级候选、还是唯一允许触发
+     模型下载的那个，它必须来自真正会被听的那段声音。反例（2026-08-09 复审的
+     P1）：隐藏的英文主轨 + 可听的日文 overlay —— 英文 metadata 当上首选候选，
+     探针抽的却是日文 overlay。
    - **不许再从 `TimelineState` 枚举一套分叉的「声音来源」。**
      `TranscriptionTask.detectSourceLocale` 刻意不收 `TimelineState` 参数，
      让这件事在类型上就做不到；`scripts/check-project-file.sh` 末尾的接线
