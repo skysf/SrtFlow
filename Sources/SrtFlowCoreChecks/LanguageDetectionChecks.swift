@@ -156,4 +156,86 @@ func runLanguageDetectionChecks() {
         SubtitleLanguageDetection.pick([sparseNoConfidence]) == nil,
         "检测裁决：短且无置信度的候选必须判失败"
     )
+
+    // ---- 候选构造：同一语言只占一个名额（PR#22 复审第二轮 P2）----
+    //
+    // 语言比较键：地区变体合并，文字系统不合并。
+    checkEqual(
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "en_US"),
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "en_SG"),
+        "语言键：en_US 与 en_SG 是同一种语言"
+    )
+    checkEqual(
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "en"),
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "en-Latn-US"),
+        "语言键：en ≍ en-Latn-US"
+    )
+    check(
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "zh-Hans")
+            != SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "zh-Hant"),
+        "语言键：简繁是两种文字系统，不许合并"
+    )
+    check(
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "yue")
+            != SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "zh_CN"),
+        "语言键：粤语与普通话不是同一种"
+    )
+    check(
+        SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "ja_JP")
+            != SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: "en_US"),
+        "语言键：不同语言当然不能合并"
+    )
+
+    func source(_ id: String, download: Bool = false) -> SubtitleLanguageDetection.CandidateSource {
+        SubtitleLanguageDetection.CandidateSource(localeIdentifier: id, allowsDownload: download)
+    }
+
+    // **本回归的判别用例**：三个英语变体不许吃光三个名额。
+    // 修复前的按标识符去重会得到 [en_US, en_SG, en_IN] —— 装了日语模型也
+    // 永远探不到日语（实测生产算法取到过 ["en_US", "zh_CN", "en_IN"]）。
+    let mixed = SubtitleLanguageDetection.selectCandidates([
+        source("en_US"), source("en_SG"), source("en_IN"), source("zh_CN"), source("ja_JP")
+    ])
+    checkEqual(
+        mixed.map(\.localeIdentifier), ["en_US", "zh_CN", "ja_JP"],
+        "候选构造：同一语言的变体只占一个名额，三个名额给三种语言"
+    )
+    checkEqual(
+        Set(mixed.compactMap { SubtitleLanguageDetection.languageKey(ofLocaleIdentifier: $0.localeIdentifier) }).count,
+        mixed.count,
+        "候选构造：结果里不许出现两个同语言的候选"
+    )
+    // 变体去重取**优先级最高**的那个（顺序即优先级，元数据排最前）。
+    let metadataFirst = SubtitleLanguageDetection.selectCandidates([
+        source("en_GB", download: true), source("en_US"), source("ja_JP")
+    ])
+    checkEqual(
+        metadataFirst.map(\.localeIdentifier), ["en_GB", "ja_JP"],
+        "候选构造：同语言只留优先级最高的变体"
+    )
+    check(
+        metadataFirst.first?.allowsDownload == true,
+        "候选构造：元数据候选的下载许可不许被后面的变体稀释"
+    )
+    // 简繁必须都留下 —— 它们是两个方向，不是变体。
+    checkEqual(
+        SubtitleLanguageDetection.selectCandidates([
+            source("zh-Hans"), source("zh-Hant"), source("ja_JP")
+        ]).map(\.localeIdentifier),
+        ["zh-Hans", "zh-Hant", "ja_JP"],
+        "候选构造：zh-Hans 与 zh-Hant 各占一个名额"
+    )
+    // 截断上限就是探针预算。
+    checkEqual(
+        SubtitleLanguageDetection.selectCandidates([
+            source("en_US"), source("ja_JP"), source("de_DE"), source("fr_FR")
+        ]).count,
+        SubtitleLanguageDetection.maximumCandidates,
+        "候选构造：截断到探针预算"
+    )
+    checkEqual(SubtitleLanguageDetection.maximumCandidates, 3, "探针预算是 3 个候选")
+    check(
+        SubtitleLanguageDetection.selectCandidates([]).isEmpty,
+        "候选构造：空来源给空结果"
+    )
 }

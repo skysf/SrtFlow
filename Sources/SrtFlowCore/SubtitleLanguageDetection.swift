@@ -76,6 +76,77 @@ public enum SubtitleLanguageDetection {
         return totalWeight > 0 ? weightedSum / totalWeight : 0
     }
 
+    // MARK: - 候选构造：同一语言只占一个名额
+
+    /// 一个候选来源（还没去重、没截断）。
+    public struct CandidateSource: Hashable, Sendable {
+        public var localeIdentifier: String
+        /// 只有素材元数据指名的语言允许触发模型下载。
+        public var allowsDownload: Bool
+
+        public init(localeIdentifier: String, allowsDownload: Bool) {
+            self.localeIdentifier = localeIdentifier
+            self.allowsDownload = allowsDownload
+        }
+    }
+
+    /// 语言的比较键：maximal 化后的**语言码 + 文字系统**。
+    ///
+    /// en ≍ en-US ≍ en-SG ≍ en-Latn-US（地区差异不是区别）；
+    /// zh-Hans ≠ zh-Hant（简繁是两种文字系统）；yue ≠ zh。
+    ///
+    /// 这条规则有两个消费者 —— 检测的候选去重和翻译的同语种预检
+    /// （`TranslationPreflight.isSameTranslationLanguage` 委托到这里）。
+    /// **两边必须是同一份实现**：分叉出第二套「算不算同一种语言」的判据，
+    /// 迟早会出现「检测认为是两种、翻译认为是一种」的撕裂。
+    ///
+    /// - Returns: 连语言码都取不到时返回 nil（调用方按「无法比较」处理）。
+    public static func languageKey(of language: Locale.Language) -> String? {
+        let maximal = Locale.Language(identifier: language.maximalIdentifier)
+        guard let code = maximal.languageCode?.identifier else { return nil }
+        guard let script = maximal.script?.identifier else { return code }
+        return "\(code)-\(script)"
+    }
+
+    /// 同上，入参是 locale 标识符（`en_US` 这种下划线形式也认）。
+    public static func languageKey(ofLocaleIdentifier identifier: String) -> String? {
+        languageKey(of: Locale(identifier: identifier).language)
+    }
+
+    /// 按优先级去重并截断到 `limit`。
+    ///
+    /// **去重按语言而不是按 locale 标识符**：`en_US` / `en_SG` / `en_IN` 是
+    /// 同一种语言的三个地区变体，探针对它们的裁决结果在语言层面等价（变体间的
+    /// 置信度差是噪声，2026-08-09 冒烟实测到过 en_US/en_SG 同时参赛）。按标识符
+    /// 去重的话，它们会**吃光三个名额** —— 本机实测生产算法就取到过
+    /// `["en_US", "zh_CN", "en_IN"]`：装了日语模型也永远探不到日语。
+    ///
+    /// 同一语言的多个变体只留优先级最高的那一个；`allowsDownload` 也跟着它
+    /// （元数据指名的候选排在最前，所以下载许可不会被后面的变体稀释）。
+    ///
+    /// - Parameter sources: 已经按优先级排好序的来源（元数据 → 系统首选 →
+    ///   其余已装）。**调用方要保证顺序是确定的** —— 截断意味着排在后面的
+    ///   语言会被丢掉，顺序一抖动，结果就不可复现。
+    public static func selectCandidates(
+        _ sources: [CandidateSource], limit: Int = maximumCandidates
+    ) -> [CandidateSource] {
+        var seen = Set<String>()
+        var result: [CandidateSource] = []
+        for source in sources {
+            guard result.count < limit else { break }
+            // 键取不出来的（畸形标识符）退回用标识符本身，至少不会互相合并。
+            let key = languageKey(ofLocaleIdentifier: source.localeIdentifier)
+                ?? source.localeIdentifier
+            guard seen.insert(key).inserted else { continue }
+            result.append(source)
+        }
+        return result
+    }
+
+    /// 探针最多跑几个候选。每个候选都要真转写一遍 20s 音频，3 个是
+    /// 「够分辨 + 仍在秒级」的产品参数。
+    public static let maximumCandidates = 3
+
     /// 最高分且过门槛的候选；并列取先到者（调用方按优先级排列候选：
     /// 素材元数据 → 系统首选 → 其余已装）。
     ///

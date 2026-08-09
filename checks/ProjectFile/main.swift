@@ -941,32 +941,52 @@ do {
     check(ids.contains(audibleOverlay.id), "带声音的 overlay 必须进可听快照")
     check(ids.contains(audibleAudio.id), "可听音频轨必须进可听快照")
 
-    guard let sources = SubtitleAudibleClips.detectionSources(in: clips) else {
-        check(false, "有可听素材时必须能定出探针")
+    let probeOrder = SubtitleAudibleClips.probeOrder(in: clips)
+    guard let firstProbe = probeOrder.first else {
+        check(false, "有可听素材时必须有探针候选")
         fatalError("unreachable")
     }
     // 候选顺序与实际 probe 来源一致：metadata 第一个问的就是探针那一段。
-    checkEqual(sources.probe.clipID, audibleOverlay.id, "探针取可听快照里第一段真实存在的素材")
-    checkEqual(sources.metadataOrder.first?.clipID, sources.probe.clipID,
-               "metadata 查询顺序必须以探针素材打头")
-    checkEqual(sources.metadataOrder.count, clips.count, "metadata 顺序覆盖整份可听快照，不重不漏")
-    check(!sources.metadataOrder.contains { $0.clipID == hiddenMain.id },
-          "隐藏主轨的 metadata 不许参与检测")
-    checkEqual(Set(sources.metadataOrder.map(\.clipID)), Set(ids),
-               "metadata 顺序是可听快照的一个排列（不许自己找素材）")
+    checkEqual(firstProbe.clipID, audibleOverlay.id, "探针候选从可听快照第一段真实存在的素材起")
+    let order = SubtitleAudibleClips.metadataOrder(in: clips, probe: firstProbe)
+    checkEqual(order.first?.clipID, firstProbe.clipID, "metadata 查询顺序必须以探针素材打头")
+    checkEqual(order.count, clips.count, "metadata 顺序覆盖整份可听快照，不重不漏")
+    check(!order.contains { $0.clipID == hiddenMain.id }, "隐藏主轨的 metadata 不许参与检测")
+    checkEqual(Set(order.map(\.clipID)), Set(ids), "metadata 顺序是可听快照的一个排列（不许自己找素材）")
 
     // 静音 / 零音量 / 隐藏 lane 同样出局 —— 与预览、导出同一份可听合同。
     var muted = TimelineState()
     var mutedClip = clip("muted.mp4")
     mutedClip.isMuted = true
-    var silentClip = clip("silent.mp4")
-    silentClip.volume = 0
-    muted.mainClips = [mutedClip, silentClip]
+    var zeroVolume = clip("zero-volume.mp4")
+    zeroVolume.volume = 0
+    muted.mainClips = [mutedClip, zeroVolume]
     muted.overlayTracks = [EditLane(clips: [clip("hidden-lane.mp4")], isHidden: true)]
     check(SubtitleAudibleClips.soundClips(in: muted).isEmpty,
           "静音/零音量/隐藏 lane 的素材一个都不该进可听快照")
-    check(SubtitleAudibleClips.detectionSources(in: []) == nil,
-          "可听快照为空时定不出探针（调用方要报「素材读不了」）")
+    check(SubtitleAudibleClips.probeOrder(in: []).isEmpty, "空快照没有探针候选")
+
+    // 「有没有声音」只认 EditClip.hasAudio —— 与 CompositionBuilder 同一属性。
+    // 回归（PR#22 复审第二轮）：这里曾经写成「info 存在且 hasAudio 为假才排除」，
+    // 于是 info == nil 被当成有声音。宽容解码读回来的老工程、探测还没回来的
+    // 导入中素材全是 info == nil —— 用户**听不到**的段落照样进快照被转写。
+    var infoless = TimelineState()
+    var unknownVideo = clip("unknown-info.mp4")
+    unknownVideo.info = nil                       // 视频，探测信息未知
+    let noAudioVideo = clip("no-audio.mp4", hasAudio: false)
+    var audioOnlyNoInfo = clip("voice-only.m4a")
+    audioOnlyNoInfo.info = nil                    // 纯音频 clip 的 info 常年为 nil
+    audioOnlyNoInfo.isAudioOnly = true
+    infoless.mainClips = [unknownVideo, noAudioVideo]
+    infoless.audioTracks = [EditLane(clips: [audioOnlyNoInfo])]
+    let infolessIDs = SubtitleAudibleClips.soundClips(in: infoless).map(\.clipID)
+    check(!infolessIDs.contains(unknownVideo.id),
+          "info == nil 的视频不算可听（与 CompositionBuilder 同一份 hasAudio 合同）")
+    check(!infolessIDs.contains(noAudioVideo.id), "info 明说没有音轨的视频不算可听")
+    check(infolessIDs.contains(audioOnlyNoInfo.id),
+          "isAudioOnly 的 clip 即使 info == nil 也算可听（2026-08-06 的回退仍在）")
+    check(unknownVideo.hasAudio == false && audioOnlyNoInfo.hasAudio,
+          "EditClip.hasAudio 本身的语义没被改坏")
 
     // 文件真不在磁盘上的素材抽不出音频，不许被选成探针。
     var ghostState = TimelineState()
@@ -976,9 +996,155 @@ do {
     ghostState.mainClips = [ghost, realOne]
     let ghostClips = SubtitleAudibleClips.soundClips(in: ghostState)
     checkEqual(ghostClips.count, 2, "文件不在也仍进快照（转写阶段另有跳过逻辑）")
-    checkEqual(SubtitleAudibleClips.detectionSources(in: ghostClips)?.probe.clipID, realOne.id,
-               "探针跳过磁盘上不存在的素材")
+    checkEqual(SubtitleAudibleClips.probeOrder(in: ghostClips).first?.clipID, realOne.id,
+               "探针候选跳过磁盘上不存在的素材")
     ghost.volume = 1  // 消掉未使用告警的同时保持 ghost 可写
+}
+
+// MARK: - 20b. 探针必须**真抽一次**才算数（不是「文件存在」就当可读）
+//
+// 回归（PR#22 复审第二轮 P2）：探针原来只挑「第一段文件存在的素材」，抽取失败
+// 就整个 Auto-detect 失败。第一段完全可能是无音轨的视频或半截文件，而后面就
+// 跟着一条正常音频轨 —— 用户手里明明有可用的声音，却被告知检测不了。
+//
+// 错误分流照 collectWindows 的责任面：素材的错换下一段，基础设施错误和取消上抛。
+
+do {
+    let dir = root.appendingPathComponent("probe-retry")
+    func soundClip(_ name: String) -> SubtitleAudibleClips.SoundClip {
+        let url = dir.appendingPathComponent(name)
+        makeFile(url)
+        return SubtitleAudibleClips.SoundClip(
+            clipID: UUID(), name: name, url: url, fingerprint: name,
+            knownAssetDuration: 30, sourceStart: 2, sourceDuration: 30,
+            timelineStart: 0, speed: 1, laneRank: 0
+        )
+    }
+    let broken = soundClip("broken.mp4")
+    let good = soundClip("good.m4a")
+    let third = soundClip("third.m4a")
+
+    struct Boom: Error {}
+
+    // 第一段读不了 → 顺延到第二段，并把跳过的记下来。
+    let picked = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good, third], probeSeconds: 20
+    ) { clip, _ in
+        if clip.clipID == broken.clipID {
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+        return clip.url
+    }
+    checkEqual(picked?.clip.clipID, good.clipID, "第一段读不出音频时探针顺延到下一段")
+    checkEqual(picked?.skipped.count, 1, "跳过的素材要记下来")
+    checkEqual(picked?.skipped.first?.name, "broken.mp4", "跳过记录带素材名")
+    // 抽取区间按 clip 自己的源起点 + 探针时长截断。
+    checkEqual(picked?.range.start, 2, "探针区间从 clip 的源起点开始")
+    checkEqual(picked?.range.end, 22, "探针区间按 probeSeconds 截断")
+
+    // 全都读不了 → nil（调用方报「素材读不了，请重新链接」）。
+    let none = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good], probeSeconds: 20
+    ) { _, _ in throw AudioWindowReader.ReadError(message: "nope") }
+    check(none == nil, "全部候选都读不出音频时返回 nil")
+
+    // 基础设施错误不许被当成「这段素材不行」吞掉 —— 必须整体失败。
+    var rethrew = false
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good], probeSeconds: 20
+        ) { _, _ in throw AudioWindowReader.InfrastructureError(message: "disk full") }
+    } catch is AudioWindowReader.InfrastructureError {
+        rethrew = true
+    } catch {}
+    check(rethrew, "基础设施错误必须直穿，不许伪装成「素材不可读」")
+
+    // 取消同样直穿。
+    var cancelled = false
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good], probeSeconds: 20
+        ) { _, _ in throw CancellationError() }
+    } catch is CancellationError {
+        cancelled = true
+    } catch {}
+    check(cancelled, "取消必须直穿")
+
+    // 第一段就能读时不该有任何跳过记录，也不该多试。
+    var attempts = 0
+    let straight = try await SubtitleAudibleClips.selectProbe(
+        in: [good, third], probeSeconds: 20
+    ) { clip, _ in attempts += 1; return clip.url }
+    checkEqual(attempts, 1, "第一段能读就不再往下试")
+    check(straight?.skipped.isEmpty == true, "没跳过任何素材时记录为空")
+    _ = Boom.self
+}
+
+// MARK: - 20c. 真实媒体：无音轨的视频 → 后面的音频素材仍要能当探针
+//
+// 上面那组用注入的抽取器验分流**策略**；这一组把生产的
+// `AudioWindowReader.extract` 真接上去，喂 ffmpeg 现造的两个文件：
+// 一个**真的没有音轨**的 mp4，和一段真的有声音的 m4a。
+// 之前的守卫用 makeFile（重复字节的假文件）恰好抓不到这个回归 —— 假文件
+// 连「文件存在」这一关都过不了真实解码，测不出「存在 ≠ 可读」。
+
+do {
+    guard let mediaPath = ProcessInfo.processInfo.environment["SRTFLOW_CHECK_MEDIA"] else {
+        // 静默跳过 = 假绿。没有素材就明确失败。
+        check(false, "缺 SRTFLOW_CHECK_MEDIA：真实媒体探针守卫无法运行（脚本该现造素材）")
+        fatalError("missing SRTFLOW_CHECK_MEDIA")
+    }
+    let mediaDir = URL(fileURLWithPath: mediaPath, isDirectory: true)
+    let silentVideo = mediaDir.appendingPathComponent("silent-no-audio.mp4")
+    let realAudio = mediaDir.appendingPathComponent("real-voice.m4a")
+    check(manager.fileExists(atPath: silentVideo.path), "无音轨视频素材要在")
+    check(manager.fileExists(atPath: realAudio.path), "有声音的素材要在")
+
+    func soundClip(_ url: URL) -> SubtitleAudibleClips.SoundClip {
+        SubtitleAudibleClips.SoundClip(
+            clipID: UUID(), name: url.lastPathComponent, url: url,
+            fingerprint: url.path, knownAssetDuration: 5,
+            sourceStart: 0, sourceDuration: 5, timelineStart: 0, speed: 1, laneRank: 0
+        )
+    }
+    let noAudio = soundClip(silentVideo)
+    let voice = soundClip(realAudio)
+
+    // 「文件存在」这一关两个都过 —— 正是本回归的关键：光看存在分不出好坏。
+    checkEqual(
+        SubtitleAudibleClips.probeOrder(in: [noAudio, voice]).map(\.clipID),
+        [noAudio.clipID, voice.clipID],
+        "两个文件都存在，probeOrder 分不出谁可读（所以必须真抽一次）"
+    )
+
+    let outDir = root.appendingPathComponent("probe-real")
+    try manager.createDirectory(at: outDir, withIntermediateDirectories: true)
+    let selection = try await SubtitleAudibleClips.selectProbe(
+        in: [noAudio, voice], probeSeconds: 20
+    ) { clip, range in
+        try await AudioWindowReader.extract(
+            assetURL: clip.url, range: range, into: outDir, isCancelled: { false }
+        )
+    }
+    checkEqual(selection?.clip.clipID, voice.clipID,
+               "真实媒体：无音轨的视频被跳过，探针落到后面的音频素材")
+    checkEqual(selection?.skipped.count, 1, "真实媒体：无音轨视频要进跳过记录")
+    let extracted = selection.map { manager.fileExists(atPath: $0.file.path) } ?? false
+    check(extracted, "真实媒体：探针 CAF 要真的写出来")
+    let size = selection.flatMap {
+        (try? manager.attributesOfItem(atPath: $0.file.path)[.size] as? NSNumber)??.intValue
+    } ?? 0
+    check(size > 4096, "真实媒体：探针 CAF 不该是个空壳（实测 \(size) 字节）")
+
+    // 反向：只有无音轨的视频时必须返回 nil，不许硬凑一个探针出来。
+    let onlyBroken = try await SubtitleAudibleClips.selectProbe(
+        in: [noAudio], probeSeconds: 20
+    ) { clip, range in
+        try await AudioWindowReader.extract(
+            assetURL: clip.url, range: range, into: outDir, isCancelled: { false }
+        )
+    }
+    check(onlyBroken == nil, "真实媒体：全是无音轨素材时定不出探针")
 }
 
 // MARK: - 21. 三类选择互斥：剪辑 / 形状 / 字幕 cue

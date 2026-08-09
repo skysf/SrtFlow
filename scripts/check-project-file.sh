@@ -3,6 +3,9 @@
 # 纯值合同：字幕生成的「可听快照 / 探针来源」（SubtitleAudibleClips）与
 # 三类选择的互斥（EditSelection）。
 #
+# 需要 ffmpeg：探针那组要现造「真的没有音轨的 mp4」+「真有声音的 m4a」，
+# 假文件（重复字节）过不了真实解码，测不出「文件存在 ≠ 音轨可读」。
+#
 # 用法：
 #   scripts/check-project-file.sh
 #
@@ -40,12 +43,48 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditProjectFile.swift \
   Sources/SrtFlow/VideoEditSelection.swift \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift \
+  Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift \
   Sources/SrtFlow/SubtitleGen/TranscriptSidecarStore.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/StillImageClipFactory.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/ProjectFile/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
+
+# ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
+#
+# 假文件（重复字节）过不了真实解码，测不出这个回归，所以这里现造两个真素材：
+# 一个**没有音轨**的 mp4 和一段真的有声音的 m4a。
+# 需要真跑 ffmpeg 的自检**不允许静默跳过**（跳过 = 假绿），没有就明确失败。
+FFMPEG_BIN="${SRTFLOW_FFMPEG:-$(pwd)/vendor/ffmpeg}"
+if [ ! -x "${FFMPEG_BIN}" ]; then
+  echo "✗ 找不到可执行的 ffmpeg：${FFMPEG_BIN}" >&2
+  echo "  先运行 scripts/vendor-ffmpeg.sh，或用 SRTFLOW_FFMPEG= 指定一份。" >&2
+  exit 1
+fi
+MEDIA_DIR="$(dirname "$OUT")/media"
+mkdir -p "$MEDIA_DIR"
+echo "==> 现造真实媒体素材"
+"${FFMPEG_BIN}" -y -loglevel error \
+  -f lavfi -i "testsrc2=size=320x180:rate=15:duration=5" \
+  -an -c:v h264_videotoolbox -pix_fmt yuv420p "$MEDIA_DIR/silent-no-audio.mp4"
+"${FFMPEG_BIN}" -y -loglevel error \
+  -f lavfi -i "sine=frequency=440:duration=5" \
+  -c:a aac "$MEDIA_DIR/real-voice.m4a"
+# 验明正身：第一个真的没有音轨，第二个真的有。
+# `ffmpeg -i` 不给输出文件时**退出码是 1**，而本脚本开着 pipefail ——
+# 直接写 `ffmpeg ... | grep -q` 会被 ffmpeg 的退出码判成「没匹配到」，
+# 两条判断都会得出错误结论（2026-08-06 shell 陷阱案例同款）。先取回文本再判。
+SILENT_INFO="$("${FFMPEG_BIN}" -hide_banner -i "$MEDIA_DIR/silent-no-audio.mp4" 2>&1 || true)"
+VOICE_INFO="$("${FFMPEG_BIN}" -hide_banner -i "$MEDIA_DIR/real-voice.m4a" 2>&1 || true)"
+case "${SILENT_INFO}" in
+  *"Audio:"*) echo "✗ silent-no-audio.mp4 竟然带音轨，素材没造对" >&2; exit 1 ;;
+esac
+case "${VOICE_INFO}" in
+  *"Audio:"*) ;;
+  *) echo "✗ real-voice.m4a 没有音轨，素材没造对" >&2; exit 1 ;;
+esac
+export SRTFLOW_CHECK_MEDIA="$MEDIA_DIR"
 
 echo "==> 运行"
 "$OUT"
@@ -81,9 +120,15 @@ require "切工程必须三类选择一起清" \
   Sources/SrtFlow/VideoEditProjectDocument.swift 'clearSelection\(\)'
 
 # 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
-require "detectSourceLocale 必须从 SubtitleAudibleClips 取探针" \
+require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
-  'SubtitleAudibleClips\.detectionSources\(in:'
+  'SubtitleAudibleClips\.selectProbe\('
+require "生产抽取器必须真接上 AudioWindowReader" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'AudioWindowReader\.extract\('
+require "metadata 顺序必须以选定的探针为首" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'SubtitleAudibleClips\.metadataOrder\(in: clips, probe:'
 require "metadata 查询必须吃 [SoundClip] 快照" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
   'metadataLanguageTag\(in clips: \[SoundClip\]\)'
@@ -93,6 +138,28 @@ forbid "metadata 不许再从 TimelineState 自己枚举素材" \
 forbid "Auto-detect 不许留「单候选直接采用」的无证据捷径" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
   'candidates\.count == 1'
+require "候选去重必须走按语言的 selectCandidates" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'SubtitleLanguageDetection\.selectCandidates\('
+forbid "候选不许再按 locale 标识符自己去重截断（同语言变体会吃光名额）" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'candidates\.count < 3'
+require "已装语言那一档必须排序（系统返回顺序实测会变）" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  'installed\.map\(\\\.identifier\)\.sorted\(\)'
+
+# 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
+require "可听快照必须用 clip.hasAudio" \
+  Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'guard clip\.hasAudio else'
+forbid "不许再把 info == nil 当成「有声音」" \
+  Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'if let info = clip\.info, !info\.hasAudio'
+
+# 同语种判据只有一份：TranslationPreflight 委托到 Core，不许自己再写一遍。
+require "TranslationPreflight 必须委托 Core 的 languageKey" \
+  Sources/SrtFlow/SubtitleGen/TranslationPreflight.swift \
+  'SubtitleLanguageDetection\.languageKey\(of:'
+forbid "TranslationPreflight 不许自己再实现一套 maximal 比较" \
+  Sources/SrtFlow/SubtitleGen/TranslationPreflight.swift 'maximalIdentifier'
 
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2

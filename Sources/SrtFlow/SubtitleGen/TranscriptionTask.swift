@@ -313,53 +313,65 @@ final class TranscriptionTask: ObservableObject {
         if token.isCancelled { throw CancellationError() }
         setProgress(0.01)
 
-        // 探针素材先定下来 —— metadata 的查询顺序以它为首。
-        guard let sources = SubtitleAudibleClips.detectionSources(in: clips) else {
+        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("SrtFlow-ASR-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+        // 探针素材先定下来，而且是**真的抽一次音频**才算定下 ——「文件在」不等于
+        // 「音轨读得出来」。读不了的往下顺延，metadata 的查询顺序再以最终选中的
+        // 那一段为首（PR#22 复审第二轮 P2）。
+        let probe = try await SubtitleAudibleClips.selectProbe(
+            in: clips, probeSeconds: Self.detectionProbeSeconds
+        ) { clip, range in
+            try await AudioWindowReader.extract(
+                assetURL: clip.url, range: range, into: tempDirectory,
+                isCancelled: { token.isCancelled }
+            )
+        }
+        guard let probe else {
             throw TaskError(message: L10n(
                 "None of the audio sources could be read. Relink the missing media and try again."
             ))
         }
-        let metadataTag = await Self.metadataLanguageTag(in: sources.metadataOrder)
-        var priorityIDs: [(id: String, allowsDownload: Bool)] = []
-        if let metadataTag { priorityIDs.append((metadataTag, true)) }
-        priorityIDs += Locale.preferredLanguages.map { ($0, false) }
-        let installed = await SpeechTranscriptionService.installedLocales()
-        priorityIDs += installed.map { ($0.identifier, false) }
-
-        var seen = Set<String>()
-        var candidates: [Locale] = []
-        for entry in priorityIDs {
-            guard candidates.count < 3 else { break }
-            guard let matched = await SpeechTranscriptionService.matchedLocale(for: entry.id),
-                  !seen.contains(matched.identifier) else { continue }
-            guard entry.allowsDownload
-                || installed.contains(where: { $0.identifier == matched.identifier }) else {
-                continue
-            }
-            seen.insert(matched.identifier)
-            candidates.append(matched)
+        if !probe.skipped.isEmpty {
+            skippedAssets = probe.skipped.map(\.name)
         }
+        if token.isCancelled { throw CancellationError() }
+
+        let metadataTag = await Self.metadataLanguageTag(
+            in: SubtitleAudibleClips.metadataOrder(in: clips, probe: probe.clip)
+        )
+        // 候选来源按优先级排：元数据（唯一允许下载）→ 系统首选 → 其余已装。
+        // **已装那一档要排序**：`installedLocales()` 的顺序本机实测连续两次读
+        // 都可能不同，不排序的话「哪三个语言进探针」会随机漂移。
+        var sources: [SubtitleLanguageDetection.CandidateSource] = []
+        if let metadataTag,
+           let matched = await SpeechTranscriptionService.matchedLocale(for: metadataTag) {
+            sources.append(.init(localeIdentifier: matched.identifier, allowsDownload: true))
+        }
+        let installed = await SpeechTranscriptionService.installedLocales()
+        let installedIDs = Set(installed.map(\.identifier))
+        for id in Locale.preferredLanguages + installed.map(\.identifier).sorted() {
+            // 元数据之外的候选必须已装 —— 自动检测不许静默拉起 N 份模型下载。
+            guard let matched = await SpeechTranscriptionService.matchedLocale(for: id),
+                  installedIDs.contains(matched.identifier) else { continue }
+            sources.append(.init(localeIdentifier: matched.identifier, allowsDownload: false))
+        }
+        // 去重按**语言**不按 locale 标识符：en_US/en_SG/en_IN 是同一种语言的三个
+        // 变体，按标识符去重会让它们吃光三个名额（实测取到过
+        // ["en_US", "zh_CN", "en_IN"]），装了日语模型也永远探不到日语。
+        let candidates = SubtitleLanguageDetection.selectCandidates(sources)
+            .map { Locale(identifier: $0.localeIdentifier) }
         guard !candidates.isEmpty else {
             throw TaskError(message: L10n(
                 "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded."
             ))
         }
-        // 探针音频：探针素材开头 detectionProbeSeconds 秒。
-        // **不因为「只有一个候选」跳过这一段** —— 见方法头的说明。
-        let probeClip = sources.probe
-        let probeRange = SourceRange(
-            start: probeClip.sourceStart,
-            end: probeClip.sourceStart + min(Self.detectionProbeSeconds, probeClip.sourceDuration)
-        )
-        let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("SrtFlow-ASR-\(UUID().uuidString)", isDirectory: true)
-        try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: tempDirectory) }
-        let probeFile = try await AudioWindowReader.extract(
-            assetURL: probeClip.url, range: probeRange, into: tempDirectory,
-            isCancelled: { token.isCancelled }
-        )
 
+        // **不因为「只有一个候选」跳过探针** —— 见方法头的说明。
+        let probeFile = probe.file
+        let probeRange = probe.range
         var results: [SubtitleLanguageDetection.Candidate] = []
         for candidate in candidates {
             if token.isCancelled { throw CancellationError() }
