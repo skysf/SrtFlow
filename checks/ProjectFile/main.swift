@@ -1078,6 +1078,94 @@ do {
     checkEqual(attempts, 1, "第一段能读就不再往下试")
     check(straight?.skipped.isEmpty == true, "没跳过任何素材时记录为空")
     _ = Boom.self
+
+    // ---- 取消不许被跳过逻辑洗成「素材都读不了」（PR#22 复审第三轮 P2）----
+    //
+    // 跳过逻辑天生要吞错误。用户按 Stop 之后，剩下的候选照样各抛一个 ReadError，
+    // 全被吞掉就走到 return nil，调用方翻成「素材都读不了」——终态从 .cancelled
+    // 变成 .failed，用户明明是自己取消的。
+
+    // ① 任务自己的取消通道（生产是 token.isCancelled）：抽取器抛的仍是
+    //    **ReadError**，判别点就在这里 —— 结果必须是 CancellationError。
+    var tokenCancelled = false
+    var tokenAttempts = 0
+    var tokenOutcome: Error?
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [broken, good, third], probeSeconds: 20,
+            isCancelled: { tokenCancelled }
+        ) { _, _ in
+            tokenAttempts += 1
+            tokenCancelled = true   // 用户在第一段抽取期间按了 Stop
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+    } catch {
+        tokenOutcome = error
+    }
+    check(tokenOutcome is CancellationError,
+          "取消期间的 ReadError 必须归成 CancellationError，不许被吞掉继续找")
+    checkEqual(tokenAttempts, 1, "取消之后不许再试下一段")
+
+    // ② 结构化取消（Task.isCancelled）：同样不许被 ReadError 洗掉。
+    //    在闭包里就地取消当前任务 —— 比「先建 Task 再 cancel」确定得多。
+    var structuredAttempts = 0
+    let structured = await Task { () -> Error? in
+        do {
+            _ = try await SubtitleAudibleClips.selectProbe(
+                in: [broken, good, third], probeSeconds: 20
+            ) { _, _ in
+                structuredAttempts += 1
+                withUnsafeCurrentTask { $0?.cancel() }
+                throw AudioWindowReader.ReadError(message: "no audio track")
+            }
+            return nil
+        } catch {
+            return error
+        }
+    }.value
+    check(structured is CancellationError,
+          "结构化取消期间的 ReadError 同样要归成 CancellationError")
+    checkEqual(structuredAttempts, 1, "结构化取消之后不许再试下一段")
+
+    // ③ **最后一段**失败的同时取消：不许走到 return nil。
+    //    这条把「顺序错误」整个消掉 —— nil 的含义收窄成「确实全读不出音频」，
+    //    调用方再把 nil 翻成 TaskError 就永远不会冤枉取消。
+    var lateCancelled = false
+    var lateOutcome: Error?
+    var sawNil = false
+    do {
+        let result = try await SubtitleAudibleClips.selectProbe(
+            in: [broken], probeSeconds: 20, isCancelled: { lateCancelled }
+        ) { _, _ in
+            lateCancelled = true    // 唯一一段失败的同时用户按了 Stop
+            throw AudioWindowReader.ReadError(message: "no audio track")
+        }
+        sawNil = result == nil
+    } catch {
+        lateOutcome = error
+    }
+    check(lateOutcome is CancellationError, "最后一段失败时若已取消，必须抛取消而不是返回 nil")
+    check(!sawNil, "取消状态下不许把 nil 交给调用方（会被翻成「素材都读不了」）")
+
+    // ④ 进门就已经取消：一次抽取都不许发起（探针是 20s 音频，白跑很贵），
+    //    而且必须抛取消 —— 哪怕素材完全读得出来。
+    var preAttempts = 0
+    var preOutcome: Error?
+    do {
+        _ = try await SubtitleAudibleClips.selectProbe(
+            in: [good, third], probeSeconds: 20, isCancelled: { true }
+        ) { clip, _ in preAttempts += 1; return clip.url }
+    } catch {
+        preOutcome = error
+    }
+    check(preOutcome is CancellationError, "进门已取消时必须直接抛取消")
+    checkEqual(preAttempts, 0, "进门已取消时一次抽取都不许发起")
+
+    // 反过来：没有取消时，全失败仍然是 nil（调用方照旧报「素材读不了」）。
+    let genuinelyUnreadable = try await SubtitleAudibleClips.selectProbe(
+        in: [broken, good], probeSeconds: 20
+    ) { _, _ in throw AudioWindowReader.ReadError(message: "nope") }
+    check(genuinelyUnreadable == nil, "没取消时全失败仍是 nil，不许伪装成取消")
 }
 
 // MARK: - 20c. 真实媒体：无音轨的视频 → 后面的音频素材仍要能当探针

@@ -322,13 +322,18 @@ final class TranscriptionTask: ObservableObject {
         // 「音轨读得出来」。读不了的往下顺延，metadata 的查询顺序再以最终选中的
         // 那一段为首（PR#22 复审第二轮 P2）。
         let probe = try await SubtitleAudibleClips.selectProbe(
-            in: clips, probeSeconds: Self.detectionProbeSeconds
+            in: clips, probeSeconds: Self.detectionProbeSeconds,
+            isCancelled: { token.isCancelled }
         ) { clip, range in
             try await AudioWindowReader.extract(
                 assetURL: clip.url, range: range, into: tempDirectory,
                 isCancelled: { token.isCancelled }
             )
         }
+        // nil 只可能是「确实全都读不出音频」（selectProbe 返回 nil 前自己查过
+        // 取消）。这里再查一遍是同一条纪律的第二道：**每个 await 前后**都要问，
+        // 别让取消被翻译成失败文案。
+        if token.isCancelled { throw CancellationError() }
         guard let probe else {
             throw TaskError(message: L10n(
                 "None of the audio sources could be read. Relink the missing media and try again."

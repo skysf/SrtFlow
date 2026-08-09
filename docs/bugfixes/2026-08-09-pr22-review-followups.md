@@ -1,9 +1,10 @@
-# 2026-08-09 PR#22 复审四连 + 二轮两连：忘升格式版本、检测敢猜、metadata 绕开可听合同、选择不互斥
+# 2026-08-09 PR#22 复审四连 + 二轮两连 + 三轮一连：忘升格式版本、检测敢猜、metadata 绕开可听合同、选择不互斥
 
 - **日期**：2026-08-09
 - **来源**：PR #22（`fix/subtitle-panel-translation-and-track-ux`）合并前复审。
   第一轮 base..b72a30b 三个 P1 + 一个 P2；**第二轮又在第一轮的修复上抓出
-  两个 P2**（都在 Auto-detect 路径，见文中「第二轮复审两连」）。均未发布即修复
+  两个 P2**（都在 Auto-detect 路径）；**第三轮又在第二轮的修复上抓出一个 P2**
+  （取消被跳过逻辑吞掉）。均未发布即修复
 - **相关**：[2026-08-09-subtitle-translate-after-same-language](2026-08-09-subtitle-translate-after-same-language.md)
   （本次是它的 follow-up）、
   [architecture/video-edit-project-file](../architecture/video-edit-project-file.md)、
@@ -152,6 +153,10 @@
 | 候选去重退回按 locale 标识符 | SrtFlowCoreChecks **3** 条（复现 `["en_US","en_SG","en_IN"]`） |
 | `TranslationPreflight` 自己再实现一套 maximal 比较 | 接线守卫红 |
 | 已装语言那一档不排序 | 接线守卫红 |
+| `selectProbe` 三处取消检查全撤 | ProjectFile **6** 条 |
+| 只撤「吞错误前查取消」+「返回 nil 前查取消」 | ProjectFile **2** 条 |
+| 只撤「每轮开头查取消」 | ProjectFile **2** 条 |
+| `selectProbe` 不收 token 的取消通道 | 接线守卫红 |
 
 **接线守卫**（新增，挂在 `scripts/check-project-file.sh` 末尾，不单开
 check-all 条目）：自检编不动 `VideoEditProject` / `TranscriptionTask` 这两个
@@ -172,7 +177,7 @@ App 类型，所以「函数被没被调用、参数对不对」在源码层面�
 - `swift build --arch arm64`：零错误（仅既有的 NSEvent Sendable 警告）。
 - `scripts/check-all.sh`：**11 项全绿**（脚本当前就是 11 项，本次没有新增
   第 12 项 —— 接线守卫并进了 project-file 这一项里）。
-  - `SrtFlowCoreChecks` 691 项、`check-project-file` 183 项、
+  - `SrtFlowCoreChecks` 691 项、`check-project-file` 192 项、
     `check-translation-preflight` 8 项。
   - `check-project-file.sh` 现在**要用 ffmpeg**（真实媒体探针那组现造素材），
     与其他真跑 ffmpeg 的自检同一套纪律：找不到就明确失败，不静默跳过。
@@ -315,6 +320,43 @@ Auto-detect，结果是
 - **上一轮的观察要反推到实现上。** 「同语言变体的置信度差是噪声」这句话第一轮
   就写进案例了，却没人回去问「那去重键为什么还是完整标识符」。
 - **抽出共享合同的那一次，最容易在自己新写的分支上再分叉一遍。**
+
+## 第三轮复审一连（第二轮修复自身的缺口）
+
+### 七、[P2] 取消被跳过逻辑洗成「素材不可读」
+
+**症状**：Auto-detect 期间按 Stop，任务终态是
+`.failed("None of the audio sources could be read…")` 而不是 `.cancelled` ——
+用户被告知素材有问题，其实是他自己取消的。
+
+**根因**：第二轮加的 `selectProbe` 只在**抽取器主动抛 `CancellationError`** 时
+才停。`AudioWindowReader` 对无音轨素材在检查取消**之前**就抛 `ReadError`，
+于是取消期间剩下的候选各抛一个 `ReadError`、全被跳过逻辑吞掉，一路走到
+`return nil`；调用方 `guard let probe else { throw TaskError(...) }` 又在查
+token **之前**，nil 就被翻成了失败文案。
+
+**跳过逻辑天生会吃错误，所以它必须先把取消问清楚** —— 这是 2026-08-06
+「catch 面 = 责任面」的下一层：责任面对了，但**取消这条正交的通道**没有在
+吞错误的那一刻被排除。
+
+**修复**：`selectProbe` 三个点都查取消（每轮开头 / 吞错误之前 / **返回 nil
+之前**），两条通道都问（注入的 `isCancelled`（生产是 `token.isCancelled`）+
+结构化的 `Task.checkCancellation()`）。**返回 nil 之前那一处是关键**：它把
+nil 的含义收窄成「确实全都读不出音频」，调用方的 nil→失败文案转换就再也不会
+冤枉取消 —— 顺序错误被结构消掉，而不是靠调用方记得先查。调用方仍加了一道
+token 复核（每个 await 前后都要问）。
+
+**反红**：三处全撤（= 修复前的行为）→ ProjectFile **6 条红**（两条取消通道各
+「归错错误类型」+「多试了 2 段」，加最后一段那两条）；只撤「吞错误前查」+
+「返回 nil 前查」→ **2 条红**；只撤「每轮开头查」→ **2 条红**（进门已取消时
+不该发起任何抽取）。三处各自都是承重的。
+
+**教训**：
+- **「跳过某类错误」的逻辑必须先排除取消。** 取消和「这一项失败了」是正交的
+  两件事，而跳过逻辑会把二者压成同一个分支。
+- **让哨兵值自带含义收窄。** `nil` 从「没找到」收窄成「确实全都读不出音频」
+  之后，调用方怎么翻译都不会错 —— 比在调用方补一句「先查取消」可靠，因为
+  下一个调用方不会记得。
 
 ## 教训 / 防回归
 

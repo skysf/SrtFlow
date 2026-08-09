@@ -126,6 +126,14 @@ require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探�
 require "生产抽取器必须真接上 AudioWindowReader" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
   'AudioWindowReader\.extract\('
+# selectProbe 自己也要拿到任务的取消通道 —— 只靠抽取器内部那道，
+# 无音轨素材在检查之前就抛 ReadError，取消会被跳过逻辑吞成「素材都读不了」。
+if ! grep -A2 'SubtitleAudibleClips\.selectProbe(' \
+      Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+      | grep -q 'isCancelled: { token.isCancelled }'; then
+  echo "✗ 接线守卫：selectProbe 必须收到 token 的取消通道" >&2
+  WIRING_FAIL=1
+fi
 require "metadata 顺序必须以选定的探针为首" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
   'SubtitleAudibleClips\.metadataOrder\(in: clips, probe:'

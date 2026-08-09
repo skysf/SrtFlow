@@ -129,16 +129,33 @@ enum SubtitleAudibleClips {
     ///   成「素材不可读」；
     /// - **取消** → 直接上抛。
     ///
+    /// **取消要在「吞掉素材错误」之前问**（PR#22 复审第三轮 P2）：跳过逻辑天生
+    /// 会吃掉一串错误，用户按 Stop 之后剩下的候选照样各抛一个 `ReadError`，
+    /// 全被吞掉就走到 `return nil`，调用方把 nil 翻成「素材都读不了」——
+    /// 任务终态从 `.cancelled` 变成 `.failed`，用户明明是自己取消的。
+    /// 所以三个点都查：每轮开头、吞错误之前、以及**返回 nil 之前**。
+    /// 最后那一处让 nil 的含义收窄成「确实全都读不出音频」，调用方再把它
+    /// 翻成 TaskError 就永远不会冤枉取消（顺序错误在这里被结构消掉了）。
+    ///
+    /// - Parameter isCancelled: 任务自己的取消通道（生产传 `token.isCancelled`）。
+    ///   结构化取消另有 `Task.checkCancellation()` 兜着 —— 两条通道都要查，
+    ///   光设标记等 await 自己回来不算取消（2026-08-06 教训）。
     /// - Parameter extract: 抽取动作。生产传 `AudioWindowReader.extract`；
     ///   自检可以注入一个会挑着失败的实现来验分流策略。
     /// - Returns: 全部候选都读不出音频时返回 nil（调用方报「素材读不了」）。
     static func selectProbe(
         in clips: [SoundClip],
         probeSeconds: Double,
+        isCancelled: () -> Bool = { false },
         extract: (_ clip: SoundClip, _ range: SourceRange) async throws -> URL
     ) async throws -> ProbeSelection? {
+        func checkCancellation() throws {
+            if isCancelled() { throw CancellationError() }
+            try Task.checkCancellation()
+        }
         var skipped: [(name: String, error: Error)] = []
         for clip in probeOrder(in: clips) {
+            try checkCancellation()
             let range = SourceRange(
                 start: clip.sourceStart,
                 end: clip.sourceStart + min(probeSeconds, clip.sourceDuration)
@@ -151,9 +168,13 @@ enum SubtitleAudibleClips {
             } catch let error as AudioWindowReader.InfrastructureError {
                 throw error
             } catch {
+                // 先问取消再吞：这一步就是「素材的错」和「用户按了 Stop」
+                // 唯一会被混淆的地方。
+                try checkCancellation()
                 skipped.append((clip.name, error))
             }
         }
+        try checkCancellation()
         return nil
     }
 }
