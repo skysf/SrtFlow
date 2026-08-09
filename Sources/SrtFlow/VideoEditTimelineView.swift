@@ -75,7 +75,8 @@ struct VideoEditTimelineView: View {
         var slot: TrackSlot?
         var isRuler = false
         var isShapes = false
-        var isSubtitle = false
+        /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
+        var subtitleKind: SubtitleRowKind?
         /// 整轨隐藏中（灰显，不可编辑）。
         var isHidden = false
     }
@@ -102,12 +103,21 @@ struct VideoEditTimelineView: View {
             slot: .main,
             isHidden: project.state.mainHidden
         ))
+        // 一个语言一条字幕轨：原文一行，有译文再来一行。显示什么由这两只
+        // 眼睛推导（TimelineState.visibleSubtitleChoice），没有额外的模式选择器。
         if project.state.subtitle != nil {
             result.append(RowSpec(
-                id: "subtitle", icon: "captions.bubble", height: 22, slot: nil,
-                isSubtitle: true,
+                id: "subtitle-original", icon: "captions.bubble", height: 22, slot: nil,
+                subtitleKind: .original,
                 isHidden: project.state.subtitleHidden
             ))
+            if project.state.subtitleCompanion?.translation != nil {
+                result.append(RowSpec(
+                    id: "subtitle-translation", icon: "character.bubble", height: 22, slot: nil,
+                    subtitleKind: .translation,
+                    isHidden: project.state.translationHidden
+                ))
+            }
         }
         for index in project.state.audioTracks.indices {
             result.append(RowSpec(
@@ -196,18 +206,23 @@ struct VideoEditTimelineView: View {
                                 }
                                 .buttonStyle(.borderless)
                                 .help("Hide or show this track (V)")
-                            } else if row.isSubtitle {
-                                // 字幕轨的眼睛：语义与其他轨道一致（预览+导出
+                            } else if let kind = row.subtitleKind {
+                                // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录
                                 // 都跳过），只是隐藏状态不挂在 slot 上。
                                 Button {
-                                    project.toggleSubtitleHidden()
+                                    switch kind {
+                                    case .original: project.toggleSubtitleHidden()
+                                    case .translation: project.toggleTranslationHidden()
+                                    }
                                 } label: {
                                     Image(systemName: row.isHidden ? "eye.slash" : "eye")
                                         .font(.system(size: 9))
                                         .foregroundStyle(row.isHidden ? .orange : .secondary)
                                 }
                                 .buttonStyle(.borderless)
-                                .help("Hide or show subtitles")
+                                .help(kind == .original
+                                      ? "Hide or show the original subtitle track"
+                                      : "Hide or show the translated subtitle track")
                             }
                         }
                     }
@@ -298,8 +313,8 @@ struct VideoEditTimelineView: View {
             )
         } else if row.isShapes {
             shapesRow
-        } else if row.isSubtitle {
-            subtitleRow
+        } else if let kind = row.subtitleKind {
+            subtitleRow(kind: kind)
         } else if let slot = row.slot {
             trackRow(slot: slot, height: row.height, hidden: row.isHidden)
         }
@@ -430,16 +445,25 @@ struct VideoEditTimelineView: View {
 
     // MARK: - 字幕行
 
-    private var subtitleRow: some View {
-        ZStack(alignment: .topLeading) {
+    private func subtitleRow(kind: SubtitleRowKind) -> some View {
+        // 译文轨是原文轨的**镜像**：同 ID、同时间（LinkedSubtitleEditing 强制），
+        // 所以两行的块位置天然对齐，点任意一行选中的是同一条 cue。
+        let cues = kind == .original
+            ? project.state.subtitle?.cues
+            : project.state.subtitleCompanion?.translation?.cues
+        let hidden = kind == .original
+            ? project.state.subtitleHidden
+            : project.state.translationHidden
+        let tint: Color = kind == .original ? .orange : .teal
+        return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 4)
                 .fill(.quaternary.opacity(0.25))
                 .frame(width: contentWidth)
-            if let cues = project.state.subtitle?.cues {
+            if let cues {
                 ForEach(cues) { cue in
                     let selected = project.selectedSubtitleCueID == cue.id
                     RoundedRectangle(cornerRadius: 3)
-                        .fill(Color.orange.opacity(selected ? 0.8 : 0.45))
+                        .fill(tint.opacity(selected ? 0.8 : 0.45))
                         .overlay(
                             RoundedRectangle(cornerRadius: 3)
                                 .strokeBorder(.white, lineWidth: selected ? 1.2 : 0)
@@ -460,7 +484,7 @@ struct VideoEditTimelineView: View {
             }
         }
         // 隐藏中：灰显，与其他轨道的隐藏观感一致。
-        .opacity(project.state.subtitleHidden ? 0.35 : 1)
+        .opacity(hidden ? 0.35 : 1)
     }
 
     // MARK: - 播放头

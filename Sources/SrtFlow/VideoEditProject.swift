@@ -193,10 +193,6 @@ final class VideoEditProject: ObservableObject {
     /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
     @Published var activeTool: TimelineTool = .select
 
-    /// 预览显示哪条字幕轨（原文/译文/双语）。运行时偏好，不进工程文件；
-    /// 烧录导出的轨道选择在导出面板单独选。
-    @Published var subtitlePreviewTrack: SubtitleTrackChoice = .original
-
     // 三个开关，对应截图里的磁吸、吸附、链接。
     @Published var magnetEnabled = true {
         didSet { if magnetEnabled { perform { $0.packMain() } } }
@@ -930,10 +926,16 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 字幕轨的整轨隐藏/显示（轨道头的眼睛）。语义与其他轨道一致：预览和
-    /// 导出都跳过。字幕不参与 AV 合成，不用重建预览播放器。
+    /// **原文**字幕轨的眼睛。语义与其他轨道一致：预览和烧录都跳过。
+    /// 字幕不参与 AV 合成，不用重建预览播放器。
     func toggleSubtitleHidden() {
         perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
+    }
+
+    /// **译文**字幕轨的眼睛。一个语言一条轨，两只眼睛推导出预览/烧录内容
+    /// （`TimelineState.visibleSubtitleChoice`）—— 没有额外的模式选择器。
+    func toggleTranslationHidden() {
+        perform(rebuildsPreview: false) { $0.translationHidden.toggle() }
     }
 
     /// 预览拖框实时写入工程级字幕布局（liveApply 连续编辑，松手

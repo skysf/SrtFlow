@@ -139,10 +139,13 @@
   TranslationError 不许原样透传、Auto-detect 两段式检测合同与人肉回归清单；
   **改字幕面板/翻译服务/转写任务的语言逻辑前必读**
 - [subtitle-track-visibility-and-layout.md](docs/architecture/subtitle-track-visibility-and-layout.md) —
-  字幕轨可见性与工程级布局：眼睛走 `visibleSubtitleDocument` 单一收口
+  字幕轨可见性与工程级布局：**一个语言一条轨**（原文/译文各一只眼睛，
+  显示与烧录由两只眼睛推导，「Preview track」模式选择器已删除且不许复活；
+  导出面板只剩「要不要烧」开关）、两轨是共 ID 共时间的镜像对（UI 不许承诺
+  独立性）、多语言暂不做、眼睛走 `visibleSubtitleDocument()` 单一收口
   （文件导出故意豁免）、SubtitleLayout 只有 1080p 基准一种坐标系且预览与
   ASS 共用同一份、覆盖后锚定固定底部中心、拖框语义（框体=移动/边=换行
-  宽度/角=等比字号）、分段默认单行 + 参数集版本合同；
+  宽度/角=等比字号）、三类选择互斥、分段默认单行 + 参数集版本合同；
   **改字幕轨 UI/预览叠层/烧录样式/分段默认值前必读**
 
 ## Bug 修复案例（docs/bugfixes/）

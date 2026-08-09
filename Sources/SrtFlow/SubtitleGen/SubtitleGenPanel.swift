@@ -66,21 +66,10 @@ private struct SubtitleGenPanelContent: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // 预览轨道选择（消费者清单 8.9 之一）。
-            // 只在真有译文时才出现：segmented 样式下 SwiftUI 不认逐项 .disabled
-            // （已知怪癖），没译文却留着「译文/双语」两段，点下去
-            // subtitleDocument(for:) 返回 nil，预览字幕会整个消失且毫无提示。
-            // 没有译文时本来也无从选择，与其摆一个点了会出事的控件不如不显示。
-            if hasSubtitle && hasTranslation {
-                // 键不能用 "Original"：strings 表里那条是编码设置的「保持原样」。
-                Picker("Preview track", selection: $project.subtitlePreviewTrack) {
-                    Text("Original text").tag(SubtitleTrackChoice.original)
-                    Text("Translated text").tag(SubtitleTrackChoice.translation)
-                    Text("Bilingual").tag(SubtitleTrackChoice.bilingual)
-                }
-                .pickerStyle(.segmented)
-            }
-
+            // 这里曾经有一个「Preview track（原文/译文/双语）」选择器。
+            // 已删除（2026-08-09 用户拍板）：一个语言一条字幕轨，显示什么由
+            // 时间线上那两只眼睛决定 —— 与主轨/画中画/音频同一心智，
+            // 不再需要一个只影响预览的额外模式。
             // 生成区在前（2026-08-09 案例）：面板的第一入口是「从音频生成」，
             // 翻译区在没有字幕轨之前整个不出现 —— 不摆一个无从选择的目标
             // 语言，更不允许一个没露过面的自动预选值驱动任何翻译。

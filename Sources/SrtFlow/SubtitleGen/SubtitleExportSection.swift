@@ -3,34 +3,13 @@ import SwiftUI
 import SrtFlowCore
 
 // 导出矩阵的字幕部分（docs/plans/2026-08-06-native-subtitle-generation.md 第 13 节）：
-// 烧录轨道选择（无/原文/译文/双语）+ 独立字幕文件多选导出。
+// 「要不要烧字幕」开关 + 独立字幕文件多选导出。
+// **烧哪几条不在这里选** —— 一个语言一条轨，看得见的就是会被烧进去的
+// （合同见 docs/architecture/subtitle-track-visibility-and-layout.md）。
 // 独立导出不依赖视频导出，可单独执行；写盘走 SubtitleExportPlanner
 // （临时名 → 回读校验 → 原子替换，失败不碰用户文件）。
 
 struct SubtitleExportOptions {
-    enum Burn: String, CaseIterable {
-        case none, original, translation, bilingual
-
-        // 注意：键不能用光秃秃的 "Original"/"Translation" —— 前者在
-        // Localizable.strings 里已被编码设置的「保持原样」占用。
-        var title: String {
-            switch self {
-            case .none: return "No subtitles"
-            case .original: return "Original text"
-            case .translation: return "Translated text"
-            case .bilingual: return "Bilingual"
-            }
-        }
-
-        var trackChoice: SubtitleTrackChoice? {
-            switch self {
-            case .none: return nil
-            case .original: return .original
-            case .translation: return .translation
-            case .bilingual: return .bilingual
-            }
-        }
-    }
 
     struct FileItem: Hashable, Identifiable {
         var track: SubtitleTrackChoice
@@ -57,14 +36,18 @@ struct SubtitleExportOptions {
         }
     }
 
-    var burn: Burn = .original
+    /// 要不要把字幕烧进画面。**烧哪几条不在这里选** —— 一个语言一条轨，
+    /// 看得见的就是会被烧进去的（2026-08-09 用户拍板）。
+    /// 这里曾经是「无/原文/译文/双语」四选一，与时间线上的眼睛两套并存，
+    /// 用户得自己解释「为什么预览的和烧出来的不一样」。
+    var burnIn = true
     var files: Set<FileItem> = []
 
-    /// 烧录进滤镜图的文档（选择的轨道合成 + 合同排序），选 none 得 nil。
-    /// 走 visible 变体：字幕轨隐藏（眼睛）时不烧录，与预览同一份合同。
+    /// 烧录进滤镜图的文档：**与预览同一份合同**（两只眼睛推导），
+    /// 关掉总开关或两只眼睛都关就是 nil。
     func burnDocument(state: TimelineState) -> SubtitleDocumentModel? {
-        guard let choice = burn.trackChoice else { return nil }
-        return state.visibleSubtitleDocument(for: choice)
+        guard burnIn else { return nil }
+        return state.visibleSubtitleDocument()
     }
 }
 
@@ -84,25 +67,20 @@ struct SubtitleExportSection: View {
     var body: some View {
         if exportState.subtitle != nil {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Burn in", selection: $options.burn) {
-                    ForEach(SubtitleExportOptions.Burn.allCases, id: \.self) { choice in
-                        Text(L10n(choice.title)).tag(choice)
-                            .disabled(needsTranslation(choice) && !hasTranslation)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: hasTranslation) { _, has in
-                    if !has, needsTranslation(options.burn) { options.burn = .original }
-                }
-                if options.burn != .none {
-                    if exportState.subtitleHidden {
-                        // 轨道头的眼睛关着：烧录合同会得到 nil（burnDocument
-                        // 走 visible 变体），这里把「为什么没烧」说出来。
-                        Label("Subtitle track is hidden — nothing will be burned.", systemImage: "eye.slash")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
+                Toggle("Burn subtitles into the video", isOn: $options.burnIn)
+                if options.burnIn {
+                    if exportState.visibleSubtitleChoice == nil {
+                        // 两只眼睛都关着：烧录合同会得到 nil，把「为什么没烧」
+                        // 说出来，不许静默烧出无字幕的成片让用户猜。
+                        Label(
+                            "Every subtitle track is hidden — nothing will be burned.",
+                            systemImage: "eye.slash"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                     } else {
-                        Label("Burned with the Burn In tool's current style.", systemImage: "captions.bubble")
+                        // 烧哪几条完全由眼睛决定，这里如实报出当前会烧什么。
+                        Label(L10n(burnScopeTitle), systemImage: "captions.bubble")
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -143,8 +121,14 @@ struct SubtitleExportSection: View {
         }
     }
 
-    private func needsTranslation(_ burn: SubtitleExportOptions.Burn) -> Bool {
-        burn == .translation || burn == .bilingual
+    /// 当前眼睛状态下会烧什么 —— 固定键，**不许运行时拼**（拼出来的字符串
+    /// 在 strings 表里查不到，中文界面会漏成英文）。
+    private var burnScopeTitle: String {
+        switch exportState.visibleSubtitleChoice {
+        case .bilingual: return "Burning both subtitle tracks, with the Burn In tool's style."
+        case .translation: return "Burning the translated track, with the Burn In tool's style."
+        default: return "Burning the original track, with the Burn In tool's style."
+        }
     }
 
     private func fileBinding(_ item: SubtitleExportOptions.FileItem) -> Binding<Bool> {
