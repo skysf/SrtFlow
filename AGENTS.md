@@ -362,6 +362,21 @@
   跳过逻辑会把二者压成同一分支）；**让哨兵值自带含义收窄**（nil 收窄成
   「确实全都读不出音频」后，调用方怎么翻译都不会错，比要求调用方记得先查可靠）
 
+- [2026-08-09-translate-stuck-at-zero.md](docs/bugfixes/2026-08-09-translate-stuck-at-zero.md) —
+  第二次翻译永久卡在 0/N（用户真机 127 条 cue，en→zh）：
+  `TranslationSession.Configuration` 是**带 `version` 的值类型**，`==` 连
+  version 一起比，而每个任务都现新建一个（version 恒 0）→ 两次同语言的配置
+  **完全相等** → SwiftUI 的 `.translationTask` 判定「没变化」不重跑 action →
+  `run(session:)` 收不到 session → continuation 永久悬挂。中间那次
+  `pendingJob = nil` 救不了（它不重置 SwiftUI 记住的「上次跑过的配置」）。
+  修法：`TranslationConfigurationVendor` 一条流水线**每次 invalidate()**
+  （Apple 给的换代通道），外加起跑看门狗（10s 没人认领就如实报错，
+  只看「有没有起跑」不误伤慢任务）。教训：**值类型里的 `version` 字段就是在
+  提醒你这个值需要换代**；**「第一次成功」不能当成这条路通了** ——
+  提交→回调→清空→再提交的循环，验收必须连做两次（分支上两次冒烟一次跳过
+  翻译、一次是首次翻译，「第二次」从没被覆盖）；**等外部框架回调的
+  continuation 一律配看门狗**
+
 ## 根目录既有文档
 
 - [SrtFlow-Requirements.md](SrtFlow-Requirements.md) — 产品需求说明与技术结论总表

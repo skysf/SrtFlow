@@ -96,6 +96,21 @@
      让这件事在类型上就做不到；`scripts/check-project-file.sh` 末尾的接线
      守卫再钉一道（禁止 `state.mainClips + state.audioTracks` 复活）。
 
+8. **每次翻译任务的 `TranslationSession.Configuration` 必须换代。**
+   它是带 `version` 的值类型，`==` 把 version 一起比；两次同样语言的任务各自
+   新建配置会**完全相等**，SwiftUI 的 `.translationTask` 判定「没变化」就不
+   重跑 action，`run(session:)` 收不到 session，continuation 永久悬挂
+   （面板停在 0/N，只能按 Stop）。走
+   `TranslationConfigurationVendor`：一条流水线、**每次都 `invalidate()`**，
+   语言变了改字段而不是重建 —— 任何两次发出的配置都不相等，
+   不依赖对 SwiftUI 时序的推理。中途那次 `pendingJob = nil` **救不了**，
+   它不会重置 SwiftUI 记住的「上一次跑过的配置」。
+   见 [bugfixes/2026-08-09-translate-stuck-at-zero.md](../bugfixes/2026-08-09-translate-stuck-at-zero.md)。
+9. **等外部框架回调的 continuation 一律配看门狗。** 取消有通道、失败有 catch，
+   唯独「对方根本没来」没人负责收尾 —— 那正是无限转圈的形态。翻译任务发布
+   `pendingJob` 后 10s 没有 action 认领就如实报错；看门狗只看「有没有起跑」，
+   真正的耗时（模型下载、逐批翻译）都在 `run` 之后，不会误伤慢任务。
+
 ## 人肉回归清单（GUI 冒烟，自动化够不着）
 
 发版前按 docs/testing/gui-smoke-testing.md 过一遍：
@@ -112,4 +127,7 @@
       the panel and generate again.」，**不许生成任何字幕**。
 - [ ] **检测期间按 Stop**：面板必须回到「已取消」，**不许**出现
       「None of the audio sources could be read…」这类失败文案。
+- [ ] **连续翻译两次**（同一对语言，Translate All 点两遍）：第二次必须照样
+      跑完，不许卡在 0/N。凡是「提交→等回调→清空→可再提交」的循环，
+      验收必须连做两次 —— 只测第一次是这条 bug 逃过所有冒烟的原因。
 - [ ] 中英界面各看一遍新增文案（源语言/自动检测/跳过通知/预检错误）。

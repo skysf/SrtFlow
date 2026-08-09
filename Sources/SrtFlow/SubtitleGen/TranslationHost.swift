@@ -57,6 +57,19 @@ final class TranslationJobCoordinator: ObservableObject {
     private var actionStarted = false
     /// 批间检查取消用的批大小（产品参数，实测后调）。
     private let batchSize = 32
+    /// configuration 发放器：保证每次任务的配置都**与之前不相等**，
+    /// 否则 `.translationTask` 认为「没变化」而不重跑 action（见该类型注释）。
+    private var configurations = TranslationConfigurationVendor()
+    /// 起跑看门狗：SwiftUI 没把 session 交过来就永远不会有人收尾 ——
+    /// 与其无限转圈，不如到点如实报错（见 `startTimeout`）。
+    private var startWatchdog: Task<Void, Never>?
+
+    /// 发布 pendingJob 之后，等 SwiftUI 调 `run(session:jobID:)` 的上限。
+    ///
+    /// 正常路径是同一次 runloop 就到（实测 <0.1s）。真正的耗时（模型下载、
+    /// 逐批翻译）全都发生在 `run` **之后**，所以这个看门狗只看「有没有起跑」，
+    /// 不会误伤慢任务。
+    private let startTimeout: Duration = .seconds(10)
 
     var isBusy: Bool { continuation != nil }
 
@@ -76,12 +89,32 @@ final class TranslationJobCoordinator: ObservableObject {
         currentJobID = jobID
         pending = requests
         phase = .running(completed: 0, total: requests.count)
+        // **每次都要换代**：同样语言直接新建的话，两次配置完全相等，
+        // `.translationTask` 不会重跑 action（TranslationConfigurationVendor 有
+        // 完整说明）。这正是「第二次翻译卡在 0/N」的根因。
+        let configuration = configurations.next(source: source, target: target)
         return try await withCheckedThrowingContinuation { cont in
             continuation = cont
-            pendingJob = PendingJob(
-                id: jobID,
-                configuration: TranslationSession.Configuration(source: source, target: target)
-            )
+            pendingJob = PendingJob(id: jobID, configuration: configuration)
+            armStartWatchdog(for: jobID)
+        }
+    }
+
+    /// 起跑看门狗。到点还没有 action 认领这个 job，就如实报错收尾 ——
+    /// **「总会有人收」是悬挂的前奏**（2026-08-06 案例的教训）：SwiftUI 不肯
+    /// 重跑 action 时没有任何人会 resume 这条 continuation，用户看到的是一个
+    /// 永远转不完的 0/N。
+    private func armStartWatchdog(for jobID: UUID) {
+        startWatchdog?.cancel()
+        startWatchdog = Task { [weak self] in
+            try? await Task.sleep(for: self?.startTimeout ?? .seconds(10))
+            guard let self, !Task.isCancelled else { return }
+            guard self.currentJobID == jobID, !self.actionStarted, self.continuation != nil else {
+                return
+            }
+            self.finish(.failure(HostError(message: L10n(
+                "Translation didn’t start. Close the panel and try again."
+            ))), for: jobID)
         }
     }
 
@@ -110,6 +143,9 @@ final class TranslationJobCoordinator: ObservableObject {
     func run(session: TranslationSession, jobID: UUID) async {
         guard jobID == currentJobID, continuation != nil, !actionStarted else { return }
         actionStarted = true
+        // 起跑了，看门狗退场（后面的耗时是模型下载/逐批翻译，不该被它掐）。
+        startWatchdog?.cancel()
+        startWatchdog = nil
         let requests = pending
         do {
             let results = try await withTaskCancellationHandler {
@@ -174,6 +210,8 @@ final class TranslationJobCoordinator: ObservableObject {
         currentJobID = nil
         actionStarted = false
         pendingJob = nil
+        startWatchdog?.cancel()
+        startWatchdog = nil
         switch result {
         case .success(let translations):
             phase = .idle

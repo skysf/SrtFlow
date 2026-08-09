@@ -169,6 +169,17 @@ require "TranslationPreflight 必须委托 Core 的 languageKey" \
 forbid "TranslationPreflight 不许自己再实现一套 maximal 比较" \
   Sources/SrtFlow/SubtitleGen/TranslationPreflight.swift 'maximalIdentifier'
 
+# 翻译任务的 configuration 必须换代：同样语言直接新建，两次配置完全相等，
+# .translationTask 就不重跑 action，continuation 永久悬挂（面板停在 0/N）。
+require "coordinator 必须经发放器取 configuration" \
+  Sources/SrtFlow/SubtitleGen/TranslationHost.swift \
+  'configurations\.next\(source:'
+forbid "coordinator 不许自己新建 configuration（会与上一次完全相等）" \
+  Sources/SrtFlow/SubtitleGen/TranslationHost.swift \
+  'TranslationSession\.Configuration\(source:'
+require "发布 pendingJob 之后必须装起跑看门狗（没人收尾就如实报错）" \
+  Sources/SrtFlow/SubtitleGen/TranslationHost.swift 'armStartWatchdog\('
+
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2
   exit 1

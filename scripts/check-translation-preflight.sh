@@ -29,6 +29,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/SubtitleGen/TranslationPreflight.swift \
+  Sources/SrtFlow/SubtitleGen/TranslationConfigurationVendor.swift \
   checks/TranslationPreflight/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
