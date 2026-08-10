@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 7, "新版写盘一律用 v7")
+    checkEqual(raw?["formatVersion"] as? Int, 8, "新版写盘一律用 v8")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 7, "只有原文轨的工程也写 v7")
+    checkEqual(try savedVersion(), 8, "只有原文轨的工程也写 v8")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 7, "往返后仍是 v7")
+    checkEqual(try savedVersion(), 8, "往返后仍是 v8")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -448,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 7, "带译文轨的工程写 v7（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 8, "带译文轨的工程写 v8（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -521,7 +521,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 7, "新版 writer 一律写 v7")
+    checkEqual(try savedVersion(), 8, "新版 writer 一律写 v8")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -541,7 +541,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 7, "带字幕布局的工程必须写 latest（v7）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 8, "带字幕布局的工程必须写 latest（v8）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -636,12 +636,12 @@ do {
     checkEqual(try VideoEditProjectIO.load(from: v7Explicit).timeline.translationHidden, false,
                "v7 工程不迁移：显式打开的译文轨要保住")
 
-    // 闸门另一侧：比 reader 上限更高的 v8 必须拒开。
-    let v8 = dir.appendingPathComponent("v8.srtflowproj")
+    // 闸门另一侧：比 reader 上限更高的 v9 必须拒开。
+    let v9 = dir.appendingPathComponent("v9.srtflowproj")
     try Data("""
-    { "formatVersion": 8, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v8)
-    check((try? VideoEditProjectIO.load(from: v8)) == nil, "未来版本（v8）必须拒开")
+    { "formatVersion": 9, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v9)
+    check((try? VideoEditProjectIO.load(from: v9)) == nil, "未来版本（v9）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -651,7 +651,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 7, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 8, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -659,7 +659,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 7, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 8, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -1322,15 +1322,20 @@ do {
     check(onlyBroken == nil, "真实媒体：全是无音轨素材时定不出探针")
 }
 
-// MARK: - 21. 三类选择互斥：剪辑 / 形状 / 字幕 cue
+// MARK: - 21. 四类选择互斥：剪辑 / 形状 / 字幕 cue / 标记
 //
 // 回归（PR#22 复审 P2）：互斥曾经散在两个 didSet 和一个入口函数里，漏了
 // 「选 cue 不清形状」和「选形状不清 cue」两条边 —— 先点形状再点 cue，
 // 预览上同时挂两套框。规则现在全在 `EditSelection` 里（字段 private(set)，
-// 只能走这几个 mutating 方法），VideoEditProject 的三个属性只是它的门面。
+// 只能走这几个 mutating 方法），VideoEditProject 的四个属性只是它的门面。
+//
+// 标记这一类的互斥不是为了画框，是为了 ⌫：`deleteSelected` 只有一个入口，
+// 「选中的是标记」和「选中的是整段」同时成立的话，按删除键删掉的就是整段素材。
 
 do {
     let clipA = UUID(), clipB = UUID(), shape = UUID(), cue = UUID(), otherCue = UUID()
+    let marker = ClipMarkerRef(clipID: clipA, markerID: UUID())
+    let otherMarker = ClipMarkerRef(clipID: clipA, markerID: UUID())
 
     // clip → 清形状 + cue
     var s = EditSelection()
@@ -1366,14 +1371,60 @@ do {
     s.selectShape(nil)
     checkEqual(s.subtitleCueID, cue, "把形状选择清空同理")
 
-    // 切工程：三类一起清（closeCurrentDocument 调的就是它）。
+    // marker → 清其余三类。**尤其是标记所在那一段的剪辑选择**：点标记之前
+    // 多半刚点过那一段，两个都留着的话 ⌫ 删谁全看分支顺序。
+    s = EditSelection()
+    s.selectClips([clipA])
+    s.selectMarker(marker)
+    checkEqual(s.markerRef, marker, "选标记要生效")
+    checkEqual(s.clipIDs, [], "选标记必须清剪辑（否则 ⌫ 会删掉整段素材）")
+    s = EditSelection()
+    s.selectShape(shape)
+    s.selectSubtitleCue(cue)
+    s.selectMarker(marker)
+    check(s.shapeID == nil && s.subtitleCueID == nil, "选标记清形状与字幕 cue")
+
+    // 反向三条边：选别的类别都要把标记清掉，不然 ⌫ 会去删一枚没高亮的标记。
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.selectClips([clipA])
+    checkEqual(s.markerRef, nil, "选剪辑必须清标记（marker→clip 方向）")
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.selectShape(shape)
+    checkEqual(s.markerRef, nil, "选形状必须清标记（marker→shape 方向）")
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.selectSubtitleCue(cue)
+    checkEqual(s.markerRef, nil, "选 cue 必须清标记（marker→cue 方向）")
+
+    // 取消不算改选，标记这一类同样适用。
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.selectClips([])
+    checkEqual(s.markerRef, marker, "把剪辑选择清空不等于改选，别动标记")
+    s.selectMarker(nil)
+    checkEqual(s.clipIDs, [], "把标记选择清空同样不该动别的类别")
+
+    // 标记没了（删段、删标记、撤销、被裁出窗口）就摘掉选择：留着的话界面上
+    // 没有任何标记高亮，⌫ 却还会删掉一枚看不见的。
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.pruneMarker { $0 == otherMarker }
+    checkEqual(s.markerRef, nil, "标记失效后要摘掉选择")
+    s.selectMarker(marker)
+    s.pruneMarker { $0 == marker }
+    checkEqual(s.markerRef, marker, "标记还在就别乱摘")
+
+    // 切工程：四类一起清（closeCurrentDocument 调的就是它）。
     s = EditSelection()
     s.selectClips([clipA])
     s.selectShape(shape)
     s.selectSubtitleCue(cue)
+    s.selectMarker(marker)
     s.clear()
-    check(s.clipIDs.isEmpty && s.shapeID == nil && s.subtitleCueID == nil,
-          "clear() 必须三类一起清（切工程/点空白）")
+    check(s.clipIDs.isEmpty && s.shapeID == nil && s.subtitleCueID == nil && s.markerRef == nil,
+          "clear() 必须四类一起清（切工程/点空白）")
 
     // 删除或换掉字幕轨：旧 cue 身份对不上就摘掉选择，别留悬空拖框。
     s = EditSelection()
@@ -1389,6 +1440,149 @@ do {
     s.selectClips([clipA, clipB])
     s.pruneClips { $0 == clipA }
     checkEqual(s.clipIDs, [clipA], "撤销后不存在的剪辑要从选择里摘掉")
+}
+
+// MARK: - 22. 轨道块标记：源时间锚定、分割、去重、存盘
+//
+// 标记锚在**源时间**上（和关键帧同一套，见第 14 节）。这一节守的就是那个
+// 选择带来的全部后果：整段挪窝/变速后标记还贴着同一帧画面；裁到窗口外的
+// 标记「不画但不删」；分割后两半各带完整标记表、各画各的窗口。
+// 长期约束见 docs/architecture/clip-markers.md。
+
+do {
+    let dir = root.appendingPathComponent("markers")
+    let media = dir.appendingPathComponent("m.mp4")
+    makeFile(media)
+    let project = dir.appendingPathComponent("p.srtflowproj")
+    let tol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: 1)
+
+    // ---- 锚在源时间：挪窝、变速都不该让标记跟画面脱节 ----
+    var clip = EditClip(sourceURL: media, sourceDuration: 10, timelineStart: 5)
+    clip.addMarker(atTimeline: 7, color: .blue, tolerance: tol)
+    checkEqual(clip.markers.first?.sourceTime, 2, "时间线 7s 打在起点 5s 的段上 = 源 2s")
+    checkEqual(clip.visibleMarkers.count, 1, "落在窗口里的标记要画出来")
+    checkEqual(clip.markers.first.map { clip.timelineTime(of: $0) }, 7, "源时间换算回时间线")
+
+    clip.timelineStart = 20
+    checkEqual(clip.markers.first.map { clip.timelineTime(of: $0) }, 22, "整段挪窝后标记跟着画面走")
+    clip.speed = 2
+    checkEqual(clip.markers.first.map { clip.timelineTime(of: $0) }, 21, "变速只改换算关系，标记还在同一帧上")
+    clip.speed = 1
+
+    // ---- 裁到窗口外：不画，但绝不删 ----
+    clip.sourceStart = 3
+    clip.sourceDuration = 7
+    checkEqual(clip.visibleMarkers.count, 0, "被裁掉的那一段里的标记不画")
+    checkEqual(clip.markers.count, 1, "但数据要留着 —— 裁切随时会被撤销")
+    clip.sourceStart = 0
+    clip.sourceDuration = 10
+    checkEqual(clip.visibleMarkers.count, 1, "把头拉回来，标记要原样回来")
+
+    // ---- 同一帧不叠标记（连按 M）/ 窗口外打不上 ----
+    var dup = EditClip(sourceURL: media, sourceDuration: 10)
+    dup.addMarker(atTimeline: 3, color: .red, tolerance: tol)
+    check(dup.addMarker(atTimeline: 3.001, color: .blue, tolerance: tol) == nil,
+          "半帧以内再打一枚要被挡掉（连按 M 不该叠出一摞点不开的标记）")
+    checkEqual(dup.markers.count, 1, "被挡掉就不能留下任何痕迹")
+    check(dup.addMarker(atTimeline: 99, color: .red, tolerance: tol) == nil, "窗口外打不上标记")
+
+    // ---- 分割：两半各带完整表，各画各的窗口，一枚都不能丢 ----
+    var state = TimelineState()
+    var base = EditClip(sourceURL: media, sourceDuration: 10, timelineStart: 0)
+    base.addMarker(atTimeline: 2, color: .red, tolerance: tol)
+    base.addMarker(atTimeline: 8, color: .green, tolerance: tol)
+    state.mainClips = [base]
+    state.split(clipID: base.id, at: 5)
+    checkEqual(state.mainClips.count, 2, "切成两半")
+    let left = state.mainClips[0]
+    let right = state.mainClips[1]
+    checkEqual(left.markers.count, 2, "左半带完整标记表（和关键帧同一个处理法）")
+    checkEqual(right.markers.count, 2, "右半也带完整标记表 —— 漏了这条切一刀就丢标记")
+    checkEqual(left.visibleMarkers.count, 1, "左半只画落在自己窗口里的那枚")
+    checkEqual(right.visibleMarkers.count, 1, "右半同理")
+    checkEqual(left.visibleMarkers.first?.color, .red, "左半画的是前面那枚")
+    checkEqual(right.visibleMarkers.first?.color, .green, "右半画的是后面那枚")
+    checkEqual(right.visibleMarkers.first.map { right.timelineTime(of: $0) }, 8,
+               "切开后标记在时间线上的位置不动")
+
+    // ---- TimelineState 的增删改 + 选择有效性判据 ----
+    var ops = TimelineState()
+    let target = EditClip(sourceURL: media, sourceDuration: 10)
+    ops.mainClips = [target]
+    let ref = ops.addMarker(toClip: target.id, atTimeline: 4, color: .purple, tolerance: tol)
+    check(ref != nil, "在段上打标记要拿得到引用")
+    if let ref {
+        check(ops.isMarkerSelectable(ref), "刚打上的标记可以被选中")
+        ops.updateMarker(ref) { $0.text = "align here" }
+        checkEqual(ops.marker(ref)?.text, "align here", "备注要写得进去")
+        ops.updateMarker(ref) { $0.color = .yellow }
+        checkEqual(ops.marker(ref)?.color, .yellow, "颜色要换得掉")
+
+        // 裁到窗口外：界面上已经不画它了，选择判据必须跟着变假 ——
+        // 否则 ⌫ 会删掉一枚用户根本看不见的标记。
+        ops.update(target.id) { $0.sourceStart = 6; $0.sourceDuration = 4 }
+        check(!ops.isMarkerSelectable(ref), "被裁出窗口的标记不该还能被选中")
+        check(ops.marker(ref) != nil, "但它的数据还在，撤销裁切要能回来")
+
+        ops.removeMarker(ref)
+        check(ops.marker(ref) == nil, "删标记要真的删掉")
+        check(!ops.isMarkerSelectable(ref), "删掉之后选择判据当然为假")
+    }
+
+    // ---- 存盘往返 + 版本登记 ----
+    var saveState = timeline(mainMedia: [media])
+    check(!saveState.hasClipMarkers, "没打过标记的工程 hasClipMarkers 要为假")
+    check(!saveState.requiresFormatVersion8, "没有标记就不是 v8 数据（按需登记，同 v4）")
+    try VideoEditProjectIO.save(saveState, to: project)
+    let cleanJSON = try String(contentsOf: project, encoding: .utf8)
+    check(!cleanJSON.contains("\"markers\""), "一枚标记都没有的段不该写出 markers 键")
+
+    let clipID = saveState.mainClips[0].id
+    saveState.update(clipID) { clip in
+        clip.addMarker(atTimeline: clip.timelineStart + 1, color: .orange, tolerance: tol)
+        clip.addMarker(atTimeline: clip.timelineStart + 3, color: .green, tolerance: tol)
+        clip.markers[1].text = "重点"
+    }
+    check(saveState.hasClipMarkers, "打过标记之后 hasClipMarkers 要为真")
+    check(saveState.requiresFormatVersion8, "有标记 → v8 判据为真（旧版打开会把它们抹掉）")
+
+    try VideoEditProjectIO.save(saveState, to: project)
+    let loaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(loaded.mainClips.first?.markers.count, 2, "标记数量要往返存住")
+    checkEqual(loaded.mainClips.first?.markers.first?.color, .orange, "颜色要存住")
+    checkEqual(loaded.mainClips.first?.markers.last?.text, "重点", "备注文字要存住")
+    checkEqual(
+        loaded.mainClips.first?.markers.first?.sourceTime,
+        saveState.mainClips.first?.markers.first?.sourceTime,
+        "标记位置要存住"
+    )
+    checkEqual(
+        loaded.mainClips.first?.markers.first?.id,
+        saveState.mainClips.first?.markers.first?.id,
+        "标记身份要存住（选择、撤销都靠它）"
+    )
+
+    var stripped = loaded
+    stripped.update(clipID) { $0.markers = [] }
+    check(!stripped.requiresFormatVersion8, "标记删光的工程要能退回非 v8（按需登记）")
+
+    // ---- 宽容解码：不认识的颜色不能让整份工程打不开 ----
+    let weird = dir.appendingPathComponent("weird.srtflowproj")
+    try Data("""
+    {
+      "formatVersion": 8,
+      "timeline": { "mainClips": [ {
+        "sourceURL": "\(media.absoluteString)",
+        "sourceDuration": 10,
+        "markers": [ { "sourceTime": 2, "color": "chartreuse" } ]
+      } ] },
+      "media": []
+    }
+    """.utf8).write(to: weird)
+    let weirdLoaded = try VideoEditProjectIO.load(from: weird).timeline
+    checkEqual(weirdLoaded.mainClips.first?.markers.count, 1, "颜色不认识也要把标记读回来")
+    checkEqual(weirdLoaded.mainClips.first?.markers.first?.color, .red, "不认识的颜色退回红色")
+    checkEqual(weirdLoaded.mainClips.first?.markers.first?.text, "", "缺 text 键读回空串")
 }
 
 try? manager.removeItem(at: root)

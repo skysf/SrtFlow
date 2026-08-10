@@ -38,6 +38,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
+  Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
@@ -117,8 +118,34 @@ require "VideoEditProject 的选择必须由 EditSelection 持有" \
   Sources/SrtFlow/VideoEditProject.swift 'var selection = EditSelection\(\)'
 require "state 的 didSet 要摘掉失效的字幕 cue 选择" \
   Sources/SrtFlow/VideoEditProject.swift 'pruneSubtitleCueSelection\(\)'
-require "切工程必须三类选择一起清" \
+require "切工程必须四类选择一起清" \
   Sources/SrtFlow/VideoEditProjectDocument.swift 'clearSelection\(\)'
+
+# 标记（2026-08-09）：纯值合同在上面断言过了，这里钉住它在生产里的接线。
+require "state 的 didSet 要摘掉失效的标记选择" \
+  Sources/SrtFlow/VideoEditProject.swift 'pruneMarkerSelection\(\)'
+require "⌫ 必须经统一删除入口认标记（不许另开一条删除路径）" \
+  Sources/SrtFlow/VideoEditProject.swift 'if let ref = selectedMarkerRef'
+require "⌫ 的按键守卫要放行「只选中了标记」的情况" \
+  Sources/SrtFlow/VideoEditView.swift 'project\.selectedMarkerRef != nil'
+require "M 必须接上打标记" \
+  Sources/SrtFlow/VideoEditView.swift 'addMarkerAtPlayhead\(\)'
+require "剪辑块要真的画出标记条" \
+  Sources/SrtFlow/VideoEditTimelineView.swift 'ClipMarkerStrip\('
+# 标记的帽子是可命中的子视图，指针一进去块自己的 onContinuousHover 立刻收到
+# .ended。没有这道让位，鼠标一碰标记画面就弹回播放头（扫帧 peek 被掐断）。
+require "扫帧 peek 要给标记让位" \
+  Sources/SrtFlow/VideoEditTimelineView.swift 'guard markerHoverTime == nil else'
+# 标记纯属编辑期标注：进了合成/导出就等于把它烧进成片。
+forbid "标记不许进预览合成" \
+  Sources/SrtFlow/VideoEditCompositionBuilder.swift '\.markers'
+forbid "标记不许进导出" \
+  Sources/SrtFlow/VideoEditExporter.swift '\.markers'
+# 改标记不该重建预览（画面一帧都不会变，白付一次 AVComposition 重搭）。
+if grep -Eq 'perform \{' Sources/SrtFlow/VideoEditProject+Markers.swift; then
+  echo "✗ 接线守卫：标记的写入必须走 perform(rebuildsPreview: false)" >&2
+  WIRING_FAIL=1
+fi
 
 # 一个语言一条轨：显示/烧录只能由两只眼睛推导，不许再有第二套模式选择。
 forbid "预览轨道模式选择器已删除，不许复活" \

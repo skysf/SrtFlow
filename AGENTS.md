@@ -53,7 +53,8 @@
 `.github/workflows/checks.yml` —— 改完代码、发 PR 前先本地跑它）。
 
 单项自检：`swift run SrtFlowCoreChecks`（核心库）、
-`scripts/check-project-file.sh`（工程存盘与素材重链接，源码在 `checks/ProjectFile/`）、
+`scripts/check-project-file.sh`（工程存盘与素材重链接、四类选择互斥、轨道块标记
+的源时间锚定/分割/去重/v8 按需写入，源码在 `checks/ProjectFile/`）、
 `scripts/check-player-clock.sh`（预览时钟的悬停预览 peek 状态机：播放头不被
 悬停拖走、seek/播放/换片终结 peek，源码在 `checks/PlayerClock/`）、
 `scripts/check-preview-composition.sh`（预览合成的叠化×变换模型，真取帧量像素，
@@ -159,6 +160,12 @@
   ASS 共用同一份、覆盖后锚定固定底部中心、拖框语义（框体=移动/边=换行
   宽度/角=等比字号）、三类选择互斥、分段默认单行 + 参数集版本合同；
   **改字幕轨 UI/预览叠层/烧录样式/分段默认值前必读**
+- [clip-markers.md](docs/architecture/clip-markers.md) —
+  轨道块标记（M 打、⌫ 删、点开换色/写备注、悬停弹气泡）：**锚在源时间**
+  （挪窝/变速不动、裁出窗口只藏不删、分割两半各带完整表）、不进合成不进导出
+  故一律 `perform(rebuildsPreview: false)`、v8 按需写入、选择是四类互斥的第四类
+  （否则 ⌫ 会删掉整段）、命中区只有帽子且必须排在裁切把手之前、悬停 peek 的
+  交接仲裁位、气泡画下方且不吃事件；**改标记/时间线块 overlay/扫帧 peek 前必读**
 
 ## Bug 修复案例（docs/bugfixes/）
 

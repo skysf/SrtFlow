@@ -50,6 +50,7 @@ final class VideoEditProject: ObservableObject {
             // 选中的 cue 可能已经不存在了。收在这唯一入口，别指望每个改字幕的
             // 操作各自记得清一次（PR#22 复审 P2）。
             pruneSubtitleCueSelection()
+            pruneMarkerSelection()
             documentDidChange()
         }
     }
@@ -61,6 +62,13 @@ final class VideoEditProject: ObservableObject {
         selection.pruneSubtitleCue { id in
             state.subtitle?.cues.contains { $0.id == id } == true
         }
+    }
+
+    /// 选中的标记还在不在（段被删、标记被删、撤销、被裁出窗口）。同样收在这个
+    /// 唯一入口，别指望每个会动到剪辑的操作各自记得清一次。
+    private func pruneMarkerSelection() {
+        guard selection.markerRef != nil else { return }
+        selection.pruneMarker { state.isMarkerSelectable($0) }
     }
 
     // MARK: - 工程文档（.srtflowproj）
@@ -172,8 +180,13 @@ final class VideoEditProject: ObservableObject {
         get { selection.subtitleCueID }
         set { selection.selectSubtitleCue(newValue) }
     }
+    /// 轨道块上选中的标记（高亮它、⌫ 删它）。不持久化。
+    var selectedMarkerRef: ClipMarkerRef? {
+        get { selection.markerRef }
+        set { selection.selectMarker(newValue) }
+    }
 
-    /// 三类选择一起清：点预览空白、切工程。
+    /// 四类选择一起清：点预览空白、切工程。
     func clearSelection() {
         selection.clear()
     }
@@ -740,7 +753,16 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// ⌫ 与工具栏垃圾桶的唯一入口。
+    ///
+    /// 分支顺序不重要（四类选择本来就互斥，见 `EditSelection`），但标记必须在
+    /// 这里出现 —— 单独给标记接一条删除路径的话，两条路径迟早会对「现在选中的
+    /// 是什么」给出不同答案。
     func deleteSelected() {
+        if let ref = selectedMarkerRef {
+            deleteMarker(ref)
+            return
+        }
         if let shapeID = selectedShapeID {
             deleteShape(shapeID)
             return

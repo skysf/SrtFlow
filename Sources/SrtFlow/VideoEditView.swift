@@ -142,7 +142,7 @@ struct VideoEditView: View {
 
     // MARK: - 键盘
 
-    /// 空格播放/暂停；V 切换所在轨的隐藏；A/B 切换选择/分割工具。
+    /// 空格播放/暂停；V 切换所在轨的隐藏；A/B 切换选择/分割工具；M 打标记。
     /// 这个视图只在「视频剪辑」栏可见时存在，监听不会漏到别的页面。
     private func installEventMonitor() {
         guard eventMonitor == nil else { return }
@@ -159,11 +159,13 @@ struct VideoEditView: View {
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
-            // ⌫ / fn⌫：删掉选中的剪辑或形状，和工具栏 trash 按钮同一个动作。
+            // ⌫ / fn⌫：删掉选中的剪辑、形状或标记，和工具栏 trash 按钮同一个动作。
             // 按 keyCode 认（51 = delete，117 = forward delete）——
             // charactersIgnoringModifiers 那边是控制字符，走字符串会一团糟。
             if event.keyCode == 51 || event.keyCode == 117 {
-                guard !project.selectedClipIDs.isEmpty || project.selectedShapeID != nil else {
+                guard !project.selectedClipIDs.isEmpty
+                        || project.selectedShapeID != nil
+                        || project.selectedMarkerRef != nil else {
                     return event
                 }
                 project.deleteSelected()
@@ -181,6 +183,9 @@ struct VideoEditView: View {
                 return nil
             case "b":
                 project.activeTool = .split
+                return nil
+            case "m":
+                project.addMarkerAtPlayhead()
                 return nil
             default:
                 return event
