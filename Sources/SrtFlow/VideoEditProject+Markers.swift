@@ -15,25 +15,38 @@ extension VideoEditProject {
         KeyframeTrack.sourceTolerance(frameRate: state.frameRate, speed: clip.speed)
     }
 
-    /// 快捷键 M：给**选中的段**在播放头处各打一枚标记。
+    /// M / 工具栏书签按钮此刻会打在哪几段上。
     ///
     /// 落点规则：
     /// 1. 选中的段里，凡是被播放头穿过的都各打一枚（多选就是批量打）。
     /// 2. 一个都没选中（或选中的段都不在播放头下）时，退回主轨播放头下那一段。
     ///
     /// 不跟随鼠标位置：鼠标不在时间线上时 M 会变成哑键，而播放头永远有确定的
-    /// 位置。同一帧上已有标记时 `addMarker` 自己会挡掉，连按 M 不会叠点。
+    /// 位置。
     ///
     /// 链接组**不**跟着一起打：标记是给人看的标注，不是剪辑结构。分离出来的
     /// 音频段自动多一枚标记只会让人莫名其妙。
-    func addMarkerAtPlayhead() {
+    ///
+    /// 按钮的置灰判据和动作本身共用这一个函数 —— 分成两份写，迟早会出现
+    /// 「按钮亮着但按下去什么都没发生」。
+    func markerTargetsAtPlayhead() -> [UUID] {
         let time = clock.time
-        var targets = state.allClips
+        let selected = state.allClips
             .filter { selectedClipIDs.contains($0.id) && $0.contains(time: time) }
             .map(\.id)
-        if targets.isEmpty, let main = mainClipAtPlayhead() {
-            targets = [main.id]
-        }
+        if !selected.isEmpty { return selected }
+        return mainClipAtPlayhead().map { [$0.id] } ?? []
+    }
+
+    /// 工具栏书签按钮亮不亮。
+    var canAddMarker: Bool { !markerTargetsAtPlayhead().isEmpty }
+
+    /// 快捷键 M / 工具栏书签：给落点上的每一段在播放头处打一枚标记。
+    ///
+    /// 同一帧上已有标记时 `addMarker` 自己会挡掉，连按 M 不会叠点。
+    func addMarkerAtPlayhead() {
+        let time = clock.time
+        let targets = markerTargetsAtPlayhead()
         guard !targets.isEmpty else { return }
 
         // 打完把最后一枚选上：紧接着按 ⌫ 撤掉、或者直接点开写字，都不用再瞄准。
