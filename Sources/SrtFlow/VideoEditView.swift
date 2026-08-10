@@ -460,6 +460,12 @@ struct VideoEditView: View {
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(!project.canFreezeFrame)
+            // 不挂 .keyboardShortcut("m")：无修饰键的键盘等价符会抢文本框的输入，
+            // M 由 handleEvent 里的事件监听接（那边会先让开正在打字的输入框）。
+            ToolbarIcon(icon: "bookmark", help: "Add a marker at the playhead (M)") {
+                project.addMarkerAtPlayhead()
+            }
+            .disabled(!project.canAddMarker)
             ToolbarIcon(icon: "delete.left", help: "Delete everything left of the playhead in this clip") {
                 project.trimToPlayhead(keepRight: true)
             }
@@ -471,7 +477,13 @@ struct VideoEditView: View {
             ToolbarIcon(icon: "trash", help: "Delete the selection") {
                 project.deleteSelected()
             }
-            .disabled(project.selectedClipIDs.isEmpty && project.selectedShapeID == nil)
+            // 判据必须和 ⌫ 那道守卫逐字一致（含标记）。少一类，选中标记时垃圾桶
+            // 就是灰的，而键盘删得掉 —— 同一个动作两个入口给出两种答案。
+            .disabled(
+                project.selectedClipIDs.isEmpty
+                    && project.selectedShapeID == nil
+                    && project.selectedMarkerRef == nil
+            )
             ToolbarIcon(icon: "waveform.badge.minus", help: "Detach the audio onto its own track") {
                 if let id = project.selectedClip?.id { project.detachAudio(from: id) }
             }

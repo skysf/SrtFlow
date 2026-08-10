@@ -130,6 +130,14 @@ require "⌫ 的按键守卫要放行「只选中了标记」的情况" \
   Sources/SrtFlow/VideoEditView.swift 'project\.selectedMarkerRef != nil'
 require "M 必须接上打标记" \
   Sources/SrtFlow/VideoEditView.swift 'addMarkerAtPlayhead\(\)'
+require "工具栏垃圾桶的置灰判据必须和 ⌫ 一样认标记" \
+  Sources/SrtFlow/VideoEditView.swift 'project\.selectedMarkerRef == nil'
+# 按钮亮不亮和真正会打在哪几段，必须是同一个函数算出来的。
+require "工具栏书签按钮的置灰走 canAddMarker" \
+  Sources/SrtFlow/VideoEditView.swift 'project\.canAddMarker'
+require "canAddMarker 与打标记共用同一份落点判据" \
+  Sources/SrtFlow/VideoEditProject+Markers.swift \
+  'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
   Sources/SrtFlow/VideoEditTimelineView.swift 'ClipMarkerStrip\('
 # 标记的帽子是可命中的子视图，指针一进去块自己的 onContinuousHover 立刻收到
