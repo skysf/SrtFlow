@@ -32,6 +32,7 @@ struct FontPickerField: View {
                     Image(systemName: "chevron.up.chevron.down").font(.caption2)
                 }
             }
+            .instantHelp("Pick the typeface for burned-in subtitles")
             .popover(isPresented: $isPresented, arrowEdge: .trailing) {
                 FontBrowser(fontName: $fontName, catalog: catalog)
             }
@@ -80,6 +81,7 @@ private struct FontBrowser: View {
                     Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
+                .instantHelp("Clear the search")
             }
         }
         .padding(.horizontal, 10)

@@ -186,6 +186,7 @@ struct MainWindowView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .instantHelp("What is wrong with the video engine, and how to fix it")
             .popover(isPresented: $showsEngineDetail, arrowEdge: .trailing) {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(warning)
@@ -199,12 +200,14 @@ struct MainWindowView: View {
                             } label: {
                                 Label("Open System Settings", systemImage: "gearshape")
                             }
+                            .instantHelp("Open Privacy & Security so the engine can be allowed to run")
                             Button {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(command, forType: .string)
                             } label: {
                                 Label("Copy command", systemImage: "doc.on.doc")
                             }
+                            .instantHelp("Copy the un-quarantine command to the clipboard")
                         }
                         .controlSize(.small)
                     }
@@ -222,7 +225,7 @@ struct MainWindowView: View {
             }
             .font(.caption)
             // 完整的一句（版本、来自哪里、是不是原生）留在提示里。
-            .help(engineSummary(runtime))
+            .instantHelp(engineSummary(runtime))
         }
     }
 
@@ -309,7 +312,7 @@ private struct SidebarToolRow: View {
             Spacer(minLength: 4)
             badge
         }
-        .help(LocalizedStringKey(section.blurb))
+        .instantHelp(LocalizedStringKey(section.blurb))
     }
 
     /// 切走了也能看见这一栏还在忙。

@@ -190,7 +190,7 @@ private struct ClipMarkerEditor: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .help(color.title)
+                    .instantHelp(color.title)
                 }
             }
 
@@ -209,6 +209,7 @@ private struct ClipMarkerEditor: View {
             }
             .buttonStyle(.plain)
             .foregroundStyle(.red)
+            .instantHelp("Remove this marker", shortcut: .plain("⌫"))
         }
         .padding(10)
         .onAppear { draft = marker.text }

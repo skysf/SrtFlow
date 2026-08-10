@@ -53,7 +53,9 @@ struct BatchConvertView: View {
 
             HStack {
                 Button("Add Files…", action: addFiles)
+                    .instantHelp("Pick subtitle files to convert")
                 Button("Clear") { model.clear() }
+                    .instantHelp("Empty the list")
                     .disabled(model.files.isEmpty)
                 Spacer()
             }
@@ -67,6 +69,7 @@ struct BatchConvertView: View {
                 .fixedSize()
 
                 Button("Output Folder…", action: chooseOutputFolder)
+                    .instantHelp("Where converted files are written; defaults to next to the source")
                 Text(model.outputDirectory?.lastPathComponent ?? String(localized: "Same as source"))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -79,6 +82,7 @@ struct BatchConvertView: View {
                 Button("Convert") { model.convert() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.files.isEmpty)
+                    .instantHelp("Convert every file in the list", shortcut: .defaultAction)
             }
         }
         .padding()

@@ -157,6 +157,7 @@ struct BurnInView: View {
                 }
                 Spacer()
                 Button("Add Files…") { chooseFiles() }
+                    .instantHelp("Pick videos to burn subtitles into")
                     .controlSize(.small)
             }
             .padding(.horizontal, 12)
@@ -220,17 +221,19 @@ struct BurnInView: View {
             HStack(spacing: 10) {
                 if queue.isRunning {
                     Button("Stop All") { queue.cancelAll() }
+                        .instantHelp("Cancel everything still running")
                 } else {
                     Button {
                         queue.start()
                     } label: {
                         Label(startTitle, systemImage: "play.fill")
                     }
-                    .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(!canStart)
+                    .instantHelp("Start encoding everything in the queue", shortcut: .commandReturn)
                 }
 
                 Button("Clear Finished") { queue.clearFinished() }
+                    .instantHelp("Remove finished items from the list")
                     .disabled(!queue.items.contains(where: \.isDone))
 
                 Spacer()
@@ -551,6 +554,7 @@ private struct BurnInRow: View {
                         .font(.caption)
                         .foregroundStyle(.orange)
                     Button("Choose…", action: onPickSubtitle)
+                .instantHelp("Pick the subtitle file to burn in")
                         .controlSize(.small)
                         .buttonStyle(.link)
                 }
@@ -599,17 +603,17 @@ private struct BurnInRow: View {
             if item.status == .finished {
                 Button { revealInFinder(item.outputURL) } label: { Image(systemName: "folder") }
                     .buttonStyle(.borderless)
-                    .help("Show in Finder")
+                    .instantHelp("Show in Finder")
             }
             if item.isActive || item.status == .waiting {
                 Button { queue.cancel(id: item.id) } label: { Image(systemName: "stop.circle") }
                     .buttonStyle(.borderless)
-                    .help("Cancel")
+                    .instantHelp("Cancel")
             }
             if !item.isActive {
                 Button { queue.remove(id: item.id) } label: { Image(systemName: "xmark") }
                     .buttonStyle(.borderless)
-                    .help("Remove from list")
+                    .instantHelp("Remove from list")
             }
         }
     }

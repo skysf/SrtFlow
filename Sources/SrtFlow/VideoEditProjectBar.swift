@@ -55,7 +55,7 @@ struct VideoEditProjectMenu: View {
         .onAppear { recents = RecentProjects.existing() }
         // 打开/保存都会动最近列表，跟着刷新。
         .onChange(of: project.documentURL) { _, _ in recents = RecentProjects.existing() }
-        .help(project.documentURL?.path ?? L10n("This project hasn’t been saved yet"))
+        .instantHelp(project.documentURL?.path ?? L10n("This project hasn’t been saved yet"))
     }
 }
 
@@ -113,7 +113,9 @@ struct VideoEditStartScreen: View {
             HStack(spacing: 10) {
                 Button("Add Media…") { promptAddMedia() }
                     .buttonStyle(.borderedProminent)
+                    .instantHelp("Add video, audio or images to the timeline")
                 Button("Open Project…") { project.promptOpenProject() }
+                    .instantHelp("Open an existing .srtflowproj file", shortcut: .command("O"))
             }
         }
         .padding(.top, 12)
@@ -157,7 +159,7 @@ private struct RecentProjectCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .help(url.path)
+        .instantHelp(url.path)
         .contextMenu {
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([url])

@@ -125,7 +125,7 @@ struct BurnInPreviewArea: View {
                       : "arrow.up.left.and.arrow.down.right")
             }
             .buttonStyle(.borderless)
-            .help(isExpanded
+            .instantHelp(isExpanded
                   ? LocalizedStringKey("Shrink the preview (Esc)")
                   : LocalizedStringKey("Fill the window with the preview"))
 
@@ -244,7 +244,7 @@ struct BurnInPreviewArea: View {
                     .frame(width: 12)
             }
             .buttonStyle(.borderless)
-            .help(clock.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
+            .instantHelp(clock.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"), shortcut: .plain("Space"))
 
             Text(clockLabel(displayTime))
                 .font(.caption)

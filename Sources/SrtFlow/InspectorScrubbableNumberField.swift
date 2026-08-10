@@ -60,7 +60,7 @@ struct InspectorScrubbableNumberField: View {
                 Image(systemName: "chevron.up")
             }
             .disabled(value.wrappedValue >= range.upperBound)
-            .help("Increase by 1")
+            .instantHelp("Increase by 1")
 
             Button {
                 step(by: -1)
@@ -68,7 +68,7 @@ struct InspectorScrubbableNumberField: View {
                 Image(systemName: "chevron.down")
             }
             .disabled(value.wrappedValue <= range.lowerBound)
-            .help("Decrease by 1")
+            .instantHelp("Decrease by 1")
         }
         .buttonStyle(.borderless)
         .controlSize(.mini)

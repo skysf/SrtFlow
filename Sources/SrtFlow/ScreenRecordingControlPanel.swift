@@ -132,6 +132,7 @@ private struct ControlPanelView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(model.isFinalizing)
+            .instantHelp("Stop recording and finish writing the file")
         }
         .padding(.horizontal, 12)
         .frame(height: 44)

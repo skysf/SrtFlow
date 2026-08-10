@@ -101,6 +101,7 @@ struct SubtitleExportSection: View {
                 }
                 HStack {
                     Button("Export Subtitle Files…") { exportFiles() }
+                .instantHelp("Write the subtitle tracks out as files")
                         .controlSize(.small)
                         .disabled(options.files.isEmpty)
                     if !writtenFiles.isEmpty {

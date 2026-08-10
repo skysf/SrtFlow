@@ -32,6 +32,7 @@ struct EncodeQueueListView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Add Files…", action: onAddFiles)
+                .instantHelp("Add more files to the queue")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(30)
@@ -140,7 +141,7 @@ private struct EncodeQueueRow: View {
                     Image(systemName: "folder")
                 }
                 .buttonStyle(.borderless)
-                .help("Show in Finder")
+                .instantHelp("Show in Finder")
             }
 
             if item.isActive || item.status == .waiting {
@@ -150,7 +151,7 @@ private struct EncodeQueueRow: View {
                     Image(systemName: "stop.circle")
                 }
                 .buttonStyle(.borderless)
-                .help("Cancel")
+                .instantHelp("Cancel")
             }
 
             if !item.isActive {
@@ -160,7 +161,7 @@ private struct EncodeQueueRow: View {
                     Image(systemName: "xmark")
                 }
                 .buttonStyle(.borderless)
-                .help("Remove from list")
+                .instantHelp("Remove from list")
             }
         }
     }
@@ -187,12 +188,14 @@ struct OutputLocationPicker: View {
                 }
             }
             .controlSize(.small)
+            .instantHelp("Where finished files are written")
             if queue.outputDirectory != nil {
                 Button("Reset") {
                     queue.outputDirectory = nil
                     queue.refreshOutputPaths()
                 }
                 .controlSize(.small)
+                .instantHelp("Go back to writing next to each source file")
             }
             Spacer()
         }

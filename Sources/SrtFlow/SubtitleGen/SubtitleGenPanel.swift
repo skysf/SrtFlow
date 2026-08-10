@@ -17,6 +17,7 @@ struct SubtitleGenPanel: View {
                 Text("Subtitles").font(.headline)
                 Spacer()
                 Button("Close") { dismiss() }
+                .instantHelp("Close this panel")
             }
             .padding(14)
             Divider()
@@ -88,6 +89,7 @@ private struct SubtitleGenPanelContent: View {
                     } label: {
                         Label("Edit Subtitles…", systemImage: "list.bullet.rectangle")
                     }
+                    .instantHelp("Edit the text and timing of every line")
                     Spacer()
                 }
             }
@@ -128,6 +130,7 @@ private struct SubtitleGenPanelContent: View {
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
                     Button("Stop") { coordinator.cancel() }
+                        .instantHelp("Cancel the translation")
                         .controlSize(.small)
                 }
             } else {
@@ -136,10 +139,12 @@ private struct SubtitleGenPanelContent: View {
                         translate(scope: .all)
                     }
                     .disabled(targetLanguageID.isEmpty)
+                    .instantHelp("Retranslate every line, replacing what is already there")
                     Button("Translate Missing & Stale") {
                         translate(scope: .staleOrMissing)
                     }
                     .disabled(targetLanguageID.isEmpty)
+                    .instantHelp("Only translate lines with no translation, or whose source text changed")
                 }
                 Text("Translation runs entirely on this Mac. The system may download language models first.")
                     .font(.caption2)
@@ -269,6 +274,7 @@ private struct TranscriptionSection: View {
                         HStack(spacing: 8) {
                             ProgressView(value: task.progress)
                             Button("Stop") { task.cancel() }
+                        .instantHelp("Cancel subtitle generation")
                                 .controlSize(.small)
                         }
                         Text(stageText)
@@ -291,6 +297,7 @@ private struct TranscriptionSection: View {
                     } label: {
                         Label("Generate Subtitles", systemImage: "waveform.and.mic")
                     }
+                    .instantHelp("Transcribe the audio on the timeline into a subtitle track")
                     // 门槛 = 有实际可听的 clip（与转写任务同一份合同）——
                     // 纯音频工程也能生成，不看有没有主视频。源语言不再是
                     // 门槛：默认的「自动检测」永远是合法选择。
