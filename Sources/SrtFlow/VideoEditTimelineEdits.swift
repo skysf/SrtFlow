@@ -126,6 +126,9 @@ extension TimelineState {
             stillImageURL: left.stillImageURL
         )
         right.needsStillConversion = left.needsStillConversion
+        // 标记同样锚在源时间上，所以两半各带一份**完整**的标记表，各自只画落在
+        // 自己窗口里的那些 —— 切口两边谁也不会丢标记，跟关键帧一个处理法。
+        right.markers = left.markers
         left.sourceDuration = leftSourceLength
         // 切口是硬切，原来的转场跟着右半走。
         left.transitionAfter = .none

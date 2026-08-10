@@ -390,6 +390,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// VideoEditAnimation.swift。
     var animation: ClipAnimation?
 
+    /// 用户打在这段素材上的标记。锚在源时间上，只影响编辑期的显示，不进合成
+    /// 和导出。类型与读写见 VideoEditClipMarker.swift。
+    var markers: [ClipMarker] = []
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -943,6 +947,7 @@ extension EditClip: Codable {
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
         case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
         case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
+        case markers
     }
 
     init(from decoder: Decoder) throws {
@@ -976,6 +981,7 @@ extension EditClip: Codable {
         )
         // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
         // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
+        markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1004,7 +1010,39 @@ extension EditClip: Codable {
         try c.encodeIfPresent(info, forKey: .info)
         try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
         try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)
+        // 没有标记的段不写这个键：绝大多数工程一枚标记都没有，键写出来只是把
+        // 每段的 JSON 撑大一行。
+        if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
     }
+}
+
+extension ClipMarker: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, sourceTime, color, text
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 位置是唯一必需的字段：没有它这枚标记不知道该画在哪。
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceTime: try c.decode(Double.self, forKey: .sourceTime),
+            color: try c.decodeIfPresent(MarkerColor.self, forKey: .color) ?? .red,
+            text: try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(sourceTime, forKey: .sourceTime)
+        try c.encode(color, forKey: .color)
+        if !text.isEmpty { try c.encode(text, forKey: .text) }
+    }
+}
+
+extension MarkerColor: LenientCodableEnum {
+    static var decodingFallback: MarkerColor { .red }
 }
 
 extension EditLane: Codable {

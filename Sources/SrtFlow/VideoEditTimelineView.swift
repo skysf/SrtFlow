@@ -998,6 +998,9 @@ private struct ClipBlockView: View {
     @State private var isTrimming = false
     /// 刀片工具的十字光标压没压进光标栈（离开时要弹回来）。
     @State private var pushedSplitCursor = false
+    /// 指针正悬在某枚标记上时，那枚标记所在的时间线时刻；nil = 没悬着。
+    /// 扫帧 peek 归属的仲裁位，见 `markerHover`。
+    @State private var markerHoverTime: Double?
 
     private var width: Double { max(6, clip.timelineDuration * pps) }
     private var isAudioRow: Bool { slot.isAudio }
@@ -1033,13 +1036,18 @@ private struct ClipBlockView: View {
         .overlay(alignment: .bottomLeading) { keyframeMarkers }
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
         .onHover(perform: updateSplitCursor)
+        // 标记要压在扫帧之上（它自己接管 peek），但必须排在裁切把手**之前** ——
+        // 排在后面的话，贴着块两端的标记会盖住把手，那一端就再也裁不动了。
+        // 刀片模式下整条让路：点在标记上也该落下那一刀。
+        .overlay(alignment: .topLeading) { markerStrip }
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .contextMenu { contextMenu }
         .help(clip.name)
         .offset(x: (clip.timelineStart + (dragOffset ?? 0)) * pps)
-        .zIndex(dragOffset != nil ? 10 : 0)
+        // 备注气泡会铺到邻块上面去，所以悬着标记的块要抬起来，别被后画的块盖住。
+        .zIndex(dragOffset != nil ? 10 : (markerHoverTime != nil ? 5 : 0))
         // 邻居被磁吸重排时平滑挪过去，别硬跳。**正在被拖/被裁的块必须豁免**：
         // 它每一拍都在改位置，0.12s 动画反复重定向画出来的就是「低通滤波后的
         // 鼠标」—— 手越快落后越多，这正是 2026-08-09 那个「光标到最右、块还在
@@ -1166,6 +1174,39 @@ private struct ClipBlockView: View {
         }
     }
 
+    /// 块上的标记。刀片模式整条不吃事件（点哪儿切哪儿优先）。
+    @ViewBuilder
+    private var markerStrip: some View {
+        if !clip.markers.isEmpty {
+            ClipMarkerStrip(
+                clip: clip,
+                width: width,
+                height: height,
+                pps: pps,
+                project: project,
+                onHoverMarker: markerHover
+            )
+            .allowsHitTesting(project.activeTool == .select)
+        }
+    }
+
+    /// 指针进出标记时，peek 的交接。
+    ///
+    /// 必须有这么一个仲裁位：标记的帽子是可命中的子视图，指针一进去，块自己那圈
+    /// `.onContinuousHover` 立刻收到 `.ended` —— 什么都不做的话，鼠标一碰标记
+    /// 画面就弹回播放头。所以进标记时由标记把 peek 顶到它自己那一帧，块那边的
+    /// `.ended` 让位；离开标记时**照常** endPeek：指针要是还在块上，下一次
+    /// 鼠标移动会立刻把扫帧接回去，指针要是已经走了，画面也不会僵在标记那一帧。
+    private func markerHover(_ time: Double?) {
+        markerHoverTime = time
+        guard !project.clock.isPlaying, !isMoving, !isTrimming else { return }
+        if let time {
+            project.clock.peek(at: time)
+        } else {
+            project.clock.endPeek()
+        }
+    }
+
     /// 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
     private func updateSplitCursor(_ inside: Bool) {
         if inside, project.activeTool == .split, !pushedSplitCursor {
@@ -1186,9 +1227,13 @@ private struct ClipBlockView: View {
         switch phase {
         case .active(let point):
             guard !project.clock.isPlaying, !isMoving, !isTrimming else { return }
+            // 标记正接管着 peek，别把画面从标记那一帧拽回指针底下。
+            guard markerHoverTime == nil else { return }
             let x = min(max(0, point.x), width)
             project.clock.peek(at: clip.timelineStart + x / pps)
         case .ended:
+            // 指针是「进了块上的标记」而不是「离开了块」，peek 该留给标记。
+            guard markerHoverTime == nil else { return }
             project.clock.endPeek()
         }
     }
@@ -1232,6 +1277,12 @@ private struct ClipBlockView: View {
             project.select(clip.id, additive: false)
             project.splitAtPlayhead()
         }
+        // 右键这一项和 M 是同一个动作，只是把「先选中这一段」替用户做了 ——
+        // 快捷键得能被发现，藏在文档里的快捷键等于没有。
+        Button("Add Marker at Playhead") {
+            project.addMarker(toClip: clip.id, atTimeline: project.clock.time)
+        }
+        .disabled(!clip.contains(time: project.clock.time))
         if !clip.isAudioOnly {
             if clip.hasAudio, !clip.isMuted {
                 Button("Detach Audio") { project.detachAudio(from: clip.id) }

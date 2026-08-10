@@ -67,6 +67,21 @@ extension TimelineState {
     /// 判据同 `requiresFormatVersion6`：无条件落盘，恒为真。
     var requiresFormatVersion7: Bool { true }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v8-only 持久数据。
+    ///
+    /// **登记清单（新增 v8-only 字段必须同步补进来）：**
+    /// 1. `EditClip.markers` —— 轨道块上的标记（位置 / 颜色 / 备注文字）。
+    ///
+    /// 标记不进合成也不进导出，成片一帧都不会变 —— 但版本闸门问的从来不是
+    /// 「成片会不会变」，而是「旧版拿到新文件会不会毁数据」。只认 v7 的旧版
+    /// 照常打开，用户随手编辑触发自动保存，整份标记连同备注文字一起被抹掉，
+    /// 而这是纯手工输入、丢了只能重标一遍的数据。
+    ///
+    /// 这条按 v4 的**按需**写法（标记表是空的就不算 v8 数据），不像 v5–v7 那样
+    /// 恒为真：没打过标记的工程本来就没有 v8 语义。writer 的定版仍被 v5 的
+    /// 无条件要求接管（一律写 latest），这里保留为登记清单。
+    var requiresFormatVersion8: Bool { hasClipMarkers }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {
