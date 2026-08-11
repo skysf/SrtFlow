@@ -53,6 +53,15 @@
   （修饰键设 `event.flags = .maskCommand`，Esc=53、⌫=51、Z=6 可发 ⌘Z）。
   System Events 的 `click at {x,y}` 走 AX 动作，是备用点击路径（SwiftUI 的
   剪辑块会被解析成 AX button）。
+- **录制控制窗（`sharingType = .none`）自动化够不着**（2026-08-11 实测）：
+  `screencapture -l <id>` 拍出来是空白，`CGWindowListCopyWindowInfo` 里
+  `kCGWindowIsOnscreen = false`，AX 树和 System Events 的 windows 里也没有它，
+  合成点击落到它的位置上不产生任何效果。**录制中的 Stop 只能人手点**。
+  自动化要跑「录一段再检查」的流程，请让用户按 Stop，或者干脆绕开 GUI：
+  把 `ScreenCaptureEngine` + `ScreenRecordingWriter` 编进独立二进制直接驱动
+  （终端进程自己有录屏权限，`CGPreflightScreenCaptureAccess()` 可先确认；
+  CLI 里建 `SCContentFilter` 前要先 `_ = NSApplication.shared`，
+  否则踩 `CGS_REQUIRE_INIT` 断言直接崩）。
 - **不可注入**：真实 magnify 捏合事件公开 API 造不出来（type 29 私有字段的
   hack 不可靠）。捏合的最终验证只能：用户按一次，或
   `log stream --predicate 'category == "timeline-zoom"'` 实时确认。
