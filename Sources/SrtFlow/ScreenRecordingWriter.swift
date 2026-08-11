@@ -19,9 +19,14 @@ import SrtFlowCore
 /// 4. **按共享 PTS 对齐，不做任何固定偏移。** 声学测得的 69 ms 含扬声器/声程/
 ///    输入缓冲等环境成分，是本机观测值，不得写死（门槛 3 结论订正）。
 /// 5. **共同 T0 / 共同 T1**：第一个到达采样定 T0，三路统一减 T0；收尾时两个
-///    writer `endSession` 到同一个 T1 —— 实测 `endSession` 足以把时长延到 T1，
-///    不需要补尾帧（门槛 11）。
+///    writer `endSession` 到同一个 T1（门槛 11）。
 /// 6. **`idle` 帧不带 image buffer**，占比可达 45–62%，不能计作掉帧（门槛 11）。
+/// 7. **画面轨必须自己盖到 T1**（`holdLastFrame`）。`endSession` 只延**容器**
+///    时长；静止期一帧都不写，画面轨末端会停在最后一次画面变化。播放器把
+///    最后一帧冻住，看不出问题，但进时间线后 `insertTimeRange` 只能取到画面轨
+///    真实存在的那段，剩下的全是**纯黑**
+///    （docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md）。
+///    门槛 11 当年只验了容器时长，结论「不需要补尾帧」是错的。
 @available(macOS 15.0, *)
 final class ScreenRecordingWriter: @unchecked Sendable {
 
@@ -83,6 +88,11 @@ final class ScreenRecordingWriter: @unchecked Sendable {
     /// 「静止画面 + 关闭电脑声音」录 30 秒会得到 0 秒或只到最后一次画面变化的
     /// 文件（复审 P1-4）。
     private var observedEnd: CMTime = .zero
+    /// 最后一份**写进去**的画面（以及它的格式）。收尾补尾帧要用（硬约束 7）。
+    private var lastVideoImage: CVImageBuffer?
+    private var lastVideoFormat: CMFormatDescription?
+    /// 一帧的时长。补尾帧的 PTS 兜底和「差不到一帧就不算洞」的容差都按它算。
+    private let frameDuration: CMTime
     /// 进入收尾后拒收新采样 —— 与 engine 的队列栅栏共同保证
     /// 「append 与 markAsFinished 不并发」。
     private var isFinishing = false
@@ -105,6 +115,8 @@ final class ScreenRecordingWriter: @unchecked Sendable {
     ) throws {
         self.movURL = movURL
         self.micURL = micURL
+        let rational = frameRate.frameDurationRational
+        self.frameDuration = CMTime(value: rational.value, timescale: rational.timescale)
         try? FileManager.default.removeItem(at: movURL)
         if let micURL { try? FileManager.default.removeItem(at: micURL) }
 
@@ -299,6 +311,12 @@ final class ScreenRecordingWriter: @unchecked Sendable {
             checkWriterFailure(kind: "screen")
             return
         }
+        // 收尾补尾帧要拿它再写一份（硬约束 7）。留的是 image buffer 本身，
+        // 一份的开销就是一块 IOSurface。
+        lock.lock()
+        lastVideoImage = image
+        lastVideoFormat = format
+        lock.unlock()
         noteAppended(kind: "screen", at: time, duration: CMSampleBufferGetDuration(sampleBuffer))
     }
 
@@ -416,6 +434,16 @@ final class ScreenRecordingWriter: @unchecked Sendable {
         var lastAppendedEndSeconds: [String: Double] = [:]
         /// 麦克风通道中途被关掉的原因（nil = 正常）。
         var microphoneFailure: String?
+        /// **产物里画面轨真实的末端**（秒），读的是写完的文件，不是内部账。
+        ///
+        /// 验收画面覆盖只能以它为准：内部账记的是「我以为写进去了多少」，
+        /// 而这一条是「文件里到底有多少」（外部真值，见录屏地基复审）。
+        /// 读不出来时为 nil。
+        var videoTrackEndSeconds: Double?
+        /// 补尾帧没成功的原因（nil = 没失败或压根不需要补）。诊断用；
+        /// 判 partial 以 `videoTrackEndSeconds` 为准，不拿它当判据 ——
+        /// 补帧失败但 writer 自己把时长兜住了的情况不该误报。
+        var tailFrameFailure: String?
     }
 
     /// 冲干净 backlog → 共同 T1 → finalize。
@@ -464,6 +492,12 @@ final class ScreenRecordingWriter: @unchecked Sendable {
             // 取上界：stop 时刻应当晚于任何采样；异常时不让它把时长缩短。
             if stopRelative > t1 { t1 = stopRelative }
         }
+        lock.unlock()
+
+        // 画面轨要自己盖到 T1（硬约束 7）—— 必须在 markAsFinished 之前。
+        let tailFrameFailure = await holdLastFrame(untilT1: t1)
+
+        lock.lock()
         let counters = self.counters
         let failure = self.failure
         let microphoneFailure = self.microphoneFailure
@@ -475,11 +509,18 @@ final class ScreenRecordingWriter: @unchecked Sendable {
         systemAudioInput?.markAsFinished()
         micInput?.markAsFinished()
         // 共同 T1：两个 writer 收到同一时刻，尾部长度才一致。
-        // 实测 endSession 足以把时长延到 T1，不需要补尾帧。
         movWriter.endSession(atSourceTime: t1)
         micWriter?.endSession(atSourceTime: t1)
         await movWriter.finishWriting()
         if let micWriter { await micWriter.finishWriting() }
+
+        // **以产物为准**验一遍画面覆盖：内部账只能说明「我以为写进去了多少」。
+        // 补尾帧失败（编码器不收、造不出采样）之后 writer 照样可能是 .completed，
+        // 光看容器时长和音频覆盖，短画面轨会被当成功提交、黑尾再来一次。
+        let videoTrackEnd = await Self.videoTrackEndSeconds(of: movURL)
+        let expected = CMTimeGetSeconds(t1)
+        let halfFrame = CMTimeGetSeconds(frameDuration) / 2
+        let videoCoversRecording = videoTrackEnd.map { $0 >= expected - halfFrame } ?? false
 
         var partialReason: String?
         if failure == .diskFull {
@@ -491,6 +532,9 @@ final class ScreenRecordingWriter: @unchecked Sendable {
         } else if movWriter.status != .completed {
             partialReason = movWriter.error?.localizedDescription
                 ?? L10n("The recording could not be finished.")
+        } else if !videoCoversRecording {
+            // 画面轨没盖满 = 尾部在编辑器里是黑的。必须说，不能静默提交。
+            partialReason = L10n("The end of the recording has no picture, so the recording is incomplete.")
         } else if let micWriter, micWriter.status != .completed {
             // 麦克风 writer 失败以前会被当成功 —— 用户以为录到了旁白（复审 P1-4）。
             partialReason = L10n("The microphone track could not be finished, so only the screen was recorded.")
@@ -506,8 +550,82 @@ final class ScreenRecordingWriter: @unchecked Sendable {
             partialReason: partialReason,
             firstAppendedSeconds: firstAppendedSeconds,
             lastAppendedEndSeconds: lastAppendedEndSeconds,
-            microphoneFailure: microphoneFailure
+            microphoneFailure: microphoneFailure,
+            videoTrackEndSeconds: videoTrackEnd,
+            tailFrameFailure: tailFrameFailure
         )
+    }
+
+    /// 写完的文件里画面轨真实的末端（秒）。读不出来返回 nil。
+    private static func videoTrackEndSeconds(of url: URL) async -> Double? {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let range = try? await track.load(.timeRange) else { return nil }
+        let end = CMTimeGetSeconds(range.end)
+        return end.isFinite ? end : nil
+    }
+
+    /// 把最后一帧再写一份，让**画面轨自己**覆盖到 T1（硬约束 7）。
+    ///
+    /// `endSession(atSourceTime:)` 只延容器时长，画面轨的末端仍停在最后一次
+    /// 画面变化 —— 静止期 SCK 只发不带像素的 idle 帧，一帧都不会写。
+    /// 播放器会把最后一帧冻在屏幕上，所以单看文件察觉不到；但
+    /// `AVMutableCompositionTrack.insertTimeRange` 只能取到画面轨真实存在的那段，
+    /// 超出的部分在预览/导出里就是**纯黑**
+    ///（docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md）。
+    /// - Returns: 补尾帧失败的原因；不需要补或补成功了返回 nil。
+    ///   **每一条提前退出都要带原因**：静默 return 会让短画面轨照常提交，
+    ///   黑尾原样再来一次（复审 P1）。
+    private func holdLastFrame(untilT1 t1: CMTime) async -> String? {
+        lock.lock()
+        let end = lastAppendedEnd["screen"]
+        let lastPTS = lastWritten["screen"]
+        let image = lastVideoImage
+        let format = lastVideoFormat
+        let alreadyFailed = failure != nil
+        lock.unlock()
+
+        if alreadyFailed { return "writer already failed" }
+        // 一帧都没写过就没得补：画面轨本来就是空的，这本身就是要如实报的状态。
+        guard let image, let format, let end, let lastPTS else {
+            return "no video frame was ever written"
+        }
+        // 差不到半帧就不是洞，别为了凑整多写一帧。
+        let half = CMTimeMultiplyByFloat64(frameDuration, multiplier: 0.5)
+        guard CMTimeCompare(CMTimeAdd(end, half), t1) < 0 else { return nil }
+
+        // PTS 必须**严格**大于上一份，否则 writer 直接判 failed（同 append 入口）。
+        var pts = end
+        if CMTimeCompare(pts, lastPTS) <= 0 { pts = CMTimeAdd(lastPTS, frameDuration) }
+        guard CMTimeCompare(pts, t1) < 0 else { return "no room before T1" }
+        let duration = CMTimeSubtract(t1, pts)
+
+        var timing = CMSampleTimingInfo(
+            duration: duration, presentationTimeStamp: pts, decodeTimeStamp: .invalid
+        )
+        var tail: CMSampleBuffer?
+        CMSampleBufferCreateReadyWithImageBuffer(
+            allocator: nil, imageBuffer: image, formatDescription: format,
+            sampleTiming: &timing, sampleBufferOut: &tail
+        )
+        guard let tail else { return "could not build the tail sample" }
+
+        // 实时编码器可能一时不收；有界等待，宁可少一帧也不能让退出卡住
+        //（同 BlackBaseVideoFactory 的教训：isReadyForMoreMediaData 可能永不恢复）。
+        var waited: UInt64 = 0
+        while !videoInput.isReadyForMoreMediaData {
+            guard movWriter.status == .writing, waited < 1_000_000_000 else {
+                return "the encoder never became ready for the tail frame"
+            }
+            try? await Task.sleep(nanoseconds: 5_000_000)
+            waited += 5_000_000
+        }
+        guard videoInput.append(tail) else {
+            checkWriterFailure(kind: "screen")
+            return movWriter.error?.localizedDescription ?? "the tail frame was rejected"
+        }
+        noteAppended(kind: "screen", at: pts, duration: duration)
+        return nil
     }
 
     /// 倒计时期间取消：作废两个 writer，删掉空临时文件。

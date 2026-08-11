@@ -274,7 +274,7 @@ id=2  origin=(-279.0, -1080.0) 1920x1080 点  1920x1080 像素  scale=2.00
 | 8 自身进程音频 | ✅ 完整 |
 | 9 控制窗排除 | ✅ 完整 |
 | 10 多屏坐标 | **部分** —— 坐标系已确认 + 发现点/像素陷阱；`sourceRect` 网格待重测，混合 Retina 本机不可测 |
-| 11 idle frame 与 endSession | ✅ 完整（计划的后备方案不需要）|
+| 11 idle frame 与 endSession | **结论有误** —— 只量了容器时长就判「后备方案不需要」；补尾帧其实**必需**，2026-08-11 订正（见结论 B）|
 | 12 ENOSPC 与 writer 状态 | ✅ 完整 |
 | 13 崩溃后 partial 可恢复 | ✅ 完整 |
 | 14 async 导出取消 | ✅ 完整（原有崩溃仍在，约束不得放松）|
@@ -306,6 +306,10 @@ Phase 2 建出真实来源选择 UI 时一并做真机验证。
    否则掉出硬件编码；不能按总像素判断（门槛 10 + 门槛 6）。
 7. **`idle` 帧不带 image buffer 且占比可达 45%**，不能计作掉帧；产物是**变帧率**的，
    导入时长必须取容器时长而非帧数推算（门槛 11）。
+   ⚠️ 2026-08-11 补：容器时长可信的**前提**是画面轨自己也盖到了 T1 —— 当年这条
+   没验，静止期不写帧会让画面轨比容器短，导入后尾巴全黑。现在由
+   `holdLastFrame` 补尾帧 + 产物复验保证（见结论 B 与
+   [录屏静止期尾部黑屏](../bugfixes/2026-08-11-screen-recording-idle-tail-black.md)）。
 8. **任何比色断言都要带容差** —— 捕获帧经显示器色彩配置转换（门槛 9）。
 
 harness 结构（重要）：`~/Desktop/SrtFlowCaptureHarness.app` 是**永不重签的稳定
@@ -647,7 +651,7 @@ microphone : 到达 863  写入 863  溢出丢弃 0
 `CMSampleBufferGetImageBuffer` 返回 nil 的 idle/status 帧。这正是门槛 11
 （完全静止画面只产生 idle frame）要处理的对象，产品需按 `SCFrameStatus` 分流。
 
-### 门槛 11 — 静止画面的 idle frame 与 endSession → ✅ **已实测，计划的后备方案不需要**
+### 门槛 11 — 静止画面的 idle frame 与 endSession → ⚠️ **结论 B 已于 2026-08-11 推翻：补尾帧是必需的**
 
 静止画面录 10 秒，按 `SCStreamFrameInfo.status` 分类：
 
@@ -660,15 +664,24 @@ idle    : 109 帧   其中无 image buffer 109   ← 全部没有像素
 **结论 A：`idle` 帧永远不带 image buffer**，占比可达 45%。它们是 SCK 在画面无变化
 时的省带宽机制，**不是掉帧**，不能计入丢弃统计，也不能试图写入。
 
-**结论 B：`endSession(atSourceTime: T1)` 足以把时长延长到 T1，不需要补尾帧。**
+**结论 B（⚠️ 已于 2026-08-11 推翻，勿再引用）：~~`endSession(atSourceTime: T1)`
+足以把时长延长到 T1，不需要补尾帧。~~**
 
 ```
 共同 T1        = 10.460719s
 文件 Duration  = 10.45s        ← 覆盖到 T1
 ```
 
-计划 §17.1 第 11 项的后备方案（「若 endSession 不足以延长最后一帧，验证补一份
-尾帧的最小做法」）**经实测不需要**。
+**这次只量了「文件 Duration」，没有逐轨量 `AVAssetTrack.timeRange`。**
+真相是：容器时长确实到了 T1，**画面轨却停在最后一次画面变化**——静止期
+只有不带像素的 idle 帧，一帧都不写，而分片写入（`movieFragmentInterval`）
+让最后那份采样的时长早已定死，`endSession` 改不动它。播放器会把最后一帧冻住，
+所以从文件层面完全看不出来，进时间线合成才会暴露成**纯黑的尾巴**。
+
+因此计划 §17.1 第 11 项的后备方案（补一份尾帧）**是必需的**，已实现为
+`ScreenRecordingWriter.holdLastFrame(untilT1:)`。详见
+[录屏静止期尾部黑屏](../bugfixes/2026-08-11-screen-recording-idle-tail-black.md)
+与[录屏生命周期 · 产物合同](../architecture/screen-recording-lifecycle.md)。
 
 **结论 C（影响 Phase 1 的工程帧率设计）：录制产物是变帧率的。**
 配置 `minimumFrameInterval = 1/24`，但因 idle 帧不写入，实际平均只有
@@ -1100,9 +1113,11 @@ scripts/check-export-alpha-compositing.sh   → 0 处失败
   request 里**开录前冻结**的真实像素；`minimumFrameInterval` 取工程帧率（注意它是
   **上限**不是固定帧率）；`excludesCurrentProcessAudio = false` 以录到 SrtFlow
   自己的声音；`captureMicrophone` 传已解析的 uniqueID。
-- `ScreenRecordingWriter.swift` —— 双 writer。Phase 0 的六条硬约束全部落实：
+- `ScreenRecordingWriter.swift` —— 双 writer。Phase 0 的**七条**硬约束全部落实：
   必设 `movieFragmentInterval`、音频有界 backlog 绝不静默丢、三路 timescale 换算、
-  **不做任何固定偏移**、共同 T0/T1、idle 帧不计掉帧。ENOSPC 按
+  **不做任何固定偏移**、共同 T0/T1、idle 帧不计掉帧、**画面轨自己盖到 T1**
+  （第 7 条是 2026-08-11 补的：`holdLastFrame` 补尾帧 + 收尾后按**产物**
+  复验画面轨 `timeRange.end`，短了判 partial）。ENOSPC 按
   `-11807` / `NSPOSIXErrorDomain 28` 双路径识别。
 - `ScreenRecordingCoordinator.swift` + `+Setup.swift` —— 状态机、权限、
   倒计时、journal 提交（persist 成功才 rename）、低空间监测、崩溃恢复。
@@ -1166,7 +1181,7 @@ scripts/check-export-alpha-compositing.sh   → 0 处失败
 | `Sources/SrtFlow/ScreenRecordingRegionPanel.swift` | 区域选择 overlay |
 | `Sources/SrtFlow/ScreenRecordingSetupView.swift` | 设置页 + partial/恢复处置弹窗 |
 | `Sources/SrtFlow/ScreenCaptureEngine.swift` | SCStream 与三路 output 桥 |
-| `Sources/SrtFlow/ScreenRecordingWriter.swift` | 双 writer（Phase 0 六条硬约束）|
+| `Sources/SrtFlow/ScreenRecordingWriter.swift` | 双 writer（Phase 0 七条硬约束，第 7 条含产物轨道复验）|
 | `Sources/SrtFlow/ScreenRecordingCoordinator.swift` + `+Setup.swift` | 状态机 / journal / 恢复 / 退出协调 |
 | `Sources/SrtFlow/VideoEditProject+ScreenRecording.swift` | 单事务入轨 |
 | `docs/architecture/screen-recording-lifecycle.md` | 生命周期长期约束 |

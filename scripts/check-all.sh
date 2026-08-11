@@ -57,6 +57,8 @@ run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-s
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh
+# 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
+run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 run_check "export-frame-rate（生产导出滤镜帧率）" scripts/check-export-frame-rate.sh
 run_check "export-alpha-compositing（画中画 fill+matte）" scripts/check-export-alpha-compositing.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh

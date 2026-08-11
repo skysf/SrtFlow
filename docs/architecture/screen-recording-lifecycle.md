@@ -112,6 +112,23 @@ reportMissing / discardTemporaries`。只按主文件裁决分支会把「主文
 5. 麦克风是 `MicrophoneConfiguration.disabled / .device(id:)` ——
    设备 ID 是「开启」的固有组成部分，类型上不存在「开了但没设备」。
 
+## 产物合同（`ScreenRecordingWriter` 交出去的文件）
+
+下游（时间线预览、导出、缩略图）默认成立、生产端必须保证的两条：
+
+1. **画面轨自己要盖到 T1。** 不是「容器时长到 T1」就算数 ——
+   `AVMutableCompositionTrack.insertTimeRange` 只能取到画面轨真实存在的那段，
+   差多少，预览和导出里就有多少纯黑。SCK 静止期只发不带像素的 idle 帧、一帧
+   都不写，所以收尾必须由 `holdLastFrame(untilT1:)` 把最后一帧补到 T1。
+   `endSession(atSourceTime:)` **不是补帧**：它只延容器时长，而且分片写入
+   （`movieFragmentInterval`）下连最后一帧的时长都改不动。
+   事故见 [录屏静止期尾部黑屏](../bugfixes/2026-08-11-screen-recording-idle-tail-black.md)。
+2. **验收产物要逐轨看 `AVAssetTrack.timeRange`，不能只看 `asset.duration`。**
+   播放器会把最后一帧冻在屏幕上播到容器末端，画面轨提前结束这件事在播放器里
+   完全看不出来，只有进合成才现原形。同理，复现这类问题必须**按真实时间**跑
+   并且**让第二条轨（电脑声音）持续在写** —— fragment 没被冲出去时，收尾还能
+   把最后一帧延长，问题不出现。
+
 ## 自检纪律
 
 - 每个守卫/断言组都要**反向验证**（注入该抓的错误，确认变红）。
