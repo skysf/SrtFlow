@@ -25,6 +25,7 @@ struct ScreenRecordingSetupView: View {
                 Text("Record Screen").font(.headline)
                 Spacer()
                 Button("Close") { coordinator.cancelConfiguring() }
+                    .instantHelp("Close without recording")
             }
             .padding(14)
 
@@ -89,6 +90,7 @@ struct ScreenRecordingSetupView: View {
                             Text(outputURL.lastPathComponent)
                                 .lineLimit(1).truncationMode(.middle)
                             Button("Choose…") { chooseOutput() }
+                    .instantHelp("Where the recording is written")
                                 .controlSize(.small)
                         }
                     }
@@ -112,6 +114,7 @@ struct ScreenRecordingSetupView: View {
                     Label("Start Recording", systemImage: "record.circle")
                 }
                 .keyboardShortcut(.defaultAction)
+                .instantHelp("Start recording with these settings", shortcut: .defaultAction)
             }
             .padding(14)
         }
@@ -200,9 +203,11 @@ struct ScreenRecordingPartialSheet: View {
 
             HStack {
                 Button("Keep file only") { onDecide(false) }
+                    .instantHelp("Leave the recording on disk without adding it to the timeline")
                 Spacer()
                 Button("Add to timeline") { onDecide(true) }
                     .keyboardShortcut(.defaultAction)
+                    .instantHelp("Put the recording on the timeline", shortcut: .defaultAction)
             }
         }
         .padding(18)
@@ -251,14 +256,17 @@ struct ScreenRecordingRecoverySheet: View {
                 // 文件，一个恢复提示不该顺手删掉它。
                 if recovery.allowsDiscard {
                     Button("Discard", role: .destructive) { onDecide(.discard) }
+                    .instantHelp("Delete the recovered file")
                 }
                 Spacer()
                 Button("Keep file only") { onDecide(.keepFile) }
+                    .instantHelp("Leave the recovered file on disk without adding it to the timeline")
                 // 纯音频残留**不提供入轨** —— 入轨按视频 probe，必然失败
                 // （计划 §9.2-3；复审三 P1-3）。
                 if recovery.kind == .recording {
                     Button("Add to timeline") { onDecide(.addToTimeline) }
                         .keyboardShortcut(.defaultAction)
+                        .instantHelp("Put the recovered recording on the timeline", shortcut: .defaultAction)
                 }
             }
         }

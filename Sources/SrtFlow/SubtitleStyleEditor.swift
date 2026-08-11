@@ -221,10 +221,12 @@ struct SubtitleStyleEditor: View {
                     .onSubmit(commitPreset)
                 Button("Save") { commitPreset() }
                     .disabled(newPresetName.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .instantHelp("Save the preset under this name")
                 Button("Cancel") {
                     isNamingPreset = false
                     newPresetName = ""
                 }
+                .instantHelp("Discard the name and keep the style unsaved")
             } else {
                 Button {
                     newPresetName = ""
@@ -232,12 +234,14 @@ struct SubtitleStyleEditor: View {
                 } label: {
                     Label("Save as preset", systemImage: "plus")
                 }
+                .instantHelp("Remember this style so it can be reused")
                 if let custom = presets.customPresets.first(where: { matches($0, style) }) {
                     Button(role: .destructive) {
                         presets.delete(id: custom.id)
                     } label: {
                         Label("Delete preset", systemImage: "trash")
                     }
+                    .instantHelp("Delete the saved preset that matches this style")
                 }
                 Spacer()
             }
@@ -341,7 +345,7 @@ private struct PositionGrid: View {
                                 )
                         }
                         .buttonStyle(.plain)
-                        .help(helpText(for: candidate))
+                        .instantHelp(helpText(for: candidate))
                     }
                 }
             }

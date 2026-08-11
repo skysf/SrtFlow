@@ -201,6 +201,7 @@ struct VideoEditExportSheet: View {
                             .lineLimit(1)
                             .truncationMode(.middle)
                         Button("Show in Finder") { revealInFinder(finished) }
+                            .instantHelp("Reveal the exported file in Finder")
                             .controlSize(.small)
                     }
                 }
@@ -209,9 +210,11 @@ struct VideoEditExportSheet: View {
                     Button("Close") {
                         dismiss()
                     }
+                    .instantHelp("Close the export panel")
                     Spacer()
                     if exporter.isExporting {
                         Button("Stop") { exporter.cancel() }
+                    .instantHelp("Cancel the export")
                     } else {
                         Button {
                             startExport()
@@ -220,6 +223,7 @@ struct VideoEditExportSheet: View {
                         }
                         .buttonStyle(.borderedProminent)
                         .disabled(project.state.mainClips.isEmpty)
+                        .instantHelp("Render the timeline to a video file")
                     }
                 }
             }

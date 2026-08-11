@@ -54,20 +54,23 @@ struct CompressView: View {
 
             HStack(spacing: 10) {
                 Button("Add Files…", action: chooseFiles)
+                    .instantHelp("Pick videos to compress")
 
                 if queue.isRunning {
                     Button("Stop All") { queue.cancelAll() }
+                        .instantHelp("Cancel everything still running")
                 } else {
                     Button {
                         queue.start()
                     } label: {
                         Label(startTitle, systemImage: "play.fill")
                     }
-                    .keyboardShortcut(.return, modifiers: [.command])
                     .disabled(!queue.canStart)
+                    .instantHelp("Start encoding everything in the queue", shortcut: .commandReturn)
                 }
 
                 Button("Clear Finished") { queue.clearFinished() }
+                    .instantHelp("Remove finished items from the list")
                     .disabled(!queue.items.contains(where: \.isDone))
 
                 Spacer()

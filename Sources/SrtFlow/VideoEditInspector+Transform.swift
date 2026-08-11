@@ -204,7 +204,7 @@ extension VideoEditInspectorView {
                 Image(systemName: "chevron.left")
             }
             .disabled(!hasKeys)
-            .help("Previous keyframe")
+            .instantHelp("Previous keyframe")
 
             Button {
                 if let property {
@@ -217,7 +217,7 @@ extension VideoEditInspectorView {
                     .foregroundStyle(onKey ? Color.teal : (hasKeys ? Color.primary : Color.secondary))
             }
             .disabled(!inside)
-            .help("Add or remove a keyframe at the playhead")
+            .instantHelp("Add or remove a keyframe at the playhead")
 
             Button {
                 project.seekToAdjacentKeyframe(clip.id, property, forward: true)
@@ -225,7 +225,7 @@ extension VideoEditInspectorView {
                 Image(systemName: "chevron.right")
             }
             .disabled(!hasKeys)
-            .help("Next keyframe")
+            .instantHelp("Next keyframe")
         }
         .buttonStyle(.borderless)
         .controlSize(.mini)
@@ -239,7 +239,7 @@ extension VideoEditInspectorView {
         .buttonStyle(.borderless)
         .controlSize(.mini)
         .disabled(disabled)
-        .help(help)
+        .instantHelp(help)
     }
 
     private func flipToggle(_ clip: EditClip, horizontal: Bool, isOn: Bool) -> some View {
@@ -259,7 +259,7 @@ extension VideoEditInspectorView {
         .buttonStyle(.borderless)
         .controlSize(.small)
         .tint(.teal)
-        .help(horizontal ? "Flip horizontally" : "Flip vertically")
+        .instantHelp(horizontal ? "Flip horizontally" : "Flip vertically")
     }
 
     private static let cropPresets: [(label: String, aspect: Double)] = [

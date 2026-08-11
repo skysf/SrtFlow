@@ -96,6 +96,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
+| 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
 ## 构建与检查入口
@@ -112,6 +113,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 生产导出帧率：`scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
 - 定格时间线变换：`scripts/check-freeze-frame.sh`。
+- 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
 - 时间线吸附与生产落点：`scripts/check-timeline-snap.sh`；拖动接线扫描：
   `checks/timeline-drag-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
@@ -143,6 +145,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [字幕语言流](docs/architecture/subtitle-language-flow.md) — 目标语言可见性、预检与自动检测。
 - [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局与选择互斥。
 - [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、四类选择互斥与命中区分层。
+- [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板三条硬约束。
 
 ## Bug 修复案例索引
 

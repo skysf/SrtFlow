@@ -24,12 +24,14 @@ struct LinkedSubtitleEditor: View {
                     Label("Merge", systemImage: "arrow.triangle.merge")
                 }
                 .disabled(selection.count < 2)
+                .instantHelp("Join the selected lines into one")
                 Button {
                     splitSelected()
                 } label: {
                     Label("Split", systemImage: "square.split.2x1")
                 }
                 .disabled(selection.count != 1)
+                .instantHelp("Break the selected line in two")
                 Button(role: .destructive) {
                     project.linkedRemoveCues(ids: selection)
                     selection = []
@@ -37,7 +39,9 @@ struct LinkedSubtitleEditor: View {
                     Label("Delete", systemImage: "trash")
                 }
                 .disabled(selection.isEmpty)
+                .instantHelp("Delete the selected lines from every track")
                 Button("Close") { dismiss() }
+                    .instantHelp("Close the subtitle editor")
             }
             .padding(12)
             Divider()
@@ -178,17 +182,17 @@ private struct LinkedCueRow: View {
             if meta?.translationStale == true {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)
-                    .help(L10n("Translation is out of date — retranslate this cue."))
+                    .instantHelp(L10n("Translation is out of date — retranslate this cue."))
             }
             if meta?.readingSpeedWarning == true {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.yellow)
-                    .help(L10n("Too fast to read at this clip speed."))
+                    .instantHelp(L10n("Too fast to read at this clip speed."))
             }
             if let confidence = meta?.recognitionConfidence, confidence < 0.5 {
                 Image(systemName: "questionmark.circle")
                     .foregroundStyle(.red)
-                    .help(L10n("Low recognition confidence — double-check this cue."))
+                    .instantHelp(L10n("Low recognition confidence — double-check this cue."))
             }
         }
         .font(.caption)

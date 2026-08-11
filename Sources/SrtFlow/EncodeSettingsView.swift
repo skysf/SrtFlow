@@ -103,14 +103,14 @@ struct EncodeSettingsView: View {
 
             Section("Output") {
                 Toggle("Optimise for web streaming", isOn: $settings.fastStart)
-                    .help("Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound.")
+                    .instantHelp("Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound.")
                 Text("Moves the index to the front of the file so it can start playing before it finishes downloading.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Toggle("Strip source metadata", isOn: $settings.stripMetadata)
-                    .help("Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched.")
+                    .instantHelp("Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched.")
                 Text("Drops the tags the source file carries — camera model, shooting date, location, chapters.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -182,6 +182,7 @@ struct CommandPreview: View {
                     Label("Copy command", systemImage: "doc.on.doc")
                 }
                 .controlSize(.small)
+                .instantHelp("Copy the ffmpeg command to the clipboard")
             }
             .padding(.top, 4)
         } label: {

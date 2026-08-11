@@ -39,10 +39,12 @@ struct VideoEditInspectorView: View {
             .fixedSize(horizontal: false, vertical: true)
         HStack {
             Button("Export…", systemImage: "square.and.arrow.up", action: onExport)
+                .instantHelp("Render just the selected clips to a video file")
             Spacer()
             Button("Delete", systemImage: "trash", role: .destructive) {
                 project.deleteSelected()
             }
+            .instantHelp("Remove the selected clips from the timeline", shortcut: .plain("⌫"))
         }
         .controlSize(.small)
     }
@@ -160,9 +162,11 @@ struct VideoEditInspectorView: View {
                 HStack {
                     Button("Apply to All") { project.applyTransitionToAll(like: clip.id) }
                         .disabled(clip.transitionAfter == .none)
+                        .instantHelp("Put this transition on every seam of the main track")
                     Spacer()
                     Button("Clear All") { project.clearAllTransitions() }
                         .disabled(!project.hasAnyTransition)
+                        .instantHelp("Remove every transition on the main track")
                 }
                 .controlSize(.small)
             }
@@ -204,10 +208,12 @@ struct VideoEditInspectorView: View {
                 project.splitAtPlayhead()
             }
             .disabled(!clip.contains(time: project.clock.time))
+            .instantHelp("Cut this clip in two at the playhead", shortcut: .plain("⌘B"))
             Spacer()
             Button("Delete", systemImage: "trash", role: .destructive) {
                 project.deleteSelected()
             }
+            .instantHelp("Remove this clip from the timeline", shortcut: .plain("⌫"))
         }
         .controlSize(.small)
     }
@@ -226,6 +232,7 @@ struct VideoEditInspectorView: View {
                                 .frame(width: 22, height: 15)
                         }
                         .buttonStyle(.plain)
+                        .instantHelp("Dock the picture-in-picture here")
                     }
                 }
             }
@@ -308,6 +315,7 @@ struct VideoEditInspectorView: View {
             project.deleteShape(shape.id)
         }
         .controlSize(.small)
+        .instantHelp("Remove this shape from the timeline", shortcut: .plain("⌫"))
     }
 
     private func labelledSlider(
@@ -373,6 +381,7 @@ struct VideoEditInspectorView: View {
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
+                    .instantHelp("Unlink this subtitle file from the project")
                 }
                 Text("Burned in on export, using the style from the Burn In Subtitles tool.")
                     .font(.caption2)
@@ -395,6 +404,7 @@ struct VideoEditInspectorView: View {
 
         Button("Export…", systemImage: "square.and.arrow.up", action: onExport)
             .disabled(project.state.mainClips.isEmpty)
+            .instantHelp("Render the timeline to a video file")
     }
 
     private func summaryRow(_ title: LocalizedStringKey, _ value: String) -> some View {

@@ -229,7 +229,7 @@ struct VideoEditTimelineView: View {
                                         .foregroundStyle(row.isHidden ? .orange : .secondary)
                                 }
                                 .buttonStyle(.borderless)
-                                .help("Hide or show this track (V)")
+                                .instantHelp("Hide or show this track", shortcut: .plain("V"))
                             } else if let kind = row.subtitleKind {
                                 // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录
                                 // 都跳过），只是隐藏状态不挂在 slot 上。
@@ -244,7 +244,7 @@ struct VideoEditTimelineView: View {
                                         .foregroundStyle(row.isHidden ? .orange : .secondary)
                                 }
                                 .buttonStyle(.borderless)
-                                .help(kind == .original
+                                .instantHelp(kind == .original
                                       ? "Hide or show the original subtitle track"
                                       : "Hide or show the translated subtitle track")
                             }
@@ -585,7 +585,7 @@ struct VideoEditTimelineView: View {
                             clock.seek(to: cue.start + 0.05)
                             project.selectSubtitleCue(cue.id)
                         }
-                        .help(SubtitleSerializer.plainText(cue.text))
+                        .instantHelp(SubtitleSerializer.plainText(cue.text))
                 }
             }
         }
@@ -889,7 +889,7 @@ private struct RowHeightDragModifier: ViewModifier {
                 .onHover { inside in
                     if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
                 }
-                .help("Drag up or down to resize this kind of track")
+                .instantHelp("Drag up or down to resize this kind of track")
         }
     }
 
@@ -1044,7 +1044,7 @@ private struct ClipBlockView: View {
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .contextMenu { contextMenu }
-        .help(clip.name)
+        .instantHelp(clip.name)
         .offset(x: (clip.timelineStart + (dragOffset ?? 0)) * pps)
         // 备注气泡会铺到邻块上面去，所以悬着标记的块要抬起来，别被后画的块盖住。
         .zIndex(dragOffset != nil ? 10 : (markerHoverTime != nil ? 5 : 0))

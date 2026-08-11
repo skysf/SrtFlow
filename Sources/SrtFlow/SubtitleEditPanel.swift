@@ -137,7 +137,7 @@ struct SubtitleEditPanel: View {
                     Circle()
                         .fill(.orange)
                         .frame(width: 7, height: 7)
-                        .help("Unsaved changes")
+                        .instantHelp("Unsaved changes")
                 }
                 Spacer(minLength: 6)
                 if !cues.isEmpty {
@@ -156,7 +156,7 @@ struct SubtitleEditPanel: View {
                         Image(systemName: "xmark")
                     }
                     .buttonStyle(.borderless)
-                    .help("Close this subtitle file")
+                    .instantHelp("Close this subtitle file")
                 }
             }
 
@@ -164,18 +164,18 @@ struct SubtitleEditPanel: View {
                 HStack(spacing: 8) {
                     Button { addCue() } label: { Image(systemName: "plus") }
                         .buttonStyle(.borderless)
-                        .help("Add a line below the selection")
+                        .instantHelp("Add a line below the selection")
                     Button { removeSelected() } label: { Image(systemName: "minus") }
                         .buttonStyle(.borderless)
                         .disabled(selection.isEmpty)
-                        .help("Delete the selected lines")
+                        .instantHelp("Delete the selected lines")
 
                     Toggle(isOn: $followsPlayback) {
                         Image(systemName: "text.line.last.and.arrowtriangle.forward")
                     }
                     .toggleStyle(.button)
                     .buttonStyle(.borderless)
-                    .help("Scroll to the line being spoken during playback")
+                    .instantHelp("Scroll to the line being spoken during playback")
 
                     Spacer()
 
@@ -189,9 +189,8 @@ struct SubtitleEditPanel: View {
 
                     Button("Save") { save() }
                         .controlSize(.small)
-                        .keyboardShortcut("s", modifiers: [.command])
                         .disabled(!hasUnsavedEdits)
-                        .help("Write the changes back to the subtitle file (⌘S)")
+                        .instantHelp("Write the changes back to the subtitle file", shortcut: .command("S"))
                 }
             }
 
@@ -223,6 +222,7 @@ struct SubtitleEditPanel: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             Button("Open Subtitle File…", action: onOpenSubtitle)
+                .instantHelp("Open an .srt or .vtt file to edit")
                 .controlSize(.small)
             Spacer()
         }

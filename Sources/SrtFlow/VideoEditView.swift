@@ -119,7 +119,7 @@ struct VideoEditView: View {
                     } label: {
                         Label("Record Screen", systemImage: "record.circle")
                     }
-                    .help("Record the screen into this project")
+                    .instantHelp("Record the screen into this project")
                     .disabled(recordingCoordinator.isBusy)
                 }
                 Button {
@@ -128,14 +128,14 @@ struct VideoEditView: View {
                     Label("Subtitles", systemImage: "captions.bubble")
                 }
                 .disabled(project.state.isEmpty)
-                .help("Generate, translate, and edit subtitle tracks")
+                .instantHelp("Generate, translate, and edit subtitle tracks")
                 Button {
                     showsExportSheet = true
                 } label: {
                     Label("Export", systemImage: "square.and.arrow.up")
                 }
                 .disabled(project.state.isEmpty || exporter.isExporting)
-                .help("Export the timeline or the selected clips")
+                .instantHelp("Export the timeline or the selected clips")
             }
         }
     }
@@ -312,7 +312,7 @@ struct VideoEditView: View {
             }
             .buttonStyle(.borderless)
             .disabled(project.state.isEmpty)
-            .help(clock.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play (Space)"))
+            .instantHelp(clock.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"), shortcut: .plain("Space"))
 
             Text("\(clockLabel(clock.time)) / \(clockLabel(project.duration))")
                 .font(.caption)
@@ -343,7 +343,7 @@ struct VideoEditView: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
-            .help("Canvas aspect ratio")
+            .instantHelp("Canvas aspect ratio")
 
             // 工程帧率：预览、导出、预渲染、关键帧容差全都跟它走。
             Menu {
@@ -365,7 +365,7 @@ struct VideoEditView: View {
             .menuStyle(.borderlessButton)
             .fixedSize()
             .disabled(recordingCoordinator.isBusy)
-            .help("Project frame rate — preview, export and keyframes all follow it")
+            .instantHelp("Project frame rate — preview, export and keyframes all follow it")
 
             if project.isRebuildingPreview {
                 ProgressView().controlSize(.mini)
@@ -392,7 +392,7 @@ struct VideoEditView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 420, alignment: .leading)
-                    .help(notice)
+                    .instantHelp(notice)
                 Button {
                     project.notice = nil
                 } label: {
@@ -400,6 +400,7 @@ struct VideoEditView: View {
                 }
                 .buttonStyle(.borderless)
                 .controlSize(.small)
+                .instantHelp("Dismiss this message")
             }
 
             if exporter.isExporting {
@@ -409,7 +410,7 @@ struct VideoEditView: View {
                     Image(systemName: "stop.circle")
                 }
                 .buttonStyle(.borderless)
-                .help("Stop")
+                .instantHelp("Stop")
             }
         }
         .padding(.horizontal, 12)
@@ -450,19 +451,17 @@ struct VideoEditView: View {
 
             Divider().frame(height: 16)
 
-            ToolbarIcon(icon: "scissors", help: "Split at playhead (⌘B)") {
+            ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")) {
                 project.splitAtPlayhead()
             }
-            .keyboardShortcut("b", modifiers: [.command])
             .disabled(!canSplit)
-            ToolbarIcon(icon: "snowflake", help: "Freeze the frame at the playhead (⇧⌘F)") {
+            ToolbarIcon(icon: "snowflake", help: "Freeze the frame at the playhead", shortcut: .commandShift("F")) {
                 project.freezeFrameAtPlayhead()
             }
-            .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(!project.canFreezeFrame)
-            // 不挂 .keyboardShortcut("m")：无修饰键的键盘等价符会抢文本框的输入，
+            // `.plain` 只显示不挂等价符：无修饰键的键盘等价符会抢文本框的输入，
             // M 由 handleEvent 里的事件监听接（那边会先让开正在打字的输入框）。
-            ToolbarIcon(icon: "bookmark", help: "Add a marker at the playhead (M)") {
+            ToolbarIcon(icon: "bookmark", help: "Add a marker at the playhead", shortcut: .plain("M")) {
                 project.addMarkerAtPlayhead()
             }
             .disabled(!project.canAddMarker)
@@ -474,7 +473,7 @@ struct VideoEditView: View {
                 project.trimToPlayhead(keepRight: false)
             }
             .disabled(!canSplit)
-            ToolbarIcon(icon: "trash", help: "Delete the selection") {
+            ToolbarIcon(icon: "trash", help: "Delete the selection", shortcut: .plain("⌫")) {
                 project.deleteSelected()
             }
             // 判据必须和 ⌫ 那道守卫逐字一致（含标记）。少一类，选中标记时垃圾桶
@@ -554,7 +553,7 @@ struct VideoEditView: View {
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("Mouse tool: Select (A) or Split (B)")
+        .instantHelp("Mouse tool: Select or Split", shortcut: .plain("A / B"))
     }
 
     private var canSplit: Bool {
@@ -593,11 +592,14 @@ struct VideoEditView: View {
 private struct ToolbarIcon: View {
     let icon: String
     let help: LocalizedStringKey
+    /// 快捷键：显示在提示右边的键帽，能挂等价符的顺手挂上。
+    let shortcut: HelpShortcut?
     let action: () -> Void
 
-    init(icon: String, help: LocalizedStringKey, action: @escaping () -> Void) {
+    init(icon: String, help: LocalizedStringKey, shortcut: HelpShortcut? = nil, action: @escaping () -> Void) {
         self.icon = icon
         self.help = help
+        self.shortcut = shortcut
         self.action = action
     }
 
@@ -607,13 +609,14 @@ private struct ToolbarIcon: View {
                 .frame(width: 20, height: 18)
         }
         .buttonStyle(.borderless)
-        .help(help)
+        .instantHelp(help, shortcut: shortcut)
     }
 }
 
 private struct ToolbarToggle: View {
     let icon: String
     let help: LocalizedStringKey
+    var shortcut: HelpShortcut?
     @Binding var isOn: Bool
 
     var body: some View {
@@ -624,7 +627,7 @@ private struct ToolbarToggle: View {
         .toggleStyle(.button)
         .buttonStyle(.borderless)
         .tint(.teal)
-        .help(help)
+        .instantHelp(help, shortcut: shortcut)
     }
 }
 
