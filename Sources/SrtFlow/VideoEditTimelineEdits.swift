@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SrtFlowCore
 
 /// 定格的产品常量。
 enum FreezeFrame {
@@ -333,9 +334,7 @@ extension TimelineState {
     ) {
         // 1) 整组平移同一个 delta。逐块独立夹取会把相对错位夹坏 ——
         //    「拖 A、B 跟着」会变成「A 被旧位置的 B 顶回原地，整组没动」。
-        for member in plan.members {
-            update(member.id) { $0.timelineStart = max(0, member.span.start + resolution.delta) }
-        }
+        move(plan.members, by: resolution.delta)
 
         if let target {
             // 2) 跨轨：只搬被直接拖的那个，跟随块留在各自轨上（时刻第 1 步已定好）。
@@ -354,13 +353,38 @@ extension TimelineState {
             if let moved = clip(with: plan.draggedID) {
                 let actual = moved.timelineStart - plan.draggedSpan.start
                 let mainIDs = Set(movingMain.map(\.id))
-                for member in plan.members where !mainIDs.contains(member.id) {
-                    update(member.id) { $0.timelineStart = max(0, member.span.start + actual) }
-                }
+                move(plan.members.filter { !mainIDs.contains($0.id) }, by: actual)
             }
         }
         // 磁吸关掉的拖动只改了 timelineStart，数组顺序要跟着时间走
         //（磁吸开的分支 packMain 之后本来就有序，这里是幂等的）。
         sortMainClipsByStart()
+    }
+
+    /// 把一组成员整体平移 `delta` 秒。三类成员改的字段不同，位移只有一个。
+    ///
+    /// 落点一律按**冻结的 span + delta** 算绝对值，不是在当前值上叠加 ——
+    /// 磁吸主轨那条分支会拿实际落点把非主轨成员再平一次，叠加式的写法在那里
+    /// 会变成双倍位移。字幕 cue 走 `LinkedSubtitleEditing.setStarts`（两轨同步 +
+    /// 重排 + reindex），整批一次交给它，别在循环里一条条调：那样每条都要重排
+    /// 一次整轨。
+    private mutating func move(_ members: [ClipDragPlan.Member], by delta: Double) {
+        var cueStarts: [UUID: Double] = [:]
+        for member in members {
+            let start = max(0, member.span.start + delta)
+            switch member.kind {
+            case .clip:
+                update(member.id) { $0.timelineStart = start }
+            case .shape:
+                updateShape(member.id) { $0.timelineStart = start }
+            case .subtitleCue:
+                cueStarts[member.id] = start
+            }
+        }
+        guard !cueStarts.isEmpty, var original = subtitle else { return }
+        var companion = subtitleCompanion ?? SubtitleCompanion()
+        LinkedSubtitleEditing.setStarts(cueStarts, original: &original, companion: &companion)
+        subtitle = original
+        subtitleCompanion = companion.hasPersistentData ? companion : nil
     }
 }

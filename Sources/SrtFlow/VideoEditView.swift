@@ -159,13 +159,13 @@ struct VideoEditView: View {
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
-            // ⌫ / fn⌫：删掉选中的剪辑、形状或标记，和工具栏 trash 按钮同一个动作。
+            // ⌫ / fn⌫：删掉选中的东西（剪辑 / 形状 / 字幕 cue / 标记，框选可以
+            // 一次选中前三类），和工具栏 trash 按钮同一个动作。判据直接问
+            // `EditSelection` 自己，别在这里重列一遍类别 —— 加一类就会漏一处。
             // 按 keyCode 认（51 = delete，117 = forward delete）——
             // charactersIgnoringModifiers 那边是控制字符，走字符串会一团糟。
             if event.keyCode == 51 || event.keyCode == 117 {
-                guard !project.selectedClipIDs.isEmpty
-                        || project.selectedShapeID != nil
-                        || project.selectedMarkerRef != nil else {
+                guard !project.selection.isEmpty else {
                     return event
                 }
                 project.deleteSelected()
@@ -476,13 +476,9 @@ struct VideoEditView: View {
             ToolbarIcon(icon: "trash", help: "Delete the selection", shortcut: .plain("⌫")) {
                 project.deleteSelected()
             }
-            // 判据必须和 ⌫ 那道守卫逐字一致（含标记）。少一类，选中标记时垃圾桶
+            // 判据和 ⌫ 那道守卫是**同一个**表达式。少一类，选中标记时垃圾桶
             // 就是灰的，而键盘删得掉 —— 同一个动作两个入口给出两种答案。
-            .disabled(
-                project.selectedClipIDs.isEmpty
-                    && project.selectedShapeID == nil
-                    && project.selectedMarkerRef == nil
-            )
+            .disabled(project.selection.isEmpty)
             ToolbarIcon(icon: "waveform.badge.minus", help: "Detach the audio onto its own track") {
                 if let id = project.selectedClip?.id { project.detachAudio(from: id) }
             }
@@ -752,7 +748,7 @@ private struct ShapeOverlayCanvas: View {
                 .onChanged { value in
                     if dragOrigin == nil {
                         dragOrigin = CGPoint(x: shape.centerX, y: shape.centerY)
-                        project.selectedShapeID = shape.id
+                        project.selectShape(shape.id, additive: false)
                     }
                     guard let origin = dragOrigin else { return }
                     // 接近画布中心时吸附并亮参考线，和剪辑变换框同一套手感。
@@ -781,7 +777,7 @@ private struct ShapeOverlayCanvas: View {
                     project.endLiveEdit(rebuildsPreview: false)
                 }
         )
-        .onTapGesture { project.selectedShapeID = shape.id }
+        .onTapGesture { project.selectShape(shape.id, additive: false) }
     }
 }
 

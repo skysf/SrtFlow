@@ -1333,7 +1333,8 @@ do {
 // 「选中的是标记」和「选中的是整段」同时成立的话，按删除键删掉的就是整段素材。
 
 do {
-    let clipA = UUID(), clipB = UUID(), shape = UUID(), cue = UUID(), otherCue = UUID()
+    let clipA = UUID(), clipB = UUID(), shape = UUID(), otherShape = UUID()
+    let cue = UUID(), otherCue = UUID()
     let marker = ClipMarkerRef(clipID: clipA, markerID: UUID())
     let otherMarker = ClipMarkerRef(clipID: clipA, markerID: UUID())
 
@@ -1342,23 +1343,23 @@ do {
     s.selectShape(shape)
     s.selectClips([clipA, clipB])
     checkEqual(s.clipIDs, [clipA, clipB], "选剪辑要生效")
-    checkEqual(s.shapeID, nil, "选剪辑清形状")
-    checkEqual(s.subtitleCueID, nil, "选剪辑清字幕 cue")
+    checkEqual(s.soleShapeID, nil, "选剪辑清形状")
+    checkEqual(s.soleSubtitleCueID, nil, "选剪辑清字幕 cue")
 
     // shape → 清剪辑 + cue（原来漏的边之一）
     s = EditSelection()
     s.selectSubtitleCue(cue)
     s.selectShape(shape)
-    checkEqual(s.shapeID, shape, "选形状要生效")
-    checkEqual(s.subtitleCueID, nil, "选形状必须清字幕 cue（cue→shape 方向）")
+    checkEqual(s.soleShapeID, shape, "选形状要生效")
+    checkEqual(s.soleSubtitleCueID, nil, "选形状必须清字幕 cue（cue→shape 方向）")
     checkEqual(s.clipIDs, [], "选形状清剪辑")
 
     // cue → 清剪辑 + 形状（原来漏的边之二）
     s = EditSelection()
     s.selectShape(shape)
     s.selectSubtitleCue(cue)
-    checkEqual(s.subtitleCueID, cue, "选 cue 要生效")
-    checkEqual(s.shapeID, nil, "选 cue 必须清形状（shape→cue 方向）")
+    checkEqual(s.soleSubtitleCueID, cue, "选 cue 要生效")
+    checkEqual(s.soleShapeID, nil, "选 cue 必须清形状（shape→cue 方向）")
     s.selectClips([clipA])
     s.selectSubtitleCue(cue)
     checkEqual(s.clipIDs, [], "选 cue 清剪辑")
@@ -1367,9 +1368,9 @@ do {
     s = EditSelection()
     s.selectSubtitleCue(cue)
     s.selectClips([])
-    checkEqual(s.subtitleCueID, cue, "把剪辑选择清空不等于改选，别动 cue")
+    checkEqual(s.soleSubtitleCueID, cue, "把剪辑选择清空不等于改选，别动 cue")
     s.selectShape(nil)
-    checkEqual(s.subtitleCueID, cue, "把形状选择清空同理")
+    checkEqual(s.soleSubtitleCueID, cue, "把形状选择清空同理")
 
     // marker → 清其余三类。**尤其是标记所在那一段的剪辑选择**：点标记之前
     // 多半刚点过那一段，两个都留着的话 ⌫ 删谁全看分支顺序。
@@ -1382,7 +1383,7 @@ do {
     s.selectShape(shape)
     s.selectSubtitleCue(cue)
     s.selectMarker(marker)
-    check(s.shapeID == nil && s.subtitleCueID == nil, "选标记清形状与字幕 cue")
+    check(s.soleShapeID == nil && s.soleSubtitleCueID == nil, "选标记清形状与字幕 cue")
 
     // 反向三条边：选别的类别都要把标记清掉，不然 ⌫ 会去删一枚没高亮的标记。
     s = EditSelection()
@@ -1423,23 +1424,68 @@ do {
     s.selectSubtitleCue(cue)
     s.selectMarker(marker)
     s.clear()
-    check(s.clipIDs.isEmpty && s.shapeID == nil && s.subtitleCueID == nil && s.markerRef == nil,
+    check(s.clipIDs.isEmpty && s.soleShapeID == nil && s.soleSubtitleCueID == nil && s.markerRef == nil,
           "clear() 必须四类一起清（切工程/点空白）")
 
     // 删除或换掉字幕轨：旧 cue 身份对不上就摘掉选择，别留悬空拖框。
     s = EditSelection()
     s.selectSubtitleCue(cue)
-    s.pruneSubtitleCue { $0 == otherCue }
-    checkEqual(s.subtitleCueID, nil, "字幕轨换成新 cue 身份后要摘掉旧选择")
+    s.pruneSubtitleCues { $0 == otherCue }
+    checkEqual(s.soleSubtitleCueID, nil, "字幕轨换成新 cue 身份后要摘掉旧选择")
     s.selectSubtitleCue(cue)
-    s.pruneSubtitleCue { $0 == cue }
-    checkEqual(s.subtitleCueID, cue, "cue 还在就别乱摘")
+    s.pruneSubtitleCues { $0 == cue }
+    checkEqual(s.soleSubtitleCueID, cue, "cue 还在就别乱摘")
 
     // 撤销把剪辑撤没了同理。
     s = EditSelection()
     s.selectClips([clipA, clipB])
     s.pruneClips { $0 == clipA }
     checkEqual(s.clipIDs, [clipA], "撤销后不存在的剪辑要从选择里摘掉")
+
+    // 形状也会被撤销撤没（框选之后形状是复数了，不能再靠 deleteShape 手动清）。
+    s = EditSelection()
+    s.selectShapes([shape, otherShape])
+    s.pruneShapes { $0 == shape }
+    checkEqual(s.shapeIDs, [shape], "撤销后不存在的形状要从选择里摘掉")
+
+    // ── 框选：三类可以共存，但只能从 selectBox 这一个入口进来 ──────────
+    //
+    // 点选那几个方法的互斥一条都没松（上面已经逐条守过），所以「哪里会产生
+    // 混选」永远只有这一处答案。
+    s = EditSelection()
+    s.selectBox(clips: [clipA, clipB], shapes: [shape], cues: [cue, otherCue])
+    checkEqual(s.clipIDs, [clipA, clipB], "框选要能同时选中剪辑")
+    checkEqual(s.shapeIDs, [shape], "框选要能同时选中形状")
+    checkEqual(s.subtitleCueIDs, [cue, otherCue], "框选要能同时选中字幕 cue")
+    checkEqual(s.count, 5, "count 是三类之和（预览画不画框的判据）")
+
+    // 混选时预览上一套框都不画：三个 sole 全是 nil。两套框同时挂上去的话，
+    // 用户既不知道拖谁，把手还会互相压住 —— 这是老的四类互斥在守的东西，
+    // 框选放开之后由 sole* 接着守。
+    check(s.soleClipID == nil && s.soleShapeID == nil && s.soleSubtitleCueID == nil,
+          "混选时预览不许画任何框（sole* 必须全是 nil）")
+
+    // 跨三类只剩一个时才有主角 —— 不是「这一类里只有一个」。
+    s = EditSelection()
+    s.selectBox(clips: [clipA], shapes: [shape], cues: [])
+    checkEqual(s.soleClipID, nil, "还选着形状时，剪辑不算唯一主角")
+    s.selectBox(clips: [clipA], shapes: [], cues: [])
+    checkEqual(s.soleClipID, clipA, "跨三类只剩一个才是主角")
+
+    // 框选无条件清标记，哪怕框是空的：留着的话 ⌫ 会走进标记分支，
+    // 删掉一枚用户早就不看着的标记。
+    s = EditSelection()
+    s.selectMarker(marker)
+    s.selectBox(clips: [], shapes: [], cues: [])
+    checkEqual(s.markerRef, nil, "框选必须清标记（空框也要清）")
+    check(s.isEmpty, "空框 = 什么都没选中")
+
+    // 框选是「重新指定」，不是加选：加选由调用方先并好集合再交给它，
+    // 这里不许自己记住上一轮（否则减选永远做不到）。
+    s = EditSelection()
+    s.selectBox(clips: [clipA, clipB], shapes: [], cues: [])
+    s.selectBox(clips: [clipA], shapes: [], cues: [])
+    checkEqual(s.clipIDs, [clipA], "框选覆盖上一轮结果，不是累加")
 }
 
 // MARK: - 22. 轨道块标记：源时间锚定、分割、去重、存盘

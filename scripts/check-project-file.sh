@@ -127,12 +127,14 @@ require "state 的 didSet 要摘掉失效的标记选择" \
   Sources/SrtFlow/VideoEditProject.swift 'pruneMarkerSelection\(\)'
 require "⌫ 必须经统一删除入口认标记（不许另开一条删除路径）" \
   Sources/SrtFlow/VideoEditProject.swift 'if let ref = selectedMarkerRef'
-require "⌫ 的按键守卫要放行「只选中了标记」的情况" \
-  Sources/SrtFlow/VideoEditView.swift 'project\.selectedMarkerRef != nil'
+# 判据必须问 `EditSelection` 自己（它认全四类，含框选来的混选），别在视图里
+# 重列一遍类别 —— 重列的那份每加一类就会漏一处，历史上就是这么漏的。
+require "⌫ 的按键守卫要问 EditSelection 自己（放行「只选中了标记」等全部情况）" \
+  Sources/SrtFlow/VideoEditView.swift 'guard !project\.selection\.isEmpty'
 require "M 必须接上打标记" \
   Sources/SrtFlow/VideoEditView.swift 'addMarkerAtPlayhead\(\)'
-require "工具栏垃圾桶的置灰判据必须和 ⌫ 一样认标记" \
-  Sources/SrtFlow/VideoEditView.swift 'project\.selectedMarkerRef == nil'
+require "工具栏垃圾桶的置灰判据必须和 ⌫ 是同一个表达式" \
+  Sources/SrtFlow/VideoEditView.swift '\.disabled\(project\.selection\.isEmpty\)'
 # 按钮亮不亮和真正会打在哪几段，必须是同一个函数算出来的。
 require "工具栏书签按钮的置灰走 canAddMarker" \
   Sources/SrtFlow/VideoEditView.swift 'project\.canAddMarker'

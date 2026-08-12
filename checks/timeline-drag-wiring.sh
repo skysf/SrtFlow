@@ -99,13 +99,55 @@ if BODY="$(require_func 'mutating func applyDrag' "$EDITS")"; then
     && fail "applyDrag 里又「挤开」了一次：位置只能来自拖动中那份 DragResolution"
   printf '%s\n' "$BODY" | grep -q 'TimelineSnap\.resolve\|resolve(desiredDelta' \
     && fail "applyDrag 里又解析了一遍落点：只能用传进来的 resolution"
-  printf '%s\n' "$BODY" | grep -q 'for member in plan.members' \
+  printf '%s\n' "$BODY" | grep -q 'move(plan.members' \
     || fail "applyDrag 没有整组平移：跟随块会被落在旧时刻（A/V 错位）"
   printf '%s\n' "$BODY" | grep -q 'resolution.delta' \
     || fail "applyDrag 没有用整组统一的 resolution.delta"
   printf '%s\n' "$BODY" | grep -q 'resolution.mainInsertion' \
     || fail "applyDrag 没有用拖动中算好的 mainInsertion：主轨插入指示线会说谎"
 fi
+
+# ── 4b. 三类成员共用同一个位移，且写第二次必须幂等 ─────────────────────
+# 框选能一次选中剪辑 + 形状 + 字幕 cue。三类改的字段不同，位移只能有一个；
+# 落点一律按「冻结的 span + delta」算**绝对值** —— 磁吸主轨那条分支会拿实际
+# 落点把非主轨成员再平一次，叠加式的写法在那里就是双倍位移。
+if BODY="$(require_func 'private mutating func move(' "$EDITS")"; then
+  printf '%s\n' "$BODY" | grep -q 'member.span.start + delta' \
+    || fail "move 没按「冻结 span + delta」算绝对落点：磁吸那条分支会变成双倍位移"
+  for kind in '.clip' '.shape' '.subtitleCue'; do
+    printf '%s\n' "$BODY" | grep -q "case ${kind}" \
+      || fail "move 漏了 ${kind} 这一类成员：框选中的它不会跟着一起动"
+  done
+  printf '%s\n' "$BODY" | grep -q 'LinkedSubtitleEditing.setStarts' \
+    || fail "字幕 cue 没走两轨同步的合同：译文会留在旧时刻"
+fi
+
+# ── 4c. 框选：拖框过程中一个字都不许写进 project ───────────────────────
+# 和拖块同一条约束。每一拍写 @Published 的选择会连带预览区、检查器、所有块
+# 连同缩略图与波形重建，还要重挂一次自动保存，框立刻跟不上光标。
+for entry in 'private func updateMarquee' 'private func applyMarqueePoint'; do
+  if BODY="$(require_func "$entry" "$VIEW")"; then
+    for forbidden in 'applyBoxSelection' 'project.select' 'clearSelection' 'project.perform' 'liveApply'; do
+      printf '%s\n' "$BODY" | grep -q "$forbidden" \
+        && fail "${entry} 里出现了 ${forbidden}：拖框中禁止写 project"
+    done
+  fi
+done
+# 落地只有一次，且只在松手那一下。
+if BODY="$(require_func 'private func endMarquee' "$VIEW")"; then
+  COUNT="$(printf '%s\n' "$BODY" | grep -c 'applyBoxSelection' || true)"
+  [ "$COUNT" -eq 1 ] || fail "endMarquee 里有 ${COUNT} 处 applyBoxSelection，应当正好 1 处"
+fi
+# 拖框中的高亮必须走「看框不看模型」的那个助手，绕过去就没有实时反馈了。
+grep -q 'isSelected: isSelected(clip: clip.id)' "$VIEW" \
+  || fail "剪辑块的选中态没走 isSelected(clip:)：拖框中不会实时高亮"
+grep -q 'isSelected: isSelected(shape: shape.id)' "$VIEW" \
+  || fail "形状块的选中态没走 isSelected(shape:)：拖框中不会实时高亮"
+# 混选只能从 selectBox 这一个入口进来。
+OTHER_BOX="$(grep -rn 'selectBox(' Sources/SrtFlow --include='*.swift' \
+  | grep -v 'VideoEditSelection.swift' \
+  | grep -v 'VideoEditProject.swift:.*selection.selectBox' || true)"
+[ -z "$OTHER_BOX" ] || fail "selectBox 只能由 EditSelection 自己实现、由 applyBoxSelection 转发：$OTHER_BOX"
 
 # ── 5. 移动手势必须钉在不会动的参照系上 ────────────────────────────────
 # 块自己会在手指底下挪窝（.offset），边缘自动滚动还会把整块内容抽走，
@@ -136,4 +178,4 @@ grep -q 'onDisappear' "$VIEW" || fail "时间线没有 onDisappear：视图消�
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 手势坐标系 / 缩放钳制 / 心跳兜底"
+echo "✓ timeline-drag-wiring：动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底"

@@ -18,6 +18,14 @@ func check(_ condition: Bool, _ message: String, line: Int = #line) {
     }
 }
 
+func checkEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String, line: Int = #line) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL [line \(line)] \(message): got \(actual), expected \(expected)")
+    }
+}
+
 func checkClose(_ actual: Double, _ expected: Double, _ message: String, line: Int = #line) {
     checks += 1
     if abs(actual - expected) > 0.001 {
@@ -555,6 +563,189 @@ do {
     checkClose(run.state.clip(with: a1.id)?.timelineStart ?? -1, 10,
                "链接音频跟到同一时刻 —— 被占着也不许挤开，那会当场毁掉声画同步")
     checkClose(run.state.clip(with: squatter.id)?.timelineStart ?? -1, 12, "占位的那段自己不动")
+}
+
+// MARK: - 15. 框选：相交即选中、跳过隐藏轨、最小宽度和画出来的一致
+//
+// 长期约束见 docs/architecture/timeline-drag-gestures.md 的「框选」一节。
+
+do {
+    let a = UUID(), b = UUID(), tiny = UUID(), shape = UUID(), cue = UUID(), hidden = UUID()
+    // 24 点/秒：A=[0,5]→[0,120]，B=[10,15]→[240,360]，tiny 是 0.05 秒的碎块。
+    let rows = [
+        TimelineMarquee.Row(minY: 0, maxY: 40, items: [
+            TimelineMarquee.Item(id: a, start: 0, end: 5, kind: .clip),
+            TimelineMarquee.Item(id: b, start: 10, end: 15, kind: .clip),
+            TimelineMarquee.Item(id: tiny, start: 20, end: 20.05, kind: .clip),
+        ]),
+        TimelineMarquee.Row(minY: 46, maxY: 66, items: [
+            TimelineMarquee.Item(id: shape, start: 3, end: 4, kind: .shape),
+        ]),
+        TimelineMarquee.Row(minY: 72, maxY: 86, items: [
+            TimelineMarquee.Item(id: cue, start: 1, end: 2, kind: .subtitleCue),
+        ]),
+        TimelineMarquee.Row(minY: 92, maxY: 132, isHidden: true, items: [
+            TimelineMarquee.Item(id: hidden, start: 0, end: 5, kind: .clip),
+        ]),
+    ]
+
+    // 相交即选中：框只压住 A 右边一丁点，也算中。要求「整个框住」的话，
+    // 放大之后选一段长素材得把框拖出好几屏。
+    var hit = TimelineMarquee.hits(
+        rect: CGRect(x: 118, y: 10, width: 4, height: 4), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a], "框碰到块的边就算选中（相交即选）")
+
+    // 横着扫一条零高度的细线：一整排都该中。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 20, width: 400, height: 0), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a, b], "横扫一条细线选中一整排")
+    check(hit.shapes.isEmpty && hit.cues.isEmpty, "细线只在自己那一行里选，不许穿到别的行")
+
+    // 三类一次框中。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 0, width: 400, height: 90), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a, b], "整片框：剪辑")
+    checkEqual(hit.shapes, [shape], "整片框：形状")
+    checkEqual(hit.cues, [cue], "整片框：字幕 cue")
+
+    // 隐藏轨整轨跳过：看不见的东西被框走、跟着一起被拖被删是纯粹的惊吓。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 0, width: 400, height: 200), rows: rows, pixelsPerSecond: 24
+    )
+    check(!hit.clips.contains(hidden), "隐藏轨上的块不许被框中")
+
+    // 最小宽度：0.05 秒的碎块按真实时长只有 1.2 点宽，用户明明框过了那个可见的
+    // 小方块却什么都没选中 —— 判定必须和**画出来的**宽度一致。
+    let tinyX = 20 * 24.0
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: tinyX + 3, y: 10, width: 1, height: 4), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [tiny], "碎块按画出来的最小宽度判定（\(TimelineMarquee.clipMinimumWidth) 点）")
+
+    // 空框（点一下空白）什么都不选。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 200, y: 10, width: 0, height: 0), rows: rows, pixelsPerSecond: 24
+    )
+    check(hit.isEmpty, "空白处的空框什么都不选")
+
+    // 会话：加选在原有选择上并集，不加选则整个替换。
+    var session = TimelineMarquee.Session(
+        anchor: CGPoint(x: 0, y: 10), additive: true,
+        base: TimelineMarquee.Hit(clips: [b], shapes: [], cues: [])
+    )
+    session.update(current: CGPoint(x: 120, y: 30), rows: rows, pixelsPerSecond: 24)
+    checkEqual(session.hit.clips, [a, b], "⌘/⇧ 拖框 = 在原有选择上加选")
+
+    session = TimelineMarquee.Session(
+        anchor: CGPoint(x: 0, y: 10), additive: false,
+        base: TimelineMarquee.Hit(clips: [b], shapes: [], cues: [])
+    )
+    session.update(current: CGPoint(x: 120, y: 30), rows: rows, pixelsPerSecond: 24)
+    checkEqual(session.hit.clips, [a], "空手拖框 = 丢掉旧选择")
+
+    // 往左上方向拉的框（current 在 anchor 左边）同样要成立。
+    session = TimelineMarquee.Session(anchor: CGPoint(x: 400, y: 60), additive: false, base: .init())
+    session.update(current: CGPoint(x: 0, y: 0), rows: rows, pixelsPerSecond: 24)
+    // x 只到 400 点（≈16.7 秒），20 秒处的碎块够不着。
+    checkEqual(session.hit.clips, [a, b], "反向拉框一样算")
+    checkEqual(session.hit.shapes, [shape], "反向拉框跨行一样算")
+}
+
+// MARK: - 16. 框选之后整组一起移动：剪辑 + 形状 + 字幕 cue 同一个 delta
+//
+// 三类改的字段不同（剪辑/形状改 timelineStart，cue 要两轨同步），但**位移只有
+// 一个**。谁自己算一份，谁就会在磁吸那条分支上和别人分叉。
+
+do {
+    var state = TimelineState()
+    let c = clip(start: 0, duration: 5)
+    state.mainClips = [c]
+    var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 1, width: 0.3, height: 0.2)
+    shape.duration = 2
+    state.shapes = [shape]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "hi")]
+    state.subtitle = doc
+    var companion = SubtitleCompanion()
+    var translation = SubtitleDocumentModel()
+    translation.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "你好")]
+    companion.translation = translation
+    state.subtitleCompanion = companion
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: c.id, movingIDs: [c.id], candidates: [], magnetMain: false
+    ) else {
+        check(false, "造不出 plan")
+        exit(1)
+    }
+    let plan = base.adding(
+        shapes: [(id: shape.id, span: TimelineSpan(start: 1, end: 3))],
+        cues: [(id: cueID, span: TimelineSpan(start: 1, end: 3))]
+    )
+    let resolution = plan.resolve(desiredDelta: 4, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: false)
+
+    checkClose(next.clip(with: c.id)?.timelineStart ?? -1, 4, "剪辑挪了 4 秒")
+    checkClose(next.shapes.first?.timelineStart ?? -1, 5, "形状跟着挪同一个 delta")
+    checkClose(next.subtitle?.cues.first?.start ?? -1, 5, "原文 cue 跟着挪")
+    checkClose(next.subtitle?.cues.first?.end ?? -1, 7, "cue 时长不变")
+    checkClose(next.subtitleCompanion?.translation?.cues.first?.start ?? -1, 5,
+               "译文轨同 ID 同时间（两轨必须同步，否则烧录时译文对不上口型）")
+
+    // 下界是**整组**的：最早的成员顶到 0 就整组停下，不许各夹各的
+    //（各夹各的会把选中项之间的相对错位当场压扁）。
+    let back = plan.resolve(desiredDelta: -100, pixelsPerSecond: pps)
+    var pulled = state
+    pulled.applyDrag(plan, resolution: back, crossTrack: nil, magnet: false)
+    checkClose(pulled.clip(with: c.id)?.timelineStart ?? -1, 0, "剪辑顶到 0")
+    checkClose(pulled.shapes.first?.timelineStart ?? -1, 1, "形状保持原来的相对错位")
+    checkClose(pulled.subtitle?.cues.first?.start ?? -1, 1, "cue 保持原来的相对错位")
+}
+
+// MARK: - 17. 磁吸主轨插空时，跟随的形状/cue 按**实际**落点走
+//
+// 和第 14 节同一个道理，只是跟随的不是链接音频而是框选来的形状与字幕：
+// 位移在这条分支上会被 packMain 改写，第二次平移必须是幂等的绝对落点，
+// 不是在已经挪过的值上再叠一次（叠加式接口在这里就是双倍位移）。
+
+do {
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 10)
+    let b = clip(start: 10, duration: 10)
+    state.mainClips = [a, b]
+    var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 0, width: 0.3, height: 0.2)
+    shape.duration = 2
+    state.shapes = [shape]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 0, end: 2, text: "hi")]
+    state.subtitle = doc
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: a.id, movingIDs: [a.id], candidates: [], magnetMain: true
+    ) else {
+        check(false, "造不出 plan")
+        exit(1)
+    }
+    let plan = base.adding(
+        shapes: [(id: shape.id, span: TimelineSpan(start: 0, end: 2))],
+        cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))]
+    )
+    let resolution = plan.resolve(desiredDelta: 15, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: true)
+
+    checkClose(next.clip(with: a.id)?.timelineStart ?? -1, 10, "磁吸把 A 插到 B 之后")
+    checkClose(next.shapes.first?.timelineStart ?? -1, 10,
+               "形状按实际落点跟过去，不是按手势想要的 15")
+    checkClose(next.subtitle?.cues.first?.start ?? -1, 10,
+               "cue 同理 —— 写第二次必须幂等，否则是双倍位移")
+    checkClose(next.subtitle?.cues.first?.end ?? -1, 12, "cue 时长仍然不变")
 }
 
 // MARK: - 收尾

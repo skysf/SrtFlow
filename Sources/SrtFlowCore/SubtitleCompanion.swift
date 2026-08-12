@@ -207,6 +207,46 @@ public enum LinkedSubtitleEditing {
         for id in ids { companion.cueMeta.removeValue(forKey: id) }
     }
 
+    /// 规则 7：整体平移 —— 把这批 cue 在**两轨**上挪到指定的起点（时长不变）。
+    ///
+    /// 时间线上框选一片再拖动时走这里。三条约束：
+    /// - **参数是绝对起点，不是增量**。拖动落地那条路径上，同一批成员可能被
+    ///   写两次（磁吸主轨插空之后要按实际落点再平一次），增量式的接口第二次会
+    ///   叠加成双倍位移。绝对起点则天然幂等 —— 和剪辑那边
+    ///   `timelineStart = member.span.start + delta` 是同一个写法。
+    /// - **挪完必须重排**：`cues` 的数组顺序就是时间顺序，下游按顺序消费
+    ///   （`cue(at:)` 取第一条命中的、序列化按数组写）。挪过头不重排，导出的
+    ///   .srt 序号和时间就对不上了。
+    /// - 两轨同 ID 同时间，`reindex()` 跟着跑。
+    public static func setStarts(
+        _ starts: [UUID: TimeInterval],
+        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
+    ) {
+        guard !starts.isEmpty else { return }
+        setStarts(starts, in: &original)
+        if var doc = companion.translation {
+            setStarts(starts, in: &doc)
+            companion.translation = doc
+        }
+    }
+
+    private static func setStarts(_ starts: [UUID: TimeInterval], in doc: inout SubtitleDocumentModel) {
+        var touched = false
+        for i in doc.cues.indices {
+            guard let start = starts[doc.cues[i].id] else { continue }
+            let duration = doc.cues[i].end - doc.cues[i].start
+            doc.cues[i].start = max(0, start)
+            doc.cues[i].end = max(0, start) + duration
+            touched = true
+        }
+        guard touched else { return }
+        // 稳定排序：起点相同的两条保持原有先后，不然每挪一次顺序都可能翻个个儿。
+        doc.cues = doc.cues.enumerated()
+            .sorted { $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start }
+            .map(\.element)
+        doc.reindex()
+    }
+
     /// 规则 5：拆分 —— 首条保留原 ID，次条用 `newID`；两轨一致。
     /// 原文文本默认整体留前半（可用 `originalTexts` 指定两半）；译文整体留前半、
     /// 后半置空（语义不可机械二分）；两条 meta 都标 stale、置信度置 nil。

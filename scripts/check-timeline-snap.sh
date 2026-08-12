@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# 时间线拖动的吸附 / 对齐线 / 主轨插入位置自检：两条边都参与吸附、
-# 跟着动的块不许当参考点、指示线和落点是同一个数。
+# 时间线拖动的吸附 / 对齐线 / 主轨插入位置 / 框选命中自检：两条边都参与吸附、
+# 跟着动的块不许当参考点、指示线和落点是同一个数、框相交即选中。
 #
 # 用法：
 #   scripts/check-timeline-snap.sh
@@ -36,6 +36,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
+  Sources/SrtFlow/VideoEditTimelineMarquee.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \

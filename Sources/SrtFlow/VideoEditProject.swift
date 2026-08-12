@@ -58,8 +58,8 @@ final class VideoEditProject: ObservableObject {
     /// 选中的 cue 还在不在当前原文轨上；不在就摘掉选择。
     /// 只在真的选着 cue 时才遍历，拖布局框那种高频写入不额外付代价。
     private func pruneSubtitleCueSelection() {
-        guard selection.subtitleCueID != nil else { return }
-        selection.pruneSubtitleCue { id in
+        guard !selection.subtitleCueIDs.isEmpty else { return }
+        selection.pruneSubtitleCues { id in
             state.subtitle?.cues.contains { $0.id == id } == true
         }
     }
@@ -166,19 +166,21 @@ final class VideoEditProject: ObservableObject {
     /// 「顺便清一下另一类」。
     @Published private(set) var selection = EditSelection()
 
-    /// 选中的剪辑们。⌘点选可多选，拖任意一个选中块整组一起动。
+    /// 选中的剪辑们。⌘点选、鼠标框选都可多选，拖任意一个选中块整组一起动。
     var selectedClipIDs: Set<UUID> {
         get { selection.clipIDs }
         set { selection.selectClips(newValue) }
     }
-    var selectedShapeID: UUID? {
-        get { selection.shapeID }
-        set { selection.selectShape(newValue) }
+    /// 选中的形状们。框选能和剪辑、cue 一起选中；写它走的是**点选**语义
+    /// （会清掉其余三类），混选只能经 `applyBoxSelection`。
+    var selectedShapeIDs: Set<UUID> {
+        get { selection.shapeIDs }
+        set { selection.selectShapes(newValue) }
     }
     /// 轨道上选中的字幕 cue（点选出预览拖框用）。不持久化。
-    var selectedSubtitleCueID: UUID? {
-        get { selection.subtitleCueID }
-        set { selection.selectSubtitleCue(newValue) }
+    var selectedSubtitleCueIDs: Set<UUID> {
+        get { selection.subtitleCueIDs }
+        set { selection.selectSubtitleCues(newValue) }
     }
     /// 轨道块上选中的标记（高亮它、⌫ 删它）。不持久化。
     var selectedMarkerRef: ClipMarkerRef? {
@@ -200,6 +202,26 @@ final class VideoEditProject: ObservableObject {
         } else {
             selectedClipIDs = [id]
         }
+    }
+
+    /// 点选形状：普通点是单选，⌘/⇧点是加选或取消。
+    func selectShape(_ id: UUID, additive: Bool) {
+        if additive {
+            var ids = selectedShapeIDs
+            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+            selectedShapeIDs = ids
+        } else {
+            selectedShapeIDs = [id]
+        }
+    }
+
+    /// 鼠标框选落地：三类一次写完，**整轮框选只写这一次**。
+    ///
+    /// 拖框过程中的高亮全在视图层的 `@State` 里（见
+    /// `VideoEditTimelineView.marquee`）—— 每一拍写这里会连带整个编辑器视图树
+    /// 重建、重挂一次自动保存，框就会跟不上光标，和拖块那条约束是同一个理由。
+    func applyBoxSelection(clips: Set<UUID>, shapes: Set<UUID>, cues: Set<UUID>) {
+        selection.selectBox(clips: clips, shapes: shapes, cues: cues)
     }
 
     /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
@@ -297,14 +319,19 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 恰好选中一个时的那一个（检查器只在单选时展示细节）。
+    ///
+    /// 判据是**跨三类**只选中一个（`EditSelection.soleClipID`），不是"剪辑里只选
+    /// 中一个"：框选能同时选中剪辑和形状，那种情况下预览该一套框都不画。
     var selectedClip: EditClip? {
-        guard selectedClipIDs.count == 1, let id = selectedClipIDs.first else { return nil }
-        return state.clip(with: id)
+        selection.soleClipID.flatMap { state.clip(with: $0) }
     }
 
     var selectedShape: ShapeAnnotation? {
-        selectedShapeID.flatMap { id in state.shapes.first { $0.id == id } }
+        selection.soleShapeID.flatMap { id in state.shapes.first { $0.id == id } }
     }
+
+    /// 预览上那个字幕布局拖框的归属。同样只在跨三类唯一选中时才有。
+    var selectedSubtitleCueID: UUID? { selection.soleSubtitleCueID }
 
     var duration: Double { state.duration }
 
@@ -397,35 +424,77 @@ final class VideoEditProject: ObservableObject {
     /// 渲染和落地都走 `plan.resolve` —— 落点只有这一份算法。
     func dragPlan(draggedID id: UUID, slot: TrackSlot) -> ClipDragPlan? {
         let movingIDs = movingClipIDs(draggedID: id)
+        // 被拖的块在选中集合里时，框选一起选中的形状和字幕 cue 也跟着走。
+        // 拖一个**没**选中的块是单选它（见 `beginClipDrag`），那时候不带任何伙伴。
+        let companions = movingCompanions(draggedID: id, movingClipIDs: movingIDs)
         return ClipDragPlan.make(
             in: state,
             draggedID: id,
             movingIDs: movingIDs,
-            candidates: snapCandidates(moving: movingIDs),
+            candidates: snapCandidates(moving: movingIDs.union(companions.ids)),
             magnetMain: slot.isMain && magnetEnabled
-        )
+        )?.adding(shapes: companions.shapes, cues: companions.cues)
     }
 
     /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
     /// 自由落点、边缘自动滚动）与剪辑走**同一套**。
+    ///
+    /// 拖一个已经选中的形状 = 整组（含框选一起选中的剪辑、其他形状、字幕 cue）
+    /// 一起动，语义和拖剪辑那边严格对称。
     func shapeDragPlan(shapeID id: UUID) -> ClipDragPlan? {
         guard let shape = state.shapes.first(where: { $0.id == id }) else { return nil }
         let span = TimelineSpan(start: shape.timelineStart, end: shape.timelineEnd)
+        // 拖的形状在选中集合里，同一片选择里的剪辑（含链接伙伴）才跟着走。
+        var clipIDs: Set<UUID> = selectedShapeIDs.contains(id) ? selectedClipIDs : []
+        if linkageEnabled {
+            for clipID in clipIDs { clipIDs.formUnion(state.linkedClipIDs(of: clipID)) }
+        }
+        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
+        // 形状行允许重叠，形状自己没有障碍；跟着走的剪辑要带上各自轨上的障碍，
+        // 整组的可行位移由所有成员一起决定（`allowedDeltaRange`）。
+        let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .shape)]
+            + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
         return ClipDragPlan(
             draggedID: id,
             draggedSpan: span,
-            members: [ClipDragPlan.Member(id: id, span: span, obstacles: [])],
-            candidates: snapCandidates(moving: [id]),
+            members: members,
+            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        )
+        ).adding(shapes: companions.shapes, cues: companions.cues)
     }
 
-    /// 形状拖动落地：一步撤销，不重建预览（叠层是 SwiftUI 画的）。
+    /// 跟着一起动的非剪辑伙伴：框选一起选中的形状和字幕 cue。
+    ///
+    /// 只在**被拖的那个本来就在选中集合里**时才有伙伴 —— 拖一个没选中的东西
+    /// 是「单选它再拖」，那时候整片选择已经被换掉了，不该再拉着旧的一片走。
+    private func movingCompanions(
+        draggedID: UUID,
+        movingClipIDs: Set<UUID>
+    ) -> (shapes: [(id: UUID, span: TimelineSpan)], cues: [(id: UUID, span: TimelineSpan)], ids: Set<UUID>) {
+        let engaged = movingClipIDs.contains(draggedID)
+            || selectedShapeIDs.contains(draggedID)
+            || selectedSubtitleCueIDs.contains(draggedID)
+        guard engaged else { return ([], [], []) }
+        let shapes = state.shapes
+            .filter { selectedShapeIDs.contains($0.id) }
+            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
+        let cues = (state.subtitle?.cues ?? [])
+            .filter { selectedSubtitleCueIDs.contains($0.id) }
+            .map { (id: $0.id, span: TimelineSpan(start: $0.start, end: $0.end)) }
+        return (shapes, cues, Set(shapes.map(\.id)).union(cues.map(\.id)))
+    }
+
+    /// 形状拖动落地：一步撤销。
+    ///
+    /// 走的是和剪辑**同一个** `TimelineState.applyDrag` —— 框选之后这一组里可能
+    /// 混着剪辑和字幕 cue，各写各的迟早分叉。形状拖动永远是自由落点（没有跨轨、
+    /// 没有磁吸插空），所以后两个参数钉死。
     func commitShapeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
-        perform(rebuildsPreview: false) { state in
-            for member in plan.members {
-                state.updateShape(member.id) { $0.timelineStart = max(0, member.span.start + resolution.delta) }
-            }
+        // 形状和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里没有剪辑
+        // 就别白重建一次预览 —— 那会让画面黑一下。
+        let hasClip = plan.members.contains { $0.kind == .clip }
+        perform(rebuildsPreview: hasClip) { state in
+            state.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: false)
         }
     }
 
@@ -487,8 +556,9 @@ final class VideoEditProject: ObservableObject {
         }
         let audioOnly = snapshot.differsOnlyInAudioMix(from: current)
         state = snapshot
-        // 撤销/重做可能把选中的剪辑整个撤没（cue 那一侧由 state 的 didSet 收）。
+        // 撤销/重做可能把选中的剪辑或形状整个撤没（cue 那一侧由 state 的 didSet 收）。
         selection.pruneClips { state.clip(with: $0) != nil }
+        selection.pruneShapes { id in state.shapes.contains { $0.id == id } }
         // 撤销可能把「还在转静帧」的占位块带回来，转换要是早就完成了，当场补上。
         repairPendingStills()
         // 撤销一次音量/渐变的改动同样只动 audioMix —— 别为它闪一下画面。
@@ -772,27 +842,39 @@ final class VideoEditProject: ObservableObject {
 
     /// ⌫ 与工具栏垃圾桶的唯一入口。
     ///
-    /// 分支顺序不重要（四类选择本来就互斥，见 `EditSelection`），但标记必须在
-    /// 这里出现 —— 单独给标记接一条删除路径的话，两条路径迟早会对「现在选中的
-    /// 是什么」给出不同答案。
+    /// 标记必须在这里出现 —— 单独给标记接一条删除路径的话，两条路径迟早会对
+    /// 「现在选中的是什么」给出不同答案。它仍然独占一条早退分支：标记和别的
+    /// 选择在 `EditSelection` 里就不可能共存，所以这条 return 不会吃掉别人。
+    ///
+    /// 其余三类**一起删**：框选能一次选中剪辑 + 形状 + 字幕 cue，按分支顺序只
+    /// 删一类的话，用户框了一片按 ⌫，会看到"删了一半"。三类收在**同一次**
+    /// perform 里，所以是一步撤销。
     func deleteSelected() {
         if let ref = selectedMarkerRef {
             deleteMarker(ref)
             return
         }
-        if let shapeID = selectedShapeID {
-            deleteShape(shapeID)
-            return
-        }
-        guard !selectedClipIDs.isEmpty else { return }
-        var ids = selectedClipIDs
+        var clipIDs = selectedClipIDs
         if linkageEnabled {
-            for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
+            for id in selectedClipIDs { clipIDs.formUnion(state.linkedClipIDs(of: id)) }
         }
-        perform { state in
-            for member in ids { state.remove(member) }
+        let shapeIDs = selectedShapeIDs
+        let cueIDs = selectedSubtitleCueIDs
+        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !cueIDs.isEmpty else { return }
+        // 只删形状/字幕时不重建预览：两者都不参与 AV 合成（叠层是 SwiftUI 画的），
+        // 白重建一次会让画面黑一下。
+        perform(rebuildsPreview: !clipIDs.isEmpty) { state in
+            for member in clipIDs { state.remove(member) }
+            if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
+            if !cueIDs.isEmpty, var original = state.subtitle {
+                // 两轨 + meta 同删，走和字幕面板一样的那份合同。
+                var companion = state.subtitleCompanion ?? SubtitleCompanion()
+                LinkedSubtitleEditing.removeCues(ids: cueIDs, original: &original, companion: &companion)
+                state.subtitle = original
+                state.subtitleCompanion = companion.hasPersistentData ? companion : nil
+            }
         }
-        selectedClipIDs = []
+        selection.clear()
     }
 
     func setSpeed(_ id: UUID, speed: Double) {
@@ -961,8 +1043,15 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 点选字幕 cue：与剪辑、形状选择都互斥（互斥规则在 `EditSelection`）。
-    func selectSubtitleCue(_ id: UUID) {
-        selectedSubtitleCueID = id
+    /// ⌘/⇧ 点是加选或取消，和剪辑、形状一致。
+    func selectSubtitleCue(_ id: UUID, additive: Bool = false) {
+        if additive {
+            var ids = selectedSubtitleCueIDs
+            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+            selectedSubtitleCueIDs = ids
+        } else {
+            selectedSubtitleCueIDs = [id]
+        }
     }
 
     /// 画布**被用户改过多少次**。
@@ -1041,7 +1130,7 @@ final class VideoEditProject: ObservableObject {
             shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.2, height: 0.2)
         }
         perform(rebuildsPreview: false) { $0.shapes.append(shape) }
-        selectedShapeID = shape.id
+        selectedShapeIDs = [shape.id]
     }
 
     /// 形状不参与 AV 合成（叠层是 SwiftUI 画的），改它不用重建预览。
@@ -1053,7 +1142,7 @@ final class VideoEditProject: ObservableObject {
         perform(rebuildsPreview: false) { state in
             state.shapes.removeAll { $0.id == id }
         }
-        if selectedShapeID == id { selectedShapeID = nil }
+        selection.pruneShapes { $0 != id }
     }
 
     /// 此刻画面上该显示的形状。

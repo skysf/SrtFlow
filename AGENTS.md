@@ -87,7 +87,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
-| 时间线捏合、滚动、移动、裁切、吸附 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) |
+| 时间线捏合、滚动、移动、裁切、吸附、框选 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) |
 | 预览变换、叠化、画中画、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、音频滤镜链、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
@@ -108,7 +108,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 全部自动检查：`scripts/check-all.sh`。CI 在每个 PR 上运行同一入口：
   `.github/workflows/checks.yml`。
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
-- 工程存盘与素材重链接、四类选择互斥、轨道块标记：`scripts/check-project-file.sh`。
+- 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
+  `scripts/check-project-file.sh`。
 - 播放头与悬停 peek 状态机：`scripts/check-player-clock.sh`。
 - 预览合成真取帧：`scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
@@ -123,8 +124,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 提示面板的真实落点（摆好之后不许自己变）：`scripts/check-instant-tooltip-panel.sh`。
   **要图形会话，故意不在 `check-all.sh` 里**（无图形会话会假红），改
   `InstantTooltip.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
-- 时间线吸附与生产落点：`scripts/check-timeline-snap.sh`；拖动接线扫描：
-  `checks/timeline-drag-wiring.sh`。
+- 时间线吸附、框选命中与生产落点：`scripts/check-timeline-snap.sh`；拖动/框选
+  接线扫描：`checks/timeline-drag-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
 - 翻译配对预检与接线：`scripts/check-translation-preflight.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
@@ -144,7 +145,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 - [时间线捏合缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
-- [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附和唯一落点算法。
+- [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
+  以及框选（相交即选中、混选与「预览最多一套框」、整组一起移动）。
 - [预览自由变换](docs/architecture/preview-free-transform.md) — `ClipPlacement` 与预览/导出同账。
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
