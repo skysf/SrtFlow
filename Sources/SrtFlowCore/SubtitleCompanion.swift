@@ -141,6 +141,11 @@ public struct SubtitleCompanion: Hashable, Sendable {
 public enum LinkedSubtitleEditing {
 
     /// 规则 1：改时间 —— 两轨同 ID cue 改成相同时间。
+    ///
+    /// 改完**必须重排 + 重编号**：`cues` 的数组顺序就是时间顺序，下游全按顺序消费
+    /// （`cue(at:)` 取第一条命中的、序列化按数组写、字幕表按数组显示）。把一条 cue
+    /// 的时间改到邻居前面而不重排，界面顺序和导出的 .srt 序号就都是错的
+    /// （2026-08-12 复审 P2）。这与规则 7（整体平移）是同一条纪律。
     public static func setTime(
         id: UUID, start: TimeInterval, end: TimeInterval,
         original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
@@ -148,12 +153,23 @@ public enum LinkedSubtitleEditing {
         guard let i = original.cues.firstIndex(where: { $0.id == id }) else { return }
         original.cues[i].start = start
         original.cues[i].end = end
+        normalizeOrder(&original)
         if var doc = companion.translation,
            let t = doc.cues.firstIndex(where: { $0.id == id }) {
             doc.cues[t].start = start
             doc.cues[t].end = end
+            normalizeOrder(&doc)
             companion.translation = doc
         }
+    }
+
+    /// 按时间稳定排序 + 重编号。**稳定**很重要：起点相同的两条要保持原有先后，
+    /// 不然每挪一次顺序都可能翻个个儿。
+    private static func normalizeOrder(_ doc: inout SubtitleDocumentModel) {
+        doc.cues = doc.cues.enumerated()
+            .sorted { $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start }
+            .map(\.element)
+        doc.reindex()
     }
 
     /// 规则 2：改原文文本 —— 同 ID 译文标过期；本条置信度不再可靠，置 nil。
@@ -207,6 +223,31 @@ public enum LinkedSubtitleEditing {
         for id in ids { companion.cueMeta.removeValue(forKey: id) }
     }
 
+    /// 规则 8：新增一条 —— **只在原文轨插入**。
+    ///
+    /// 译文轨是原文轨的镜像**子集**（同 ID、同时间，可以缺条），新写的一行还没有
+    /// 译文，所以这里不往译文轨塞空 cue：塞了就等于凭空多一句「译文是空字符串」
+    /// 的字幕，双语预览会多出一行空白。真要补译走 `setTranslationText`，
+    /// 它自己会按原文时间补条。
+    ///
+    /// 按时间顺序插入并重排 —— `cues` 的数组顺序就是时间顺序，下游全按顺序消费。
+    /// 与已有 cue 重叠是允许的（重叠有排序合同），但时长必须为正。
+    @discardableResult
+    public static func insertCue(
+        at time: TimeInterval, duration: TimeInterval, id: UUID = UUID(),
+        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
+    ) -> UUID? {
+        guard duration > 0 else { return nil }
+        let start = max(0, time)
+        let cue = SubtitleCue(id: id, start: start, end: start + duration, text: "")
+        let insertAt = original.cues.firstIndex { $0.start > start } ?? original.cues.count
+        original.cues.insert(cue, at: insertAt)
+        original.reindex()
+        // 出处如实记成人工：它不是识别出来的，没有置信度，也没有 provenance。
+        companion.cueMeta[id] = CueMeta(origin: .editedManually)
+        return id
+    }
+
     /// 规则 7：整体平移 —— 把这批 cue 在**两轨**上挪到指定的起点（时长不变）。
     ///
     /// 时间线上框选一片再拖动时走这里。三条约束：
@@ -240,11 +281,7 @@ public enum LinkedSubtitleEditing {
             touched = true
         }
         guard touched else { return }
-        // 稳定排序：起点相同的两条保持原有先后，不然每挪一次顺序都可能翻个个儿。
-        doc.cues = doc.cues.enumerated()
-            .sorted { $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start }
-            .map(\.element)
-        doc.reindex()
+        normalizeOrder(&doc)
     }
 
     /// 规则 5：拆分 —— 首条保留原 ID，次条用 `newID`；两轨一致。

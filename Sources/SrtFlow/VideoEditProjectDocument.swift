@@ -41,6 +41,10 @@ extension VideoEditProject {
     ///
     /// 退出 App（`applicationShouldTerminate`）也走这里，所以不是 private。
     func prepareToCloseDocument() -> Bool {
+        // 手里还攥着没提交的输入就先落定：这条路是 New / Open / Open Recent /
+        // 退出的必经之路，而它下面每一步都是「先读 state 写盘，再销毁视图」——
+        // 漏掉这一句，用户「打完字直接退出」丢的就是刚打的那句（复审 P1）。
+        endPendingTextEditing()
         // 录制期间禁止切换工程。**挂在这里而不是按钮的 disabled 上** ——
         // 计划 §11.3 要求「实际执行入口」再校验一次：New / Open / Open Recent /
         // Finder 外部打开 / 退出全都经过这个方法，菜单置灰挡不住这些路径。
@@ -267,6 +271,10 @@ extension VideoEditProject {
     /// **返回值必须被在意**：写不下去就不能继续做「关掉当前工程」这类破坏性操作。
     @discardableResult
     func flushAutosave() -> Bool {
+        // ⌘S 走这条。**必须在 hasUnsavedChanges 判定之前**：正在输入的那一格
+        // 还没进模型，此刻工程可能「看起来是干净的」，直接 return true 就等于
+        // 把刚打的字扔了。
+        endPendingTextEditing()
         autosaveTask?.cancel()
         autosaveTask = nil
         guard documentURL != nil, hasUnsavedChanges else { return true }
@@ -306,6 +314,8 @@ extension VideoEditProject {
 
     @discardableResult
     func saveNow() -> Bool {
+        // 定时自动保存、另存为、重链接回存都直接进这里，也要先落定输入。
+        endPendingTextEditing()
         guard var url = documentURL else { return false }
 
         // 工程文件本身可能在访达里被改了名或挪了地方。不跟过去的话，这次保存会在
@@ -339,6 +349,21 @@ extension VideoEditProject {
             )
             return false
         }
+    }
+
+    /// 把「正在输入、还没进模型」的编辑落定。**所有读 `state` 去写盘的路口都要先调它。**
+    ///
+    /// 两件事：
+    /// 1. 字幕文本草稿存在工程上，这里同步提交（见 `VideoEditSubtitleDraft.swift`）；
+    /// 2. 其余输入框（时间码、Inspector 数值）的值仍活在各自的视图里，只能让窗口
+    ///    结束编辑、逼它们走一遍失焦提交 —— 这一步是**尽力而为**：AppKit 让第一
+    ///    响应者辞职是同步的，但 SwiftUI 把焦点变化转成 `onChange` 可能要等下一拍。
+    ///    ⌘S 这类留在 App 里的路径无所谓（晚一拍也会被下一次自动保存捡走），
+    ///    退出那条路仍有残留窗口。彻底解决要把那些输入框也改成工程级草稿，
+    ///    那是独立于本次改动的一轮（这些输入框在本次改动之前就是这样）。
+    func endPendingTextEditing() {
+        commitSubtitleDraft()
+        NSApp.keyWindow?.makeFirstResponder(nil)
     }
 
     /// 工程文件被改名/移动后的新位置（同一个盘）。

@@ -604,6 +604,49 @@ do {
         )
     }
 
+    // 规则 1 的重排：把一条 cue 的时间改到邻居前面，数组顺序和 index 必须跟着走。
+    do {
+        var (original, companion) = makePair()
+        // c 原本是第三条（4–6），改到 a(0–2) 和 b(2–4) 中间去。
+        LinkedSubtitleEditing.setTime(id: c.id, start: 0.1, end: 0.5, original: &original, companion: &companion)
+        checkEqual(original.cues.map(\.id), [a.id, c.id, b.id], "改时间：原文轨按时间重排")
+        checkEqual(original.cues.map(\.index), [1, 2, 3], "改时间：原文轨重编号")
+        checkEqual(companion.translation?.cues.map(\.id), [a.id, c.id, b.id], "改时间：译文轨同样重排")
+        checkEqual(companion.translation?.cues.map(\.index), [1, 2, 3], "改时间：译文轨重编号")
+        // 再把 a 挪到最后：顺序整个翻过来，编号跟着走。
+        LinkedSubtitleEditing.setTime(id: a.id, start: 5, end: 6, original: &original, companion: &companion)
+        checkEqual(original.cues.map(\.id), [c.id, b.id, a.id], "改时间：挪到末尾也要重排")
+        checkEqual(original.cues.map(\.index), [1, 2, 3], "改时间：重排后重编号")
+        // 起点相同的两条保持原有先后（稳定排序）：把 b 也挪到 c 的起点上，
+        // 此刻数组是 [c, b, a]，c 在前，排完还应该是 c 在前。
+        LinkedSubtitleEditing.setTime(id: b.id, start: 0.1, end: 0.4, original: &original, companion: &companion)
+        checkEqual(original.cues.map(\.id), [c.id, b.id, a.id], "改时间：同起点保持原有先后")
+    }
+
+    // 规则 8：新增一条 —— 只进原文轨、按时间落位、meta 记成人工。
+    do {
+        var (original, companion) = makePair()
+        let newID = LinkedSubtitleEditing.insertCue(
+            at: 3, duration: 1, original: &original, companion: &companion
+        )
+        check(newID != nil, "新增：合法时长要成功")
+        checkEqual(original.cues.map(\.id), [a.id, b.id, newID!, c.id], "新增：按时间顺序落位")
+        checkEqual(original.cues[2].end, 4, "新增：end = start + 时长")
+        checkEqual(original.cues[2].text, "", "新增：文本为空")
+        checkEqual(original.cues.map(\.index), [1, 2, 3, 4], "新增：index 重排")
+        // 译文轨**不许**跟着多一条：镜像是子集关系，空译文会在双语预览里多出一行。
+        checkEqual(companion.translation?.cues.count, 3, "新增：译文轨不跟着插空条")
+        checkEqual(companion.cueMeta[newID!]?.origin, .editedManually, "新增：meta 记成人工")
+        checkEqual(companion.cueMeta[newID!]?.recognitionConfidence, nil, "新增：没有置信度")
+        check(
+            LinkedSubtitleEditing.insertCue(
+                at: 3, duration: 0, original: &original, companion: &companion
+            ) == nil,
+            "新增：零时长要拒绝"
+        )
+        checkEqual(original.cues.count, 4, "新增：被拒绝时不许动原文轨")
+    }
+
     // normalize：失锚译文与孤儿 meta 清干净，空 companion 判定正确。
     do {
         var (original, companion) = makePair()

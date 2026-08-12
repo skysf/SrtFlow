@@ -21,6 +21,8 @@ struct VideoEditView: View {
     @State private var eventMonitor: Any?
     /// 当前字幕文本块的实测高度（overlay 回报，字幕拖框定框用）。
     @State private var subtitleBlockHeight: Double = 0
+    /// 预览里正在就地编辑的那条字幕（双击画面上的字幕进入）。
+    @State private var previewEditingCueID: UUID?
 
     init() {
         clock = VideoEditProject.shared.clock
@@ -32,8 +34,27 @@ struct VideoEditView: View {
                 previewPane
                     .frame(minWidth: 430, idealWidth: 700, maxWidth: .infinity)
                     .layoutPriority(1)
-                VideoEditInspectorView(project: project, clock: clock, onExport: { showsExportSheet = true })
-                    .frame(minWidth: 252, idealWidth: 290, maxWidth: 360)
+                // 右栏一位两用：字幕表**盖在检查器上面**，✕ 回到检查器
+                //（2026-08-12 用户拍板）。
+                // 它曾经是并排的第三栏，实测分栏器会把排在最后的检查器整条挤出
+                // 窗口右边界（改 idealWidth / layoutPriority 都拉不回来）——
+                // 共用一栏之后分栏器始终只有两块，宽度问题不存在了。
+                Group {
+                    if project.showsSubtitleList {
+                        VideoEditSubtitlePanel(
+                            project: project,
+                            clock: clock,
+                            onOpenGenerator: { showsSubtitlePanel = true }
+                        )
+                    } else {
+                        VideoEditInspectorView(
+                            project: project,
+                            clock: clock,
+                            onExport: { showsExportSheet = true }
+                        )
+                    }
+                }
+                .frame(minWidth: 252, idealWidth: 290, maxWidth: 360)
             }
             .frame(minHeight: 300, idealHeight: 400, maxHeight: .infinity)
 
@@ -123,12 +144,12 @@ struct VideoEditView: View {
                     .disabled(recordingCoordinator.isBusy)
                 }
                 Button {
-                    showsSubtitlePanel = true
+                    project.showsSubtitleList.toggle()
                 } label: {
                     Label("Subtitles", systemImage: "captions.bubble")
                 }
                 .disabled(project.state.isEmpty)
-                .instantHelp("Generate, translate, and edit subtitle tracks")
+                .instantHelp("Show or hide the subtitle list")
                 Button {
                     showsExportSheet = true
                 } label: {
@@ -249,6 +270,16 @@ struct VideoEditView: View {
                         layout: project.state.subtitleLayout,
                         onBlockSize: { subtitleBlockHeight = $0.height }
                     )
+                    // 画面上的字幕：单击选中这句、双击就地改字（输入框浮在
+                    // 字幕下方）。夹在叠层和拖框中间 —— 见该文件的层序说明。
+                    SubtitlePreviewEditLayer(
+                        project: project,
+                        clock: clock,
+                        boxSize: size,
+                        style: burnInQueue.burnInStyle,
+                        blockHeight: subtitleBlockHeight,
+                        editingCueID: $previewEditingCueID
+                    )
                     // 轨道上点选了 cue：叠出工程级字幕拖框（移动/换行宽度/
                     // 等比字号）。放最上层 —— 有选中时字幕调整优先。
                     if let cueID = project.selectedSubtitleCueID,
@@ -257,7 +288,12 @@ struct VideoEditView: View {
                             project: project,
                             boxSize: size,
                             style: burnInQueue.burnInStyle,
-                            blockHeight: subtitleBlockHeight
+                            blockHeight: subtitleBlockHeight,
+                            // 框盖住了字幕，双击就地编辑这一路从框上补进来。
+                            onDoubleClick: {
+                                if clock.isPlaying { clock.togglePlayback() }
+                                previewEditingCueID = cueID
+                            }
                         )
                     }
                 }

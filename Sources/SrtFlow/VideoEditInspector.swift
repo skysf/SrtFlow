@@ -472,14 +472,14 @@ struct VideoEditInspectorView: View {
 
         Divider()
 
+        // 这里曾经还有一个 Export… 按钮。删掉了（2026-08-12 用户）：
+        // 窗口右上角的工具栏本来就有一个，同一个动作摆两遍只是占地方。
+        // 多选那一段里的 Export… 留着 —— 那个说的是「只导出选中的这几段」，
+        // 不是同一件事。
         Text("Select a clip on the timeline to adjust its speed, volume, and transition. Select a shape to recolor and resize it.")
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-
-        Button("Export…", systemImage: "square.and.arrow.up", action: onExport)
-            .disabled(project.state.mainClips.isEmpty)
-            .instantHelp("Render the timeline to a video file")
     }
 
     private func summaryRow(_ title: LocalizedStringKey, _ value: String) -> some View {

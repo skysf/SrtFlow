@@ -45,6 +45,8 @@ private struct SubtitleGenPanelContent: View {
     @ObservedObject var project: VideoEditProject
     @ObservedObject private var translationService = SubtitleTranslationService.shared
     @ObservedObject private var coordinator = TranslationJobCoordinator.shared
+    /// 「编辑字幕」要把这个弹窗关掉（编辑在常驻的字幕列里做）。
+    @Environment(\.dismiss) private var dismiss
 
     @State private var targetLanguages: [SubtitleTranslationService.TargetLanguage] = []
     @State private var targetLanguageID = ""
@@ -53,7 +55,6 @@ private struct SubtitleGenPanelContent: View {
     /// 默认值多半不是已装语言；等源语言确定、候选表重排之后必须重挑一次。
     /// 用户手动选过就不能再动他的选择 —— 这个标志就是用来区分两者的。
     @State private var targetLanguageIsUserPicked = false
-    @State private var showsEditor = false
     /// 冒烟发现的缺口：翻译成功要有回执，不能静默回到空闲。
     @State private var lastTranslatedCount: Int?
 
@@ -84,8 +85,12 @@ private struct SubtitleGenPanelContent: View {
             if hasSubtitle {
                 Divider()
                 HStack {
+                    // 编辑不在这个弹窗里做 —— 它是预览右边那一列常驻字幕表
+                    // （另外两个入口：时间线双击 cue、预览双击字幕）。这里只
+                    // 负责把那一列叫出来，然后自己让路。
                     Button {
-                        showsEditor = true
+                        project.showsSubtitleList = true
+                        dismiss()
                     } label: {
                         Label("Edit Subtitles…", systemImage: "list.bullet.rectangle")
                     }
@@ -98,9 +103,6 @@ private struct SubtitleGenPanelContent: View {
         .task { await reloadTargets() }
         .onChange(of: sourceLanguage) { _, _ in
             Task { await reloadTargets() }
-        }
-        .sheet(isPresented: $showsEditor) {
-            LinkedSubtitleEditor(project: project)
         }
     }
 

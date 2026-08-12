@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import SrtFlowCore
 
@@ -12,48 +13,29 @@ struct SubtitleFrameCanvas: View {
     let style: BurnInStyle
     /// 当前字幕文本块的实测高度（BurnInSubtitleOverlay 回报）。
     let blockHeight: Double
+    /// 框内双击 = 就地改这句的文字。
+    ///
+    /// 拖框盖在字幕块正上方，双击事件到不了下面那层的热区 —— 少了这一路，
+    /// 「选中一条 cue 之后就没法双击改字了」，而选中恰恰是改字前的常态。
+    var onDoubleClick: () -> Void = {}
 
     /// 手势开始时的（框, 布局）快照：角把手的字号倍率按它算绝对增量，
     /// 反复应用不叠加（与 ResizableFrameBox 自身的 startRect 同一纪律）。
     @State private var dragStart: (rect: CGRect, layout: SubtitleLayout)?
 
-    private var scale: Double {
-        boxSize.height / Double(BurnInStyle.referenceHeight)
-    }
-
-    /// 当前生效布局：还没有覆盖时从全局样式推导（第一次拖动就落成覆盖）。
-    /// 覆盖的锚定固定为底部中心 —— 全局样式是九宫格时，推导只近似垂直位置。
-    private var effectiveLayout: SubtitleLayout {
-        if let layout = project.state.subtitleLayout { return layout }
-        let blockUnits = blockHeight / max(scale, 0.0001)
-        let reference = Double(BurnInStyle.referenceHeight)
-        let bottom: Double
-        switch style.position.row {
-        case 0: bottom = Double(style.marginVertical)
-        case 1: bottom = (reference - blockUnits) / 2
-        default: bottom = reference - Double(style.marginVertical) - blockUnits
-        }
-        return SubtitleLayout(
-            marginLeft: style.marginHorizontal,
-            marginRight: style.marginHorizontal,
-            marginBottom: Int(max(0, bottom).rounded()),
-            fontScale: 1
+    /// 换算与定框的唯一实现，与就地编辑的输入框共用（SubtitleFrameGeometry）。
+    private var geometry: SubtitleFrameGeometry {
+        SubtitleFrameGeometry(
+            boxSize: boxSize,
+            style: style,
+            layout: project.state.subtitleLayout,
+            blockHeight: blockHeight
         )
     }
 
-    private var frameRect: CGRect {
-        let layout = effectiveLayout
-        let left = Double(layout.marginLeft) * scale
-        let right = Double(layout.marginRight) * scale
-        let bottom = Double(layout.marginBottom) * scale
-        let height = max(blockHeight, 24)
-        return CGRect(
-            x: left,
-            y: boxSize.height - bottom - height,
-            width: max(boxSize.width - left - right, 30),
-            height: height
-        )
-    }
+    private var scale: Double { geometry.scale }
+    private var effectiveLayout: SubtitleLayout { geometry.effectiveLayout }
+    private var frameRect: CGRect { geometry.frameRect }
 
     var body: some View {
         ZStack(alignment: .topLeading) {
@@ -67,6 +49,12 @@ struct SubtitleFrameCanvas: View {
                 ],
                 keepAspectOnCorners: true,
                 movable: true,
+                // 单击不做事（这条 cue 已经是选中的那条），只挑出双击。
+                // 双击判据问 NSEvent 要 clickCount：再挂一个 count: 2 的
+                // TapGesture 会和框内的移动手势抢，拖框当场变迟钝。
+                onTap: { _ in
+                    if (NSApp.currentEvent?.clickCount ?? 1) >= 2 { onDoubleClick() }
+                },
                 onChange: { next in apply(next) },
                 onEnd: {
                     dragStart = nil
