@@ -60,6 +60,22 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
   把「写死的文案必须两张表都有」升成**全局**守卫，长期约束写进
   [本地化](../architecture/localization.md)。提示那一类不再单独维护一份规则。
 
+### 三、同一个键写了两遍：`"Size"`
+
+补齐文案时顺手撞见的第三件事，同一类：`"Size"` 在两张表里各出现两次 ——
+样式编辑里是「字号」（第 146 行），画中画里是「大小」（第 247 行）。
+
+**plist 解析器不会报错**，后面那条静静盖掉前面那条，所以样式编辑的字号滑块在中文
+界面里一直显示成「大小」。这比「没翻译」更隐蔽：文案明明在表里、明明翻译过了，
+只是显示成了另一个词。
+
+改法：把样式编辑那处的键改成更具体的 `"Font size"`，**英文显示文案保持 `Size` 不变**
+（`"Font size" = "Size"`）—— 仓库里本来就有 `"Left" = "L"`、`"Right" = "R"` 这种
+「键是标识符、值才是显示文案」的先例。
+
+`LabeledSlider(label: "…")` 这类经参数转交的文案，守卫原先也看不见（和当初漏掉
+`ToolbarIcon(help:)` 是同一个洞），一并补进扫描；`DispatchQueue(label:)` 排掉。
+
 ## 验证
 
 - `scripts/check-instant-tooltip-panel.sh`（新增）：拿真实的
@@ -71,10 +87,15 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
   FAIL 单行提示的面板高度不该超过 60：实际 332
   FAIL 下方放不下时要翻到控件上方：期望 926，实际 619
   ```
-- `scripts/check-localization-coverage.sh`（新增）：434 条界面文案在两张表里都有。
-  **反向验证**：删掉 zh 表里 `Start Recording` 一行 → `FAIL zh-Hans 表里没有：
-  "Start Recording" ← Sources/SrtFlow/ScreenRecordingSetupView.swift:114`，退出码 1；
-  补回去退出码 0。（第一版守卫用 grep 写，漏掉换行写的调用，已改用 Swift 扫描。）
+- `scripts/check-localization-coverage.sh`（新增）：442 条界面文案在两张表里都有，
+  且两张表都没有重复键。
+  **反向验证（缺文案）**：删掉 zh 表里 `Start Recording` 一行 → `FAIL zh-Hans 表里
+  没有："Start Recording" ← Sources/SrtFlow/ScreenRecordingSetupView.swift:114`，
+  退出码 1；补回去退出码 0。（第一版守卫用 grep 写，漏掉换行写的调用，已改用
+  Swift 扫描。）
+  **反向验证（重复键）**：修 `"Size"` 之前，守卫直接报出
+  `FAIL en 表里 "Size" 出现了两次` / `FAIL zh-Hans 表里 "Size" 出现了两次`，退出码 1；
+  改成 `"Font size"` 之后退出码 0。再把 `"Font size"` 手工写两遍 → 又变红。
 - `plutil -lint` 两张表都 OK；`swift build --arch arm64` 通过。
 - hover 本身没法自动化（`.onHover` 对合成鼠标事件不响应，见
   [GUI 冒烟流程](../testing/gui-smoke-testing.md)），所以「鼠标一放上去」这一段
@@ -92,6 +113,8 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
    不了，只有中文用户挨个划过按钮才看得见。新增任何 `LocalizedStringKey` 文案都必须
    同步两张表，现在由全局守卫钉着（见 [本地化](../architecture/localization.md)）。
    **用户报了一处，就该去数还有多少处** —— 这次报回来 1 条，实扫出 181 条。
+   同一族的还有「键重复」：翻译过了，但显示的是另一个词，比没翻译更难看出来。
+   **一个键只能有一个含义。**
 4. 这条 bug 出在「加了守卫的功能」上：`checks/instant-tooltip-wiring.sh` 当时只钉了
    接线（不许用 `.help`、快捷键单一来源），没钉**结果**（提示最终落在哪、写的是哪种
    语言）。**守卫要盯用户看得见的那一面，不能只盯代码写法。**

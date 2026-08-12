@@ -143,7 +143,7 @@
 "Other fonts" = "其他字体";
 "Search fonts" = "搜索字体";
 "Arrow keys walk the list — the preview follows as you go." = "用上下方向键逐个试，预览会实时跟着变。";
-"Size" = "字号";
+"Font size" = "字号";
 "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "所有尺寸都以 1080p 画面为基准，因此同一套样式在 720p 和 4K 导出里看起来完全一致。";
 "Bold" = "粗体";
 "Italic" = "斜体";

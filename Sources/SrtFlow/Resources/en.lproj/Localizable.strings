@@ -143,7 +143,7 @@
 "Other fonts" = "Other fonts";
 "Search fonts" = "Search fonts";
 "Arrow keys walk the list — the preview follows as you go." = "Arrow keys walk the list — the preview follows as you go.";
-"Size" = "Size";
+"Font size" = "Size";
 "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports.";
 "Bold" = "Bold";
 "Italic" = "Italic";

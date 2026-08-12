@@ -134,8 +134,10 @@ func scan(_ files: [String]) -> [Occurrence] {
         // Foo("…") / .alert("…")：第一个实参就是文案，所以 ( 后面直接跟引号。
         // `Text(verbatim: "…")` 因此天然不匹配 —— 它本来就不该查表。
         "(?:\(callNames)|\(modifierNames))\\s*\\(\\s*\(literal)",
-        // ToolbarIcon(help: "…")：经参数转交给 instantHelp。
-        "\\bhelp:\\s*\(literal)",
+        // ToolbarIcon(help: "…")、LabeledSlider(label: "…")：文案经参数转交，
+        // 最后还是进 Text/instantHelp。只认调用名会漏掉这一整类。
+        // `DispatchQueue(label:)` 排掉 —— 那是队列名，不是给人看的。
+        "(?<!DispatchQueue\\()\\b(?:help|label):\\s*\(literal)",
     ].map { try! NSRegularExpression(pattern: $0, options: [.dotMatchesLineSeparators]) }
 
     var found: [Occurrence] = []
@@ -164,6 +166,24 @@ func table(at path: String) -> [String: String]? {
     return parsed as? [String: String]
 }
 
+/// 同一张表里出现两次的键。
+///
+/// 解析器**不会报错**，后面那条静静地盖掉前面那条 —— 表现为「明明翻译过了，
+/// 界面上却是另一个词」。实测踩过：`"Size"` 在样式编辑里是「字号」、在画中画里
+/// 是「大小」，同一个键写了两遍，字号那处就跟着显示成了「大小」。
+/// 一个键只能有一个含义：撞车了就把其中一处改成更具体的键（`Font size`）。
+func duplicateKeys(inRawTableAt path: String) -> [String] {
+    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else { return [] }
+    let regex = try! NSRegularExpression(pattern: #"^"((?:[^"\\]|\\.)*)"\s*="#, options: [.anchorsMatchLines])
+    var counts: [String: Int] = [:]
+    let ns = text as NSString
+    regex.enumerateMatches(in: text, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+        guard let match, let range = Range(match.range(at: 1), in: text) else { return }
+        counts[unescaped(String(text[range])), default: 0] += 1
+    }
+    return counts.filter { $0.value > 1 }.keys.sorted()
+}
+
 // MARK: - 跑
 
 let root = FileManager.default.currentDirectoryPath
@@ -185,6 +205,10 @@ for (lang, path) in tables {
         continue
     }
     loaded[lang] = dict
+    for key in duplicateKeys(inRawTableAt: path) {
+        print("FAIL \(lang) 表里 \"\(key)\" 出现了两次（后面那条会静静盖掉前面那条）")
+        failures += 1
+    }
 }
 
 let occurrences = scan(swiftFiles(under: sources))
@@ -214,7 +238,9 @@ for occurrence in scannable.sorted(by: { ($0.file, $0.line) < ($1.file, $1.line)
 if failures == 0 {
     print("All \(distinct.count) 条界面文案在 en / zh-Hans 两张表里都有。")
 } else {
-    print("\n\(failures) 处缺失。两张表都要补：en 填原文，zh-Hans 填译文。")
-    print("确实不需要翻译的（单位、符号），加进 checks/LocalizationCoverage/main.swift 的 exempt，并写清为什么。")
+    print("\n\(failures) 处问题。")
+    print("  · 缺文案：两张表都要补 —— en 填原文，zh-Hans 填译文。")
+    print("  · 重复键：一个键只能有一个含义，把其中一处改成更具体的键（如 Font size）。")
+    print("  · 确实不需要翻译的（单位、符号）：加进 checks/LocalizationCoverage/main.swift 的 exempt，并写清为什么。")
     exit(1)
 }
