@@ -192,7 +192,16 @@ final class InstantTooltipController {
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         guard size.width > 1, size.height > 1 else { return }
-        panel.contentView = hosting
+        // **NSHostingView 绝不能直接当 contentView**：它会把自己的尺寸约束灌成
+        // 窗口的 contentMinSize/contentMaxSize（实测一条 24pt 高的提示报出
+        // minSize 高 332），AppKit 下一轮排版就把面板撑到那个高度，气泡在里面
+        // 垂直居中 —— 肉眼看到的是提示掉到控件下方几百点的地方。
+        // 中间垫一层普通 NSView，尺寸就只由这里的 setFrame 说了算。
+        let container = NSView(frame: CGRect(origin: .zero, size: size))
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
 
         let visible = screen.visibleFrame
         var origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.minY - size.height - 6)
@@ -214,6 +223,10 @@ final class InstantTooltipController {
         guard let owner, owner.view === view else { return }
         hide(owner: owner)
     }
+
+    /// 自检读取用：提示面板当前的屏幕矩形（nil = 还没建过面板）。
+    /// `checks/InstantTooltipPanel` 靠它盯住「摆好之后不许自己变尺寸」。
+    var panelFrameForChecks: CGRect? { panel?.frame }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(

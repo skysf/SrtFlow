@@ -57,7 +57,7 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 - 全 App **共用一个**面板。一个控件一个面板的话，扫过工具栏会瞬间造出十几个
   窗口。
 
-## 五、面板自己的三条硬约束（守卫钉着）
+## 五、面板自己的硬约束（守卫钉着）
 
 1. **`ignoresMouseEvents = true`。** 提示挡住鼠标就会立刻触发下面控件的
    `hover(false)`：提示消失 → 鼠标回到控件 → 又弹出来，肉眼看到的是闪烁。
@@ -66,10 +66,20 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 3. **`hide` 必须按 owner 核对归属。** 鼠标从 A 划到 B 时，SwiftUI 先给 B 发
    `hover(true)` 再给 A 发 `hover(false)`；不核对的话 A 的退出会把 B 刚弹出来的
    提示关掉 —— 表现为快速扫过工具栏时提示随机不出现。
+4. **`NSHostingView` 绝不能直接当 `contentView`，中间必须垫一层普通 `NSView`。**
+   宿主视图会把自己的尺寸约束灌成窗口的 `contentMinSize` / `contentMaxSize`
+   —— 实测一条 24pt 高的提示报出 min 高度 332，AppKit 下一轮排版就把面板撑到
+   332 高，气泡在里面垂直居中，看上去就是「提示弹在离控件很远的地方」。
+   见 [2026-08-12 案例](../bugfixes/2026-08-12-instant-tooltip-first-show-far-off.md)。
 
 摆位规则：默认在控件正下方居中；下方超出屏幕就翻到上方；左右夹进可见区域。
 
-## 六、本地化：两个重载，别混
+**摆好 ≠ 摆定。** 面板是在 `setFrame` 之后的下一轮排版里被 AppKit 改掉的，所以
+`scripts/check-instant-tooltip-panel.sh` 量落点时一律**跑一轮 runloop 再量第二次**，
+只量「刚摆完」等于没量。这条自检不需要 hover：`InstantTooltipController.show`
+本身就是生产路径，直接调它就绕开了鼠标。
+
+## 六、本地化：两个重载，别混；文案必须两张表都有
 
 - `instantHelp(_ text: LocalizedStringKey)` —— 写死的文案，查表翻译。
 - `instantHelp(_ text: some StringProtocol)` —— 运行期算出来的字符串（路径、
@@ -77,6 +87,23 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 
 系统的 `.help` 也是这么分的两个重载。混用会把用户的文件名当成本地化 key 去
 翻译。
+
+**新增任何提示文案，都要同时补进 `en.lproj` 和 `zh-Hans.lproj`**（en 填原文，
+zh-Hans 填译文）。查不到是**静默降级**：不报错、不崩，只是在中文界面里原样显示
+英文，编译和代码审查都发现不了，只有用户挨个划过按钮才看得见（2026-08-12 就是
+这么被用户报回来的）。
+
+提示文案有三种写法，都要能被守卫看见：
+
+```swift
+.instantHelp("Close this panel")                     // 直接写
+ToolbarIcon(icon: "scissors", help: "Split at playhead", …)   // 经 help: 转交
+.instantHelp(isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"))
+```
+
+只认头一种会漏掉工具栏那一整排 —— 这是第一版守卫真踩过的洞。这条规则现在归
+`scripts/check-localization-coverage.sh` 统一管（连 `Text` / `Label` / `Button`
+一起扫），细则见 [本地化](localization.md)。
 
 ## 七、哪些控件不加提示
 
@@ -86,7 +113,14 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 ## 八、人工回归清单（自动化够不着，发版前实机过）
 
 `.onHover` 对合成鼠标事件不响应（见 [GUI 冒烟流程](../testing/gui-smoke-testing.md)），
-所以这一整套**没法用事件注入验证**，只能实机过：
+所以「鼠标一放上去」这一段**没法用事件注入验证**，只能实机过。
+
+但**提示出现之后的事情是能自动化的**：落点、尺寸稳定性、翻不翻译，分别归
+`scripts/check-instant-tooltip-panel.sh` 和 `checks/instant-tooltip-wiring.sh`
+——「没法自动化」只对触发方式成立，不对结果成立（下面第 4、6 条因此已有守卫兜底，
+实机过一遍是双保险）。
+
+实机清单：
 
 1. 鼠标放到时间线工具栏任一按钮上：提示**立刻**出现（不是等一秒），带快捷键
    键帽；移开立刻消失。

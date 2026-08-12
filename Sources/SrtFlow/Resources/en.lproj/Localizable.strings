@@ -200,7 +200,6 @@
 "Add a line below the selection" = "Add a line below the selection";
 "Delete the selected lines" = "Delete the selected lines";
 "Scroll to the line being spoken during playback" = "Scroll to the line being spoken during playback";
-"Write the changes back to the subtitle file (⌘S)" = "Write the changes back to the subtitle file (⌘S)";
 "Editing the subtitle file on its own. Add a video to see it on the picture." = "Editing the subtitle file on its own. Add a video to see it on the picture.";
 "The subtitle lines show up here, in step with playback." = "The subtitle lines show up here, in step with playback.";
 "Open Subtitle File…" = "Open Subtitle File…";
@@ -217,8 +216,6 @@
 "Add Subtitle File…" = "Add Subtitle File…";
 "Undo" = "Undo";
 "Redo" = "Redo";
-"Split at playhead (⌘B)" = "Split at playhead (⌘B)";
-"Freeze the frame at the playhead (⇧⌘F)" = "Freeze the frame at the playhead (⇧⌘F)";
 "Could not read the frame at the playhead from %@." = "Could not read the frame at the playhead from %@.";
 "Could not save the freeze frame to %@." = "Could not save the freeze frame to %@.";
 "The clip changed while the freeze frame was being prepared. Try again." = "The clip changed while the freeze frame was being prepared. Try again.";
@@ -250,7 +247,6 @@
 "Size" = "Size";
 "Split" = "Split";
 "Select" = "Select";
-"Mouse tool: Select (A) or Split (B)" = "Mouse tool: Select (A) or Split (B)";
 "Apply to All" = "Apply to All";
 "Clear All" = "Clear All";
 "Transform" = "Transform";
@@ -308,8 +304,6 @@
 "Adding…" = "Adding…";
 "Drag up or down to resize this kind of track" = "Drag up or down to resize this kind of track";
 
-"Play (Space)" = "Play (Space)";
-"Hide or show this track (V)" = "Hide or show this track (V)";
 "Hide or show subtitles" = "Hide or show subtitles";
 "Subtitle track is hidden — nothing will be burned." = "Subtitle track is hidden — nothing will be burned.";
 "%d clips selected" = "%d clips selected";
@@ -387,3 +381,214 @@
 "The timeline changed while generating. Generate again — cached transcription makes rerunning fast." = "The timeline changed while generating. Generate again — cached transcription makes rerunning fast.";
 "No speech was recognized. Try another source language." = "No speech was recognized. Try another source language.";
 "Subtitles were generated, but translation failed: %@" = "Subtitles were generated, but translation failed: %@";
+
+/* 按钮提示（instantHelp）—— checks/instant-tooltip-wiring.sh 盯着这两张表要配齐 */
+/* 引擎状态与授权 */
+"What is wrong with the video engine, and how to fix it" = "What is wrong with the video engine, and how to fix it";
+"Open Privacy & Security so the engine can be allowed to run" = "Open Privacy & Security so the engine can be allowed to run";
+"Copy the un-quarantine command to the clipboard" = "Copy the un-quarantine command to the clipboard";
+
+/* 压缩与编码队列 */
+"Pick videos to compress" = "Pick videos to compress";
+"Start encoding everything in the queue" = "Start encoding everything in the queue";
+"Cancel everything still running" = "Cancel everything still running";
+"Remove finished items from the list" = "Remove finished items from the list";
+"Add more files to the queue" = "Add more files to the queue";
+"Where finished files are written" = "Where finished files are written";
+"Go back to writing next to each source file" = "Go back to writing next to each source file";
+"Copy the ffmpeg command to the clipboard" = "Copy the ffmpeg command to the clipboard";
+
+/* 批量转换 */
+"Pick subtitle files to convert" = "Pick subtitle files to convert";
+"Empty the list" = "Empty the list";
+"Where converted files are written; defaults to next to the source" = "Where converted files are written; defaults to next to the source";
+"Convert every file in the list" = "Convert every file in the list";
+
+/* 烧字幕、样式预设与字体 */
+"Pick videos to burn subtitles into" = "Pick videos to burn subtitles into";
+"Pick the subtitle file to burn in" = "Pick the subtitle file to burn in";
+"Pick the typeface for burned-in subtitles" = "Pick the typeface for burned-in subtitles";
+"Clear the search" = "Clear the search";
+"Save the preset under this name" = "Save the preset under this name";
+"Discard the name and keep the style unsaved" = "Discard the name and keep the style unsaved";
+"Remember this style so it can be reused" = "Remember this style so it can be reused";
+"Delete the saved preset that matches this style" = "Delete the saved preset that matches this style";
+
+/* 字幕编辑面板 */
+"Open an .srt or .vtt file to edit" = "Open an .srt or .vtt file to edit";
+"Write the changes back to the subtitle file" = "Write the changes back to the subtitle file";
+
+/* 视频编辑：工程栏、工具栏与检查器 */
+"Add video, audio or images to the timeline" = "Add video, audio or images to the timeline";
+"Open an existing .srtflowproj file" = "Open an existing .srtflowproj file";
+"Mouse tool: Select or Split" = "Mouse tool: Select or Split";
+"Project frame rate — preview, export and keyframes all follow it" = "Project frame rate — preview, export and keyframes all follow it";
+"Record the screen into this project" = "Record the screen into this project";
+"Dismiss this message" = "Dismiss this message";
+"Hide or show this track" = "Hide or show this track";
+"Remove this marker" = "Remove this marker";
+"Render just the selected clips to a video file" = "Render just the selected clips to a video file";
+"Remove the selected clips from the timeline" = "Remove the selected clips from the timeline";
+"Put this transition on every seam of the main track" = "Put this transition on every seam of the main track";
+"Remove every transition on the main track" = "Remove every transition on the main track";
+"Back to 0 dB (original level)" = "Back to 0 dB (original level)";
+"Cut this clip in two at the playhead" = "Cut this clip in two at the playhead";
+"Remove this clip from the timeline" = "Remove this clip from the timeline";
+"Dock the picture-in-picture here" = "Dock the picture-in-picture here";
+"Remove this shape from the timeline" = "Remove this shape from the timeline";
+"Unlink this subtitle file from the project" = "Unlink this subtitle file from the project";
+"Split at playhead" = "Split at playhead";
+"Freeze the frame at the playhead" = "Freeze the frame at the playhead";
+"Add a marker at the playhead" = "Add a marker at the playhead";
+"Seconds to ramp the sound up from silence" = "Seconds to ramp the sound up from silence";
+"Seconds to ramp the sound down to silence" = "Seconds to ramp the sound down to silence";
+
+/* 视频编辑：导出 */
+"Render the timeline to a video file" = "Render the timeline to a video file";
+"Cancel the export" = "Cancel the export";
+"Close the export panel" = "Close the export panel";
+"Reveal the exported file in Finder" = "Reveal the exported file in Finder";
+
+/* 录屏 */
+"Close without recording" = "Close without recording";
+"Where the recording is written" = "Where the recording is written";
+"Start recording with these settings" = "Start recording with these settings";
+"Stop recording and finish writing the file" = "Stop recording and finish writing the file";
+"Leave the recording on disk without adding it to the timeline" = "Leave the recording on disk without adding it to the timeline";
+"Put the recording on the timeline" = "Put the recording on the timeline";
+"Delete the recovered file" = "Delete the recovered file";
+"Leave the recovered file on disk without adding it to the timeline" = "Leave the recovered file on disk without adding it to the timeline";
+"Put the recovered recording on the timeline" = "Put the recovered recording on the timeline";
+
+/* 字幕生成、翻译与双轨编辑器 */
+"Close this panel" = "Close this panel";
+"Edit the text and timing of every line" = "Edit the text and timing of every line";
+"Cancel the translation" = "Cancel the translation";
+"Retranslate every line, replacing what is already there" = "Retranslate every line, replacing what is already there";
+"Only translate lines with no translation, or whose source text changed" = "Only translate lines with no translation, or whose source text changed";
+"Cancel subtitle generation" = "Cancel subtitle generation";
+"Transcribe the audio on the timeline into a subtitle track" = "Transcribe the audio on the timeline into a subtitle track";
+"Join the selected lines into one" = "Join the selected lines into one";
+"Break the selected line in two" = "Break the selected line in two";
+"Delete the selected lines from every track" = "Delete the selected lines from every track";
+"Close the subtitle editor" = "Close the subtitle editor";
+"Write the subtitle tracks out as files" = "Write the subtitle tracks out as files";
+
+/* 界面文案补齐（2026-08-12）—— checks/localized-strings-coverage.sh 盯着两张表要配齐 */
+/* 录屏：设置面板与控制条 */
+"Record Screen" = "Record Screen";
+"Source" = "Source";
+"Aspect ratio" = "Aspect ratio";
+"Drag a region on any one display. Return confirms, Escape cancels." = "Drag a region on any one display. Return confirms, Escape cancels.";
+"Includes sound SrtFlow itself is playing." = "Includes sound SrtFlow itself is playing.";
+"Microphone" = "Microphone";
+"Device" = "Device";
+"No microphone found. The screen recording will still work." = "No microphone found. The screen recording will still work.";
+"Recorded to its own track. If computer audio is on too, use headphones to avoid echo — SrtFlow doesn’t cancel echo." = "Recorded to its own track. If computer audio is on too, use headphones to avoid echo — SrtFlow doesn’t cancel echo.";
+"Pointer" = "Pointer";
+"Show pointer" = "Show pointer";
+"Show clicks" = "Show clicks";
+"Start Recording" = "Start Recording";
+"Record" = "Record";
+"Choose where to save this screen recording." = "Choose where to save this screen recording.";
+"Starting…" = "Starting…";
+"Finalizing…" = "Finalizing…";
+"Low disk space — stopping soon." = "Low disk space — stopping soon.";
+"%d × %d pt  ·  %d × %d px" = "%d × %d pt  ·  %d × %d px";
+"Too small — at least %d × %d pt" = "Too small — at least %d × %d pt";
+
+/* 录屏：结果、部分成功与恢复 */
+"Recording is incomplete" = "Recording is incomplete";
+"The file is already saved where you chose. Adding it to the timeline is optional." = "The file is already saved where you chose. Adding it to the timeline is optional.";
+"Keep file only" = "Keep file only";
+"Add to timeline" = "Add to timeline";
+"Discard" = "Discard";
+"A partial recording was added to the timeline." = "A partial recording was added to the timeline.";
+"That recording is already in the timeline." = "That recording is already in the timeline.";
+"The recording couldn’t be read, so it wasn’t added to the timeline." = "The recording couldn’t be read, so it wasn’t added to the timeline.";
+"The screen recording was added, but the microphone track couldn’t be read and was left out." = "The screen recording was added, but the microphone track couldn’t be read and was left out.";
+"That recovered recording couldn’t be read." = "That recovered recording couldn’t be read.";
+"The recovered recording was added, but its microphone track couldn’t be read." = "The recovered recording was added, but its microphone track couldn’t be read.";
+"The recovered recording was saved as %@." = "The recovered recording was saved as %@.";
+"The recovered recording wasn’t added to the timeline." = "The recovered recording wasn’t added to the timeline.";
+"That recovered recording couldn’t be saved: %@" = "That recovered recording couldn’t be saved: %@";
+"A recording from the last session is no longer where it was saved: %@" = "A recording from the last session is no longer where it was saved: %@";
+"This recording was saved but never added to the timeline." = "This recording was saved but never added to the timeline.";
+"This recording was saved but never added to the timeline. Its microphone track is missing." = "This recording was saved but never added to the timeline. Its microphone track is missing.";
+"SrtFlow found a damaged screen-recording record from the last session and left it untouched." = "SrtFlow found a damaged screen-recording record from the last session and left it untouched.";
+"SrtFlow quit while this recording was still being written." = "SrtFlow quit while this recording was still being written.";
+"Only the microphone audio from the interrupted recording could be recovered — the screen recording itself is unusable." = "Only the microphone audio from the interrupted recording could be recovered — the screen recording itself is unusable.";
+"These files couldn’t be deleted, so the recording is still on record: %@" = "These files couldn’t be deleted, so the recording is still on record: %@";
+"The project changed, so the recording wasn’t added to the timeline. It’s saved as %@." = "The project changed, so the recording wasn’t added to the timeline. It’s saved as %@.";
+"The recording is saved as %@, but it couldn’t be added to the timeline." = "The recording is saved as %@, but it couldn’t be added to the timeline.";
+"The recording file disappeared before it could be saved." = "The recording file disappeared before it could be saved.";
+
+/* 录屏：失败原因与音轨抱怨 */
+"There’s still an unfinished recording from earlier. Deal with it first." = "There’s still an unfinished recording from earlier. Deal with it first.";
+"A source picker is already open." = "A source picker is already open.";
+"Source selection was cancelled." = "Source selection was cancelled.";
+"That source is no longer available." = "That source is no longer available.";
+"That folder can’t be written to. Pick another location." = "That folder can’t be written to. Pick another location.";
+"Not enough free space: %@ needed, %@ available." = "Not enough free space: %@ needed, %@ available.";
+"The disk ran out of space while recording." = "The disk ran out of space while recording.";
+"The disk ran out of space, so the recording is incomplete." = "The disk ran out of space, so the recording is incomplete.";
+"SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again." = "SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again.";
+"SrtFlow doesn’t have microphone permission, so narration wasn’t recorded. The screen recording itself is fine." = "SrtFlow doesn’t have microphone permission, so narration wasn’t recorded. The screen recording itself is fine.";
+"SrtFlow couldn’t hide its own recording controls from the capture, so it didn’t start. Try again." = "SrtFlow couldn’t hide its own recording controls from the capture, so it didn’t start. Try again.";
+"SrtFlow couldn’t tell which display you picked (two look identical). Record a window or a custom region instead, or update to macOS 15.2 or later." = "SrtFlow couldn’t tell which display you picked (two look identical). Record a window or a custom region instead, or update to macOS 15.2 or later.";
+"The recording could not be finished." = "The recording could not be finished.";
+"The recording has no usable video." = "The recording has no usable video.";
+"The end of the recording has no picture, so the recording is incomplete." = "The end of the recording has no picture, so the recording is incomplete.";
+"Some audio could not be written in time, so the recording is incomplete." = "Some audio could not be written in time, so the recording is incomplete.";
+"The end of the audio couldn’t be written in time, so the recording is incomplete." = "The end of the audio couldn’t be written in time, so the recording is incomplete.";
+"The microphone track could not be finished, so only the screen was recorded." = "The microphone track could not be finished, so only the screen was recorded.";
+"The microphone stopped working, so only the screen and computer audio were recorded." = "The microphone stopped working, so only the screen and computer audio were recorded.";
+"The microphone couldn’t be used, so only the screen was recorded: %@" = "The microphone couldn’t be used, so only the screen was recorded: %@";
+"The microphone stopped partway through: %@" = "The microphone stopped partway through: %@";
+"The microphone track wasn’t written." = "The microphone track wasn’t written.";
+"The microphone track can’t be read." = "The microphone track can’t be read.";
+"The saved recording can’t be read back." = "The saved recording can’t be read back.";
+"The saved microphone track can’t be read back." = "The saved microphone track can’t be read back.";
+"Computer audio" = "Computer audio";
+"Computer audio was on, but nothing was recorded on the audio track." = "Computer audio was on, but nothing was recorded on the audio track.";
+"The microphone" = "The microphone";
+"%1$@ starts %2$@ after the recording begins." = "%1$@ starts %2$@ after the recording begins.";
+"%1$@ stops %2$@ before the end of the recording." = "%1$@ stops %2$@ before the end of the recording.";
+"Screen Recording %@" = "Screen Recording %@";
+
+/* 工程：菜单、最近工程与文档 */
+"New Project" = "New Project";
+"Open Project…" = "Open Project…";
+"Open Recent" = "Open Recent";
+"Save As…" = "Save As…";
+"Recent Projects" = "Recent Projects";
+"No Recent Projects" = "No Recent Projects";
+"Drop video, audio, images, or subtitles here to start editing." = "Drop video, audio, images, or subtitles here to start editing.";
+"This project hasn’t been saved yet" = "This project hasn’t been saved yet";
+"Untitled" = "Untitled";
+"Save this project before closing it?" = "Save this project before closing it?";
+"It has never been saved, so the edits will be lost." = "It has never been saved, so the edits will be lost.";
+"Save…" = "Save…";
+"Open" = "Open";
+"Could not save the project: %@" = "Could not save the project: %@";
+"Stop the screen recording first." = "Stop the screen recording first.";
+"The frame rate is locked while recording." = "The frame rate is locked while recording.";
+"The video engine isn’t available, so image clips couldn’t be prepared." = "The video engine isn’t available, so image clips couldn’t be prepared.";
+"Relink" = "Relink";
+"Relink…" = "Relink…";
+"Where is “%@”?" = "Where is “%@”?";
+"“%@” could not be found." = "“%@” could not be found.";
+"%d media files could not be found." = "%d media files could not be found.";
+"“%@” isn’t a SrtFlow project file." = "“%@” isn’t a SrtFlow project file.";
+"“%@” was made by a newer version of SrtFlow." = "“%@” was made by a newer version of SrtFlow.";
+
+/* 时间线标记、字幕与导出 */
+"Add Marker at Playhead" = "Add Marker at Playhead";
+"Delete Marker" = "Delete Marker";
+"Note" = "Note";
+"Burn subtitles into the video" = "Burn subtitles into the video";
+"Every subtitle track is hidden — nothing will be burned." = "Every subtitle track is hidden — nothing will be burned.";
+"Translation didn’t start. Close the panel and try again." = "Translation didn’t start. Close the panel and try again.";
+"Output follows the project: %d×%d, %d fps." = "Output follows the project: %d×%d, %d fps.";
+"ffmpeg finished but produced no output file." = "ffmpeg finished but produced no output file.";
+"These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing.";

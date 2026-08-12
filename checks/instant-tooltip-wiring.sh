@@ -48,7 +48,13 @@ if [ -n "${STRAY}" ]; then
     FAIL=1
 fi
 
-# ---- 3. 提示面板自己的两条硬约束 ----
+# ---- 3. 提示文案的翻译 ----
+#
+# 「每条提示都要在 en / zh-Hans 两张表里有」已经并进全局守卫
+# `scripts/check-localization-coverage.sh`（它连 Text/Label/Button 一起扫，还能
+# 认出换行写的调用）。这里不再重复一份 —— 同一条规则维护两处，迟早各走各的。
+
+# ---- 4. 提示面板自己的四条硬约束 ----
 #
 # 面板不能吃鼠标事件：吃了就会立刻触发下面控件的 hover(false)，
 # 提示消失 → 鼠标回到控件 → 又弹出来，肉眼看到的是闪烁。
@@ -64,6 +70,14 @@ fi
 # 锚点层铺在控件上，绝不能吃点击。
 if ! grep -q 'override func hitTest(_ point: NSPoint) -> NSView? { nil }' Sources/SrtFlow/InstantTooltip.swift; then
     echo "✗ 提示的锚点层必须 hitTest 返回 nil（否则按钮会按不动）" >&2
+    FAIL=1
+fi
+# NSHostingView 直接当 contentView，会把自己的尺寸约束灌成面板的 contentMinSize
+# （一条 24pt 的提示报出 min 高 332），面板被撑高后气泡垂直居中，看上去就是
+# 「提示弹在很远的地方」。中间必须垫一层普通 NSView。
+# 真实落点由 scripts/check-instant-tooltip-panel.sh 量，这里只挡住写法回潮。
+if ! grep -q 'panel.contentView = container' Sources/SrtFlow/InstantTooltip.swift; then
+    echo "✗ 提示面板的 contentView 必须是普通容器视图（NSHostingView 会把尺寸约束灌给窗口）" >&2
     FAIL=1
 fi
 
