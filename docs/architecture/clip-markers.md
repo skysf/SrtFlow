@@ -53,12 +53,17 @@
 颜色存名字不存 RGB，不认识的值退回 `.red`（`LenientCodableEnum`），以后改配色
 老工程会跟着变。
 
-## 四、选择是四类互斥的第四类
+## 四、标记对所有其他选择互斥
 
 `EditSelection` 里标记和剪辑、形状、字幕 cue **互斥**。加进去的理由不是画框，
 是删除键：`VideoEditProject.deleteSelected` 是 ⌫ 和工具栏垃圾桶的唯一入口，
 "选中的是标记" 和 "选中的是整段" 同时成立的话，点了段上的标记再按 ⌫，删掉的会是
 整段素材。
+
+> 2026-08-12 加了鼠标框选之后，另外三类之间**不再**互斥（框能一次选中剪辑 +
+> 形状 + cue），但**标记这一条没有松动**：`selectBox` 无论框到什么都把标记
+> 选择清掉，空框也清。理由还是上面那条 ⌫，与画不画框无关。选择模型的全貌见
+> [subtitle-track-visibility-and-layout.md](subtitle-track-visibility-and-layout.md)。
 
 失效清理收在 `state.didSet` 的 `pruneMarkerSelection()` 这一个点上（判据是
 `isMarkerSelectable`：标记还在、且还落在窗口里）。别指望每个会动到剪辑的操作

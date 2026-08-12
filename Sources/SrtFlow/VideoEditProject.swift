@@ -445,14 +445,45 @@ final class VideoEditProject: ObservableObject {
         guard let shape = state.shapes.first(where: { $0.id == id }) else { return nil }
         let span = TimelineSpan(start: shape.timelineStart, end: shape.timelineEnd)
         // 拖的形状在选中集合里，同一片选择里的剪辑（含链接伙伴）才跟着走。
-        var clipIDs: Set<UUID> = selectedShapeIDs.contains(id) ? selectedClipIDs : []
-        if linkageEnabled {
-            for clipID in clipIDs { clipIDs.formUnion(state.linkedClipIDs(of: clipID)) }
-        }
+        // 名单规则与拖剪辑**同一份**（含磁吸下剔除主轨成员那条）。
+        let clipIDs = state.draggingClipIDs(
+            seed: selectedShapeIDs.contains(id) ? selectedClipIDs : [],
+            linkage: linkageEnabled,
+            magnetPinsMainTrack: magnetEnabled
+        )
         let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
         // 形状行允许重叠，形状自己没有障碍；跟着走的剪辑要带上各自轨上的障碍，
         // 整组的可行位移由所有成员一起决定（`allowedDeltaRange`）。
         let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .shape)]
+            + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
+        return ClipDragPlan(
+            draggedID: id,
+            draggedSpan: span,
+            members: members,
+            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
+            magnet: nil
+        ).adding(shapes: companions.shapes, cues: companions.cues)
+    }
+
+    /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
+    /// 自己没有障碍；跟着走的剪辑各自带上本轨的障碍。
+    ///
+    /// 有它，文档里那句「拖任意一个被选中的东西，整片跟着走」才对三类都成立：
+    /// 以前 cue 上只有点选手势，从 cue 起手根本建不出计划，只能反过来「拖剪辑
+    /// 时 cue 跟着」（复审报的第 3 条）。
+    ///
+    /// 两轨镜像：译文行的块和原文行同 ID 同时间，从哪一行起拖都是同一条 cue，
+    /// 落地走 `LinkedSubtitleEditing.setStarts` 一起挪（`TimelineState.move`）。
+    func cueDragPlan(cueID id: UUID) -> ClipDragPlan? {
+        guard let cue = state.subtitle?.cues.first(where: { $0.id == id }) else { return nil }
+        let span = TimelineSpan(start: cue.start, end: cue.end)
+        let clipIDs = state.draggingClipIDs(
+            seed: selectedSubtitleCueIDs.contains(id) ? selectedClipIDs : [],
+            linkage: linkageEnabled,
+            magnetPinsMainTrack: magnetEnabled
+        )
+        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
+        let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .subtitleCue)]
             + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
         return ClipDragPlan(
             draggedID: id,
@@ -484,29 +515,38 @@ final class VideoEditProject: ObservableObject {
         return (shapes, cues, Set(shapes.map(\.id)).union(cues.map(\.id)))
     }
 
-    /// 形状拖动落地：一步撤销。
+    /// 形状 / 字幕 cue 起手的拖动落地：一步撤销。
     ///
     /// 走的是和剪辑**同一个** `TimelineState.applyDrag` —— 框选之后这一组里可能
-    /// 混着剪辑和字幕 cue，各写各的迟早分叉。形状拖动永远是自由落点（没有跨轨、
-    /// 没有磁吸插空），所以后两个参数钉死。
-    func commitShapeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
+    /// 混着剪辑、形状和字幕 cue，各写各的迟早分叉。这两类自己永远是自由落点
+    /// （没有跨轨、没有磁吸插空），所以 `crossTrack` 钉死成 nil。
+    ///
+    /// `magnet` 仍要如实传全局开关：这一组里可能挂着剪辑，而 `perform` 之后
+    /// 无论如何都会重排主轨，`applyDrag` 里同步排一次，产物才等于最终状态。
+    func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
         // 形状和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里没有剪辑
         // 就别白重建一次预览 —— 那会让画面黑一下。
         let hasClip = plan.members.contains { $0.kind == .clip }
+        let magnet = magnetEnabled
         perform(rebuildsPreview: hasClip) { state in
-            state.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: false)
+            state.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: magnet)
         }
     }
 
-    /// 拖 `id` 时会跟着一起动的块（含它自己）：链接组的伙伴 + 多选的其他块。
+    /// 拖 `id` 时会跟着一起动的块（含它自己）：多选的其他块 + 每一个的链接伙伴。
     ///
     /// 吸附候选、渲染偏移、落地三处必须用**同一份**名单：谁在动谁就不能同时
-    /// 当别人的对齐参考点。
+    /// 当别人的对齐参考点。规则本身是纯值的（`TimelineState.draggingClipIDs`，
+    /// 自检钉在那里），这里只负责把「当前选择 + 两个开关」喂进去。
     func movingClipIDs(draggedID id: UUID) -> Set<UUID> {
-        var ids: Set<UUID> = [id]
-        if linkageEnabled { ids.formUnion(state.linkedClipIDs(of: id)) }
-        if selectedClipIDs.contains(id) { ids.formUnion(selectedClipIDs) }
-        return ids
+        var seed: Set<UUID> = [id]
+        if selectedClipIDs.contains(id) { seed.formUnion(selectedClipIDs) }
+        return state.draggingClipIDs(
+            seed: seed,
+            linkage: linkageEnabled,
+            // 拖的就是主轨块时不剔除：那一轮是插空重排，走 mainInsertion 分支。
+            magnetPinsMainTrack: magnetEnabled && state.location(of: id)?.track.isMain != true
+        )
     }
 
     /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。

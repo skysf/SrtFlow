@@ -156,8 +156,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
 - [定格](docs/architecture/freeze-frame.md) — 一次性提交、PNG 归属、波纹范围与静帧管线。
 - [字幕语言流](docs/architecture/subtitle-language-flow.md) — 目标语言可见性、预检与自动检测。
-- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局与选择互斥。
-- [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、四类选择互斥与命中区分层。
+- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局与选择模型（点选互斥 / 框选混选）。
+- [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、标记对所有选择互斥、命中区分层。
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑与已知盲区。
 
@@ -194,6 +194,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-08-12 提示弹在很远的地方、还没翻译](docs/bugfixes/2026-08-12-instant-tooltip-first-show-far-off.md) — NSHostingView 把尺寸约束灌给面板窗口、摆好≠摆定、本地化查不到是静默降级。
 - [2026-08-12 压缩预览区时播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) — VStack 里拒绝再矮的那个把兄弟挤出边界；谁让步必须显式声明。
 - [2026-08-12 转场前面有硬切就导不出](docs/bugfixes/2026-08-12-xfade-timebase-mismatch.md) — xfade 硬检查 timebase、concat 输出固定 AVTB、只在接缝顺序上翻车。
+- [2026-08-12 框选复审的五条后续](docs/bugfixes/2026-08-12-marquee-review-followups.md) — 「整组同一位移」四处没收口、自检入口比生产浅一层的假绿、数个数的守卫也会假绿。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

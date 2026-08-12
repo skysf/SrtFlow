@@ -320,12 +320,46 @@ extension TimelineState {
 
 extension TimelineState {
 
+    /// 这一轮拖动里跟着一起动的**剪辑**名单。
+    ///
+    /// 吸附候选、拖动中的渲染位移、落地三处必须用同一份名单，所以它是纯值的：
+    /// `VideoEditProject` 只负责把开关和当前选择喂进来，自检直接调这里。
+    ///
+    /// 两条容易写错的地方：
+    ///
+    /// 1. **链接组要为每一个成员各展开一次**，不能只展开被拖的那个。框选 A、B
+    ///    两段、各自都有分离出来的音频时，只展开 A 的话 B 会动、B 的音频不动 ——
+    ///    直接 A/V 错位（复审报的第 2 条）。所以先并多选、再整批展开链接。
+    /// 2. **磁吸开着、而这一轮拖的不是主轨块时，主轨成员整批剔除**。磁吸下主轨
+    ///    块的位置只由 `packMain` 决定：跟着平移在拖动中画出来了，松手 `perform`
+    ///    重排又把它排回去，等于骗了用户一路。剔除之后「拖动中看到的 = 松手落到
+    ///    的」重新成立。想让主轨块跟着走，关掉磁吸即可。
+    ///    - 代价写在明处：主轨块和它分离出来的音频被这条规则拆开时，磁吸下本来
+    ///      也没法同步移动（长期约束见 docs/architecture/timeline-drag-gestures.md）。
+    func draggingClipIDs(
+        seed: Set<UUID>,
+        linkage: Bool,
+        magnetPinsMainTrack: Bool
+    ) -> Set<UUID> {
+        var ids = seed
+        if linkage {
+            for id in seed { ids.formUnion(linkedClipIDs(of: id)) }
+        }
+        guard magnetPinsMainTrack else { return ids }
+        return ids.filter { location(of: $0)?.track.isMain != true }
+    }
+
     /// 一轮拖动落地的全部状态变换。
     ///
     /// `VideoEditProject.commitDrag` 只负责把它包进**一次** `perform`
     /// （一步撤销 + 一次预览重建）——变换本身留在这里，自检才够得着。
     ///
     /// 位置**只来自** `resolution`：拖动中渲染的就是这一份，落地不再算第二遍。
+    ///
+    /// `magnet` 传的是**全局磁吸开关**（不是「拖的是不是主轨块」）。它开着时
+    /// 这里就把 `packMain()` 做完，产物即最终状态 —— `perform` 之后那次重排
+    /// 因此是幂等的，自检在纯值层看到的也就是 App 里真正落下的位置。以前这里
+    /// 不排、只靠 `perform` 排，自检便测不到那一步（复审指出的假绿）。
     mutating func applyDrag(
         _ plan: ClipDragPlan,
         resolution: DragResolution,
@@ -347,18 +381,32 @@ extension TimelineState {
             var clips = mainClips.filter { !movingIDs.contains($0.id) }
             clips.insert(contentsOf: movingMain, at: min(insertion.index, clips.count))
             mainClips = clips
-            packMain()
-            // 其他轨上的伙伴按被拖块**实际**的最终 delta 平移 —— 磁吸把它挤到哪儿，
-            // 链接的音频就跟到哪儿，不各夹各的。
-            if let moved = clip(with: plan.draggedID) {
-                let actual = moved.timelineStart - plan.draggedSpan.start
-                let mainIDs = Set(movingMain.map(\.id))
-                move(plan.members.filter { !mainIDs.contains($0.id) }, by: actual)
-            }
         }
+        // 4) 磁吸：主轨在这里就排好。下面算「实际位移」必须在排完之后 ——
+        //    排之前的位置是中间态，拿它去平伙伴就会差一个身位。
+        if magnet { packMain() }
+        realignCompanions(plan, magnet: magnet)
         // 磁吸关掉的拖动只改了 timelineStart，数组顺序要跟着时间走
         //（磁吸开的分支 packMain 之后本来就有序，这里是幂等的）。
         sortMainClipsByStart()
+    }
+
+    /// 被拖的那个最终落在哪儿，其余成员就跟着挪同样多。
+    ///
+    /// 两条分支都要它，理由是同一个：**落点可能不等于 `resolution.delta`**。
+    /// 磁吸插空会把被拖块挤到缝的位置；跨轨到岸会被 `clampedStart` 让开目标轨上
+    /// 的占位。只搬被拖的那个、伙伴留在第 1 步的位置上，整组的相对错位就被拆散了
+    /// （链接音频当场 A/V 错位 —— 复审报的就是跨轨这一条）。
+    ///
+    /// 位移按**冻结 span + 实际 delta** 算绝对值，所以在第 1 步之上写第二次是
+    /// 幂等的，不会叠成双倍。
+    ///
+    /// 主轨成员在磁吸下由 `packMain` 定位，不参与 —— 平了也会被排回去。
+    private mutating func realignCompanions(_ plan: ClipDragPlan, magnet: Bool) {
+        guard let moved = clip(with: plan.draggedID) else { return }
+        let actual = moved.timelineStart - plan.draggedSpan.start
+        let pinned = magnet ? Set(mainClips.map(\.id)) : []
+        move(plan.members.filter { !pinned.contains($0.id) }, by: actual)
     }
 
     /// 把一组成员整体平移 `delta` 秒。三类成员改的字段不同，位移只有一个。

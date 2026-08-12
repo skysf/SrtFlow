@@ -21,6 +21,9 @@ struct VideoEditTimelineView: View {
     @State private var marquee: TimelineMarquee.Session?
     /// 拉框起手时的滚动量：自动滚动把内容抽走时要补回来（同 `ClipDragSession`）。
     @State private var marqueeOriginScrollOffset: Double = 0
+    /// 正在被拖的字幕 cue。剪辑/形状块各自是独立视图、用自己的 `isMoving`
+    /// 标记起手，cue 块是 `ForEach` 里的裸图形，只能在这一层按 id 记。
+    @State private var movingCueID: UUID?
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
     /// 垂直拖动瞄准的目标行（高亮它）。
@@ -450,9 +453,23 @@ struct VideoEditTimelineView: View {
                 // 标尺行：拖它是 scrub，框不到任何东西。
                 return nil
             }
+            // 纵向按**画出来的**块算，不是整行：字幕/形状块在行内上下都留了白，
+            // 按整行判的话框从留白里扫过也会选中（常量与画块处共用）。
+            let minY: Double
+            let maxY: Double
+            if spec.isShapes {
+                minY = layout.minY + TimelineMarquee.shapeTopInset
+                maxY = minY + TimelineMarquee.shapeHeight
+            } else if spec.subtitleKind != nil {
+                minY = layout.minY + TimelineMarquee.cueTopInset
+                maxY = minY + TimelineMarquee.cueHeight
+            } else {
+                minY = layout.minY
+                maxY = layout.maxY
+            }
             return TimelineMarquee.Row(
-                minY: layout.minY,
-                maxY: layout.maxY,
+                minY: minY,
+                maxY: maxY,
                 isHidden: spec.isHidden,
                 items: items
             )
@@ -532,11 +549,12 @@ struct VideoEditTimelineView: View {
     /// 这个块此刻的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。
     /// 整组共用**同一个**位移 —— 逐块各算各的会把相对错位弄坏。
     private func dragOffset(for clip: EditClip) -> Double? {
-        dragOffset(forShape: clip.id)
+        dragOffset(movingID: clip.id)
     }
 
-    /// 同上，按 id 查（形状块也走这里）。
-    private func dragOffset(forShape id: UUID) -> Double? {
+    /// 同上，按 id 查。三类块（剪辑 / 形状 / 字幕 cue）共用这一个 —— 名单来自
+    /// 同一份计划，谁在这一组里谁就画同一个位移。
+    private func dragOffset(movingID id: UUID) -> Double? {
         guard let drag = clipDrag, drag.movingIDs.contains(id) else { return nil }
         return drag.offset
     }
@@ -567,6 +585,17 @@ struct VideoEditTimelineView: View {
         clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollOffset)
     }
 
+    /// 字幕 cue 起手的拖动。与剪辑/形状三处严格对称，包括「拖一个没选中的
+    /// = 单选它再拖」这条语义。
+    private func beginCueDrag(_ cue: SubtitleCue) {
+        project.clock.endPeek()
+        if !project.selectedSubtitleCueIDs.contains(cue.id) {
+            project.selectSubtitleCue(cue.id, additive: false)
+        }
+        guard let plan = project.cueDragPlan(cueID: cue.id) else { return }
+        clipDrag = ClipDragSession(subject: .subtitleCue, plan: plan, originScrollOffset: scrollOffset)
+    }
+
     /// `pointerViewportX` 是指针在滚动视口里的 x（手势坐标系就钉在视口上）。
     private func updateClipDrag(translation: CGSize, pointerViewportX: Double) {
         guard var drag = clipDrag else { return }
@@ -593,8 +622,10 @@ struct VideoEditTimelineView: View {
         }
         guard let drag = clipDrag else { return }
         switch drag.subject {
-        case .shape:
-            project.commitShapeDrag(drag.plan, resolution: drag.resolution)
+        case .shape, .subtitleCue:
+            // 这两类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
+            // 和剪辑同一个 applyDrag（`commitFreeDrag`），位移只有一份。
+            project.commitFreeDrag(drag.plan, resolution: drag.resolution)
         case .clip:
             // 水平平移、跨轨搬运、磁吸插空都在 commitDrag 的**同一次 perform**
             // 里，所以是一步撤销，也不会出现「视频换了轨、链接音频留在旧时刻」。
@@ -676,7 +707,7 @@ struct VideoEditTimelineView: View {
                     // 形状和剪辑走**同一套**拖动会话：冻结候选、自由落点解析、
                     // 边缘自动滚动、松手落一次。它每一拍写的也是同一个
                     // @Published TimelineState，「形状很轻」并不成立。
-                    dragOffset: dragOffset(forShape: shape.id),
+                    dragOffset: dragOffset(movingID: shape.id),
                     onSelect: {
                         let flags = NSApp.currentEvent?.modifierFlags ?? []
                         project.selectShape(
@@ -713,19 +744,24 @@ struct VideoEditTimelineView: View {
             if let cues {
                 ForEach(cues) { cue in
                     let selected = isSelected(cue: cue.id)
+                    let offset = dragOffset(movingID: cue.id)
                     RoundedRectangle(cornerRadius: 3)
                         .fill(tint.opacity(selected ? 0.8 : 0.45))
                         .overlay(
                             RoundedRectangle(cornerRadius: 3)
                                 .strokeBorder(.white, lineWidth: selected ? 1.2 : 0)
                         )
-                        // 最小宽度和框选的命中判定共用一个常量：画多宽就该按多宽
-                        // 判，否则一条 0.05 秒的 cue 框得中却看不见、或反过来。
+                        // 宽和高都与框选的命中判定共用常量：画多大就该按多大判，
+                        // 否则一条 0.05 秒的 cue 框得中却看不见、或反过来。
                         .frame(
                             width: max(TimelineMarquee.cueMinimumWidth, (cue.end - cue.start) * pps),
-                            height: 14
+                            height: TimelineMarquee.cueHeight
                         )
-                        .offset(x: cue.start * pps, y: 4)
+                        .offset(
+                            x: (cue.start + (offset ?? 0)) * pps,
+                            y: TimelineMarquee.cueTopInset
+                        )
+                        .zIndex(offset != nil ? 10 : 0)
                         .onTapGesture {
                             // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
                             // 带进这条字幕，画面上立刻有字可调。⌘/⇧ 点是加选。
@@ -734,6 +770,25 @@ struct VideoEditTimelineView: View {
                             if !additive { clock.seek(to: cue.start + 0.05) }
                             project.selectSubtitleCue(cue.id, additive: additive)
                         }
+                        .gesture(
+                            // 与剪辑/形状块同一套：坐标系钉在不动的滚动视口上
+                            //（块会在手指底下挪窝，自动滚动还会把内容抽走）。
+                            DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
+                                .onChanged { value in
+                                    if movingCueID != cue.id {
+                                        movingCueID = cue.id
+                                        beginCueDrag(cue)
+                                    }
+                                    updateClipDrag(
+                                        translation: value.translation,
+                                        pointerViewportX: value.location.x
+                                    )
+                                }
+                                .onEnded { _ in
+                                    movingCueID = nil
+                                    endClipDrag()
+                                }
+                        )
                         .instantHelp(verbatim: SubtitleSerializer.plainText(cue.text))
                 }
             }
@@ -1490,8 +1545,12 @@ private struct ShapeBlockView: View {
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 5)
-        // 最小宽度与框选的命中判定共用一个常量（`TimelineMarquee`）。
-        .frame(width: max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps), height: 20, alignment: .leading)
+        // 宽和高都与框选的命中判定共用常量（`TimelineMarquee`）：画多大就按多大判。
+        .frame(
+            width: max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps),
+            height: TimelineMarquee.shapeHeight,
+            alignment: .leading
+        )
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(shape.color.swiftUIColor.opacity(0.55))
@@ -1501,7 +1560,7 @@ private struct ShapeBlockView: View {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
             }
         }
-        .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: 3)
+        .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.shapeTopInset)
         .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
         .gesture(

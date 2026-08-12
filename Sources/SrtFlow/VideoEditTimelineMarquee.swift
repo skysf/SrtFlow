@@ -21,6 +21,19 @@ enum TimelineMarquee {
     static let shapeMinimumWidth: Double = 24
     static let cueMinimumWidth: Double = 2
 
+    /// 块在自己那一行里画出来的**纵向**位置（行顶算起的留白 + 块高）。
+    ///
+    /// 和上面三个宽度常量同一个理由，只是换成纵向：判定必须按**画出来的**范围，
+    /// 不能按整行。字幕行高 22 而 cue 块只有 14、上下各留 4；形状行高 26 而块只有
+    /// 20、上下各留 3 —— 按整行判的话，框只从这些留白里扫过、一个像素都没碰到块，
+    /// 也会把它选中（复审报的第 4 条）。
+    ///
+    /// 剪辑块铺满整行，没有留白，所以没有对应常量：那种行直接用行高。
+    static let cueTopInset: Double = 4
+    static let cueHeight: Double = 14
+    static let shapeTopInset: Double = 3
+    static let shapeHeight: Double = 20
+
     /// 框里能选中的三类东西。
     enum Kind: Equatable {
         case clip

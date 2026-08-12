@@ -55,7 +55,7 @@ fi
 # 每一拍改 state 会连带整个编辑器视图树重建 + 重挂自动保存，mouseDragged
 # 随即积压，块就追不上光标了。
 if UPDATE_BODY="$(require_func 'private func updateClipDrag' "$VIEW")"; then
-  for forbidden in 'liveApply' 'liveMove' 'commitDrag' 'commitShapeDrag' 'relocate' 'project.perform'; do
+  for forbidden in 'liveApply' 'liveMove' 'commitDrag' 'commitFreeDrag' 'relocate' 'project.perform'; do
     printf '%s\n' "$UPDATE_BODY" | grep -q "$forbidden" \
       && fail "updateClipDrag 里出现了 ${forbidden}：拖动中禁止写 TimelineState"
   done
@@ -65,12 +65,29 @@ if UPDATE_BODY="$(require_func 'private func updateClipDrag' "$VIEW")"; then
 fi
 
 # ── 3. 一轮拖动的输入必须在手势开始时冻结 ──────────────────────────────
-for entry in 'private func beginClipDrag' 'private func beginShapeDrag'; do
+for entry in 'private func beginClipDrag' 'private func beginShapeDrag' 'private func beginCueDrag'; do
   if BODY="$(require_func "$entry" "$VIEW")"; then
     printf '%s\n' "$BODY" | grep -q '[dD]ragPlan(' \
       || fail "${entry} 没有冻结这一轮的输入（dragPlan/shapeDragPlan）"
   fi
 done
+# 三个入口的「跟着动的名单」必须都走那份纯值规则：链接组要为**每一个**多选
+# 成员各展开一次（只展开被拖的那个 = 另一段的音频留在原地，A/V 错位），
+# 磁吸下主轨成员要整批剔除（平了也会被 packMain 排回去 = 拖动中骗人）。
+for entry in 'func movingClipIDs(draggedID' 'func shapeDragPlan(shapeID' 'func cueDragPlan(cueID'; do
+  if BODY="$(require_func "$entry" "$PROJECT")"; then
+    printf '%s\n' "$BODY" | grep -q 'draggingClipIDs(' \
+      || fail "${entry} 没走 TimelineState.draggingClipIDs：链接组/磁吸剔除的规则会各写一份"
+    printf '%s\n' "$BODY" | grep -q 'linkedClipIDs(' \
+      && fail "${entry} 自己展开了链接组：规则只能有一份（draggingClipIDs）"
+  fi
+done
+if BODY="$(require_func 'func draggingClipIDs(' "$EDITS")"; then
+  printf '%s\n' "$BODY" | grep -q 'for id in seed' \
+    || fail "draggingClipIDs 没有为每一个多选成员展开链接组：另一段的音频会留在原地"
+  printf '%s\n' "$BODY" | grep -q 'magnetPinsMainTrack' \
+    || fail "draggingClipIDs 丢了磁吸剔除主轨成员那条"
+fi
 if BODY="$(require_func 'func dragPlan(draggedID' "$PROJECT")"; then
   printf '%s\n' "$BODY" | grep -q 'snapCandidates' \
     || fail "dragPlan 没有取吸附候选：那这一轮拖动根本不会吸附"
@@ -86,7 +103,7 @@ fi
 # ── 4. 落点只有一份算法 ────────────────────────────────────────────────
 # 拖动中渲染和松手落地都必须来自同一份 DragResolution。commit 里再算一遍
 #（历史上是 clampedStart）就会「拖动中显示 9s、松手弹到 5s」。
-for entry in 'func commitDrag' 'func commitShapeDrag'; do
+for entry in 'func commitDrag' 'func commitFreeDrag'; do
   if BODY="$(require_func "$entry" "$PROJECT")"; then
     # 一步撤销：整个落地收在**一次** perform 里（跨轨搬运也得在同一次里）。
     COUNT="$(printf '%s\n' "$BODY" | grep -c 'perform(\|perform {' || true)"
@@ -105,6 +122,20 @@ if BODY="$(require_func 'mutating func applyDrag' "$EDITS")"; then
     || fail "applyDrag 没有用整组统一的 resolution.delta"
   printf '%s\n' "$BODY" | grep -q 'resolution.mainInsertion' \
     || fail "applyDrag 没有用拖动中算好的 mainInsertion：主轨插入指示线会说谎"
+  # 落点可能不等于 resolution.delta（磁吸插空、跨轨到岸让位），伙伴必须按
+  # **实际**位移再平一次，否则整组相对位置被拆散、链接音频当场 A/V 错位。
+  printf '%s\n' "$BODY" | grep -q 'realignCompanions' \
+    || fail "applyDrag 没有按实际落点重平伙伴：跨轨/磁吸落地会拆散整组"
+  # 磁吸重排必须在 applyDrag 里做完：perform 之后还会排一次，这里不排的话
+  # 自检在纯值层看到的就不是最终位置（复审指出的假绿）。
+  printf '%s\n' "$BODY" | grep -q 'if magnet { packMain() }' \
+    || fail "applyDrag 没有在磁吸时自己 packMain：自检看到的落点不是最终落点"
+fi
+if BODY="$(require_func 'private mutating func realignCompanions' "$EDITS")"; then
+  printf '%s\n' "$BODY" | grep -q 'plan.draggedSpan.start' \
+    || fail "realignCompanions 没按「被拖块实际落点 - 冻结起点」算位移"
+  printf '%s\n' "$BODY" | grep -q 'magnet ? Set(mainClips' \
+    || fail "realignCompanions 没把磁吸下的主轨成员排除：它们由 packMain 定位"
 fi
 
 # ── 4b. 三类成员共用同一个位移，且写第二次必须幂等 ─────────────────────
@@ -162,6 +193,34 @@ else
       || fail "移动手势没钉在滚动视口坐标系上：$line"
   done <<< "$GESTURE"
 fi
+# 三类块都要真的把移动手势接上：剪辑、形状、字幕 cue。少一类，「拖任意一个被
+# 选中的东西，整片跟着走」对那一类就是空话 —— cue 就这么漏过一轮（复审第 3 条）。
+# 不用「数手势个数」：容器上还挂着拉框手势，数得出来的绿是假绿。
+if BODY="$(require_func 'private func subtitleRow' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'DragGesture(minimumDistance: 4' \
+    || fail "字幕 cue 块没有移动手势：从 cue 起手拖不动整组"
+  printf '%s\n' "$BODY" | grep -q 'beginCueDrag(' \
+    || fail "字幕 cue 的手势没冻结这一轮的输入（beginCueDrag）"
+  printf '%s\n' "$BODY" | grep -q 'endClipDrag(' \
+    || fail "字幕 cue 的手势没有落地入口（endClipDrag）"
+fi
+grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$VIEW" \
+  || fail "形状块没有接上 beginShapeDrag"
+grep -q 'beginClipDrag(' "$VIEW" || fail "剪辑块没有接上 beginClipDrag"
+
+# ── 5b. 框选的纵向命中必须按「画出来的块」算，不是整行 ─────────────────
+# 字幕/形状块在行内上下都留了白，按整行判的话框从留白里扫过也会选中。
+if BODY="$(require_func 'private func marqueeRows' "$VIEW")"; then
+  for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
+    printf '%s\n' "$BODY" | grep -q "TimelineMarquee.${constant}" \
+      || fail "marqueeRows 没用 TimelineMarquee.${constant}：框选纵向又按整行判了"
+  done
+fi
+# 画块的地方必须读同一批常量，否则「画」和「判」还是会分叉。
+for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
+  COUNT="$(grep -c "TimelineMarquee.${constant}" "$VIEW" || true)"
+  [ "$COUNT" -ge 2 ] || fail "TimelineMarquee.${constant} 在视图里只用了 ${COUNT} 处：画和判没共用"
+done
 
 # ── 6. 缩放只有一个会夹范围的入口 ──────────────────────────────────────
 # pps 掉到 1 以下时，位移换算会被 max(pps, 1) 兜底，1:1 跟手当场坏掉。
