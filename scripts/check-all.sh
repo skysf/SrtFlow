@@ -51,6 +51,10 @@ run_check "no-hardcoded-fps（扫描守卫）" checks/no-hardcoded-fps.sh
 run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-build-output.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
+run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
+# 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
+# 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口
+# 一律走 GUI 冒烟流程（docs/testing/gui-smoke-testing.md）。
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
@@ -61,6 +65,7 @@ run_check "preview-composition（预览合成真取帧）" scripts/check-preview
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 run_check "export-frame-rate（生产导出滤镜帧率）" scripts/check-export-frame-rate.sh
 run_check "export-alpha-compositing（画中画 fill+matte）" scripts/check-export-alpha-compositing.sh
+run_check "audio-fade（渐入渐出真实包络）" scripts/check-audio-fade.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
 
 echo ""

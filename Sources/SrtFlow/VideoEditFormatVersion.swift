@@ -82,6 +82,22 @@ extension TimelineState {
     /// 无条件要求接管（一律写 latest），这里保留为登记清单。
     var requiresFormatVersion8: Bool { hasClipMarkers }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v9-only 持久数据。
+    ///
+    /// **登记清单（新增 v9-only 字段必须同步补进来）：**
+    /// 1. `EditClip.fadeInDuration` / `fadeOutDuration` —— 声音的渐入渐出时长。
+    ///
+    /// 为什么要升版本：这两个键**直接决定成片里的声音**。只认 v8 的旧版照常
+    /// 打开，用户随手编辑触发自动保存就把它们删光 —— 调好的渐入渐出没了，
+    /// 导出的音频跟着变（开头结尾从渐变变成硬切）。判断标准同
+    /// docs/bugfixes/2026-08-04-transform-review.md：问的不是「新版能不能读
+    /// 旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// 按 v4/v8 的**按需**写法（没设过渐变的工程不算 v9 数据），
+    /// 与 `EditClip` 的 Codable 只在 `> 0` 时写键一致。writer 的定版仍被
+    /// v5 的无条件要求接管（一律写 latest），这里保留为登记清单。
+    var requiresFormatVersion9: Bool { hasAudioFades }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

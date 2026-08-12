@@ -143,7 +143,7 @@
 "Other fonts" = "其他字体";
 "Search fonts" = "搜索字体";
 "Arrow keys walk the list — the preview follows as you go." = "用上下方向键逐个试，预览会实时跟着变。";
-"Size" = "字号";
+"Font size" = "字号";
 "Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "所有尺寸都以 1080p 画面为基准，因此同一套样式在 720p 和 4K 导出里看起来完全一致。";
 "Bold" = "粗体";
 "Italic" = "斜体";
@@ -200,7 +200,6 @@
 "Add a line below the selection" = "在选中行下面加一行";
 "Delete the selected lines" = "删除选中的行";
 "Scroll to the line being spoken during playback" = "播放时自动滚动到正在说的那句";
-"Write the changes back to the subtitle file (⌘S)" = "把改动写回字幕文件（⌘S）";
 "Editing the subtitle file on its own. Add a video to see it on the picture." = "正在单独编辑字幕文件。加个视频就能看到它在画面上的样子。";
 "The subtitle lines show up here, in step with playback." = "字幕会显示在这里，跟着播放走。";
 "Open Subtitle File…" = "打开字幕文件…";
@@ -217,8 +216,6 @@
 "Add Subtitle File…" = "添加字幕文件…";
 "Undo" = "撤销";
 "Redo" = "重做";
-"Split at playhead (⌘B)" = "在播放头处分割（⌘B）";
-"Freeze the frame at the playhead (⇧⌘F)" = "定格播放头处的画面（⇧⌘F）";
 "Could not read the frame at the playhead from %@." = "无法从 %@ 读取播放头处的那一帧。";
 "Could not save the freeze frame to %@." = "无法把定格画面保存到 %@。";
 "The clip changed while the freeze frame was being prepared. Try again." = "定格准备期间这段素材被改动了，请重试。";
@@ -250,7 +247,6 @@
 "Size" = "大小";
 "Split" = "分割";
 "Select" = "选择";
-"Mouse tool: Select (A) or Split (B)" = "鼠标工具：选择 (A) / 分割 (B)";
 "Apply to All" = "全部应用";
 "Clear All" = "全部清除";
 "Transform" = "变换";
@@ -308,8 +304,6 @@
 "Adding…" = "正在添加…";
 "Drag up or down to resize this kind of track" = "上下拖动可调整这类轨道的高度";
 
-"Play (Space)" = "播放（空格）";
-"Hide or show this track (V)" = "隐藏/显示这条轨道（V）";
 "Hide or show subtitles" = "隐藏/显示字幕";
 "Subtitle track is hidden — nothing will be burned." = "字幕轨已隐藏 —— 不会烧录进导出。";
 "%d clips selected" = "已选中 %d 段";
@@ -387,3 +381,262 @@
 "The timeline changed while generating. Generate again — cached transcription makes rerunning fast." = "生成期间时间线变了。请重新生成一次 —— 有转写缓存在，重跑很快。";
 "No speech was recognized. Try another source language." = "没有识别到语音。可以换一个音频语言再试。";
 "Subtitles were generated, but translation failed: %@" = "字幕已生成，但翻译失败：%@";
+
+/* 按钮提示（instantHelp）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
+/* 引擎状态与授权 */
+"What is wrong with the video engine, and how to fix it" = "视频引擎哪里出了问题，以及怎么修";
+"Open Privacy & Security so the engine can be allowed to run" = "打开「隐私与安全性」放行视频引擎";
+"Copy the un-quarantine command to the clipboard" = "复制解除隔离的命令";
+
+/* 压缩与编码队列 */
+"Pick videos to compress" = "选择要压缩的视频";
+"Start encoding everything in the queue" = "开始编码队列里的全部任务";
+"Cancel everything still running" = "取消所有还在跑的任务";
+"Remove finished items from the list" = "把已完成的项从列表里移除";
+"Add more files to the queue" = "继续往队列里添加文件";
+"Where finished files are written" = "完成的文件写到哪里";
+"Go back to writing next to each source file" = "改回写在每个源文件旁边";
+"Copy the ffmpeg command to the clipboard" = "复制这条 ffmpeg 命令";
+
+/* 批量转换 */
+"Pick subtitle files to convert" = "选择要转换的字幕文件";
+"Empty the list" = "清空列表";
+"Where converted files are written; defaults to next to the source" = "转换结果写到哪里；默认写在源文件旁边";
+"Convert every file in the list" = "转换列表里的全部文件";
+
+/* 烧字幕、样式预设与字体 */
+"Pick videos to burn subtitles into" = "选择要烧字幕的视频";
+"Pick the subtitle file to burn in" = "选择要烧录的字幕文件";
+"Pick the typeface for burned-in subtitles" = "选择烧录字幕使用的字体";
+"Clear the search" = "清空搜索";
+"Save the preset under this name" = "用这个名字保存预设";
+"Discard the name and keep the style unsaved" = "放弃这个名字，不保存样式";
+"Remember this style so it can be reused" = "记住这套样式，以后可直接套用";
+"Delete the saved preset that matches this style" = "删除与当前样式相同的那个预设";
+
+/* 字幕编辑面板 */
+"Open an .srt or .vtt file to edit" = "打开一个 .srt 或 .vtt 文件来编辑";
+"Write the changes back to the subtitle file" = "把改动写回字幕文件";
+
+/* 视频编辑：工程栏、工具栏与检查器 */
+"Add video, audio or images to the timeline" = "把视频、音频或图片加到时间线";
+"Open an existing .srtflowproj file" = "打开已有的 .srtflowproj 工程";
+"Mouse tool: Select or Split" = "鼠标工具：选择 / 分割";
+"Project frame rate — preview, export and keyframes all follow it" = "工程帧率 —— 预览、导出和关键帧都跟着它走";
+"Record the screen into this project" = "录屏并直接录进这个工程";
+"Dismiss this message" = "关掉这条提示";
+"Hide or show this track" = "隐藏或显示这条轨";
+"Remove this marker" = "删除这个标记";
+"Render just the selected clips to a video file" = "只把选中的片段导出成视频文件";
+"Remove the selected clips from the timeline" = "从时间线上删除选中的片段";
+"Put this transition on every seam of the main track" = "把这个转场用到主轨的每个接缝上";
+"Remove every transition on the main track" = "清除主轨上的全部转场";
+"Back to 0 dB (original level)" = "回到 0 dB（原始音量）";
+"Cut this clip in two at the playhead" = "在播放头处把这一段切成两段";
+"Remove this clip from the timeline" = "把这一段从时间线上删除";
+"Dock the picture-in-picture here" = "把画中画停到这个角上";
+"Remove this shape from the timeline" = "把这个图形从时间线上删除";
+"Unlink this subtitle file from the project" = "把这个字幕文件从工程里解除关联";
+"Split at playhead" = "在播放头处分割";
+"Freeze the frame at the playhead" = "定格播放头处的画面";
+"Add a marker at the playhead" = "在播放头处添加标记";
+"Seconds to ramp the sound up from silence" = "渐入的秒数：声音从静音升到原来的音量";
+"Seconds to ramp the sound down to silence" = "渐出的秒数：声音从原来的音量降到静音";
+
+/* 视频编辑：导出 */
+"Render the timeline to a video file" = "把时间线导出成视频文件";
+"Cancel the export" = "取消这次导出";
+"Close the export panel" = "关闭导出面板";
+"Reveal the exported file in Finder" = "在 Finder 中显示导出的文件";
+
+/* 录屏 */
+"Close without recording" = "不录制，直接关闭";
+"Where the recording is written" = "录屏文件写到哪里";
+"Start recording with these settings" = "按这些设置开始录制";
+"Stop recording and finish writing the file" = "停止录制并写完文件";
+"Leave the recording on disk without adding it to the timeline" = "只把这段录屏留在硬盘上，不加到时间线";
+"Put the recording on the timeline" = "把这段录屏放到时间线上";
+"Delete the recovered file" = "删除恢复出来的文件";
+"Leave the recovered file on disk without adding it to the timeline" = "只把恢复出来的文件留在硬盘上，不加到时间线";
+"Put the recovered recording on the timeline" = "把恢复出来的录屏放到时间线上";
+
+/* 字幕生成、翻译与双轨编辑器 */
+"Close this panel" = "关闭这个面板";
+"Edit the text and timing of every line" = "逐条编辑字幕的文本和时间";
+"Cancel the translation" = "取消这次翻译";
+"Retranslate every line, replacing what is already there" = "重新翻译每一条，覆盖已有的译文";
+"Only translate lines with no translation, or whose source text changed" = "只翻译还没有译文、或原文改过的那些条";
+"Cancel subtitle generation" = "取消这次字幕生成";
+"Transcribe the audio on the timeline into a subtitle track" = "把时间线上的声音转写成字幕轨";
+"Join the selected lines into one" = "把选中的几条合并成一条";
+"Break the selected line in two" = "把选中的这一条拆成两条";
+"Delete the selected lines from every track" = "从所有轨上删除选中的这些条";
+"Close the subtitle editor" = "关闭字幕编辑器";
+"Write the subtitle tracks out as files" = "把字幕轨导出成文件";
+
+/* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
+/* 录屏：设置面板与控制条 */
+"Record Screen" = "录屏";
+"Source" = "来源";
+"Aspect ratio" = "画面比例";
+"Drag a region on any one display. Return confirms, Escape cancels." = "在任意一块屏幕上拖出一个区域。回车确认，Esc 取消。";
+"Includes sound SrtFlow itself is playing." = "包含 SrtFlow 自己正在播放的声音。";
+"Microphone" = "麦克风";
+"Device" = "设备";
+"No microphone found. The screen recording will still work." = "没找到麦克风。录屏本身照样能用。";
+"Recorded to its own track. If computer audio is on too, use headphones to avoid echo — SrtFlow doesn’t cancel echo." = "单独录到一条轨上。如果同时开了系统声音，请戴耳机避免回声 —— SrtFlow 不做回声消除。";
+"Pointer" = "鼠标指针";
+"Show pointer" = "显示鼠标指针";
+"Show clicks" = "显示点击";
+"Start Recording" = "开始录制";
+"Record" = "录制";
+"Choose where to save this screen recording." = "选择这段录屏保存到哪里。";
+"Starting…" = "正在开始…";
+"Finalizing…" = "正在收尾…";
+"Low disk space — stopping soon." = "磁盘空间不足 —— 马上就会停。";
+"%d × %d pt  ·  %d × %d px" = "%d × %d pt  ·  %d × %d px";
+"Too small — at least %d × %d pt" = "太小了 —— 至少要 %d × %d pt";
+
+/* 录屏：结果、部分成功与恢复 */
+"Recording is incomplete" = "这段录制不完整";
+"The file is already saved where you chose. Adding it to the timeline is optional." = "文件已经保存在你选的位置了。加不加到时间线随你。";
+"Keep file only" = "只保留文件";
+"Add to timeline" = "加到时间线";
+"Discard" = "丢弃";
+"A partial recording was added to the timeline." = "已把一段不完整的录屏加到时间线。";
+"That recording is already in the timeline." = "这段录屏已经在时间线上了。";
+"The recording couldn’t be read, so it wasn’t added to the timeline." = "这段录屏读不了，没有加到时间线。";
+"The screen recording was added, but the microphone track couldn’t be read and was left out." = "录屏已加入，但麦克风音轨读不了，已略过。";
+"That recovered recording couldn’t be read." = "恢复出来的这段录屏读不了。";
+"The recovered recording was added, but its microphone track couldn’t be read." = "恢复出来的录屏已加入，但它的麦克风音轨读不了。";
+"The recovered recording was saved as %@." = "恢复出来的录屏已保存为 %@。";
+"The recovered recording wasn’t added to the timeline." = "恢复出来的录屏没有加到时间线。";
+"That recovered recording couldn’t be saved: %@" = "恢复出来的这段录屏保存失败：%@";
+"A recording from the last session is no longer where it was saved: %@" = "上次那段录屏已经不在保存的位置了：%@";
+"This recording was saved but never added to the timeline." = "这段录屏已保存，但一直没有加到时间线。";
+"This recording was saved but never added to the timeline. Its microphone track is missing." = "这段录屏已保存，但一直没有加到时间线。它的麦克风音轨缺失。";
+"SrtFlow found a damaged screen-recording record from the last session and left it untouched." = "SrtFlow 发现上次留下的录屏记录已损坏，没有动它。";
+"SrtFlow quit while this recording was still being written." = "这段录制还在写入时 SrtFlow 就退出了。";
+"Only the microphone audio from the interrupted recording could be recovered — the screen recording itself is unusable." = "这段中断的录制只恢复出了麦克风声音 —— 画面本身没法用了。";
+"These files couldn’t be deleted, so the recording is still on record: %@" = "这些文件删不掉，所以这段录制仍然在册：%@";
+"The project changed, so the recording wasn’t added to the timeline. It’s saved as %@." = "工程变了，这段录屏没有加到时间线。它已保存为 %@。";
+"The recording is saved as %@, but it couldn’t be added to the timeline." = "录屏已保存为 %@，但没能加到时间线。";
+"The recording file disappeared before it could be saved." = "录屏文件在保存前就不见了。";
+
+/* 录屏：失败原因与音轨抱怨 */
+"There’s still an unfinished recording from earlier. Deal with it first." = "之前还有一段没处理完的录制，请先处理它。";
+"A source picker is already open." = "已经有一个来源选择器开着了。";
+"Source selection was cancelled." = "已取消选择来源。";
+"That source is no longer available." = "这个来源已经不可用了。";
+"That folder can’t be written to. Pick another location." = "这个文件夹写不进去。换一个位置。";
+"Not enough free space: %@ needed, %@ available." = "空间不够：需要 %@，可用 %@。";
+"The disk ran out of space while recording." = "录制过程中磁盘空间用尽。";
+"The disk ran out of space, so the recording is incomplete." = "磁盘空间用尽，这段录制不完整。";
+"SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again." = "SrtFlow 还没有录屏权限。到「系统设置 ▸ 隐私与安全性 ▸ 屏幕与系统音频录制」里打开它。如果开关本来就是开的，关掉再打开一次。";
+"SrtFlow doesn’t have microphone permission, so narration wasn’t recorded. The screen recording itself is fine." = "SrtFlow 没有麦克风权限，旁白没录上。录屏画面本身没问题。";
+"SrtFlow couldn’t hide its own recording controls from the capture, so it didn’t start. Try again." = "SrtFlow 没能把自己的录制控制条从画面里藏掉，所以没有开始录。请再试一次。";
+"SrtFlow couldn’t tell which display you picked (two look identical). Record a window or a custom region instead, or update to macOS 15.2 or later." = "SrtFlow 分不清你选的是哪块屏幕（有两块完全一样）。改成录窗口或自定义区域，或者升级到 macOS 15.2 及以上。";
+"The recording could not be finished." = "这段录制没能写完。";
+"The recording has no usable video." = "这段录制里没有可用的画面。";
+"The end of the recording has no picture, so the recording is incomplete." = "录制结尾没有画面，这段录制不完整。";
+"Some audio could not be written in time, so the recording is incomplete." = "有一部分声音没来得及写入，这段录制不完整。";
+"The end of the audio couldn’t be written in time, so the recording is incomplete." = "声音的结尾没来得及写入，这段录制不完整。";
+"The microphone track could not be finished, so only the screen was recorded." = "麦克风音轨没能写完，所以只录到了画面。";
+"The microphone stopped working, so only the screen and computer audio were recorded." = "麦克风中途失效，所以只录到了画面和系统声音。";
+"The microphone couldn’t be used, so only the screen was recorded: %@" = "麦克风用不了，所以只录了画面：%@";
+"The microphone stopped partway through: %@" = "麦克风中途停了：%@";
+"The microphone track wasn’t written." = "麦克风音轨没有写入。";
+"The microphone track can’t be read." = "麦克风音轨读不了。";
+"The saved recording can’t be read back." = "保存下来的录屏读不回来。";
+"The saved microphone track can’t be read back." = "保存下来的麦克风音轨读不回来。";
+"Computer audio" = "系统声音";
+"Computer audio was on, but nothing was recorded on the audio track." = "开了系统声音，但音轨上什么都没录到。";
+"The microphone" = "麦克风";
+"%1$@ starts %2$@ after the recording begins." = "%1$@ 比录制晚 %2$@ 才开始。";
+"%1$@ stops %2$@ before the end of the recording." = "%1$@ 比录制早 %2$@ 就结束了。";
+"Screen Recording %@" = "录屏 %@";
+
+/* 工程：菜单、最近工程与文档 */
+"New Project" = "新建工程";
+"Open Project…" = "打开工程…";
+"Open Recent" = "打开最近使用的";
+"Save As…" = "另存为…";
+"Recent Projects" = "最近的工程";
+"No Recent Projects" = "还没有最近的工程";
+"Drop video, audio, images, or subtitles here to start editing." = "把视频、音频、图片或字幕拖到这里开始编辑。";
+"This project hasn’t been saved yet" = "这个工程还没保存过";
+"Untitled" = "未命名";
+"Save this project before closing it?" = "关闭前要保存这个工程吗？";
+"It has never been saved, so the edits will be lost." = "它从没保存过，改动会丢失。";
+"Save…" = "保存…";
+"Open" = "打开";
+"Could not save the project: %@" = "工程保存失败：%@";
+"Stop the screen recording first." = "请先停止录屏。";
+"The frame rate is locked while recording." = "录制期间帧率是锁定的。";
+"The video engine isn’t available, so image clips couldn’t be prepared." = "视频引擎不可用，图片片段没能准备好。";
+"Relink" = "重新链接";
+"Relink…" = "重新链接…";
+"Where is “%@”?" = "「%@」在哪里？";
+"“%@” could not be found." = "找不到「%@」。";
+"%d media files could not be found." = "有 %d 个素材文件找不到了。";
+"“%@” isn’t a SrtFlow project file." = "「%@」不是 SrtFlow 的工程文件。";
+"“%@” was made by a newer version of SrtFlow." = "「%@」是更新版本的 SrtFlow 做的。";
+
+/* 时间线标记、字幕与导出 */
+"Add Marker at Playhead" = "在播放头处添加标记";
+"Delete Marker" = "删除标记";
+"Note" = "备注";
+"Burn subtitles into the video" = "把字幕烧录进视频";
+"Every subtitle track is hidden — nothing will be burned." = "所有字幕轨都隐藏了 —— 不会烧录任何字幕。";
+"Translation didn’t start. Close the panel and try again." = "翻译没有启动。关掉面板再试一次。";
+"Output follows the project: %d×%d, %d fps." = "导出跟随工程设置：%d×%d、%d fps。";
+"ffmpeg finished but produced no output file." = "ffmpeg 跑完了，但没有产出文件。";
+"These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "这些图片片段还没准备好：%@。等它们完成；如果图片丢了，就重新链接。";
+
+/* 运行期才成形的 key（L10n(x.title) 这类）—— scripts/check-localization-coverage.sh 会顺着属性找过来 */
+/* 时间线标记的颜色 */
+"Red" = "红色";
+"Orange" = "橙色";
+"Yellow" = "黄色";
+"Green" = "绿色";
+"Blue" = "蓝色";
+"Purple" = "紫色";
+
+/* 录屏来源与画面比例 */
+"Entire display" = "整块屏幕";
+"A window" = "某个窗口";
+"Custom region" = "自定义区域";
+"Free" = "自由";
+
+/* 字幕导出：烧录范围说明 */
+"Burning both subtitle tracks, with the Burn In tool's style." = "将烧录两条字幕轨，用「烧制字幕」页的样式。";
+"Burning the translated track, with the Burn In tool's style." = "将烧录译文轨，用「烧制字幕」页的样式。";
+"Burning the original track, with the Burn In tool's style." = "将烧录原文轨，用「烧制字幕」页的样式。";
+
+/* 比例、分辨率、帧率 */
+"16:9" = "16:9";
+"9:16" = "9:16";
+"4:3" = "4:3";
+"3:4" = "3:4";
+"1:1" = "1:1";
+"2160p" = "2160p";
+"1440p" = "1440p";
+"1080p" = "1080p";
+"720p" = "720p";
+"480p" = "480p";
+"24 fps" = "24 fps";
+"30 fps" = "30 fps";
+"60 fps" = "60 fps";
+
+/* 字幕格式与 x264 预设（技术标识，两种语言相同） */
+"SRT" = "SRT";
+"VTT" = "VTT";
+"ASS" = "ASS";
+"SSA" = "SSA";
+"veryfast" = "veryfast";
+"faster" = "faster";
+"fast" = "fast";
+"medium" = "medium";
+"slow" = "slow";
+"slower" = "slower";
+"veryslow" = "veryslow";

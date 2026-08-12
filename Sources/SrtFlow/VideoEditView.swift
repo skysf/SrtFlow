@@ -392,7 +392,7 @@ struct VideoEditView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: 420, alignment: .leading)
-                    .instantHelp(notice)
+                    .instantHelp(verbatim: notice)
                 Button {
                     project.notice = nil
                 } label: {

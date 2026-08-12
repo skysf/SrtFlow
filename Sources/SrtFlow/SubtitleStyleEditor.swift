@@ -70,7 +70,10 @@ struct SubtitleStyleEditor: View {
                 fontPicker
 
                 LabeledSlider(
-                    label: "Size",
+                    // 不能只写 "Size"：画中画那边也有一个 "Size"（大小），
+                    // 同一个键在一张表里只能有一个含义，撞车时后来的会静静盖掉
+                    // 前一条 —— 这里就被显示成过「大小」。
+                    label: "Font size",
                     value: $style.fontSize,
                     range: BurnInStyle.fontSizeRange,
                     step: 1,

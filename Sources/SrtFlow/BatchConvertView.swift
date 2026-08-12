@@ -70,7 +70,9 @@ struct BatchConvertView: View {
 
                 Button("Output Folder…", action: chooseOutputFolder)
                     .instantHelp("Where converted files are written; defaults to next to the source")
-                Text(model.outputDirectory?.lastPathComponent ?? String(localized: "Same as source"))
+                // 走 L10n 不走 String(localized:)：后者只认系统语言，App 内切成
+                // 中文时这一句会留在英文（而且守卫也扫不到它）。
+                Text(model.outputDirectory?.lastPathComponent ?? L10n("Same as source"))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)

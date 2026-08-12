@@ -182,17 +182,17 @@ private struct LinkedCueRow: View {
             if meta?.translationStale == true {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)
-                    .instantHelp(L10n("Translation is out of date — retranslate this cue."))
+                    .instantHelp(verbatim: L10n("Translation is out of date — retranslate this cue."))
             }
             if meta?.readingSpeedWarning == true {
                 Image(systemName: "exclamationmark.triangle")
                     .foregroundStyle(.yellow)
-                    .instantHelp(L10n("Too fast to read at this clip speed."))
+                    .instantHelp(verbatim: L10n("Too fast to read at this clip speed."))
             }
             if let confidence = meta?.recognitionConfidence, confidence < 0.5 {
                 Image(systemName: "questionmark.circle")
                     .foregroundStyle(.red)
-                    .instantHelp(L10n("Low recognition confidence — double-check this cue."))
+                    .instantHelp(verbatim: L10n("Low recognition confidence — double-check this cue."))
             }
         }
         .font(.caption)

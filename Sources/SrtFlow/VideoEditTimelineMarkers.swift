@@ -190,7 +190,7 @@ private struct ClipMarkerEditor: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .instantHelp(color.title)
+                    .instantHelp(LocalizedStringKey(color.title))
                 }
             }
 

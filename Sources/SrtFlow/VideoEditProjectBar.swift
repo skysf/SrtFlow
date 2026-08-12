@@ -55,7 +55,7 @@ struct VideoEditProjectMenu: View {
         .onAppear { recents = RecentProjects.existing() }
         // 打开/保存都会动最近列表，跟着刷新。
         .onChange(of: project.documentURL) { _, _ in recents = RecentProjects.existing() }
-        .instantHelp(project.documentURL?.path ?? L10n("This project hasn’t been saved yet"))
+        .instantHelp(verbatim: project.documentURL?.path ?? L10n("This project hasn’t been saved yet"))
     }
 }
 
@@ -159,7 +159,7 @@ private struct RecentProjectCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
-        .instantHelp(url.path)
+        .instantHelp(verbatim: url.path)
         .contextMenu {
             Button("Show in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([url])

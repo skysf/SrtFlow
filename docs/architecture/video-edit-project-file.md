@@ -72,6 +72,8 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v5 | `frameRate` | 旧版按硬编码 30fps 渲染 —— 同一文件出不同成片 |
 | v6 | `subtitleLayout`、`subtitleHidden` | 字幕位置/换行宽度/字号回默认（**导出画面跟着变**）；设了「不烧字幕」的工程会把字幕烧进成片 |
 | v7 | `translationHidden` | 烧录跟着眼睛走之后，它决定成片里有没有译文；旧版丢掉它，「只烧中文」会变回默认 |
+| v8 | `EditClip.markers`（**按需写入**） | 纯手工输入的标记连同备注文字被抹掉，只能重标一遍 |
+| v9 | `EditClip.fadeInDuration` / `fadeOutDuration`（**按需写入**） | 调好的声音渐入渐出被删光，**成片的声音跟着变**（开头结尾从渐变变回硬切）。合同见 [audio-fades](audio-fades.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

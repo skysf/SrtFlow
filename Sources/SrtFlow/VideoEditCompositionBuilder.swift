@@ -145,6 +145,9 @@ enum VideoEditCompositionBuilder {
         var composition: AVMutableComposition
         var videoComposition: AVMutableVideoComposition?
         var audioMix: AVMutableAudioMix?
+        /// 「谁的声音在哪条合成音轨上」。留着它，改音量/渐变时就能只换 mix、
+        /// 不重建合成（见 `makeAudioMix`）。
+        var audioPlan: AudioMixPlan
         var renderSize: CGSize
     }
 
@@ -198,7 +201,6 @@ enum VideoEditCompositionBuilder {
 
         let composition = AVMutableComposition()
         var placed: [PlacedClip] = []
-        var audioParams: [AVMutableAudioMixInputParameters] = []
 
         // 输出尺寸：第一段主轨素材说了算（预渲染时由外层画布指定）。
         let renderSize = renderSizeOverride ?? Self.renderSize(for: state)
@@ -220,8 +222,10 @@ enum VideoEditCompositionBuilder {
         let audioB = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         var videoCursors: [Double] = [0, 0]
         var audioCursors: [Double] = [0, 0]
-        let audioAParams = audioA.map(AVMutableAudioMixInputParameters.init(track:))
-        let audioBParams = audioB.map(AVMutableAudioMixInputParameters.init(track:))
+        // 音量斜坡不在这儿铺：这一趟只记「谁的声音进了哪条合成音轨」，
+        // 铺斜坡统一交给 `makeAudioMix` —— 它同时也是「只改音量/渐变时不重建
+        // 合成、只换 audioMix」那条快路径的实现，两条路共用一份才不会分叉。
+        var audioPlan = AudioMixPlan()
 
         for (index, clip) in state.mainClips.enumerated() {
             // 整轨隐藏 → 主轨完全不进合成（预览是黑场）；
@@ -289,19 +293,11 @@ enum VideoEditCompositionBuilder {
             // 声音
             if clip.hasAudio, !clip.isMuted,
                let audioTrack = (slot == 0 ? audioA : audioB),
-               let params = (slot == 0 ? audioAParams : audioBParams),
                let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
                await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &audioCursors[slot]) {
-                addVolumeRamps(
-                    params: params,
-                    clip: clip,
-                    fadeIn: overlapBefore > 0 ? overlapBefore : nil,
-                    fadeOut: overlapAfter > 0 ? overlapAfter : nil
-                )
+                audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: true)
             }
         }
-        if let audioAParams { audioParams.append(audioAParams) }
-        if let audioBParams { audioParams.append(audioBParams) }
 
         // MARK: 画中画轨
 
@@ -313,7 +309,6 @@ enum VideoEditCompositionBuilder {
             let audioTrack = composition.addMutableTrack(
                 withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
             )
-            let params = audioTrack.map(AVMutableAudioMixInputParameters.init(track:))
             var videoCursor = 0.0
             var audioCursor = 0.0
 
@@ -343,13 +338,12 @@ enum VideoEditCompositionBuilder {
                 ))
 
                 if clip.hasAudio, !clip.isMuted,
-                   let audioTrack, let params,
+                   let audioTrack,
                    let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
                    await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &audioCursor) {
-                    addVolumeRamps(params: params, clip: clip, fadeIn: nil, fadeOut: nil)
+                    audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: false)
                 }
             }
-            if let params { audioParams.append(params) }
         }
 
         // MARK: 音频轨
@@ -358,19 +352,13 @@ enum VideoEditCompositionBuilder {
             guard let audioTrack = composition.addMutableTrack(
                 withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { continue }
-            let params = AVMutableAudioMixInputParameters(track: audioTrack)
             var cursor = 0.0
             for clip in lane.clips.sorted(by: { $0.timelineStart < $1.timelineStart }) {
                 let sourceAsset = asset(for: clip.sourceURL)
                 guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first else { continue }
                 guard await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &cursor) else { continue }
-                if clip.isMuted {
-                    params.setVolume(0, at: time(clip.timelineStart))
-                } else {
-                    addVolumeRamps(params: params, clip: clip, fadeIn: nil, fadeOut: nil)
-                }
+                audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: false)
             }
-            audioParams.append(params)
         }
 
         // MARK: 不透明黑底轨
@@ -419,7 +407,7 @@ enum VideoEditCompositionBuilder {
             composition.removeTrack(track)
         }
         let remainingTrackIDs = Set(composition.tracks.map(\.trackID))
-        let effectiveAudioParams = audioParams.filter { remainingTrackIDs.contains($0.trackID) }
+        audioPlan.lanes.removeAll { !remainingTrackIDs.contains($0.trackID) }
 
         // 纯音频时间线：没有任何画面就不配 videoComposition。
         let hasVideoContent = placed.contains { !$0.clip.isAudioOnly }
@@ -433,19 +421,57 @@ enum VideoEditCompositionBuilder {
             )
         }
 
-        var audioMix: AVMutableAudioMix?
-        if !effectiveAudioParams.isEmpty {
-            let mix = AVMutableAudioMix()
-            mix.inputParameters = effectiveAudioParams
-            audioMix = mix
-        }
-
         return Built(
             composition: composition,
             videoComposition: videoComposition,
-            audioMix: audioMix,
+            audioMix: makeAudioMix(state: state, plan: audioPlan),
+            audioPlan: audioPlan,
             renderSize: renderSize
         )
+    }
+
+    /// 按 `plan` 给每条合成音轨铺音量斜坡，产出 audioMix。
+    ///
+    /// 两个调用方共用它：`build()` 建完合成之后调一次；只改了音量/渐变时
+    /// `VideoEditProject.refreshAudioMix()` 直接调它换掉正在播的 item 上的
+    /// mix（**不重建合成，画面不闪**）。两条路必须是同一份实现 —— 分开写
+    /// 就会出现「拖完滑块的音量」和「重建之后的音量」不一样。
+    static func makeAudioMix(state: TimelineState, plan: AudioMixPlan) -> AVMutableAudioMix? {
+        guard !plan.lanes.isEmpty else { return nil }
+        var parameters: [AVMutableAudioMixInputParameters] = []
+        for lane in plan.lanes {
+            let params = AVMutableAudioMixInputParameters()
+            params.trackID = lane.trackID
+            // 同一条合成轨上，上一段的结束点就是插入游标当时的值。
+            var previousEnd = 0.0
+            for clipID in lane.clipIDs {
+                guard let clip = state.clip(with: clipID) else { continue }
+                if clip.isMuted {
+                    params.setVolume(0, at: time(clip.timelineStart))
+                } else if lane.isMainTrack, let index = state.mainClips.firstIndex(where: { $0.id == clipID }) {
+                    addVolumeRamps(
+                        params: params,
+                        clip: clip,
+                        fades: .previewMainTrack(
+                            clip: clip,
+                            transitionBefore: index > 0 ? state.transitionOverlap(afterMainIndex: index - 1) : 0,
+                            transitionAfter: state.transitionOverlap(afterMainIndex: index)
+                        ),
+                        previousEnd: previousEnd
+                    )
+                } else {
+                    // 画中画和音频轨都没有转场，用户设的渐变直接生效。
+                    addVolumeRamps(
+                        params: params, clip: clip, fades: clip.audioFades, previousEnd: previousEnd
+                    )
+                }
+                previousEnd = clip.timelineEnd
+            }
+            parameters.append(params)
+        }
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = parameters
+        return mix
     }
 
     // MARK: - 小工具
@@ -639,14 +665,43 @@ enum VideoEditCompositionBuilder {
         )
     }
 
-    /// 剪辑范围内的恒定音量；转场重叠区做交叉淡变。
+    /// 混音器的增益平滑窗口。实测跨越音量跳变的那一个缓冲区约 17ms，
+    /// 取 50ms 留足余量（钉点落在段起点前的静音空档里，宽一点没有代价）。
+    private static let gainSmoothingGuard = 0.05
+
+    /// 剪辑范围内的恒定音量；两端按 `fades` 做线性斜坡。
+    ///
+    /// `fades` 里已经把「用户设的渐入渐出」和「转场重叠区的交叉淡变」仲裁完了
+    /// （`AudioFadeWindow.previewMainTrack`），这里只管照着铺斜坡 —— 别在这个
+    /// 函数里再判断转场，两处判断迟早会分叉。
+    ///
+    /// `previousEnd` 是**同一条合成轨上**上一段的结束点，用来给下面的「提前钉
+    /// 音量」找落点，不能越过它去动上一段的尾巴。
     private static func addVolumeRamps(
         params: AVMutableAudioMixInputParameters,
         clip: EditClip,
-        fadeIn: Double?,
-        fadeOut: Double?
+        fades: AudioFadeWindow,
+        previousEnd: Double
     ) {
         let volume = Float(clip.isMuted ? 0 : clip.volume)
+        let fadeIn: Double? = fades.fadeIn > 0 ? fades.fadeIn : nil
+        let fadeOut: Double? = fades.fadeOut > 0 ? fades.fadeOut : nil
+
+        // 段起点**之前**先把音量钉到「这一段该从多少起步」。
+        //
+        // AVFoundation 的混音器会把音量跳变按一个缓冲区（实测约 17ms）平滑过去，
+        // 而第一条斜坡之前的音量默认是 **1.0**。于是「起点音量 0」的渐入会被它
+        // 拉成一条从满音量降到 0 的下坡贴在渐入最前面 —— 听感就是渐入开头
+        // 「砰」的一下（2026-08-12 的用户报告，见 docs/bugfixes/）。
+        //
+        // 提前一个平滑窗口钉住，跳变就发生在段起点之前的静音空档里，听不见。
+        // 段紧挨着上一段时没有空档可用，就钉在起点上（至少让跳变的两端都由
+        // 我们自己指定，而不是撞上默认的 1.0）。
+        // 没有渐入的段钉的是 body 音量本身：那种段本来就该硬起，别让平滑给它
+        // 平白加一个 17ms 的软起音。
+        let pin = max(previousEnd, clip.timelineStart - gainSmoothingGuard)
+        params.setVolume(fadeIn == nil ? volume : 0, at: time(min(pin, clip.timelineStart)))
+
         var bodyStart = clip.timelineStart
         var bodyEnd = clip.timelineEnd
         if let fadeIn, fadeIn > 0 {

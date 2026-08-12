@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 8, "新版写盘一律用 v8")
+    checkEqual(raw?["formatVersion"] as? Int, 9, "新版写盘一律用 v9")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 8, "只有原文轨的工程也写 v8")
+    checkEqual(try savedVersion(), 9, "只有原文轨的工程也写 v9")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 8, "往返后仍是 v8")
+    checkEqual(try savedVersion(), 9, "往返后仍是 v9")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -448,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 8, "带译文轨的工程写 v8（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 9, "带译文轨的工程写 v9（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -521,7 +521,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 8, "新版 writer 一律写 v8")
+    checkEqual(try savedVersion(), 9, "新版 writer 一律写 v9")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -541,7 +541,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 8, "带字幕布局的工程必须写 latest（v8）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 9, "带字幕布局的工程必须写 latest（v9）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -636,12 +636,12 @@ do {
     checkEqual(try VideoEditProjectIO.load(from: v7Explicit).timeline.translationHidden, false,
                "v7 工程不迁移：显式打开的译文轨要保住")
 
-    // 闸门另一侧：比 reader 上限更高的 v9 必须拒开。
-    let v9 = dir.appendingPathComponent("v9.srtflowproj")
+    // 闸门另一侧：比 reader 上限更高的 v10 必须拒开。
+    let v10 = dir.appendingPathComponent("v10.srtflowproj")
     try Data("""
-    { "formatVersion": 9, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v9)
-    check((try? VideoEditProjectIO.load(from: v9)) == nil, "未来版本（v9）必须拒开")
+    { "formatVersion": 10, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v10)
+    check((try? VideoEditProjectIO.load(from: v10)) == nil, "未来版本（v10）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -651,7 +651,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 8, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 9, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -659,7 +659,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 8, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 9, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -1583,6 +1583,162 @@ do {
     checkEqual(weirdLoaded.mainClips.first?.markers.count, 1, "颜色不认识也要把标记读回来")
     checkEqual(weirdLoaded.mainClips.first?.markers.first?.color, .red, "不认识的颜色退回红色")
     checkEqual(weirdLoaded.mainClips.first?.markers.first?.text, "", "缺 text 键读回空串")
+}
+
+// MARK: - 声音渐入渐出：夹紧规则、转场仲裁、存盘往返与 v9 登记
+//
+// 生效值的夹紧只有 `EditClip.audioFades` 一份，预览（setVolumeRamp）和导出
+// （afade）都从它取 —— 两边各夹各的就是「预览听着对、成片不对」。
+// 长期约束见 docs/architecture/audio-fades.md。
+
+do {
+    let dir = root.appendingPathComponent("audio-fade")
+    let media = dir.appendingPathComponent("song.m4a")
+    makeFile(media)
+    let project = dir.appendingPathComponent("fade.srtflowproj")
+
+    // ---- 夹紧：三重收口 ----
+    var clip = EditClip(sourceURL: media, sourceDuration: 10, timelineStart: 0)
+    checkEqual(clip.audioFades, .none, "默认不做渐变")
+
+    clip.fadeInDuration = 2
+    clip.fadeOutDuration = 3
+    checkEqual(clip.audioFades.fadeIn, 2, "没超限的渐入原样生效")
+    checkEqual(clip.audioFades.fadeOut, 3, "没超限的渐出原样生效")
+
+    clip.fadeInDuration = -5
+    clip.fadeOutDuration = .nan
+    checkEqual(clip.audioFades, .none, "负数和 NaN 都当成 0（数值框和工程文件都可能喂进来）")
+
+    // 两端之和超过段长：按比例同时收，绝不能留下负长度的中段。
+    clip.fadeInDuration = 8
+    clip.fadeOutDuration = 8
+    let squeezed = clip.audioFades
+    checkEqual(squeezed.fadeIn, 5, "渐入按比例收到段长的一半")
+    checkEqual(squeezed.fadeOut, 5, "渐出按比例收到段长的一半")
+    check(squeezed.fadeIn + squeezed.fadeOut <= clip.timelineDuration + 0.0001,
+          "夹紧后两端之和不得超过段长（超了 setVolumeRamp 会收到反向 timeRange 直接失效）")
+
+    clip.fadeInDuration = 9
+    clip.fadeOutDuration = 3
+    let biased = clip.audioFades
+    check(biased.fadeIn > biased.fadeOut, "按比例收要保持两端的相对比例")
+    check(abs(biased.fadeIn + biased.fadeOut - 10) < 0.0001, "按比例收之后正好铺满段长")
+
+    // 变速：渐变是**时间线秒**，段长跟着速度变，夹紧也要跟着变。
+    var fast = EditClip(sourceURL: media, sourceDuration: 10, speed: 2, timelineStart: 0)
+    fast.fadeInDuration = 4
+    checkEqual(fast.timelineDuration, 5, "2 倍速的 10 秒素材在时间线上是 5 秒")
+    checkEqual(fast.audioFades.fadeIn, 4, "时间线上 5 秒的段放得下 4 秒渐入")
+    fast.fadeInDuration = 6
+    checkEqual(fast.audioFades.fadeIn, 5, "超过时间线长度就夹到时间线长度，不是源长度")
+
+    // ---- 转场仲裁：有转场的那条边归转场管 ----
+    var seam = EditClip(sourceURL: media, sourceDuration: 10, timelineStart: 0)
+    seam.fadeInDuration = 1
+    seam.fadeOutDuration = 1
+
+    let previewFree = AudioFadeWindow.previewMainTrack(
+        clip: seam, transitionBefore: 0, transitionAfter: 0
+    )
+    checkEqual(previewFree.fadeIn, 1, "没转场的边用用户设的渐入")
+    checkEqual(previewFree.fadeOut, 1, "没转场的边用用户设的渐出")
+
+    let previewSeam = AudioFadeWindow.previewMainTrack(
+        clip: seam, transitionBefore: 0.5, transitionAfter: 0.8
+    )
+    checkEqual(previewSeam.fadeIn, 0.5, "预览里有转场的边换成转场时长（交叉淡变就是靠它实现的）")
+    checkEqual(previewSeam.fadeOut, 0.8, "另一边同理")
+
+    let exportSeam = AudioFadeWindow.exportMainTrack(
+        clip: seam, hasTransitionBefore: true, hasTransitionAfter: false
+    )
+    checkEqual(exportSeam.fadeIn, 0, "导出里有转场的边归 acrossfade 管，段内不能再淡一次")
+    checkEqual(exportSeam.fadeOut, 1, "没转场的那边照常用用户设的值")
+
+    // ---- afade 参数：淡出起点按时间线长度算 ----
+    let segments = AudioFadeWindow(fadeIn: 1, fadeOut: 2).afadeSegments(timelineDuration: 5)
+    checkEqual(segments.count, 2, "两端都设了就出两条 afade")
+    checkEqual(segments.first?.type, "in", "第一条是淡入")
+    checkEqual(segments.first?.start, 0, "淡入永远从 0 开始")
+    checkEqual(segments.last?.type, "out", "第二条是淡出")
+    checkEqual(segments.last?.start, 3, "淡出起点 = 时间线长度 - 淡出时长")
+    checkEqual(AudioFadeWindow.none.afadeSegments(timelineDuration: 5).count, 0,
+               "没设渐变就一条 afade 都不加（别往滤镜图里塞 d=0）")
+
+    // ---- 存盘往返 + 版本登记（按需，同 v4/v8）----
+    var saveState = timeline(mainMedia: [media])
+    check(!saveState.hasAudioFades, "没设过渐变的工程 hasAudioFades 要为假")
+    check(!saveState.requiresFormatVersion9, "没设过渐变就不是 v9 数据（按需登记）")
+    try VideoEditProjectIO.save(saveState, to: project)
+    let cleanJSON = try String(contentsOf: project, encoding: .utf8)
+    check(!cleanJSON.contains("fadeInDuration"), "0 的段不该写出 fadeInDuration 键")
+    check(!cleanJSON.contains("fadeOutDuration"), "0 的段不该写出 fadeOutDuration 键")
+
+    let clipID = saveState.mainClips[0].id
+    saveState.update(clipID) { c in
+        c.fadeInDuration = 1.5
+        c.fadeOutDuration = 2.5
+    }
+    check(saveState.hasAudioFades, "设了渐变 hasAudioFades 要为真")
+    check(saveState.requiresFormatVersion9,
+          "有渐变 → v9 判据为真（旧版打开会把它们抹掉，成片的声音跟着变）")
+
+    try VideoEditProjectIO.save(saveState, to: project)
+    let fadeRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    // 数字**写死 9**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
+    // 版本忘了升照样绿（2026-08-07 案例的教训）。
+    checkEqual(fadeRaw?["formatVersion"] as? Int, 9, "带渐变的工程必须写 latest（v9）")
+
+    let reloaded = try VideoEditProjectIO.load(from: project).timeline
+    checkEqual(reloaded.clip(with: clipID)?.fadeInDuration, 1.5, "渐入要存得住")
+    checkEqual(reloaded.clip(with: clipID)?.fadeOutDuration, 2.5, "渐出要存得住")
+
+    var strippedFades = reloaded
+    strippedFades.update(clipID) { c in
+        c.fadeInDuration = 0
+        c.fadeOutDuration = 0
+    }
+    check(!strippedFades.requiresFormatVersion9, "渐变清零的工程要能退回非 v9（按需登记）")
+
+    // ---- dB 换算：界面显示 dB，落盘仍是线性幅度 ----
+    //
+    // 工程文件里 `volume` 的语义**没变**（0…2 线性，1.0 = 原样），dB 只是界面
+    // 换算。这组断言钉的就是这条边界：换算错了会让老工程的音量在新版里听着
+    // 不一样，而工程文件看上去一个字节都没动，极难查。
+    checkEqual(AudioGain.decibels(fromLinear: 1), 0, "线性 1.0 就是 0 dB")
+    check(abs(AudioGain.decibels(fromLinear: 0.5) + 6.0206) < 0.001, "线性 0.5 ≈ −6.02 dB")
+    check(abs(AudioGain.decibels(fromLinear: 2) - 6) < 0.03, "线性 2.0 ≈ +6 dB（上限）")
+    checkEqual(AudioGain.decibels(fromLinear: 0), AudioGain.minimumDB, "线性 0 落到下限（显示成 −∞）")
+    checkEqual(AudioGain.decibels(fromLinear: .nan), AudioGain.minimumDB, "NaN 也落到下限，不许算出 NaN")
+    checkEqual(AudioGain.linear(fromDecibels: 0), 1, "0 dB 回到线性 1.0")
+    checkEqual(AudioGain.linear(fromDecibels: AudioGain.minimumDB), 0,
+               "拉到底必须是**真静音**（线性 0），不是 0.001")
+    check(AudioGain.linear(fromDecibels: 99) <= AudioGain.maximumLinear,
+          "dB 再高也不能突破线性上限 2.0（否则和 setVolume 的夹紧对不上）")
+    for linear in [0.05, 0.25, 0.5, 1.0, 1.5, 2.0] {
+        let round = AudioGain.linear(fromDecibels: AudioGain.decibels(fromLinear: linear))
+        check(abs(round - linear) < 0.0001, "线性 \(linear) 走一圈 dB 要回得来（得到 \(round)）")
+    }
+    checkEqual(AudioGain.label(forLinear: 0), "−∞ dB", "静音显示 −∞ 而不是 −60.0")
+    checkEqual(AudioGain.label(forLinear: 1), "0.0 dB", "原样音量显示 0.0 dB")
+
+    // ---- 宽容解码：缺键 = 关，坏值不能让整份工程打不开 ----
+    let legacy = dir.appendingPathComponent("legacy.srtflowproj")
+    try Data("""
+    {
+      "formatVersion": 8,
+      "timeline": { "mainClips": [ {
+        "sourceURL": "\(media.absoluteString)",
+        "sourceDuration": 10
+      } ] },
+      "media": []
+    }
+    """.utf8).write(to: legacy)
+    let legacyLoaded = try VideoEditProjectIO.load(from: legacy).timeline
+    checkEqual(legacyLoaded.mainClips.first?.fadeInDuration, 0, "v8 老文件缺键按 0 读（= 没有渐变）")
+    checkEqual(legacyLoaded.mainClips.first?.audioFades, AudioFadeWindow.none,
+               "老工程的成片不该因为升级而多出渐变")
 }
 
 try? manager.removeItem(at: root)

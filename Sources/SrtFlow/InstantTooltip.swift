@@ -71,9 +71,15 @@ extension View {
     }
 
     /// 内容是运行期算出来的字符串（路径、素材名、错误文案）时用这个重载。
-    /// 走 `verbatim`，**不**拿它当本地化键去查表 —— 系统的 `.help` 也是这么
-    /// 分的两个重载，改成查表会把用户的文件名当成 key 去翻译。
-    func instantHelp<S: StringProtocol>(_ text: S, shortcut: HelpShortcut? = nil) -> some View {
+    /// **不**拿它当本地化键去查表 —— 拿用户的文件名去翻译是另一种事故。
+    ///
+    /// **参数标签 `verbatim:` 不能去掉。** 去掉就和上面那个重载只差参数类型，
+    /// 而字符串字面量在重载决议里**优先选默认字面量类型 `String`** ——
+    /// `.instantHelp("Close this panel")` 会静静地走进这里，永远不查表。
+    /// 系统的 `.help` 靠 `@_disfavoredOverload` 压住同一个坑；这里用参数标签，
+    /// 不依赖下划线属性，而且调用点自己就写着「这条不翻译」。
+    /// 由来见 docs/bugfixes/2026-08-12-instant-tooltip-first-show-far-off.md。
+    func instantHelp<S: StringProtocol>(verbatim text: S, shortcut: HelpShortcut? = nil) -> some View {
         modifier(InstantHelpModifier(label: Text(verbatim: String(text)), shortcut: shortcut))
     }
 }
@@ -192,7 +198,16 @@ final class InstantTooltipController {
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
         guard size.width > 1, size.height > 1 else { return }
-        panel.contentView = hosting
+        // **NSHostingView 绝不能直接当 contentView**：它会把自己的尺寸约束灌成
+        // 窗口的 contentMinSize/contentMaxSize（实测一条 24pt 高的提示报出
+        // minSize 高 332），AppKit 下一轮排版就把面板撑到那个高度，气泡在里面
+        // 垂直居中 —— 肉眼看到的是提示掉到控件下方几百点的地方。
+        // 中间垫一层普通 NSView，尺寸就只由这里的 setFrame 说了算。
+        let container = NSView(frame: CGRect(origin: .zero, size: size))
+        hosting.frame = container.bounds
+        hosting.autoresizingMask = [.width, .height]
+        container.addSubview(hosting)
+        panel.contentView = container
 
         let visible = screen.visibleFrame
         var origin = CGPoint(x: anchor.midX - size.width / 2, y: anchor.minY - size.height - 6)
@@ -214,6 +229,10 @@ final class InstantTooltipController {
         guard let owner, owner.view === view else { return }
         hide(owner: owner)
     }
+
+    /// 自检读取用：提示面板当前的屏幕矩形（nil = 还没建过面板）。
+    /// `checks/InstantTooltipPanel` 靠它盯住「摆好之后不许自己变尺寸」。
+    var panelFrameForChecks: CGRect? { panel?.frame }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(
