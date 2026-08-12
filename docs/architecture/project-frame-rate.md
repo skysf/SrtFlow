@@ -32,12 +32,26 @@
    idle 帧不带 image buffer 且占比可达 45–62%，录制产物是**变帧率**的，
    导入时长必须取容器时长，不能按帧数推。
 
+6. **主轨拼接链的 timebase 合同**（帧率的下游，别只对帧率不对它）：
+   - 每一节的产出统一是 `1/fps` —— 素材段的 `fps=<帧率>`、补黑场的
+     `color=…:r=<帧率>` 都按帧率设 timebase。
+   - `concat` 的输出**固定**是 `AVTB`(1/1000000)，这是 ffmpeg 写死的，
+     改不了也别指望它跟随输入。
+   - `xfade` 在 `config_output()` 里对两条输入的 timebase 做**逐字段相等**的
+     硬检查，不等直接 EINVAL、整个导出配置失败。因此 `VideoEditExportGraph`
+     在每个 `xfade` 前把两侧都 `settb=AVTB`；`xfade` 的输出继承第一条输入，
+     于是也是 `AVTB`，与 `concat` 一致，整条链自洽。
+   - 往拼接链里加新滤镜或新的段类型时，除了帧率/SAR/pix_fmt，**timebase 也
+     要一起对账**；用例必须覆盖「硬切与转场混排、且转场不在第一处接缝」，
+     否则这类问题按顺序才现形。事故见
+     [转场前面有硬切就导不出](../bugfixes/2026-08-12-xfade-timebase-mismatch.md)。
+
 ## 回归矩阵（谁守什么）
 
 | 检查 | 守什么 | 局限 |
 | --- | --- | --- |
 | `checks/no-hardcoded-fps.sh` | 源码里不出现写死的帧率 | 静态扫描，不验行为 |
-| `scripts/check-export-frame-rate.sh` | **真实 `VideoEditExportGraph.plan()`** 的参数与实际出帧（24/30/60 → 48/60/120 帧，源素材 10fps 排除透传） | 需要 vendor/ffmpeg |
+| `scripts/check-export-frame-rate.sh` | **真实 `VideoEditExportGraph.plan()`** 的参数与实际出帧（24/30/60 → 48/60/120 帧，源素材 10fps 排除透传）；另有硬切+转场混排两种顺序的拼接链用例（约束 6） | 需要 vendor/ffmpeg |
 | `scripts/check-preview-composition.sh` | 预览合成 `frameDuration` + 真导出出帧率 | `AVAssetReaderVideoCompositionOutput` 直通时按源帧透传，必须真导出才测得出 |
 | `scripts/check-export-alpha-compositing.sh` | alpha 合成数学与帧率无关 | 只取第一帧，**帧率写错它发现不了** —— 别拿它当帧率回归 |
 | `SrtFlowCoreChecks` | `ProjectFrameRate` 纯逻辑 + v5 持久化 + 容差 | 纯逻辑 |

@@ -181,11 +181,20 @@ struct ClipDragPlan: Equatable {
 
     /// 跟着一起动的一个块。
     struct Member: Equatable {
+        /// 成员是哪一类。落地时改的字段不同（剪辑/形状改 `timelineStart`、
+        /// 字幕 cue 要两轨同步），但**位移只有一个** —— 谁都不许自己算一份。
+        enum Kind: Equatable {
+            case clip
+            case shape
+            case subtitleCue
+        }
+
         var id: UUID
         var span: TimelineSpan
         /// 它**自己那条轨**上不跟着动的块的占位（升序）。整组的可行位移由所有
         /// 成员的障碍一起决定，绝不逐块独立夹取 —— 那样会把相对错位夹坏。
         var obstacles: [TimelineSpan]
+        var kind: Kind = .clip
     }
 
     /// 被直接拖的那个（跨轨落地搬的是它，跟随块只做水平平移）。
@@ -217,22 +226,10 @@ struct ClipDragPlan: Equatable {
         magnetMain: Bool
     ) -> ClipDragPlan? {
         guard let dragged = state.clip(with: draggedID) else { return nil }
-        let members: [Member] = movingIDs.compactMap { memberID in
-            guard let clip = state.clip(with: memberID),
-                  let location = state.location(of: memberID) else { return nil }
-            return Member(
-                id: memberID,
-                span: TimelineSpan(start: clip.timelineStart, end: clip.timelineEnd),
-                obstacles: state[track: location.track]
-                    .filter { !movingIDs.contains($0.id) }
-                    .map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
-                    .sorted { $0.start < $1.start }
-            )
-        }
         return ClipDragPlan(
             draggedID: draggedID,
             draggedSpan: TimelineSpan(start: dragged.timelineStart, end: dragged.timelineEnd),
-            members: members,
+            members: clipMembers(in: state, movingIDs: movingIDs),
             // 磁吸主轨不吸别人的边缘：吸了也会被 packMain 覆盖，亮线是骗人的。
             candidates: magnetMain ? [] : candidates,
             magnet: magnetMain
@@ -244,9 +241,58 @@ struct ClipDragPlan: Equatable {
         )
     }
 
+    /// 跟着一起动的剪辑成员（含各自轨上的障碍）。
+    ///
+    /// 单独抽出来是因为被直接拖的**不一定是剪辑**：拖一个选中的形状时，同一片
+    /// 选择里的剪辑也要跟着走，那条路径进不了 `make`（它要求 `draggedID` 是剪辑）。
+    static func clipMembers(in state: TimelineState, movingIDs: Set<UUID>) -> [Member] {
+        movingIDs.compactMap { memberID in
+            guard let clip = state.clip(with: memberID),
+                  let location = state.location(of: memberID) else { return nil }
+            return Member(
+                id: memberID,
+                span: TimelineSpan(start: clip.timelineStart, end: clip.timelineEnd),
+                obstacles: state[track: location.track]
+                    .filter { !movingIDs.contains($0.id) }
+                    .map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
+                    .sorted { $0.start < $1.start },
+                kind: .clip
+            )
+        }
+    }
+
+    /// 把跟着一起动的**形状**和**字幕 cue** 挂进同一份计划（鼠标框选可以一次
+    /// 选中三类，之后拖任意一个，整片都得跟着走）。
+    ///
+    /// 它们都没有障碍：形状行本来就允许重叠，字幕轨也不参与碰撞。挂进 `members`
+    /// 的意义有两条 —— 一是落地时能拿到同一个 delta（别处再算一份必然分叉），
+    /// 二是 `allowedDeltaRange` 的下界会自动把它们算进去，整组一起停在 0 秒，
+    /// 而不是剪辑还能往左、字幕已经被各自夹在 0 上，相对错位当场压扁。
+    ///
+    /// 纯值函数，自检直接调。
+    func adding(shapes: [(id: UUID, span: TimelineSpan)], cues: [(id: UUID, span: TimelineSpan)]) -> ClipDragPlan {
+        var plan = self
+        let existing = Set(plan.members.map(\.id))
+        for shape in shapes where !existing.contains(shape.id) {
+            plan.members.append(Member(id: shape.id, span: shape.span, obstacles: [], kind: .shape))
+        }
+        for cue in cues where !existing.contains(cue.id) {
+            plan.members.append(Member(id: cue.id, span: cue.span, obstacles: [], kind: .subtitleCue))
+        }
+        return plan
+    }
+
     /// 自由落点的轨道才给「弹性尾部」：能把块拖到现有内容之外。
     /// 磁吸主轨最终只能插进现有故事线的某条缝，扩太远只会把插入指示线滚出视野。
     var allowsFreeLanding: Bool { magnet == nil }
+
+    /// 整组「谁都不许被推到负时间」的下界，**只有这一条**，不含同轨障碍。
+    ///
+    /// 跨轨到岸让位（`clampedStart`）要用它：往左躲一旦越过这条线，伙伴就会各自
+    /// 被 `max(0, …)` 单独夹住，整组的相对错位当场压扁 —— 那正是这套计划要防的
+    /// 东西。`allowedDeltaRange().lower` 不能拿来用：它还叠了**源轨**上的障碍，
+    /// 而块都换轨了，那些障碍已经与它无关。
+    var groupLowerDelta: Double { -(members.map(\.span.start).min() ?? 0) }
 
     /// 整组能挪的位移区间。
     ///

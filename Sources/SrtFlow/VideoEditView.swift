@@ -159,13 +159,13 @@ struct VideoEditView: View {
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
-            // ⌫ / fn⌫：删掉选中的剪辑、形状或标记，和工具栏 trash 按钮同一个动作。
+            // ⌫ / fn⌫：删掉选中的东西（剪辑 / 形状 / 字幕 cue / 标记，框选可以
+            // 一次选中前三类），和工具栏 trash 按钮同一个动作。判据直接问
+            // `EditSelection` 自己，别在这里重列一遍类别 —— 加一类就会漏一处。
             // 按 keyCode 认（51 = delete，117 = forward delete）——
             // charactersIgnoringModifiers 那边是控制字符，走字符串会一团糟。
             if event.keyCode == 51 || event.keyCode == 117 {
-                guard !project.selectedClipIDs.isEmpty
-                        || project.selectedShapeID != nil
-                        || project.selectedMarkerRef != nil else {
+                guard !project.selection.isEmpty else {
                     return event
                 }
                 project.deleteSelected()
@@ -266,7 +266,12 @@ struct VideoEditView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .frame(minHeight: 220)
+        // 下限压到 120：预览框是**唯一**该让步的东西。它以前钉在 220（加 padding
+        // 就是 240），上半区在 VSplitView 里只有 300 的下限 —— 再叠一条缺失素材
+        // 条、或者 notice 撑到两行，这个 VStack 的最小高度就超过了分给它的高度。
+        // SwiftUI 不会把拒绝再矮的 videoBox 压下去，只会把它下面的 transport 挤
+        // 出边界，压到时间线工具栏那一排按钮上（用户报的重叠就是这么来的）。
+        .frame(minHeight: 120)
         .padding(10)
     }
 
@@ -415,6 +420,12 @@ struct VideoEditView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+        // 这一行按自然高度**先**拿走空间，剩下的才归预览框：
+        // `fixedSize` 让它拒绝被压扁（notice 撑到两行时也如实变高），
+        // `layoutPriority` 保证 VStack 先满足它 —— 两个缺一个，空间不够时
+        // 被牺牲的就又是它自己了。
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
     }
 
     private func clockLabel(_ seconds: Double) -> String {
@@ -476,13 +487,9 @@ struct VideoEditView: View {
             ToolbarIcon(icon: "trash", help: "Delete the selection", shortcut: .plain("⌫")) {
                 project.deleteSelected()
             }
-            // 判据必须和 ⌫ 那道守卫逐字一致（含标记）。少一类，选中标记时垃圾桶
+            // 判据和 ⌫ 那道守卫是**同一个**表达式。少一类，选中标记时垃圾桶
             // 就是灰的，而键盘删得掉 —— 同一个动作两个入口给出两种答案。
-            .disabled(
-                project.selectedClipIDs.isEmpty
-                    && project.selectedShapeID == nil
-                    && project.selectedMarkerRef == nil
-            )
+            .disabled(project.selection.isEmpty)
             ToolbarIcon(icon: "waveform.badge.minus", help: "Detach the audio onto its own track") {
                 if let id = project.selectedClip?.id { project.detachAudio(from: id) }
             }
@@ -752,7 +759,7 @@ private struct ShapeOverlayCanvas: View {
                 .onChanged { value in
                     if dragOrigin == nil {
                         dragOrigin = CGPoint(x: shape.centerX, y: shape.centerY)
-                        project.selectedShapeID = shape.id
+                        project.selectShape(shape.id, additive: false)
                     }
                     guard let origin = dragOrigin else { return }
                     // 接近画布中心时吸附并亮参考线，和剪辑变换框同一套手感。
@@ -781,7 +788,7 @@ private struct ShapeOverlayCanvas: View {
                     project.endLiveEdit(rebuildsPreview: false)
                 }
         )
-        .onTapGesture { project.selectedShapeID = shape.id }
+        .onTapGesture { project.selectShape(shape.id, additive: false) }
     }
 }
 

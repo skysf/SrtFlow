@@ -77,28 +77,40 @@
    它会直接改变导出画面。加字段时的判断标准见
    [video-edit-project-file.md](video-edit-project-file.md)。
 
-## 三类选择互斥（剪辑 / 形状 / 字幕 cue）
+## 选择模型：点选互斥 / 框选混选（剪辑 / 形状 / 字幕 cue）
 
-1. **互斥规则只有一份，写在 `EditSelection`**（`VideoEditSelection.swift`）：
-   三个字段全 `private(set)`，唯一改法是 `selectClips` / `selectShape` /
-   `selectSubtitleCue`，每个都清另外两类。`VideoEditProject` 的
-   `selectedClipIDs` / `selectedShapeID` / `selectedSubtitleCueID` 只是它的
-   计算属性门面。
+> 2026-08-12 随鼠标框选调整：**点选**仍然三类互斥，**框选**可以一次选中三类。
+> 手势侧的约束见 [timeline-drag-gestures.md](timeline-drag-gestures.md) 的
+> 「框选」一节，这里只写选择模型本身。
+
+1. **规则只有一份，写在 `EditSelection`**（`VideoEditSelection.swift`）：
+   三个字段（`clipIDs` / `shapeIDs` / `subtitleCueIDs`，都是集合）全
+   `private(set)`，点选的唯一改法是 `selectClips` / `selectShape` /
+   `selectSubtitleCue`，每个都清另外两类；框选走 `selectBox`，三类一起写。
+   `VideoEditProject` 的 `selectedClipIDs` / `selectedShapeIDs` /
+   `selectedSubtitleCueIDs` 只是它的计算属性门面。
    > 原来的写法是「每个入口自己记得清一下别的」，散在两个 didSet 加一个函数
    > 里 —— 漏了 shape ↔ cue 这一对，先点形状再点 cue 就同时挂两套预览框
    > （2026-08-09 复审 P2）。**不许回到「调用方自觉」那种写法**，加第四类
    > 选择时同样只改 `EditSelection`。
-2. **点空白 = 三类一起清**（`clearSelection()`）：预览空白与时间线空白是
+2. **「预览上最多一套框」换了个地方守，没有消失**：预览只认
+   `soleClipID` / `soleShapeID` / `soleSubtitleCueID` —— 三类加起来正好选中
+   一个时才有主角，多选或混选一律不画框（与以前「多选剪辑时不画框」一致）。
+   **不许**在预览层各自再写一遍「要是还选着别的就不画」，写两遍迟早分叉。
+3. **标记（marker）对所有人仍然互斥**，框选无条件清掉它（空框也清）。它的
+   互斥从来不是为了画框，是为了 ⌫：删除只有一个入口，"选中的是标记" 和
+   "选中的是整段" 必须互斥，否则点了段上的标记再按 ⌫ 删掉的是整段素材。
+4. **点空白 = 三类一起清**（`clearSelection()`）：预览空白与时间线空白是
    同一语义，两边都调它。
-3. **切工程必须清三类**：`closeCurrentDocument` 调 `clearSelection()`。
+5. **切工程必须清三类**：`closeCurrentDocument` 调 `clearSelection()`。
    漏掉 cue 的话，新工程会带着上一条工程的 cue ID 开场。
-4. **失效的 cue 选择自动摘掉**：清理挂在 `VideoEditProject.state` 的
+6. **失效的 cue 选择自动摘掉**：清理挂在 `VideoEditProject.state` 的
    `didSet`（时间线所有写入的唯一入口），删字幕轨 / 外挂新 .srt / 重新生成
    换掉整轨 cue 身份时都会生效，不留悬空拖框。只在真选着 cue 时才遍历 ——
    拖布局框那种高频 `liveApply` 不额外付代价，**一步撤销的语义不受影响**。
-5. 合同由 checks/ProjectFile 钉住（`EditSelection` 的六条互斥/清理用例），
-   「有没有被接上」由 `scripts/check-project-file.sh` 末尾的接线守卫钉住
-   （`VideoEditProject` 是 @MainActor App 类型，自检编不动它本体）。
+7. 合同由 checks/ProjectFile 钉住（`EditSelection` 的点选互斥 / 框选混选 /
+   清理用例），「有没有被接上」由 `scripts/check-project-file.sh` 末尾的接线
+   守卫钉住（`VideoEditProject` 是 @MainActor App 类型，自检编不动它本体）。
 
 ## 生成默认单行
 
@@ -121,7 +133,17 @@
       拖角：字号等比变；松手一步撤销可回退。
 - [ ] 调整后导出：烧录位置/宽度/字号与预览一致（同一段画面对比截图）。
 - [ ] 自动检测 + 生成：新字幕全部单行。
-- [ ] **选择互斥两向**：选中形状 → 点轨道上的 cue，形状框必须消失；
+- [ ] **点选互斥两向**：选中形状 → 点轨道上的 cue，形状框必须消失；
       选中 cue → 点形状，字幕拖框必须消失。任何时刻预览上只有一套框。
+- [ ] **框选混选后预览不画框**：拉框同时选中剪辑 + cue，预览上一套框都不该有；
+      再点其中一条 cue（只剩它一个）拖框回来。
+- [ ] **从 cue 起手拖动**：拖一条选中的 cue，整片选择（剪辑/形状/其他 cue）
+      跟着走同一个位移；译文轨那一行的块同步移动（两轨镜像），一步撤销可回退。
+- [ ] **隐藏的字幕轨不可编辑**：关掉原文（或译文）那只眼睛后，那一行的块
+      点不中、也拖不动 —— 隐藏 = 不可编辑，灰显只是它的观感。
+- [ ] **手势被打断后还能再拖**：拖 cue 途中切到别的栏目再切回来，同一条 cue
+      要能立刻正常拖动（不该有一次「拖了没反应」）。
+- [ ] **框只扫过字幕行的留白**（块上下各 4pt）：不许选中任何 cue；
+      擦到块本体就要选中。形状行同理（上下各 3pt）。
 - [ ] **切工程**：选中 cue 后新建/打开另一个工程，新工程不许带着拖框开场。
 - [ ] **删/换字幕轨**：选中 cue 后移除字幕或外挂一份新 .srt，拖框当场消失。

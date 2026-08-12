@@ -18,6 +18,14 @@ func check(_ condition: Bool, _ message: String, line: Int = #line) {
     }
 }
 
+func checkEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String, line: Int = #line) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL [line \(line)] \(message): got \(actual), expected \(expected)")
+    }
+}
+
 func checkClose(_ actual: Double, _ expected: Double, _ message: String, line: Int = #line) {
     checks += 1
     if abs(actual - expected) > 0.001 {
@@ -376,15 +384,23 @@ do {
 // 这三步就是 App 里跑的那三步（commitDrag 只是把第三步包进一次 perform）。
 
 /// 跑一遍完整的拖动：返回落地后的状态。
+///
+/// **必须连 `perform` 那一步的磁吸重排一起跑**：`VideoEditProject.perform` 对
+/// 任何改动都会在磁吸开着时再 `packMain()` 一次，只调 `applyDrag` 的话，被那次
+/// 重排推翻的落点在自检里根本看不见（复审指出的假绿）。`magnetEnabled` 默认
+/// 跟随 `magnetMain`，但拖的是非主轨块、磁吸却开着的场景要单独传 —— 那正是
+/// 会踩坑的场景。
 func performDrag(
     _ state: TimelineState,
     dragged: UUID,
     moving: Set<UUID>,
     desiredDelta: Double,
     magnetMain: Bool = false,
+    magnetEnabled: Bool? = nil,
     crossTrack: TrackDropTarget? = nil,
     snapping: Bool = false
 ) -> (state: TimelineState, resolution: DragResolution) {
+    let magnet = magnetEnabled ?? magnetMain
     let candidates = snapping
         ? TimelineSnap.candidates(in: state, moving: moving, playhead: 0)
         : []
@@ -396,7 +412,10 @@ func performDrag(
     }
     let resolution = plan.resolve(desiredDelta: desiredDelta, pixelsPerSecond: pps)
     var next = state
-    next.applyDrag(plan, resolution: resolution, crossTrack: crossTrack, magnet: magnetMain)
+    next.applyDrag(plan, resolution: resolution, crossTrack: crossTrack, magnet: magnet)
+    // 这就是 `perform` 的那一步。applyDrag 里已经排过一次，所以它必须是幂等的
+    //（不幂等 = 松手之后位置还会再变一次，用户看到块自己跳一下）。
+    if magnet { next.packMain() }
     return (next, resolution)
 }
 
@@ -555,6 +574,373 @@ do {
     checkClose(run.state.clip(with: a1.id)?.timelineStart ?? -1, 10,
                "链接音频跟到同一时刻 —— 被占着也不许挤开，那会当场毁掉声画同步")
     checkClose(run.state.clip(with: squatter.id)?.timelineStart ?? -1, 12, "占位的那段自己不动")
+}
+
+// MARK: - 15. 框选：相交即选中、跳过隐藏轨、最小宽度和画出来的一致
+//
+// 长期约束见 docs/architecture/timeline-drag-gestures.md 的「框选」一节。
+
+do {
+    let a = UUID(), b = UUID(), tiny = UUID(), shape = UUID(), cue = UUID(), hidden = UUID()
+    // 24 点/秒：A=[0,5]→[0,120]，B=[10,15]→[240,360]，tiny 是 0.05 秒的碎块。
+    let rows = [
+        TimelineMarquee.Row(minY: 0, maxY: 40, items: [
+            TimelineMarquee.Item(id: a, start: 0, end: 5, kind: .clip),
+            TimelineMarquee.Item(id: b, start: 10, end: 15, kind: .clip),
+            TimelineMarquee.Item(id: tiny, start: 20, end: 20.05, kind: .clip),
+        ]),
+        TimelineMarquee.Row(minY: 46, maxY: 66, items: [
+            TimelineMarquee.Item(id: shape, start: 3, end: 4, kind: .shape),
+        ]),
+        TimelineMarquee.Row(minY: 72, maxY: 86, items: [
+            TimelineMarquee.Item(id: cue, start: 1, end: 2, kind: .subtitleCue),
+        ]),
+        TimelineMarquee.Row(minY: 92, maxY: 132, isHidden: true, items: [
+            TimelineMarquee.Item(id: hidden, start: 0, end: 5, kind: .clip),
+        ]),
+    ]
+
+    // 相交即选中：框只压住 A 右边一丁点，也算中。要求「整个框住」的话，
+    // 放大之后选一段长素材得把框拖出好几屏。
+    var hit = TimelineMarquee.hits(
+        rect: CGRect(x: 118, y: 10, width: 4, height: 4), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a], "框碰到块的边就算选中（相交即选）")
+
+    // 横着扫一条零高度的细线：一整排都该中。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 20, width: 400, height: 0), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a, b], "横扫一条细线选中一整排")
+    check(hit.shapes.isEmpty && hit.cues.isEmpty, "细线只在自己那一行里选，不许穿到别的行")
+
+    // 三类一次框中。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 0, width: 400, height: 90), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [a, b], "整片框：剪辑")
+    checkEqual(hit.shapes, [shape], "整片框：形状")
+    checkEqual(hit.cues, [cue], "整片框：字幕 cue")
+
+    // 隐藏轨整轨跳过：看不见的东西被框走、跟着一起被拖被删是纯粹的惊吓。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 0, width: 400, height: 200), rows: rows, pixelsPerSecond: 24
+    )
+    check(!hit.clips.contains(hidden), "隐藏轨上的块不许被框中")
+
+    // 最小宽度：0.05 秒的碎块按真实时长只有 1.2 点宽，用户明明框过了那个可见的
+    // 小方块却什么都没选中 —— 判定必须和**画出来的**宽度一致。
+    let tinyX = 20 * 24.0
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: tinyX + 3, y: 10, width: 1, height: 4), rows: rows, pixelsPerSecond: 24
+    )
+    checkEqual(hit.clips, [tiny], "碎块按画出来的最小宽度判定（\(TimelineMarquee.clipMinimumWidth) 点）")
+
+    // 空框（点一下空白）什么都不选。
+    hit = TimelineMarquee.hits(
+        rect: CGRect(x: 200, y: 10, width: 0, height: 0), rows: rows, pixelsPerSecond: 24
+    )
+    check(hit.isEmpty, "空白处的空框什么都不选")
+
+    // 会话：加选在原有选择上并集，不加选则整个替换。
+    var session = TimelineMarquee.Session(
+        anchor: CGPoint(x: 0, y: 10), additive: true,
+        base: TimelineMarquee.Hit(clips: [b], shapes: [], cues: [])
+    )
+    session.update(current: CGPoint(x: 120, y: 30), rows: rows, pixelsPerSecond: 24)
+    checkEqual(session.hit.clips, [a, b], "⌘/⇧ 拖框 = 在原有选择上加选")
+
+    session = TimelineMarquee.Session(
+        anchor: CGPoint(x: 0, y: 10), additive: false,
+        base: TimelineMarquee.Hit(clips: [b], shapes: [], cues: [])
+    )
+    session.update(current: CGPoint(x: 120, y: 30), rows: rows, pixelsPerSecond: 24)
+    checkEqual(session.hit.clips, [a], "空手拖框 = 丢掉旧选择")
+
+    // 往左上方向拉的框（current 在 anchor 左边）同样要成立。
+    session = TimelineMarquee.Session(anchor: CGPoint(x: 400, y: 60), additive: false, base: .init())
+    session.update(current: CGPoint(x: 0, y: 0), rows: rows, pixelsPerSecond: 24)
+    // x 只到 400 点（≈16.7 秒），20 秒处的碎块够不着。
+    checkEqual(session.hit.clips, [a, b], "反向拉框一样算")
+    checkEqual(session.hit.shapes, [shape], "反向拉框跨行一样算")
+}
+
+// MARK: - 16. 框选之后整组一起移动：剪辑 + 形状 + 字幕 cue 同一个 delta
+//
+// 三类改的字段不同（剪辑/形状改 timelineStart，cue 要两轨同步），但**位移只有
+// 一个**。谁自己算一份，谁就会在磁吸那条分支上和别人分叉。
+
+do {
+    var state = TimelineState()
+    let c = clip(start: 0, duration: 5)
+    state.mainClips = [c]
+    var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 1, width: 0.3, height: 0.2)
+    shape.duration = 2
+    state.shapes = [shape]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "hi")]
+    state.subtitle = doc
+    var companion = SubtitleCompanion()
+    var translation = SubtitleDocumentModel()
+    translation.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "你好")]
+    companion.translation = translation
+    state.subtitleCompanion = companion
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: c.id, movingIDs: [c.id], candidates: [], magnetMain: false
+    ) else {
+        check(false, "造不出 plan")
+        exit(1)
+    }
+    let plan = base.adding(
+        shapes: [(id: shape.id, span: TimelineSpan(start: 1, end: 3))],
+        cues: [(id: cueID, span: TimelineSpan(start: 1, end: 3))]
+    )
+    let resolution = plan.resolve(desiredDelta: 4, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: false)
+
+    checkClose(next.clip(with: c.id)?.timelineStart ?? -1, 4, "剪辑挪了 4 秒")
+    checkClose(next.shapes.first?.timelineStart ?? -1, 5, "形状跟着挪同一个 delta")
+    checkClose(next.subtitle?.cues.first?.start ?? -1, 5, "原文 cue 跟着挪")
+    checkClose(next.subtitle?.cues.first?.end ?? -1, 7, "cue 时长不变")
+    checkClose(next.subtitleCompanion?.translation?.cues.first?.start ?? -1, 5,
+               "译文轨同 ID 同时间（两轨必须同步，否则烧录时译文对不上口型）")
+
+    // 下界是**整组**的：最早的成员顶到 0 就整组停下，不许各夹各的
+    //（各夹各的会把选中项之间的相对错位当场压扁）。
+    let back = plan.resolve(desiredDelta: -100, pixelsPerSecond: pps)
+    var pulled = state
+    pulled.applyDrag(plan, resolution: back, crossTrack: nil, magnet: false)
+    checkClose(pulled.clip(with: c.id)?.timelineStart ?? -1, 0, "剪辑顶到 0")
+    checkClose(pulled.shapes.first?.timelineStart ?? -1, 1, "形状保持原来的相对错位")
+    checkClose(pulled.subtitle?.cues.first?.start ?? -1, 1, "cue 保持原来的相对错位")
+}
+
+// MARK: - 17. 磁吸主轨插空时，跟随的形状/cue 按**实际**落点走
+//
+// 和第 14 节同一个道理，只是跟随的不是链接音频而是框选来的形状与字幕：
+// 位移在这条分支上会被 packMain 改写，第二次平移必须是幂等的绝对落点，
+// 不是在已经挪过的值上再叠一次（叠加式接口在这里就是双倍位移）。
+
+do {
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 10)
+    let b = clip(start: 10, duration: 10)
+    state.mainClips = [a, b]
+    var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 0, width: 0.3, height: 0.2)
+    shape.duration = 2
+    state.shapes = [shape]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 0, end: 2, text: "hi")]
+    state.subtitle = doc
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: a.id, movingIDs: [a.id], candidates: [], magnetMain: true
+    ) else {
+        check(false, "造不出 plan")
+        exit(1)
+    }
+    let plan = base.adding(
+        shapes: [(id: shape.id, span: TimelineSpan(start: 0, end: 2))],
+        cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))]
+    )
+    let resolution = plan.resolve(desiredDelta: 15, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: true)
+
+    checkClose(next.clip(with: a.id)?.timelineStart ?? -1, 10, "磁吸把 A 插到 B 之后")
+    checkClose(next.shapes.first?.timelineStart ?? -1, 10,
+               "形状按实际落点跟过去，不是按手势想要的 15")
+    checkClose(next.subtitle?.cues.first?.start ?? -1, 10,
+               "cue 同理 —— 写第二次必须幂等，否则是双倍位移")
+    checkClose(next.subtitle?.cues.first?.end ?? -1, 12, "cue 时长仍然不变")
+}
+
+// MARK: - 18. 复审：跨轨到岸被「挤开」时，伙伴要跟着实际落点走
+
+do {
+    // 视频 + 链接音频一起拖进**已经有占位**的画中画轨：到岸后 clampedStart 会把
+    // 视频让开占位，音频必须跟到同一个实际落点。老写法只让开被拖的那个，音频
+    // 停在第 1 步的位置上 —— 当场 A/V 错位（复审第 1 条）。
+    var state = TimelineState()
+    var video = clip(start: 0, duration: 5)
+    var audio = clip(start: 0, duration: 5)
+    video.linkGroup = UUID()
+    audio.linkGroup = video.linkGroup
+    let blocker = clip(start: 6, duration: 5)
+    state.mainClips = [video]
+    state.overlayTracks = [EditLane(clips: [blocker])]
+    state.audioTracks = [EditLane(clips: [audio])]
+
+    // 想落到 6（正压在占位上）→ 让到占位之后 = 11。
+    let run = performDrag(
+        state, dragged: video.id, moving: [video.id, audio.id],
+        desiredDelta: 6, crossTrack: .overlay(0)
+    )
+    let landedVideo = run.state.clip(with: video.id)?.timelineStart ?? -1
+    let landedAudio = run.state.clip(with: audio.id)?.timelineStart ?? -1
+    checkClose(landedVideo, 11, "视频让开目标轨上的占位，落在它后面")
+    checkClose(landedAudio, landedVideo, "链接音频跟到**实际**落点，不是停在 6")
+    check(run.state.overlayTracks.first?.clips.count == 2, "两段都在这条画中画轨上")
+}
+
+// MARK: - 19. 复审：磁吸开着时主轨块不参与整组平移
+
+do {
+    // 主轨块的位置在磁吸下只由 packMain 决定。拖一个音频块、而主轨块也在选中
+    // 集合里时，主轨块既不该跟着画、也不该被平移 —— 平了也会被 perform 那次
+    // 重排排回去，等于拖动中骗了用户一路（复审第 1 条的后半段）。
+    var state = TimelineState()
+    let v = clip(start: 0, duration: 10)
+    let a = clip(start: 0, duration: 5)
+    state.mainClips = [v]
+    state.audioTracks = [EditLane(clips: [a])]
+
+    let ids = state.draggingClipIDs(
+        seed: [a.id, v.id], linkage: false, magnetPinsMainTrack: true
+    )
+    check(ids == [a.id], "磁吸下拖非主轨块：主轨成员被剔除，只剩音频")
+    check(
+        state.draggingClipIDs(seed: [a.id, v.id], linkage: false, magnetPinsMainTrack: false)
+            == [a.id, v.id],
+        "磁吸关掉（或拖的就是主轨块）时一个都不剔"
+    )
+
+    // 端到端：整条路径跑完（含 perform 那次重排），主轨块必须一动没动。
+    let run = performDrag(
+        state, dragged: a.id, moving: ids, desiredDelta: 4, magnetEnabled: true
+    )
+    checkClose(run.state.clip(with: a.id)?.timelineStart ?? -1, 4, "音频落在 4")
+    checkClose(run.state.clip(with: v.id)?.timelineStart ?? -1, 0,
+               "主轨块留在 packMain 给的位置，不会先动一下再被排回去")
+}
+
+// MARK: - 20. 复审：多选时每一个成员的链接组都要展开
+
+do {
+    // 框选 A、B 两段，各自都有分离出来的音频。拖 A 时只展开 A 的链接组的话，
+    // B 会动、B 的音频不动 —— 直接 A/V 错位（复审第 2 条）。
+    var state = TimelineState()
+    var a = clip(start: 0, duration: 4)
+    var aAudio = clip(start: 0, duration: 4)
+    var b = clip(start: 10, duration: 4)
+    var bAudio = clip(start: 10, duration: 4)
+    a.linkGroup = UUID()
+    aAudio.linkGroup = a.linkGroup
+    b.linkGroup = UUID()
+    bAudio.linkGroup = b.linkGroup
+    state.overlayTracks = [EditLane(clips: [a, b])]
+    state.audioTracks = [EditLane(clips: [aAudio, bAudio])]
+
+    let ids = state.draggingClipIDs(
+        seed: [a.id, b.id], linkage: true, magnetPinsMainTrack: false
+    )
+    check(ids == [a.id, b.id, aAudio.id, bAudio.id],
+          "两段的链接音频都要在名单里（实得 \(ids.count) 个）")
+
+    let run = performDrag(state, dragged: a.id, moving: ids, desiredDelta: 3)
+    checkClose(run.state.clip(with: b.id)?.timelineStart ?? -1, 13, "B 跟着走")
+    checkClose(run.state.clip(with: bAudio.id)?.timelineStart ?? -1, 13,
+               "B 的链接音频也必须跟着走，不许留在 10")
+    check(
+        state.draggingClipIDs(seed: [a.id, b.id], linkage: false, magnetPinsMainTrack: false)
+            == [a.id, b.id],
+        "关掉链接开关时一个伙伴都不带"
+    )
+}
+
+// MARK: - 22. 二轮复审：从主轨跨轨时，被排走的主轨块要带上自己的链接音频
+
+do {
+    // 主轨 A、B 都选中，B 有分离出来的音频；把 A 拖到画中画轨（**磁吸开着**，
+    // 那才是 App 的默认）。磁吸会让主轨合拢、B 被排到 0，B 的音频若还按整组的
+    // delta 走就停在 5 —— 声画错开一整段。声画同步高于「整组同一位移」。
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 5)
+    var b = clip(start: 5, duration: 5)
+    var bAudio = clip(start: 5, duration: 5)
+    b.linkGroup = UUID()
+    bAudio.linkGroup = b.linkGroup
+    state.mainClips = [a, b]
+    state.audioTracks = [EditLane(clips: [bAudio])]
+
+    let run = performDrag(
+        state, dragged: a.id, moving: [a.id, b.id, bAudio.id],
+        desiredDelta: 0, magnetMain: true, crossTrack: .newOverlayTop
+    )
+    check(run.state.mainClips.map(\.id) == [b.id], "A 已经搬去画中画轨，主轨只剩 B")
+    checkClose(run.state.clip(with: b.id)?.timelineStart ?? -1, 0, "磁吸把 B 合拢到 0")
+    checkClose(run.state.clip(with: bAudio.id)?.timelineStart ?? -1, 0,
+               "B 的链接音频必须跟着 B 走到 0，不许停在 5")
+}
+
+// MARK: - 23. 二轮复审：跨轨向左让位不许突破整组下界
+
+do {
+    // 被拖块在 10s、混选的 cue 在 0s，目标轨 [12,17] 有占位，纯纵向换轨。
+    // 往左让会把整组推到 -3：cue 被单独夹在 0，相对错位当场压扁。
+    // 正确做法是改往右侧躲，整组仍然共用一个位移。
+    var state = TimelineState()
+    let dragged = clip(start: 10, duration: 5)
+    let blocker = clip(start: 12, duration: 5)
+    state.mainClips = [dragged]
+    state.overlayTracks = [EditLane(clips: [blocker])]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 0, end: 2, text: "hi")]
+    state.subtitle = doc
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: dragged.id, movingIDs: [dragged.id],
+        candidates: [], magnetMain: false
+    ) else {
+        print("FAIL 造不出计划"); exit(1)
+    }
+    let plan = base.adding(shapes: [], cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))])
+    checkClose(plan.groupLowerDelta, 0, "整组下界由起点最小的成员（cue 在 0s）决定")
+
+    let resolution = plan.resolve(desiredDelta: 0, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: .overlay(0), magnet: false)
+
+    let landed = next.clip(with: dragged.id)?.timelineStart ?? -1
+    let cueStart = next.subtitle?.cues.first?.start ?? -1
+    checkClose(landed, 17, "越界的左侧不能用，改从占位右边落下")
+    checkClose(cueStart, landed - 10, "cue 与被拖块仍然是同一个位移")
+    check(cueStart >= 0, "cue 没有被单独夹在 0 上")
+}
+
+// MARK: - 21. 复审：框选纵向只认画出来的块，不认整行的留白
+
+do {
+    // 字幕行高 22，cue 块只有 14、上下各留 4。框从留白里扫过、一个像素都没碰到
+    // 块时不许选中（复审第 4 条）。行模型由视图按同一批常量喂进来，这里直接
+    // 按那批常量造。
+    let cueID = UUID()
+    let rowTop = 100.0
+    let band = TimelineMarquee.Row(
+        minY: rowTop + TimelineMarquee.cueTopInset,
+        maxY: rowTop + TimelineMarquee.cueTopInset + TimelineMarquee.cueHeight,
+        items: [TimelineMarquee.Item(id: cueID, start: 0, end: 2, kind: .subtitleCue)]
+    )
+    // 只扫过顶部那 4pt 留白（100…103）。
+    let missTop = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: rowTop, width: 200, height: 3), rows: [band], pixelsPerSecond: 10
+    )
+    check(missTop.cues.isEmpty, "只碰到行顶留白：不选中")
+    // 扫过块底之下的留白（118…122）。
+    let missBottom = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: rowTop + 18.5, width: 200, height: 3), rows: [band], pixelsPerSecond: 10
+    )
+    check(missBottom.cues.isEmpty, "只碰到行底留白：不选中")
+    // 真碰到块。
+    let hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: rowTop + 10, width: 200, height: 2), rows: [band], pixelsPerSecond: 10
+    )
+    check(hit.cues == [cueID], "碰到块本体：选中")
 }
 
 // MARK: - 收尾

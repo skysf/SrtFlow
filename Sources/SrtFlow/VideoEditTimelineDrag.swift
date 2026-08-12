@@ -11,10 +11,13 @@ import SwiftUI
 /// 松手时拿 `resolution` 去落一次。**渲染和落地是同一份解析结果** ——
 /// 不许在 commit 里再算一遍位置。
 struct ClipDragSession {
-    /// 这一轮拖的是剪辑还是形状（落地入口不同，其余一模一样）。
+    /// 这一轮从哪一类块起手（落地入口不同，其余一模一样）。
+    /// 形状和字幕 cue 走同一个落地入口（`commitFreeDrag`）：两者都不跨轨、
+    /// 不插空，区别只在落地时改的字段，而那一步在 `TimelineState.move` 里。
     enum Subject: Equatable {
         case clip(slot: TrackSlot)
         case shape
+        case subtitleCue
     }
 
     let subject: Subject

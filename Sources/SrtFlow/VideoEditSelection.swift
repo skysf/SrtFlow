@@ -2,26 +2,48 @@ import Foundation
 
 // 编辑器里的四类选择：剪辑、形状标注、字幕 cue、轨道块上的标记。
 //
-// 它们**四者互斥** —— 预览上每一类都会画自己的框（剪辑/形状是变换框，
-// 字幕是布局拖框），同时出现两套框，用户既不知道拖谁，把手还会互相压住。
-// 标记加进来的理由不是画框，是**删除键**：⌫ 只有一个统一入口
-//（`VideoEditProject.deleteSelected`），"选中的是标记" 和 "选中的是整段" 必须
-// 互斥，否则点了段上的标记再按 ⌫，删掉的会是整段素材。
+// **点选**（单击）四者互斥，**框选**（鼠标拉框）可以一次选中前三类。这条分界
+// 是刻意的，理由见下面两段。
 //
-// 互斥性收在这个值类型里，而不是散在各个 didSet 和各个入口函数里：
-// 散着写的版本漏了两条边（选 cue 不清形状、选形状不清 cue），先点形状再点
-// cue 就能同时看到两套框（PR#22 复审 P2）。字段一律 `private(set)`，
-// 唯一的改法是下面几个 mutating 方法，所以「加一类选择忘了清另一类」在
-// 类型层面就不可能发生。
+// 一、为什么点选还要互斥：预览上每一类都会画自己的框（剪辑/形状是变换框，
+// 字幕是布局拖框）。同时出现两套框，用户既不知道拖谁，把手还会互相压住。
+// 框选放开之后这条约束**不是消失了，而是换了个地方守**：预览上的框只认
+// `sole*` —— 三类加起来只选中一个时才有主角，多选或混选一律不画框（和以前
+// 「多选剪辑时不画框」的行为一致）。所以「同时挂两套框」在类型层面仍然不可能。
 //
-// 长期约束见 docs/architecture/subtitle-track-visibility-and-layout.md。
+// 二、标记为什么仍然对所有人互斥：它的互斥不是为了画框，是为了**删除键**。
+// ⌫ 只有一个统一入口（`VideoEditProject.deleteSelected`），"选中的是标记" 和
+// "选中的是整段" 必须互斥，否则点了段上的标记再按 ⌫，删掉的会是整段素材。
+// 框选也一样：`selectBox` 无论框到什么都把标记选择清掉。
+//
+// 字段一律 `private(set)`，唯一的改法是下面几个 mutating 方法，所以「加一类
+// 选择忘了清另一类」在类型层面就不可能发生。
+//
+// 长期约束见 docs/architecture/subtitle-track-visibility-and-layout.md
+// 与 docs/architecture/timeline-drag-gestures.md（框选那一节）。
 // 纯值逻辑，checks/ProjectFile 编进去做守卫。
 
 struct EditSelection: Equatable {
     private(set) var clipIDs: Set<UUID> = []
-    private(set) var shapeID: UUID?
-    private(set) var subtitleCueID: UUID?
+    private(set) var shapeIDs: Set<UUID> = []
+    private(set) var subtitleCueIDs: Set<UUID> = []
     private(set) var markerRef: ClipMarkerRef?
+
+    /// 前三类选中项的总数。标记不算 —— 它从不和别人共存。
+    var count: Int { clipIDs.count + shapeIDs.count + subtitleCueIDs.count }
+
+    var isEmpty: Bool { count == 0 && markerRef == nil }
+
+    // MARK: - 预览上那套框的归属
+    //
+    // 三类加起来只有一个选中项时才有主角。这是「预览上最多一套框」的**唯一**
+    // 判据 —— 别在预览层各自再写一遍「要是还选着别的就不画」，写两遍迟早分叉。
+
+    var soleClipID: UUID? { count == 1 ? clipIDs.first : nil }
+    var soleShapeID: UUID? { count == 1 ? shapeIDs.first : nil }
+    var soleSubtitleCueID: UUID? { count == 1 ? subtitleCueIDs.first : nil }
+
+    // MARK: - 点选：一类生效，其余三类清空
 
     /// 选剪辑：非空就清掉其余三类。
     ///
@@ -30,27 +52,36 @@ struct EditSelection: Equatable {
     mutating func selectClips(_ ids: Set<UUID>) {
         clipIDs = ids
         guard !ids.isEmpty else { return }
-        shapeID = nil
-        subtitleCueID = nil
+        shapeIDs = []
+        subtitleCueIDs = []
         markerRef = nil
     }
 
-    /// 选形状：非 nil 就清掉其余三类。
+    /// 选形状：非空就清掉其余三类。
+    mutating func selectShapes(_ ids: Set<UUID>) {
+        shapeIDs = ids
+        guard !ids.isEmpty else { return }
+        clipIDs = []
+        subtitleCueIDs = []
+        markerRef = nil
+    }
+
+    /// 选字幕 cue：非空就清掉其余三类。
+    mutating func selectSubtitleCues(_ ids: Set<UUID>) {
+        subtitleCueIDs = ids
+        guard !ids.isEmpty else { return }
+        clipIDs = []
+        shapeIDs = []
+        markerRef = nil
+    }
+
+    /// 单选门面（点一下轨道上的形状 / cue 就是它）。
     mutating func selectShape(_ id: UUID?) {
-        shapeID = id
-        guard id != nil else { return }
-        clipIDs = []
-        subtitleCueID = nil
-        markerRef = nil
+        selectShapes(id.map { [$0] } ?? [])
     }
 
-    /// 选字幕 cue：非 nil 就清掉其余三类。
     mutating func selectSubtitleCue(_ id: UUID?) {
-        subtitleCueID = id
-        guard id != nil else { return }
-        clipIDs = []
-        shapeID = nil
-        markerRef = nil
+        selectSubtitleCues(id.map { [$0] } ?? [])
     }
 
     /// 选标记：非 nil 就清掉其余三类。
@@ -61,21 +92,42 @@ struct EditSelection: Equatable {
         markerRef = ref
         guard ref != nil else { return }
         clipIDs = []
-        shapeID = nil
-        subtitleCueID = nil
+        shapeIDs = []
+        subtitleCueIDs = []
+    }
+
+    // MARK: - 框选：三类一次落定
+
+    /// 鼠标拉框选出来的结果。**混选只能从这一个入口进来** —— 点选那几个方法
+    /// 的互斥一条都没松，所以「哪里会产生混选」永远只有这一处答案。
+    ///
+    /// 标记无条件清掉，哪怕框是空的：框选是一次明确的「重新指定选中项」，
+    /// 留着标记的话 ⌫ 会走进标记分支，删掉一枚用户早就不看着的标记。
+    mutating func selectBox(clips: Set<UUID>, shapes: Set<UUID>, cues: Set<UUID>) {
+        clipIDs = clips
+        shapeIDs = shapes
+        subtitleCueIDs = cues
+        markerRef = nil
     }
 
     /// 四类一起清（点预览空白、切工程）。
     mutating func clear() {
         clipIDs = []
-        shapeID = nil
-        subtitleCueID = nil
+        shapeIDs = []
+        subtitleCueIDs = []
         markerRef = nil
     }
+
+    // MARK: - 摘掉已经不存在的选中项
 
     /// 剪辑已经不在时间线上了（撤销/删除）就摘掉。
     mutating func pruneClips(keeping isValid: (UUID) -> Bool) {
         clipIDs = clipIDs.filter(isValid)
+    }
+
+    /// 形状已经不在时间线上了（撤销/删除）就摘掉。
+    mutating func pruneShapes(keeping isValid: (UUID) -> Bool) {
+        shapeIDs = shapeIDs.filter(isValid)
     }
 
     /// 选中的 cue 已经不在字幕轨里了就摘掉。
@@ -83,9 +135,8 @@ struct EditSelection: Equatable {
     /// 触发面比想象的宽：删字幕轨、外挂新 .srt、重新生成字幕都会把整轨换成
     /// **新的 cue 身份**，旧 ID 一个都对不上。留着的话预览会画一个锚不住任何
     /// 字幕的悬空拖框，一拖就改到别人的布局上。
-    mutating func pruneSubtitleCue(isValid: (UUID) -> Bool) {
-        guard let id = subtitleCueID, !isValid(id) else { return }
-        subtitleCueID = nil
+    mutating func pruneSubtitleCues(isValid: (UUID) -> Bool) {
+        subtitleCueIDs = subtitleCueIDs.filter(isValid)
     }
 
     /// 选中的标记已经不存在、或者被裁到所在段的窗口外了就摘掉。
