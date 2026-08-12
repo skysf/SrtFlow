@@ -134,8 +134,22 @@ fi
 if BODY="$(require_func 'private mutating func realignCompanions' "$EDITS")"; then
   printf '%s\n' "$BODY" | grep -q 'plan.draggedSpan.start' \
     || fail "realignCompanions 没按「被拖块实际落点 - 冻结起点」算位移"
-  printf '%s\n' "$BODY" | grep -q 'magnet ? Set(mainClips' \
+  printf '%s\n' "$BODY" | grep -q 'Set(mainClips.map' \
     || fail "realignCompanions 没把磁吸下的主轨成员排除：它们由 packMain 定位"
+  # 被 packMain 排走的主轨块，它的链接伙伴要跟着**它**走，不是跟着整组的 delta。
+  # 少了这条：把一段主轨块拖去别的轨，磁吸合拢主轨，留下的视频挪了、它分离出来的
+  # 音频没挪 —— 声画错开一整段。
+  printf '%s\n' "$BODY" | grep -q 'linkedClipIDs(' \
+    || fail "realignCompanions 没让链接伙伴跟随被排走的主轨块：跨轨会声画错位"
+fi
+# 跨轨到岸让位不许把整组顶过下界（伙伴会各自被 max(0,…) 夹住，相对错位压扁）。
+if BODY="$(require_func 'mutating func applyDrag' "$EDITS")"; then
+  printf '%s\n' "$BODY" | grep -q 'groupLowerDelta' \
+    || fail "applyDrag 跨轨落地没传整组下界：往左让位会压扁相对错位"
+fi
+if BODY="$(require_func 'func clampedStart(' "$EDITS")"; then
+  printf '%s\n' "$BODY" | grep -q 'notBefore' \
+    || fail "clampedStart 没有下界参数：跨轨让位会越过整组能去的最左边"
 fi
 
 # ── 4b. 三类成员共用同一个位移，且写第二次必须幂等 ─────────────────────
@@ -203,6 +217,19 @@ if BODY="$(require_func 'private func subtitleRow' "$VIEW")"; then
     || fail "字幕 cue 的手势没冻结这一轮的输入（beginCueDrag）"
   printf '%s\n' "$BODY" | grep -q 'endClipDrag(' \
     || fail "字幕 cue 的手势没有落地入口（endClipDrag）"
+  # 隐藏 = 不可编辑（与 trackRow 同一条合同）。只灰显不挡事件的话，隐藏的字幕行
+  # 照样拖得动，而且改的是**两条**镜像轨的时间。
+  printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(!hidden)' \
+    || fail "字幕行隐藏后仍然吃事件：隐藏轨必须不可编辑"
+  # 起手判据要带上「有没有活着的会话」，否则被打断后留下的陈旧 id 会让同一条 cue
+  # 的下一次拖动整轮建不出会话。
+  printf '%s\n' "$BODY" | grep -q 'clipDrag == nil || movingCueID != cue.id' \
+    || fail "cue 起手只比了 id：手势被打断后同一条 cue 会失效一次"
+fi
+# 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）。
+if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'movingCueID = nil' \
+    || fail "onDisappear 没清 movingCueID：下一次拖同一条 cue 会失效一次"
 fi
 grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$VIEW" \
   || fail "形状块没有接上 beginShapeDrag"

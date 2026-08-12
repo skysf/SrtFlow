@@ -852,6 +852,67 @@ do {
     )
 }
 
+// MARK: - 22. 二轮复审：从主轨跨轨时，被排走的主轨块要带上自己的链接音频
+
+do {
+    // 主轨 A、B 都选中，B 有分离出来的音频；把 A 拖到画中画轨（**磁吸开着**，
+    // 那才是 App 的默认）。磁吸会让主轨合拢、B 被排到 0，B 的音频若还按整组的
+    // delta 走就停在 5 —— 声画错开一整段。声画同步高于「整组同一位移」。
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 5)
+    var b = clip(start: 5, duration: 5)
+    var bAudio = clip(start: 5, duration: 5)
+    b.linkGroup = UUID()
+    bAudio.linkGroup = b.linkGroup
+    state.mainClips = [a, b]
+    state.audioTracks = [EditLane(clips: [bAudio])]
+
+    let run = performDrag(
+        state, dragged: a.id, moving: [a.id, b.id, bAudio.id],
+        desiredDelta: 0, magnetMain: true, crossTrack: .newOverlayTop
+    )
+    check(run.state.mainClips.map(\.id) == [b.id], "A 已经搬去画中画轨，主轨只剩 B")
+    checkClose(run.state.clip(with: b.id)?.timelineStart ?? -1, 0, "磁吸把 B 合拢到 0")
+    checkClose(run.state.clip(with: bAudio.id)?.timelineStart ?? -1, 0,
+               "B 的链接音频必须跟着 B 走到 0，不许停在 5")
+}
+
+// MARK: - 23. 二轮复审：跨轨向左让位不许突破整组下界
+
+do {
+    // 被拖块在 10s、混选的 cue 在 0s，目标轨 [12,17] 有占位，纯纵向换轨。
+    // 往左让会把整组推到 -3：cue 被单独夹在 0，相对错位当场压扁。
+    // 正确做法是改往右侧躲，整组仍然共用一个位移。
+    var state = TimelineState()
+    let dragged = clip(start: 10, duration: 5)
+    let blocker = clip(start: 12, duration: 5)
+    state.mainClips = [dragged]
+    state.overlayTracks = [EditLane(clips: [blocker])]
+    var doc = SubtitleDocumentModel()
+    let cueID = UUID()
+    doc.cues = [SubtitleCue(id: cueID, index: 1, start: 0, end: 2, text: "hi")]
+    state.subtitle = doc
+
+    guard let base = ClipDragPlan.make(
+        in: state, draggedID: dragged.id, movingIDs: [dragged.id],
+        candidates: [], magnetMain: false
+    ) else {
+        print("FAIL 造不出计划"); exit(1)
+    }
+    let plan = base.adding(shapes: [], cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))])
+    checkClose(plan.groupLowerDelta, 0, "整组下界由起点最小的成员（cue 在 0s）决定")
+
+    let resolution = plan.resolve(desiredDelta: 0, pixelsPerSecond: pps)
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: .overlay(0), magnet: false)
+
+    let landed = next.clip(with: dragged.id)?.timelineStart ?? -1
+    let cueStart = next.subtitle?.cues.first?.start ?? -1
+    checkClose(landed, 17, "越界的左侧不能用，改从占位右边落下")
+    checkClose(cueStart, landed - 10, "cue 与被拖块仍然是同一个位移")
+    check(cueStart >= 0, "cue 没有被单独夹在 0 上")
+}
+
 // MARK: - 21. 复审：框选纵向只认画出来的块，不认整行的留白
 
 do {

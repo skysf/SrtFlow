@@ -286,6 +286,14 @@ struct ClipDragPlan: Equatable {
     /// 磁吸主轨最终只能插进现有故事线的某条缝，扩太远只会把插入指示线滚出视野。
     var allowsFreeLanding: Bool { magnet == nil }
 
+    /// 整组「谁都不许被推到负时间」的下界，**只有这一条**，不含同轨障碍。
+    ///
+    /// 跨轨到岸让位（`clampedStart`）要用它：往左躲一旦越过这条线，伙伴就会各自
+    /// 被 `max(0, …)` 单独夹住，整组的相对错位当场压扁 —— 那正是这套计划要防的
+    /// 东西。`allowedDeltaRange().lower` 不能拿来用：它还叠了**源轨**上的障碍，
+    /// 而块都换轨了，那些障碍已经与它无关。
+    var groupLowerDelta: Double { -(members.map(\.span.start).min() ?? 0) }
+
     /// 整组能挪的位移区间。
     ///
     /// 碰撞只看**不动的**块，且「停在接触面」而不是「弹到障碍另一侧」——

@@ -210,6 +210,10 @@ struct VideoEditTimelineView: View {
                         clipDrag = nil
                         dragTargetRow = nil
                         marquee = nil
+                        // 手势的「起手标记」也要一起清。留着的话，视图回来之后
+                        // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
+                        // beginCueDrag —— 整次拖动没有会话，等于白拖一回。
+                        movingCueID = nil
                     }
                 }
             }
@@ -775,7 +779,10 @@ struct VideoEditTimelineView: View {
                             //（块会在手指底下挪窝，自动滚动还会把内容抽走）。
                             DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
                                 .onChanged { value in
-                                    if movingCueID != cue.id {
+                                    // 判据带上「有没有活着的会话」：只比 id 的话，
+                                    // 上一轮被打断（切栏目/关窗）留下的陈旧 id 会让
+                                    // 同一条 cue 的下一次拖动整轮都建不出会话。
+                                    if clipDrag == nil || movingCueID != cue.id {
                                         movingCueID = cue.id
                                         beginCueDrag(cue)
                                     }
@@ -793,8 +800,12 @@ struct VideoEditTimelineView: View {
                 }
             }
         }
-        // 隐藏中：灰显，与其他轨道的隐藏观感一致。
+        // 隐藏中：灰显 + **不吃事件**，与其他轨道（`trackRow`）的合同一致。
+        // 少了 allowsHitTesting 这一半，隐藏的字幕行照样点得中、拖得动，而且
+        // 两条字幕轨是镜像的，改的是**两轨**的时间 —— 隐藏 = 不可编辑，
+        // 灰显只是它的观感。框选那边本来就跳过隐藏轨（`Row.isHidden`）。
         .opacity(hidden ? 0.35 : 1)
+        .allowsHitTesting(!hidden)
     }
 
     // MARK: - 播放头

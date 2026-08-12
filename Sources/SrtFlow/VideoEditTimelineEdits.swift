@@ -238,7 +238,15 @@ extension TimelineState {
     /// 到岸之后的让位仍用「挤开重叠」：目标轨上的障碍在手势开始时并不知道
     /// （那时还不知道会落到哪条轨），所以这一步没法和拖动中的预览同源。
     /// 同轨移动**不**走这里，它必须走 `ClipDragPlan.resolve`。
-    mutating func relocateClip(_ id: UUID, to target: TrackDropTarget, magnet: Bool) {
+    /// `notBefore` 是**整组**的落点下界（被拖块不许落到它左边）。到岸让位往左躲时
+    /// 可能越过这条线：那样一来伙伴会各自被 `max(0, …)` 单独夹住，整组的相对错位
+    /// 当场压扁 —— 越界就改往右侧躲。默认 0 = 只保证不进负时间（老行为）。
+    mutating func relocateClip(
+        _ id: UUID,
+        to target: TrackDropTarget,
+        magnet: Bool,
+        notBefore: Double = 0
+    ) {
         guard let clip = self.clip(with: id) else { return }
         // 手动摘下来，先别清空轨 —— target 里的轨编号是按当前排布算的，
         // 这时候清空轨会让编号移位插错行。收尾再统一清理。
@@ -287,7 +295,7 @@ extension TimelineState {
 
         // 挤开重叠（主轨磁吸时 packMain 会处理）。
         if !(target == .main && magnet) {
-            let clamped = clampedStart(id: id, proposed: moved.timelineStart)
+            let clamped = clampedStart(id: id, proposed: moved.timelineStart, notBefore: notBefore)
             update(id) { $0.timelineStart = clamped }
         }
         // 磁吸关掉落到主轨是裸 append，数组顺序要跟着时间走。
@@ -297,17 +305,24 @@ extension TimelineState {
 
     /// 把 `proposed` 让开同轨上别的块（重叠时往更近的那一侧躲）。
     /// **只给跨轨落地用** —— 同轨移动的可行区间由 `ClipDragPlan` 冻结时算好。
-    func clampedStart(id: UUID, proposed: Double) -> Double {
-        guard let location = location(of: id), let clip = self.clip(with: id) else { return max(0, proposed) }
-        var start = max(0, proposed)
+    func clampedStart(id: UUID, proposed: Double, notBefore: Double = 0) -> Double {
+        let floor = max(0, notBefore)
+        guard let location = location(of: id), let clip = self.clip(with: id) else {
+            return max(floor, proposed)
+        }
+        var start = max(floor, proposed)
         let neighbours = self[track: location.track].filter { $0.id != id }
         let duration = clip.timelineDuration
         for other in neighbours.sorted(by: { $0.timelineStart < $1.timelineStart }) {
             let overlaps = start < other.timelineEnd && other.timelineStart < start + duration
             guard overlaps else { continue }
             // 往右让还是往左让，取决于想去的位置更靠哪边。
-            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2 {
-                start = max(0, other.timelineStart - duration)
+            // 但**往左不许越过整组的下界**：越过了就只能往右躲 —— 左边那点位置
+            // 被拖块自己也许放得下，跟着它走的伙伴却会被各自夹在 0 上。
+            let left = other.timelineStart - duration
+            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2,
+               left >= floor {
+                start = left
             } else {
                 start = other.timelineEnd
             }
@@ -372,7 +387,11 @@ extension TimelineState {
 
         if let target {
             // 2) 跨轨：只搬被直接拖的那个，跟随块留在各自轨上（时刻第 1 步已定好）。
-            relocateClip(plan.draggedID, to: target, magnet: magnet)
+            //    到岸让位不许把整组顶到负时间那一侧去（见 `groupLowerDelta`）。
+            relocateClip(
+                plan.draggedID, to: target, magnet: magnet,
+                notBefore: plan.draggedSpan.start + plan.groupLowerDelta
+            )
         } else if let insertion = resolution.mainInsertion {
             // 3) 主轨磁吸：整组按相对顺序插进**同一条缝**，落点与拖动中那条指示线
             //    同源（都来自 TimelineSnap.mainInsertion）。
@@ -402,11 +421,35 @@ extension TimelineState {
     /// 幂等的，不会叠成双倍。
     ///
     /// 主轨成员在磁吸下由 `packMain` 定位，不参与 —— 平了也会被排回去。
+    ///
+    /// **但它们的链接伙伴要跟着它们走，不是跟着整组的 delta 走。** 把一段主轨块
+    /// 拖去别的轨时，磁吸会让剩下的主轨块合拢：那些块自己挪了位置，它们分离出来
+    /// 的音频若还按手势的位移走，就是当场声画错位。声画同步这条约束**高于**
+    /// 「整组同一位移」—— 两者冲突时以它为准（长期约束见
+    /// docs/architecture/timeline-drag-gestures.md）。
     private mutating func realignCompanions(_ plan: ClipDragPlan, magnet: Bool) {
         guard let moved = clip(with: plan.draggedID) else { return }
         let actual = moved.timelineStart - plan.draggedSpan.start
-        let pinned = magnet ? Set(mainClips.map(\.id)) : []
-        move(plan.members.filter { !pinned.contains($0.id) }, by: actual)
+        guard magnet else { return move(plan.members, by: actual) }
+
+        let pinned = Set(mainClips.map(\.id))
+        // 被 packMain 排过的主轨成员：各自实际挪了多少，它的链接伙伴就挪多少。
+        var followers: [UUID: Double] = [:]
+        for member in plan.members where pinned.contains(member.id) {
+            guard let clip = clip(with: member.id) else { continue }
+            let delta = clip.timelineStart - member.span.start
+            for partner in linkedClipIDs(of: member.id) where !pinned.contains(partner) {
+                followers[partner] = delta
+            }
+        }
+        for member in plan.members {
+            guard let delta = followers[member.id] else { continue }
+            move([member], by: delta)
+        }
+        move(
+            plan.members.filter { !pinned.contains($0.id) && followers[$0.id] == nil },
+            by: actual
+        )
     }
 
     /// 把一组成员整体平移 `delta` 秒。三类成员改的字段不同，位移只有一个。
