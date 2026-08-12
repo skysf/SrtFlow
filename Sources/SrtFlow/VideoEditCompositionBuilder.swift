@@ -446,9 +446,12 @@ enum VideoEditCompositionBuilder {
             var previousEnd = 0.0
             for clipID in lane.clipIDs {
                 guard let clip = state.clip(with: clipID) else { continue }
-                if clip.isMuted {
-                    params.setVolume(0, at: time(clip.timelineStart))
-                } else if lane.isMainTrack, let index = state.mainClips.firstIndex(where: { $0.id == clipID }) {
+                // 静音段不单独开分支：`addVolumeRamps` 里的音量已经是
+                // `isMuted ? 0 : volume`，走同一条路才能同样享受「提前钉音量」——
+                // 以前静音段是 `setVolume(0, at: 段起点)`，钉在起点上等于把
+                // 1.0 → 0 的跳变留在段内，静音段的开头照样会漏出一下声音。
+                // （主轨和画中画的静音段压根不进合成，能走到这儿的只有音频轨。）
+                if lane.isMainTrack, let index = state.mainClips.firstIndex(where: { $0.id == clipID }) {
                     addVolumeRamps(
                         params: params,
                         clip: clip,
@@ -665,10 +668,6 @@ enum VideoEditCompositionBuilder {
         )
     }
 
-    /// 混音器的增益平滑窗口。实测跨越音量跳变的那一个缓冲区约 17ms，
-    /// 取 50ms 留足余量（钉点落在段起点前的静音空档里，宽一点没有代价）。
-    private static let gainSmoothingGuard = 0.05
-
     /// 剪辑范围内的恒定音量；两端按 `fades` 做线性斜坡。
     ///
     /// `fades` 里已经把「用户设的渐入渐出」和「转场重叠区的交叉淡变」仲裁完了
@@ -687,20 +686,31 @@ enum VideoEditCompositionBuilder {
         let fadeIn: Double? = fades.fadeIn > 0 ? fades.fadeIn : nil
         let fadeOut: Double? = fades.fadeOut > 0 ? fades.fadeOut : nil
 
-        // 段起点**之前**先把音量钉到「这一段该从多少起步」。
+        // 段起点**之前**先把音量钉到「这一段该从多少起步」，而且钉得越早越好。
         //
-        // AVFoundation 的混音器会把音量跳变按一个缓冲区（实测约 17ms）平滑过去，
-        // 而第一条斜坡之前的音量默认是 **1.0**。于是「起点音量 0」的渐入会被它
-        // 拉成一条从满音量降到 0 的下坡贴在渐入最前面 —— 听感就是渐入开头
-        // 「砰」的一下（2026-08-12 的用户报告，见 docs/bugfixes/）。
+        // AVFoundation 的混音器不会硬切增益：第一条斜坡之前的音量默认是 **1.0**，
+        // 于是「起点音量 0」的渐入在段起点处是一个 1.0 → 0 的跳变，混音器会把它
+        // 按**一个渲染缓冲区**平滑过去（de-zipper），结果是一条从满音量滑到 0 的
+        // 下坡贴在渐入最前面 —— 听感就是渐入开头「砰」的一下。
         //
-        // 提前一个平滑窗口钉住，跳变就发生在段起点之前的静音空档里，听不见。
-        // 段紧挨着上一段时没有空档可用，就钉在起点上（至少让跳变的两端都由
-        // 我们自己指定，而不是撞上默认的 1.0）。
-        // 没有渐入的段钉的是 body 音量本身：那种段本来就该硬起，别让平滑给它
-        // 平白加一个 17ms 的软起音。
-        let pin = max(previousEnd, clip.timelineStart - gainSmoothingGuard)
-        params.setVolume(fadeIn == nil ? volume : 0, at: time(min(pin, clip.timelineStart)))
+        // 关键在于**缓冲区多长由播放路径决定**：离线的 AVAssetReader 约 17ms，
+        // 实时的 AVPlayer 能到 ~90ms（4096 帧 @44.1kHz）。所以任何**固定**的提前量
+        // 都是在赌缓冲区大小 —— 上一版赌的 50ms 在离线自检里够用（自检因此全绿），
+        // 在真实预览里不够（2026-08-12 用户报告：BG2 开头仍有短促爆音）。
+        // 这个下坡**从 1.0 起步，与用户设的音量无关**，所以音量调得越低越突出。
+        //
+        // 不赌了：钉到**同一条合成轨上上一段结束的地方**。那里到本段起点之间全是
+        // 空段（静音），钉多早都不会碰到别人的声音，跳变爱平滑多久平滑多久。
+        // 一条轨的第一段钉在 0 —— 于是每条合成轨从第一帧起就有确定的音量，
+        // 再也不会撞上默认的 1.0。
+        //
+        // 段紧挨着上一段时没有空档可用（pin == 起点），跳变只能落在段内，但那是
+        // 「上一段音量 → 本段音量」，两端都是用户定的值，不是默认的 1.0。
+        //
+        // 钉的值分两种：有渐入的钉 0，没渐入的钉 body 音量本身。一律钉 0 的话，
+        // 所有段都会被 de-zipper 加上一个软起音 —— 修一个 bug 造一个新的。
+        let pin = min(previousEnd, clip.timelineStart)
+        params.setVolume(fadeIn == nil ? volume : 0, at: time(pin))
 
         var bodyStart = clip.timelineStart
         var bodyEnd = clip.timelineEnd

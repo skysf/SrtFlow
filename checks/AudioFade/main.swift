@@ -415,6 +415,65 @@ func main() async {
               + "不能给它加一个 17ms 的软起音（head/full=\(head / max(full, 0.0001))）")
     }
 
+    // ---- 4b. 每条合成音轨从第 0 帧起就必须有确定的音量 ----
+    //
+    // 上面第 4 组量的是 PCM 包络，它只能证明**离线**管线不出爆音，而离线
+    // （AVAssetReader）和实时（AVPlayer）的 de-zipper 窗口不是一个量级：
+    // 前者约 17ms，后者可到 ~90ms（4096 帧 @44.1kHz）。所以「提前 50ms 钉住」
+    // 这种**固定**提前量能让离线自检全绿、真实预览照样「砰」一下
+    //（2026-08-12 用户报告 BG2，见 docs/bugfixes/）。
+    //
+    // 抓这类 bug 不能再靠量包络 —— 自检跑不出 AVPlayer 的缓冲区。改成钉
+    // **结构不变量**：斜坡之前的默认音量 1.0 是一切的根源，那就断言
+    // **没有任何一条轨会用到那个默认值** —— 每条轨在时间 0 处就已经有我们
+    // 自己设的音量。这条不依赖任何缓冲区长度，因而对两条播放路径同时成立。
+    func checkPinnedFromZero(_ state: TimelineState, _ label: String) async {
+        guard let built = await VideoEditCompositionBuilder.build(from: state) else {
+            check(false, "\(label)：预览合成没建起来"); return
+        }
+        guard let mix = built.audioMix, !mix.inputParameters.isEmpty else {
+            check(false, "\(label)：没有 audioMix"); return
+        }
+        for params in mix.inputParameters {
+            // 注意 `getVolumeRamp` 的语义：查询点**早于**第一个设定点时，它照样
+            // 返回 true，把后面那条斜坡连同它的起点一起给出来。所以判据不能看
+            // 返回值，要看**第一条斜坡的起点**落在哪 —— 起点之前的那段时间才是
+            // 真正吃默认 1.0 的地方。
+            var start: Float = -1, end: Float = -1
+            var range = CMTimeRange.zero
+            _ = params.getVolumeRamp(for: .zero, startVolume: &start, endVolume: &end, timeRange: &range)
+            check(range.start.seconds <= 0.0005,
+                  "\(label)：轨 \(params.trackID) 的第一个音量设定点在 "
+                  + "\(range.start.seconds)s，它之前的 \(range.start.seconds)s 会落到 "
+                  + "AVFoundation 的默认 1.0 上。实时混音器（缓冲区可到 ~90ms，"
+                  + "远大于离线的 ~17ms）会把这个跳变平滑成一条从满音量下来的坡，"
+                  + "贴在渐入最前面 —— 渐入开头的爆音就是这么来的。钉点要一路退到"
+                  + "同一条轨上上一段的结束处，不能用固定提前量。")
+        }
+    }
+    await checkPinnedFromZero(offsetState, "段从 1.3337s 起 · 渐入")
+    await checkPinnedFromZero(offsetFlat, "段从 1.3337s 起 · 无渐入")
+
+    // 真实工程的形态：音频轨上一段孤零零的背景乐，起点在 24s 开外。
+    // 用户报告的就是这个形状 —— 段前有 24 秒空档，钉点必须一路退到 0，
+    // 而不是只退 50ms。
+    var lateClip = EditClip(
+        sourceURL: audioSource, isAudioOnly: true, sourceDuration: 3,
+        timelineStart: 24.392541535269377, audioAssetDuration: 4
+    )
+    lateClip.fadeInDuration = 3
+    lateClip.volume = 0.12
+    var lateState = TimelineState()
+    lateState.frameRate = .fps30
+    lateState.audioTracks = [EditLane(clips: [lateClip])]
+    await checkPinnedFromZero(lateState, "背景乐在 24.39s 起 · 渐入 3s · 音量 0.12")
+
+    // 静音段同理：它以前走的是 `setVolume(0, at: 段起点)`，钉在起点上，
+    // 等于把 1.0 → 0 的跳变留在段内 —— 静音段开头照样漏一下声音。
+    var mutedState = lateState
+    mutedState.audioTracks[0].clips[0].isMuted = true
+    await checkPinnedFromZero(mutedState, "静音的音频段")
+
     // ---- 5. 「只换 audioMix」的快路径必须与整条重建等价 ----
     //
     // 改音量/渐变时预览不重建合成（重建要 replaceCurrentItem，画面会闪），
@@ -484,6 +543,13 @@ func main() async {
     second.fadeInDuration = 1
     second.fadeOutDuration = 1
     seamState.mainClips = [first, second]
+
+    // 主轨也要过一遍「第一个音量设定点在时间 0」（第 4b 组的不变量）。
+    // 主轨的声音走 A/B 交替**两条**合成轨，各有各的插入游标和 params，
+    // 钉点算错很可能只错其中一条 —— 症状是「隔一段响一下」，比全错更难查。
+    // 放在这里是因为要用现成的双段带转场时间线：单段主轨起点必然是 0，
+    // 恰恰是唯一不触发跳变的形状（第一轮就是被这个形状骗过去的）。
+    await checkPinnedFromZero(seamState, "主轨接缝 · A/B 两条合成轨")
 
     let seamOutput = root.appendingPathComponent("seam.mp4")
     do {
