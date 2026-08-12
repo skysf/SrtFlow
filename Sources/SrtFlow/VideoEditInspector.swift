@@ -113,14 +113,42 @@ struct VideoEditInspectorView: View {
                     Toggle("Mute", isOn: muteBinding(clip))
                         .controlSize(.small)
                 }
-                Slider(
-                    value: volumeBinding(clip),
-                    in: 0...2,
-                    onEditingChanged: { editing in
-                        if !editing { project.endLiveEdit() }
+                HStack(spacing: 6) {
+                    // 滑杆走 dB 刻度：线性幅度对听感太不均匀，−20dB 在 0…2 的
+                    // 线性滑杆上只占 5%，根本没法调。
+                    Slider(
+                        value: volumeDecibelBinding(clip),
+                        in: AudioGain.minimumDB...AudioGain.maximumDB,
+                        onEditingChanged: { editing in
+                            if !editing { project.endLiveEdit() }
+                        }
+                    )
+                    Text(AudioGain.label(forLinear: clip.isMuted ? 0 : clip.volume))
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(clip.isMuted ? .tertiary : .secondary)
+                        .frame(width: 58, alignment: .trailing)
+                    Button {
+                        project.setVolume(clip.id, volume: 1)
+                    } label: {
+                        Image(systemName: "arrow.uturn.backward")
                     }
-                )
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .disabled(abs(clip.volume - 1) < 0.0001)
+                    .instantHelp("Back to 0 dB (original level)")
+                }
                 .disabled(clip.isMuted)
+
+                // 渐入渐出：秒数按时间线算（变速之后），0 = 关。
+                fadeRow(clip, edge: .fadeIn, title: "Fade in")
+                fadeRow(clip, edge: .fadeOut, title: "Fade out")
+                if let note = fadeNote(clip, location: location) {
+                    Text(note)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
 
@@ -216,6 +244,53 @@ struct VideoEditInspectorView: View {
             .instantHelp("Remove this clip from the timeline", shortcut: .plain("⌫"))
         }
         .controlSize(.small)
+    }
+
+    /// 一行渐变时长。数值框走 Inspector 数值框合同：文本/箭头走 `setAudioFade`
+    /// （一步一记），横向拖调走 begin/live/end（整次拖动一步）。
+    private func fadeRow(
+        _ clip: EditClip, edge: AudioFadeEdge, title: LocalizedStringKey
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
+            InspectorScrubbableNumberField(
+                value: fadeBinding(clip, edge: edge),
+                // 上限是段长：整段淡入淡出是合理诉求，比这更长没有意义。
+                range: 0...max(0.1, clip.timelineDuration),
+                fractionDigits: 1,
+                width: 54,
+                onScrubBegin: { project.beginLiveEdit() },
+                onScrubChanged: { project.liveSetAudioFade(clip.id, edge: edge, seconds: $0) },
+                onScrubEnd: { project.endLiveEdit() },
+                onScrubCancel: { project.cancelLiveEdit() }
+            )
+            Text("s")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .disabled(clip.isMuted)
+        .instantHelp(edge == .fadeIn
+            ? LocalizedStringKey("Seconds to ramp the sound up from silence")
+            : LocalizedStringKey("Seconds to ramp the sound down to silence"))
+    }
+
+    /// 主轨接缝上有转场时，那一边的渐变不生效（转场自己在做交叉淡变）——
+    /// 用户设了却听不到差别，必须当场说清楚，不能让人以为是坏了。
+    /// 判据与合成/导出同一个来源：`transitionOverlap`。
+    private func fadeNote(_ clip: EditClip, location: ClipLocation?) -> LocalizedStringKey? {
+        guard let location, location.track.isMain else { return nil }
+        let fades = clip.audioFades
+        let index = location.clipIndex
+        let suppressedIn = index > 0
+            && project.state.transitionOverlap(afterMainIndex: index - 1) > 0
+            && fades.fadeIn > 0
+        let suppressedOut = project.state.transitionOverlap(afterMainIndex: index) > 0
+            && fades.fadeOut > 0
+        guard suppressedIn || suppressedOut else { return nil }
+        return "A transition already cross-fades the sound at that seam, so the fade on that side is skipped."
     }
 
     private func anchorGrid(_ clip: EditClip) -> some View {
@@ -440,14 +515,31 @@ struct VideoEditInspectorView: View {
         )
     }
 
-    private func volumeBinding(_ clip: EditClip) -> Binding<Double> {
+    /// 滑杆读写的是 dB，落盘的仍是线性幅度 —— 换算只有 `AudioGain` 一份。
+    private func volumeDecibelBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
-            get: { project.state.clip(with: clip.id)?.volume ?? clip.volume },
+            get: {
+                let live = project.state.clip(with: clip.id)?.volume ?? clip.volume
+                return AudioGain.decibels(fromLinear: live)
+            },
             set: { newValue in
+                let linear = AudioGain.linear(fromDecibels: newValue)
                 project.liveApply { state in
-                    state.update(clip.id) { $0.volume = min(max(newValue, 0), 2) }
+                    state.update(clip.id) { $0.volume = linear }
                 }
             }
+        )
+    }
+
+    /// 渐变时长：读的是**存下来的**值（不是夹紧后的生效值），不然把段拉短再
+    /// 拉长，框里的数字会被段长悄悄改写。
+    private func fadeBinding(_ clip: EditClip, edge: AudioFadeEdge) -> Binding<Double> {
+        Binding(
+            get: {
+                let live = project.state.clip(with: clip.id) ?? clip
+                return edge == .fadeIn ? live.fadeInDuration : live.fadeOutDuration
+            },
+            set: { project.setAudioFade(clip.id, edge: edge, seconds: $0) }
         )
     }
 

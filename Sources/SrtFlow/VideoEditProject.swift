@@ -260,6 +260,9 @@ final class VideoEditProject: ObservableObject {
     @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
     /// 预览是否正在重建（大工程时给个转圈）。
     @Published private(set) var isRebuildingPreview = false
+    /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
+    /// 而不重建整条预览（`refreshAudioMix`）。
+    private var audioPlan: AudioMixPlan?
     /// 素材探测失败之类需要用户看见的话。
     @Published var notice: String?
 
@@ -317,9 +320,14 @@ final class VideoEditProject: ObservableObject {
         mutate(&next)
         if magnetEnabled { next.packMain() }
         guard next != before else { return }
+        let audioOnly = next.differsOnlyInAudioMix(from: before)
         registerUndo(before)
         state = next
-        if rebuildsPreview { scheduleRebuild() }
+        if rebuildsPreview {
+            // 只动了音量/渐变就别重建：重建要 replaceCurrentItem，画面会闪一下。
+            if audioOnly, refreshAudioMix() { return }
+            scheduleRebuild()
+        }
     }
 
     // MARK: - 连续修改（拖动、滑块）
@@ -348,8 +356,13 @@ final class VideoEditProject: ObservableObject {
         guard let snapshot = liveEditSnapshot else { return }
         liveEditSnapshot = nil
         guard state != snapshot else { return }
+        let audioOnly = state.differsOnlyInAudioMix(from: snapshot)
         registerUndo(snapshot)
-        if rebuildsPreview { scheduleRebuild() }
+        if rebuildsPreview {
+            // 拖音量/渐变滑块松手：同 `perform`，只换 mix，别让画面闪。
+            if audioOnly, refreshAudioMix() { return }
+            scheduleRebuild()
+        }
     }
 
     /// 放弃连续编辑，回到手势开始前。跨轨拖动落地时用：水平的预挪先回滚，
@@ -472,11 +485,15 @@ final class VideoEditProject: ObservableObject {
                 target.applySnapshot(current)
             }
         }
+        let audioOnly = snapshot.differsOnlyInAudioMix(from: current)
         state = snapshot
         // 撤销/重做可能把选中的剪辑整个撤没（cue 那一侧由 state 的 didSet 收）。
         selection.pruneClips { state.clip(with: $0) != nil }
         // 撤销可能把「还在转静帧」的占位块带回来，转换要是早就完成了，当场补上。
         repairPendingStills()
+        // 撤销一次音量/渐变的改动同样只动 audioMix —— 别为它闪一下画面。
+        // 注意判据要在 `repairPendingStills` 之后才作数：它可能又改了结构。
+        if audioOnly, state.differsOnlyInAudioMix(from: current), refreshAudioMix() { return }
         scheduleRebuild()
     }
 
@@ -836,6 +853,34 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
+    /// 声音渐入/渐出（时间线秒）。文本提交和箭头点击走这条，一次一步撤销。
+    func setAudioFade(_ id: UUID, edge: AudioFadeEdge, seconds: Double) {
+        perform(audioFadeMutation(id, edge: edge, seconds: seconds))
+    }
+
+    /// Inspector 数值框横向拖调用：同 `setAudioFade`，整次拖动结成一步。
+    func liveSetAudioFade(_ id: UUID, edge: AudioFadeEdge, seconds: Double) {
+        liveApply(audioFadeMutation(id, edge: edge, seconds: seconds))
+    }
+
+    /// 夹紧只写在这一份里，discrete 和 live 永不分叉（Inspector 数值框合同）。
+    /// 这里只挡住负数和 NaN，「不超过段长」由 `EditClip.audioFades` 在读侧统一
+    /// 收口 —— 存的是用户设的意图，段被拉长之后渐变应当跟着恢复，而不是在
+    /// 写入那一刻就被当时的段长永久截短。
+    private func audioFadeMutation(
+        _ id: UUID, edge: AudioFadeEdge, seconds: Double
+    ) -> (inout TimelineState) -> Void {
+        let clamped = max(0, seconds.isFinite ? seconds : 0)
+        return { state in
+            state.update(id) { clip in
+                switch edge {
+                case .fadeIn: clip.fadeInDuration = clamped
+                case .fadeOut: clip.fadeOutDuration = clamped
+                }
+            }
+        }
+    }
+
     func setOverlayLayout(_ id: UUID, fraction: Double? = nil, anchor: OverlayAnchor? = nil) {
         perform { state in
             state.update(id) { clip in
@@ -1052,6 +1097,26 @@ final class VideoEditProject: ObservableObject {
     // MARK: - 预览重建
 
     /// 时间线一变就（去抖后）重建预览合成。播放头位置和播放状态都要还原，
+    /// 只把新的 audioMix 换到正在播的条目上，**不碰画面**。
+    ///
+    /// 音量和渐入渐出只进 audioMix，走完整重建的话要
+    /// `replaceCurrentItem`，画面会闪一下（用户报的问题）。返回 false 表示
+    /// 这条快路径此刻用不上（还没建过预览、或者合成已经被换掉），调用方
+    /// 应当退回 `scheduleRebuild()`。
+    ///
+    /// 前提是**合成结构没变**，判据在 `TimelineState.differsOnlyInAudioMix`，
+    /// 别在这里另立一套。
+    @discardableResult
+    func refreshAudioMix() -> Bool {
+        guard let plan = audioPlan, !plan.lanes.isEmpty,
+              let item = clock.player.currentItem else { return false }
+        // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
+        // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
+        guard !isRebuildingPreview else { return false }
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan)
+        return true
+    }
+
     /// 不然每改一刀就跳回 0:00 没法干活。
     func scheduleRebuild() {
         // 重建按旧路径开素材，文件被挪走的话对应时段会静默变黑（builder 对
@@ -1075,6 +1140,7 @@ final class VideoEditProject: ObservableObject {
                 return
             }
             self.renderSize = built.renderSize
+            self.audioPlan = built.audioPlan
             let wasPlaying = self.clock.isPlaying
             let time = self.clock.time
             let item = AVPlayerItem(asset: built.composition)

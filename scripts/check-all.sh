@@ -65,6 +65,7 @@ run_check "preview-composition（预览合成真取帧）" scripts/check-preview
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 run_check "export-frame-rate（生产导出滤镜帧率）" scripts/check-export-frame-rate.sh
 run_check "export-alpha-compositing（画中画 fill+matte）" scripts/check-export-alpha-compositing.sh
+run_check "audio-fade（渐入渐出真实包络）" scripts/check-audio-fade.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
 
 echo ""

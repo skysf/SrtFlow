@@ -362,6 +362,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
     var isMuted: Bool
     var volume: Double
+    /// 声音的渐入/渐出时长，单位是**时间线秒**（变速之后）。0 = 关。
+    /// 生效值要走 `audioFades` 夹紧，规则见 VideoEditAudioFade.swift。
+    var fadeInDuration: Double
+    var fadeOutDuration: Double
     /// 同组的剪辑（分离出的音频）在「链接」开着时一起移动、分割、删除。
     var linkGroup: UUID?
 
@@ -413,6 +417,8 @@ struct EditClip: Identifiable, Hashable, Sendable {
         timelineStart: Double = 0,
         isMuted: Bool = false,
         volume: Double = 1,
+        fadeInDuration: Double = 0,
+        fadeOutDuration: Double = 0,
         linkGroup: UUID? = nil,
         transitionAfter: ClipTransition = .none,
         transitionDuration: Double = 0.5,
@@ -438,6 +444,8 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.timelineStart = timelineStart
         self.isMuted = isMuted
         self.volume = volume
+        self.fadeInDuration = fadeInDuration
+        self.fadeOutDuration = fadeOutDuration
         self.linkGroup = linkGroup
         self.transitionAfter = transitionAfter
         self.transitionDuration = transitionDuration
@@ -948,6 +956,7 @@ extension EditClip: Codable {
         case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
         case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
         case markers
+        case fadeInDuration, fadeOutDuration
     }
 
     init(from decoder: Decoder) throws {
@@ -963,6 +972,8 @@ extension EditClip: Codable {
             timelineStart: try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0,
             isMuted: try c.decodeIfPresent(Bool.self, forKey: .isMuted) ?? false,
             volume: try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1,
+            fadeInDuration: try c.decodeIfPresent(Double.self, forKey: .fadeInDuration) ?? 0,
+            fadeOutDuration: try c.decodeIfPresent(Double.self, forKey: .fadeOutDuration) ?? 0,
             linkGroup: try c.decodeIfPresent(UUID.self, forKey: .linkGroup),
             transitionAfter: try c.decodeIfPresent(ClipTransition.self, forKey: .transitionAfter) ?? .none,
             transitionDuration: try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.5,
@@ -995,6 +1006,10 @@ extension EditClip: Codable {
         try c.encode(timelineStart, forKey: .timelineStart)
         try c.encode(isMuted, forKey: .isMuted)
         try c.encode(volume, forKey: .volume)
+        // 没设渐变的段不写这两个键：绝大多数段是 0，写出来只会把工程文件撑大。
+        // 缺键按 0 解码，跟「关」完全同义，所以按需写是安全的。
+        if fadeInDuration > 0 { try c.encode(fadeInDuration, forKey: .fadeInDuration) }
+        if fadeOutDuration > 0 { try c.encode(fadeOutDuration, forKey: .fadeOutDuration) }
         try c.encodeIfPresent(linkGroup, forKey: .linkGroup)
         try c.encode(transitionAfter, forKey: .transitionAfter)
         try c.encode(transitionDuration, forKey: .transitionDuration)

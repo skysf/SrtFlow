@@ -16,7 +16,8 @@ struct VideoEditProjectFile: Codable {
     /// v5 工程帧率（frameRate，**无条件**写入）；
     /// v6 字幕轨的工程级布局与可见性（subtitleLayout / subtitleHidden）；
     /// v7 译文轨的眼睛（translationHidden）—— 一个语言一条轨、烧录跟着眼睛走；
-    /// v8 轨道块上的标记（EditClip.markers，**按需写入**）。
+    /// v8 轨道块上的标记（EditClip.markers，**按需写入**）；
+    /// v9 声音的渐入渐出（EditClip.fadeInDuration / fadeOutDuration，**按需写入**）。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
@@ -24,10 +25,10 @@ struct VideoEditProjectFile: Codable {
     var media: [MediaRecord]
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 8
+    static let latestFormatVersion = 9
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
-    /// `...7` / `...8`（登记清单在那边）。
+    /// `...7` / `...8` / `...9`（登记清单在那边）。
     static let baselineFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
@@ -44,6 +45,7 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion6
         _ = timeline.requiresFormatVersion7
         _ = timeline.requiresFormatVersion8
+        _ = timeline.requiresFormatVersion9
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline

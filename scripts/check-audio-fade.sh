@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-# **真实生产导出滤镜的帧率回归**（计划 §17.3）。
+# **声音渐入渐出的真实回归**。
 #
-# 调用真实的 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数，真跑一遍，数输出帧。
+# 两条生产管线各跑一遍，量真实的音量包络：
+#   - 导出：真实的 `VideoEditExportGraph.plan()` → 真跑 ffmpeg → 解码成 PCM。
+#   - 预览：真实的 `VideoEditCompositionBuilder.build()` → 用它返回的 audioMix
+#     经 AVAssetReaderAudioMixOutput 读 PCM。
+# 每组都带「同一条时间线去掉渐变」的反例对照，防止断言在静音素材上假绿。
 #
-# 与 check-export-alpha-compositing.sh 的分工（别搞混）：
-#   - 那个是手工复制的独立 alpha fixture，守 alpha 合成数学，不调用生产代码，
-#     而且只取第一帧 —— 帧率写错它发现不了。
-#   - 本脚本走真实生产路径，是「导出真的按工程帧率出片」的唯一回归。
+# 用法：
+#   scripts/check-audio-fade.sh
 #
-# 素材故意造成 10 fps（与 24/30/60 都不同），这样输出帧数只可能来自滤镜里的
-# fps，不可能是源帧透传。
+# 需要 ffmpeg：素材是现造的恒定振幅正弦（假文件过不了真实解码，量不出包络）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Rosetta 终端下必须显式指定 arm64（见 docs/build/）。
+# Rosetta 终端下必须显式指定 arm64，否则会去编 x86_64（见 docs/build/）。
 ARCH_FLAG="--arch arm64"
 TRIPLE="arm64-apple-macosx15.0"
 
@@ -23,7 +24,7 @@ echo "==> swift build ${ARCH_FLAG}"
 BUILD_OUT="$(swift build ${ARCH_FLAG} 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
-OUT="$(mktemp -d)/exportfps"
+OUT="$(mktemp -d)/audiofade"
 trap 'rm -rf "$(dirname "$OUT")"' EXIT
 
 echo "==> 编译自检二进制"
@@ -43,7 +44,7 @@ xcrun swiftc \
   Sources/SrtFlow/BurnInWorkspace.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
-  checks/ExportFrameRate/main.swift \
+  checks/AudioFade/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

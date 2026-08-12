@@ -193,13 +193,25 @@ enum VideoEditExportGraph {
             return "\(prefix)\(labelCounter)"
         }
 
-        /// 一段音频剪辑的滤镜链（裁剪、变速、音量、落到时间线位置）。
+        /// 渐入渐出的 `afade` 段（逗号结尾，没设渐变时是空串）。
+        /// 必须插在 `atempo` **之后**：`afade` 的 st 走链上的当前时间轴，
+        /// 变速之后才等于时间线时间（判据见 AudioFadeWindow.afadeSegments）。
+        func afadeSteps(_ fades: AudioFadeWindow, timelineDuration: Double) -> String {
+            fades.afadeSegments(timelineDuration: timelineDuration)
+                .map { "afade=t=\($0.type):st=\(fmt($0.start)):d=\(fmt($0.duration))," }
+                .joined()
+        }
+
+        /// 一段音频剪辑的滤镜链（裁剪、变速、音量、渐入渐出、落到时间线位置）。
+        /// 画中画和音频轨都走这里 —— 两者都没有转场，用户设的渐变直接生效。
         func audioChain(for clip: EditClip, source: Int, label: String) -> String {
             let end = clip.sourceStart + clip.sourceDuration
             let delay = Int((clip.timelineStart * 1000).rounded())
             return "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                 "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
-                "volume=\(fmt(clip.volume)),adelay=\(delay)|\(delay),aresample=48000," +
+                "volume=\(fmt(clip.volume))," +
+                afadeSteps(clip.audioFades, timelineDuration: clip.timelineDuration) +
+                "adelay=\(delay)|\(delay),aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo[\(label)]"
         }
 
@@ -265,7 +277,7 @@ enum VideoEditExportGraph {
         // MARK: 每节的视频/音频流
 
         var segmentLabels: [(video: String, audio: String, duration: Double)] = []
-        for segment in segments {
+        for (segmentIndex, segment) in segments.enumerated() {
             let vLabel = nextLabel("v")
             let aLabel = nextLabel("a")
             if let clip = segment.clip {
@@ -306,10 +318,20 @@ enum VideoEditExportGraph {
                     )
                 }
                 if clip.hasAudio, !clip.isMuted {
+                    // 转场那条边归 acrossfade 管（下面的拼接链），段内只做
+                    // 没有转场的那一边 —— 两边都做就是接缝处衰减两遍。
+                    let fades = AudioFadeWindow.exportMainTrack(
+                        clip: clip,
+                        hasTransitionBefore: segmentIndex > 0
+                            && segments[segmentIndex - 1].transition != .none,
+                        hasTransitionAfter: segment.transition != .none
+                    )
                     filters.append(
                         "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                         "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
-                        "volume=\(fmt(clip.volume)),aresample=48000," +
+                        "volume=\(fmt(clip.volume))," +
+                        afadeSteps(fades, timelineDuration: segment.duration) +
+                        "aresample=48000," +
                         "aformat=sample_fmts=fltp:channel_layouts=stereo[\(aLabel)]"
                     )
                 } else {

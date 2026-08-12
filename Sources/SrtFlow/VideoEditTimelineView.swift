@@ -1497,17 +1497,42 @@ actor ClipThumbnailCache {
 // MARK: - 波形
 
 /// 音频块里的波形。真读采样（降到几百个桶），异步画。
+/// 波形条。画的是**听到的**声音，不是源文件的原始波形 —— 音量和渐入渐出
+/// 都乘进柱高里，所以拉音量、改淡变时轨道上当场跟着变。
+///
+/// 增益只影响绘制，不进 `.task` 的 id：改音量不该让它重读一遍 PCM。
 private struct WaveformView: View {
     let clip: EditClip
 
     @State private var samples: [Float] = []
+
+    /// 这一柱（时间线上的位置 0…1）实际听到的增益。
+    private func gain(atFraction fraction: Double) -> Double {
+        guard !clip.isMuted else { return 0 }
+        let span = clip.timelineDuration
+        guard span > 0 else { return clip.volume }
+        let fades = clip.audioFades
+        let elapsed = fraction * span
+        var envelope = 1.0
+        if fades.fadeIn > 0, elapsed < fades.fadeIn {
+            envelope = min(envelope, elapsed / fades.fadeIn)
+        }
+        if fades.fadeOut > 0, elapsed > span - fades.fadeOut {
+            envelope = min(envelope, max(0, span - elapsed) / fades.fadeOut)
+        }
+        return clip.volume * envelope
+    }
 
     var body: some View {
         Canvas { context, size in
             guard !samples.isEmpty else { return }
             let barWidth = size.width / Double(samples.count)
             for (index, value) in samples.enumerated() {
-                let h = max(1, Double(value) * size.height)
+                // 柱心对准这一段的中点，渐变的斜坡才不会整体偏半柱。
+                let fraction = (Double(index) + 0.5) / Double(samples.count)
+                // 音量能推到 +6dB（线性 2.0），高度得夹住，不然柱子冲出轨道。
+                let scaled = min(1, Double(value) * gain(atFraction: fraction))
+                let h = max(1, scaled * size.height)
                 let rect = CGRect(
                     x: Double(index) * barWidth,
                     y: size.height - h,
