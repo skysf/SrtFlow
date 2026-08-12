@@ -266,7 +266,12 @@ struct VideoEditView: View {
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .frame(width: proxy.size.width, height: proxy.size.height)
         }
-        .frame(minHeight: 220)
+        // 下限压到 120：预览框是**唯一**该让步的东西。它以前钉在 220（加 padding
+        // 就是 240），上半区在 VSplitView 里只有 300 的下限 —— 再叠一条缺失素材
+        // 条、或者 notice 撑到两行，这个 VStack 的最小高度就超过了分给它的高度。
+        // SwiftUI 不会把拒绝再矮的 videoBox 压下去，只会把它下面的 transport 挤
+        // 出边界，压到时间线工具栏那一排按钮上（用户报的重叠就是这么来的）。
+        .frame(minHeight: 120)
         .padding(10)
     }
 
@@ -415,6 +420,12 @@ struct VideoEditView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
+        // 这一行按自然高度**先**拿走空间，剩下的才归预览框：
+        // `fixedSize` 让它拒绝被压扁（notice 撑到两行时也如实变高），
+        // `layoutPriority` 保证 VStack 先满足它 —— 两个缺一个，空间不够时
+        // 被牺牲的就又是它自己了。
+        .fixedSize(horizontal: false, vertical: true)
+        .layoutPriority(1)
     }
 
     private func clockLabel(_ seconds: Double) -> String {
