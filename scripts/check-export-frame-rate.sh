@@ -10,6 +10,10 @@
 #
 # 素材故意造成 10 fps（与 24/30/60 都不同），这样输出帧数只可能来自滤镜里的
 # fps，不可能是源帧透传。
+#
+# 除帧率外还守**主轨拼接链**：硬切（concat）与转场（xfade）混排的两种顺序都真跑
+# 一遍 —— xfade 硬检查两侧 timebase，而 concat 的输出固定是 AVTB，混排会炸
+# （docs/bugfixes/2026-08-12-xfade-timebase-mismatch.md）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

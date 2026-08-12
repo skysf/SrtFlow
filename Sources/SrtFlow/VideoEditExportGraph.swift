@@ -363,8 +363,19 @@ enum VideoEditExportGraph {
             if boundary.transition != .none, let xfade = boundary.transition.xfadeName {
                 let d = boundary.transitionDuration
                 let offset = accumulated - d
+                // xfade 在 config_output 里**硬性要求**两条输入的 timebase 逐字段
+                // 相等，不相等就直接报 EINVAL、整个导出失败。而这条链上的两种
+                // 来源天生就不一样：段自己走 fps=<帧率> 出来是 1/fps，concat 的
+                // 输出固定被置成 AVTB(1/1000000)。于是「先硬切、后转场」这种最
+                // 常见的排法必炸（见 docs/bugfixes/2026-08-12-xfade-timebase-mismatch.md）。
+                // 两边都显式压成 AVTB：xfade 的输出也跟着是 AVTB，后面再接
+                // concat / 下一次 xfade 都还是这个值，整条链自洽。
+                let leftTB = nextLabel("tb")
+                let rightTB = nextLabel("tb")
+                filters.append("[\(video)]settb=AVTB[\(leftTB)]")
+                filters.append("[\(next.video)]settb=AVTB[\(rightTB)]")
                 filters.append(
-                    "[\(video)][\(next.video)]xfade=transition=\(xfade):duration=\(fmt(d)):offset=\(fmt(offset))[\(outV)]"
+                    "[\(leftTB)][\(rightTB)]xfade=transition=\(xfade):duration=\(fmt(d)):offset=\(fmt(offset))[\(outV)]"
                 )
                 filters.append(
                     "[\(audio)][\(next.audio)]acrossfade=d=\(fmt(d)):c1=tri:c2=tri[\(outA)]"
