@@ -46,20 +46,6 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
 渐入/渐出走的是三目里的 `LocalizedStringKey("…")`。只按 `.instantHelp("` 找，会
 漏掉一大半。
 
-## 修复
-
-- `Sources/SrtFlow/InstantTooltip.swift`：hosting 外面垫一层普通 `NSView` 再挂成
-  `contentView`，面板尺寸就只由 `setFrame` 说了算。同时加了一个
-  `panelFrameForChecks` 只读口子给自检量落点。
-- `Sources/SrtFlow/Resources/{en,zh-Hans}.lproj/Localizable.strings`：补齐 73 条
-  提示文案（en 恒等、zh-Hans 译文），删掉 6 条改造后已失效的旧键
-  （`Split at playhead (⌘B)` 这类带括号快捷键的写法）。
-- 顺着这条线把**全仓库**扫了一遍，另有 108 条界面文案（录屏面板与全部失败原因、
-  工程菜单与文档提示、标记与导出）也从没进过表，一并补齐。合计 181 条。
-- 新增 `checks/LocalizationCoverage/`（Swift）+ `scripts/check-localization-coverage.sh`：
-  把「写死的文案必须两张表都有」升成**全局**守卫，长期约束写进
-  [本地化](../architecture/localization.md)。提示那一类不再单独维护一份规则。
-
 ### 三、同一个键写了两遍：`"Size"`
 
 补齐文案时顺手撞见的第三件事，同一类：`"Size"` 在两张表里各出现两次 ——
@@ -76,19 +62,35 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
 `LabeledSlider(label: "…")` 这类经参数转交的文案，守卫原先也看不见（和当初漏掉
 `ToolbarIcon(help:)` 是同一个洞），一并补进扫描；`DispatchQueue(label:)` 排掉。
 
+## 修复
+
+- `Sources/SrtFlow/InstantTooltip.swift`：hosting 外面垫一层普通 `NSView` 再挂成
+  `contentView`，面板尺寸就只由 `setFrame` 说了算。同时加了一个
+  `panelFrameForChecks` 只读口子给自检量落点。
+- `Sources/SrtFlow/Resources/{en,zh-Hans}.lproj/Localizable.strings`：补齐 73 条
+  提示文案（en 恒等、zh-Hans 译文），删掉 6 条改造后已失效的旧键
+  （`Split at playhead (⌘B)` 这类带括号快捷键的写法）。
+- 顺着这条线把**全仓库**扫了一遍，另有 108 条界面文案（录屏面板与全部失败原因、
+  工程菜单与文档提示、标记与导出）也从没进过表；复审又逼出 13 条藏在动态 key
+  后面的（标记颜色、录屏来源、烧录范围说明）。合计 **194 条**。
+- 新增 `checks/LocalizationCoverage/`（Swift）+ `scripts/check-localization-coverage.sh`：
+  把「写死的文案必须两张表都有」升成**全局**守卫，长期约束写进
+  [本地化](../architecture/localization.md)。提示那一类不再单独维护一份规则。
+
 ## 验证
 
-- `scripts/check-instant-tooltip-panel.sh`（新增）：拿真实的
-  `InstantTooltipController.show` 对已知位置的锚点弹提示，量面板真实落点。
-  9 条断言全绿。
+- `scripts/check-instant-tooltip-panel.sh`（新增，**不在 `check-all.sh` 里**：它要建
+  真实窗口，无图形会话会假红，归 [GUI 冒烟流程](../testing/gui-smoke-testing.md)）：
+  拿真实的 `InstantTooltipController.show` 对已知位置的锚点弹提示，量面板真实
+  落点，9 条断言全绿。
   **反向验证**：把 hosting 改回直接当 contentView，9 条里红 6 条、退出码 1：
   ```
   FAIL 面板摆好之后不许自己改尺寸/挪位置：摆位 (335, 1493, 192, 25) → 稳定 (335, 1186, 192, 332)
   FAIL 单行提示的面板高度不该超过 60：实际 332
   FAIL 下方放不下时要翻到控件上方：期望 926，实际 619
   ```
-- `scripts/check-localization-coverage.sh`（新增）：442 条界面文案在两张表里都有，
-  且两张表都没有重复键。
+- `scripts/check-localization-coverage.sh`（新增，在 `check-all.sh` 里）：511 条界面
+  文案在两张表里都有，两张表键集相同、无重复键、无空译文、占位符一致。
   **反向验证（缺文案）**：删掉 zh 表里 `Start Recording` 一行 → `FAIL zh-Hans 表里
   没有："Start Recording" ← Sources/SrtFlow/ScreenRecordingSetupView.swift:114`，
   退出码 1；补回去退出码 0。（第一版守卫用 grep 写，漏掉换行写的调用，已改用
@@ -96,6 +98,12 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
   **反向验证（重复键）**：修 `"Size"` 之前，守卫直接报出
   `FAIL en 表里 "Size" 出现了两次` / `FAIL zh-Hans 表里 "Size" 出现了两次`，退出码 1；
   改成 `"Font size"` 之后退出码 0。再把 `"Font size"` 手工写两遍 → 又变红。
+  **反向验证（三条兜底）**：只从 zh 表删掉一个静态扫不到的动态 key（`Original SRT`）
+  → `FAIL 只有 en 表里有`；把一条译文清空 → `FAIL 译文是空的`；译文少写一个 `%@`
+  → `FAIL 占位符对不上`；把 `%d` 换成 `%1$d` → 同样红。四次退出码都是 1。
+  **测出来抓不住的一类**：两个同类型占位符对调（`%@ … %@`）—— 调完序列一模一样，
+  静态分辨不出，所以规矩改成「要换语序就用 `%1$@`」，并写进架构文档。
+  （这一条本来在文档里写成「顺序也要一样、调换会红」，实测才发现是错的。）
 - `plutil -lint` 两张表都 OK；`swift build --arch arm64` 通过。
 - hover 本身没法自动化（`.onHover` 对合成鼠标事件不响应，见
   [GUI 冒烟流程](../testing/gui-smoke-testing.md)），所以「鼠标一放上去」这一段
@@ -112,9 +120,30 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
 3. **本地化查不到是静默降级**：不报错、不崩、只是显示英文，代码审查和编译都发现
    不了，只有中文用户挨个划过按钮才看得见。新增任何 `LocalizedStringKey` 文案都必须
    同步两张表，现在由全局守卫钉着（见 [本地化](../architecture/localization.md)）。
-   **用户报了一处，就该去数还有多少处** —— 这次报回来 1 条，实扫出 181 条。
+   **用户报了一处，就该去数还有多少处** —— 这次报回来 1 条，实扫出 194 条。
    同一族的还有「键重复」：翻译过了，但显示的是另一个词，比没翻译更难看出来。
    **一个键只能有一个含义。**
 4. 这条 bug 出在「加了守卫的功能」上：`checks/instant-tooltip-wiring.sh` 当时只钉了
    接线（不许用 `.help`、快捷键单一来源），没钉**结果**（提示最终落在哪、写的是哪种
    语言）。**守卫要盯用户看得见的那一面，不能只盯代码写法。**
+
+## 复审补记（同日）
+
+代码复审又挑出三处，都已修：
+
+1. **真实窗口的检查不该进 `check-all.sh`。** 它是本地与 CI 的统一入口，AGENTS.md
+   写明真实窗口走 GUI 冒烟；无图形会话的环境跑它只会假红。已移出，并写进
+   [GUI 冒烟流程](../testing/gui-smoke-testing.md) 的「已自动化但要图形会话」一节。
+   *教训：守卫放错入口，和没有守卫一样会浪费别人的时间 —— 假红比没有更烦人。*
+2. **本地化守卫仍有假绿路径。** 只扫调用点的字面量，漏了 `String(localized:)` 和
+   动态 key（`L10n(section.title)`）—— 后者把表里对应条目全删掉也照样全绿。已补：
+   动态 key 顺着属性名找到计算属性体里的字面量；`String(localized:)` 进扫描清单，
+   生产代码里那一处也改回 `L10n`（它只认系统语言，App 内切中文时不跟着变）。
+   顺带把这一类查出的 13 条真文案补齐，并加了三条兜底：两张表键集相同、译文非空、
+   占位符一致。
+   *教训：**守卫自己也要被审**。「加了守卫」不等于「覆盖住了」，得具体问一句
+   「哪种写法它看不见」。*
+3. **文档与注释漂移**：架构文档写 132 条、案例写 181 条；字符串表的表头注释还指着
+   `instant-tooltip-wiring.sh`，甚至引用了一个从不存在的 `checks/localized-strings-coverage.sh`
+   （中途改过方案，注释没跟着改）。已统一。
+   *教训：数字和路径是会烂的引用，改方案时要顺手全仓库搜一遍旧名字。*

@@ -79,6 +79,11 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 只量「刚摆完」等于没量。这条自检不需要 hover：`InstantTooltipController.show`
 本身就是生产路径，直接调它就绕开了鼠标。
 
+它要建真实的 `NSWindow` / `NSPanel`，所以**不在 `scripts/check-all.sh` 里**（无图形
+会话的环境会假红），归 [GUI 冒烟流程](../testing/gui-smoke-testing.md)。
+**改这个文件必须手动跑一遍**，写法上的回潮另由 `checks/instant-tooltip-wiring.sh`
+在 check-all 里挡着。
+
 ## 六、本地化：两个重载，别混；文案必须两张表都有
 
 - `instantHelp(_ text: LocalizedStringKey)` —— 写死的文案，查表翻译。

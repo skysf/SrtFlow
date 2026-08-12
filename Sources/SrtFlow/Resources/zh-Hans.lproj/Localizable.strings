@@ -382,7 +382,7 @@
 "No speech was recognized. Try another source language." = "没有识别到语音。可以换一个音频语言再试。";
 "Subtitles were generated, but translation failed: %@" = "字幕已生成，但翻译失败：%@";
 
-/* 按钮提示（instantHelp）—— checks/instant-tooltip-wiring.sh 盯着这两张表要配齐 */
+/* 按钮提示（instantHelp）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 引擎状态与授权 */
 "What is wrong with the video engine, and how to fix it" = "视频引擎哪里出了问题，以及怎么修";
 "Open Privacy & Security so the engine can be allowed to run" = "打开「隐私与安全性」放行视频引擎";
@@ -474,7 +474,7 @@
 "Close the subtitle editor" = "关闭字幕编辑器";
 "Write the subtitle tracks out as files" = "把字幕轨导出成文件";
 
-/* 界面文案补齐（2026-08-12）—— checks/localized-strings-coverage.sh 盯着两张表要配齐 */
+/* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 录屏：设置面板与控制条 */
 "Record Screen" = "录屏";
 "Source" = "来源";
@@ -592,3 +592,51 @@
 "Output follows the project: %d×%d, %d fps." = "导出跟随工程设置：%d×%d、%d fps。";
 "ffmpeg finished but produced no output file." = "ffmpeg 跑完了，但没有产出文件。";
 "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "这些图片片段还没准备好：%@。等它们完成；如果图片丢了，就重新链接。";
+
+/* 运行期才成形的 key（L10n(x.title) 这类）—— scripts/check-localization-coverage.sh 会顺着属性找过来 */
+/* 时间线标记的颜色 */
+"Red" = "红色";
+"Orange" = "橙色";
+"Yellow" = "黄色";
+"Green" = "绿色";
+"Blue" = "蓝色";
+"Purple" = "紫色";
+
+/* 录屏来源与画面比例 */
+"Entire display" = "整块屏幕";
+"A window" = "某个窗口";
+"Custom region" = "自定义区域";
+"Free" = "自由";
+
+/* 字幕导出：烧录范围说明 */
+"Burning both subtitle tracks, with the Burn In tool's style." = "将烧录两条字幕轨，用「烧制字幕」页的样式。";
+"Burning the translated track, with the Burn In tool's style." = "将烧录译文轨，用「烧制字幕」页的样式。";
+"Burning the original track, with the Burn In tool's style." = "将烧录原文轨，用「烧制字幕」页的样式。";
+
+/* 比例、分辨率、帧率 */
+"16:9" = "16:9";
+"9:16" = "9:16";
+"4:3" = "4:3";
+"3:4" = "3:4";
+"1:1" = "1:1";
+"2160p" = "2160p";
+"1440p" = "1440p";
+"1080p" = "1080p";
+"720p" = "720p";
+"480p" = "480p";
+"24 fps" = "24 fps";
+"30 fps" = "30 fps";
+"60 fps" = "60 fps";
+
+/* 字幕格式与 x264 预设（技术标识，两种语言相同） */
+"SRT" = "SRT";
+"VTT" = "VTT";
+"ASS" = "ASS";
+"SSA" = "SSA";
+"veryfast" = "veryfast";
+"faster" = "faster";
+"fast" = "fast";
+"medium" = "medium";
+"slow" = "slow";
+"slower" = "slower";
+"veryslow" = "veryslow";

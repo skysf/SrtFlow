@@ -115,9 +115,12 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 生产导出帧率：`scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
 - 定格时间线变换：`scripts/check-freeze-frame.sh`。
-- 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`；提示面板的真实落点
-  （摆好之后不许自己变）：`scripts/check-instant-tooltip-panel.sh`。
-- 界面文案在 en / zh-Hans 两张表都配齐：`scripts/check-localization-coverage.sh`。
+- 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
+- 界面文案在 en / zh-Hans 两张表都配齐、无重复键、占位符一致：
+  `scripts/check-localization-coverage.sh`。
+- 提示面板的真实落点（摆好之后不许自己变）：`scripts/check-instant-tooltip-panel.sh`。
+  **要图形会话，故意不在 `check-all.sh` 里**（无图形会话会假红），改
+  `InstantTooltip.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 时间线吸附与生产落点：`scripts/check-timeline-snap.sh`；拖动接线扫描：
   `checks/timeline-drag-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。

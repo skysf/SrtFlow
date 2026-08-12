@@ -79,7 +79,17 @@
   开头缓存的 bounds 换算，点击会整体偏移到别的控件上——按窗口 ID 截的图里
   一切正常，唯独行为"莫名其妙"，就是这个原因。
 
-## 五、收尾
+## 五、要真实窗口、但已经自动化了的检查
+
+有些检查**不需要人来操作**，只是需要一个图形会话（会建真实的 `NSWindow` /
+`NSPanel`）。它们**故意不进 `scripts/check-all.sh`** —— 那条是本地与 CI 的统一入口，
+无图形会话的环境（SSH、别的 runner）跑起来会假红。改到对应模块时在本机跑一遍：
+
+- `scripts/check-instant-tooltip-panel.sh` —— 提示面板的真实落点：摆好之后跑一轮
+  排版再量一次，面板不许自己改尺寸或挪位置。改 `InstantTooltip.swift` 必跑。
+  用 `.accessory` 策略，不抢焦点、不进 Dock，跑完即退。
+
+## 六、收尾
 
 - 杀掉 SrtFlowDev 进程，删临时 .app。
 - 正式交付走 `scripts/build-app.sh`，并对 dist 产物重复第一步的

@@ -52,7 +52,9 @@ run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-buil
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
-run_check "instant-tooltip-panel（提示面板落点）" scripts/check-instant-tooltip-panel.sh
+# 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
+# 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口
+# 一律走 GUI 冒烟流程（docs/testing/gui-smoke-testing.md）。
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh

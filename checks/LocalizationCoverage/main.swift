@@ -21,6 +21,11 @@ private let localizedCalls = [
     "Section", "Stepper", "Menu", "Link", "LocalizedStringKey",
     "instantHelp", "confirmationDialog",
 ]
+/// 带实参标签的查表调用：`String(localized: "…")`。
+///
+/// 注意它**只认系统语言**，不认 App 内的语言选择，所以生产代码里应该用 `L10n`；
+/// 这里仍然扫，免得有人写回去时守卫看不见。
+private let localizedLabelledCalls = ["localized"]
 /// 以点开头的修饰符（`.alert("…")`、`.navigationTitle("…")`）。
 private let localizedModifiers = ["alert", "navigationTitle"]
 
@@ -34,6 +39,9 @@ private let exempt: Set<String> = [
     "→",            // 双语字幕行里的方向箭头
     "中",            // 字体预览的示例字
     "SrtFlow",      // App 名
+    // 语言选择器的三个选项：**故意不翻译**，每一项都用它代表的那种语言写，
+    // 这样界面现在是哪种语言，用户都能认出自己要的那一项（AppLanguage.displayName）。
+    "System", "English", "简体中文",
 ]
 
 /// 把源码里的转义还原成真实字符。
@@ -138,6 +146,8 @@ func scan(_ files: [String]) -> [Occurrence] {
         // 最后还是进 Text/instantHelp。只认调用名会漏掉这一整类。
         // `DispatchQueue(label:)` 排掉 —— 那是队列名，不是给人看的。
         "(?<!DispatchQueue\\()\\b(?:help|label):\\s*\(literal)",
+        // String(localized: "…")。
+        "\\b(?:\(localizedLabelledCalls.joined(separator: "|"))):\\s*\(literal)",
     ].map { try! NSRegularExpression(pattern: $0, options: [.dotMatchesLineSeparators]) }
 
     var found: [Occurrence] = []
@@ -152,6 +162,68 @@ func scan(_ files: [String]) -> [Occurrence] {
                 let line = source[source.startIndex..<range.lowerBound]
                     .reduce(into: 1) { count, ch in if ch == "\n" { count += 1 } }
                 found.append(Occurrence(key: key, file: path, line: line))
+            }
+        }
+    }
+    return found
+}
+
+// MARK: - 运行期才成形的 key
+
+/// `L10n(section.title)` / `LocalizedStringKey(kind.title)` 这种**动态 key**：
+/// 键不写在调用点，而是某个属性算出来的。只扫调用点的话，这一整类都是假绿 ——
+/// 把两张表里对应的条目全删掉，守卫照样全绿。
+///
+/// 做法：先从调用点收集用到的属性名（`title`、`blurb`、`displayName`…），再回头
+/// 把这些名字的**计算属性体**里的字面量都当成 key。覆盖不了在初始化时赋值的存储
+/// 属性（那要真求值才知道），那部分靠两张表键集必须相同兜住。
+func dynamicKeys(in files: [String]) -> [Occurrence] {
+    let callSite = try! NSRegularExpression(
+        pattern: #"(?:L10n|LocalizedStringKey)\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)"#
+    )
+    var propertyNames: Set<String> = []
+    var sources: [(path: String, text: String)] = []
+    for path in files {
+        guard let raw = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+        let source = strippingComments(raw)
+        sources.append((path, source))
+        let ns = source as NSString
+        callSite.enumerateMatches(in: source, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+            guard let match, let range = Range(match.range(at: 1), in: source) else { return }
+            // `state.section.title` → `title`
+            if let name = source[range].split(separator: ".").last { propertyNames.insert(String(name)) }
+        }
+    }
+
+    let literal = try! NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
+    var found: [Occurrence] = []
+    for (path, source) in sources {
+        for name in propertyNames {
+            let declaration = try! NSRegularExpression(pattern: "\\bvar\\s+\(name)\\s*:\\s*String\\s*\\{")
+            let ns = source as NSString
+            declaration.enumerateMatches(in: source, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+                guard let match, let start = Range(match.range, in: source)?.upperBound else { return }
+                // 从开花括号数到配对的闭花括号，只取这个属性自己的体。
+                var depth = 1
+                var end = start
+                var index = start
+                while index < source.endIndex {
+                    if source[index] == "{" { depth += 1 }
+                    if source[index] == "}" {
+                        depth -= 1
+                        if depth == 0 { end = index; break }
+                    }
+                    index = source.index(after: index)
+                }
+                guard depth == 0 else { return }
+                let body = String(source[start..<end])
+                let line = source[source.startIndex..<start]
+                    .reduce(into: 1) { count, ch in if ch == "\n" { count += 1 } }
+                let bodyRange = NSRange(location: 0, length: (body as NSString).length)
+                literal.enumerateMatches(in: body, range: bodyRange) { hit, _, _ in
+                    guard let hit, let range = Range(hit.range(at: 1), in: body) else { return }
+                    found.append(Occurrence(key: unescaped(String(body[range])), file: path, line: line))
+                }
             }
         }
     }
@@ -211,7 +283,64 @@ for (lang, path) in tables {
     }
 }
 
-let occurrences = scan(swiftFiles(under: sources))
+// 两张表的键集必须完全相同。
+//
+// 这条是**兜底**：动态 key（存储属性、运行期拼出来的）静态扫不到，一旦有人只往
+// 一张表里加，上面的逐条核对不会报错，界面上却会一边有一边没有。
+if let en = loaded["en"], let zh = loaded["zh-Hans"] {
+    for key in Set(en.keys).subtracting(zh.keys).sorted() {
+        print("FAIL 只有 en 表里有：\"\(key)\"（zh-Hans 缺译文）")
+        failures += 1
+    }
+    for key in Set(zh.keys).subtracting(en.keys).sorted() {
+        print("FAIL 只有 zh-Hans 表里有：\"\(key)\"（en 缺原文）")
+        failures += 1
+    }
+}
+
+// 译文不许为空：空串在界面上就是一片空白，比留着英文还糟。
+for (lang, dict) in loaded {
+    for (key, value) in dict where value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        print("FAIL \(lang) 表里 \"\(key)\" 的译文是空的")
+        failures += 1
+    }
+}
+
+// 占位符必须两张表一致。
+//
+// `String(format:)` 按格式串取参数：译文少一个 %@ 就少读一个参数（内容错位），
+// 多一个就去读根本没传的参数（**崩溃**）。这类错误只在那条错误路径真的发生时才
+// 暴露，测不到。
+func placeholders(in text: String) -> [String] {
+    let regex = try! NSRegularExpression(pattern: #"%(\d+\$)?[-+ #0]*\d*(?:\.\d+)?(?:hh|h|ll|l|q|L|z|t|j)?[@dDuUxXoOfeEgGcCsSpaAn%]"#)
+    let ns = text as NSString
+    return regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        .map { ns.substring(with: $0.range) }
+        .filter { $0 != "%%" }
+}
+if let en = loaded["en"], let zh = loaded["zh-Hans"] {
+    for (key, enValue) in en.sorted(by: { $0.key < $1.key }) {
+        guard let zhValue = zh[key] else { continue }
+        let a = placeholders(in: enValue), b = placeholders(in: zhValue)
+        // 不带位置的（`%@`）按出现顺序取参数，所以**按顺序比**，不比多重集：
+        // `%d, %@` 变成 `%@, %d` 会被抓住。
+        //
+        // **抓不住的**：两个同类型占位符对调（`%@ … %@`）—— 调完序列一模一样，
+        // 静态上根本分辨不出来。所以规矩是：**要换语序就用带位置的 `%1$@`/`%2$@`**，
+        // 那是唯一能安全重排的写法（这时才比多重集）。
+        let positional = (a + b).allSatisfy { $0.contains("$") }
+        let mismatch = positional ? a.sorted() != b.sorted() : a != b
+        if mismatch {
+            print("FAIL \"\(key)\" 两张表的占位符对不上：en \(a) vs zh-Hans \(b)")
+            if !positional && a.sorted() == b.sorted() {
+                print("     （数量一样、顺序不同 —— 要换语序请改用 %1$@ / %2$@ 这种带位置的写法）")
+            }
+            failures += 1
+        }
+    }
+}
+
+let occurrences = scan(swiftFiles(under: sources)) + dynamicKeys(in: swiftFiles(under: sources))
 // 插值键（`Text("已选 \(n) 段")`）的真实键要到运行期才成形，静态扫描认不出，
 // 这是本守卫**已知的盲区**，不是漏网 —— 这类文案仍要人工确认进表。
 let scannable = occurrences.filter { !$0.key.contains("\\(") && !exempt.contains($0.key) }

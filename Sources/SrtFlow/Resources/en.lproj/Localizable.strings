@@ -382,7 +382,7 @@
 "No speech was recognized. Try another source language." = "No speech was recognized. Try another source language.";
 "Subtitles were generated, but translation failed: %@" = "Subtitles were generated, but translation failed: %@";
 
-/* 按钮提示（instantHelp）—— checks/instant-tooltip-wiring.sh 盯着这两张表要配齐 */
+/* 按钮提示（instantHelp）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 引擎状态与授权 */
 "What is wrong with the video engine, and how to fix it" = "What is wrong with the video engine, and how to fix it";
 "Open Privacy & Security so the engine can be allowed to run" = "Open Privacy & Security so the engine can be allowed to run";
@@ -474,7 +474,7 @@
 "Close the subtitle editor" = "Close the subtitle editor";
 "Write the subtitle tracks out as files" = "Write the subtitle tracks out as files";
 
-/* 界面文案补齐（2026-08-12）—— checks/localized-strings-coverage.sh 盯着两张表要配齐 */
+/* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 录屏：设置面板与控制条 */
 "Record Screen" = "Record Screen";
 "Source" = "Source";
@@ -592,3 +592,51 @@
 "Output follows the project: %d×%d, %d fps." = "Output follows the project: %d×%d, %d fps.";
 "ffmpeg finished but produced no output file." = "ffmpeg finished but produced no output file.";
 "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing.";
+
+/* 运行期才成形的 key（L10n(x.title) 这类）—— scripts/check-localization-coverage.sh 会顺着属性找过来 */
+/* 时间线标记的颜色 */
+"Red" = "Red";
+"Orange" = "Orange";
+"Yellow" = "Yellow";
+"Green" = "Green";
+"Blue" = "Blue";
+"Purple" = "Purple";
+
+/* 录屏来源与画面比例 */
+"Entire display" = "Entire display";
+"A window" = "A window";
+"Custom region" = "Custom region";
+"Free" = "Free";
+
+/* 字幕导出：烧录范围说明 */
+"Burning both subtitle tracks, with the Burn In tool's style." = "Burning both subtitle tracks, with the Burn In tool's style.";
+"Burning the translated track, with the Burn In tool's style." = "Burning the translated track, with the Burn In tool's style.";
+"Burning the original track, with the Burn In tool's style." = "Burning the original track, with the Burn In tool's style.";
+
+/* 比例、分辨率、帧率 */
+"16:9" = "16:9";
+"9:16" = "9:16";
+"4:3" = "4:3";
+"3:4" = "3:4";
+"1:1" = "1:1";
+"2160p" = "2160p";
+"1440p" = "1440p";
+"1080p" = "1080p";
+"720p" = "720p";
+"480p" = "480p";
+"24 fps" = "24 fps";
+"30 fps" = "30 fps";
+"60 fps" = "60 fps";
+
+/* 字幕格式与 x264 预设（技术标识，两种语言相同） */
+"SRT" = "SRT";
+"VTT" = "VTT";
+"ASS" = "ASS";
+"SSA" = "SSA";
+"veryfast" = "veryfast";
+"faster" = "faster";
+"fast" = "fast";
+"medium" = "medium";
+"slow" = "slow";
+"slower" = "slower";
+"veryslow" = "veryslow";
