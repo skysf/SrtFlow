@@ -84,14 +84,19 @@ ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")
 **改这个文件必须手动跑一遍**，写法上的回潮另由 `checks/instant-tooltip-wiring.sh`
 在 check-all 里挡着。
 
-## 六、本地化：两个重载，别混；文案必须两张表都有
+## 六、本地化：两个重载，标签不能省；文案必须两张表都有
 
 - `instantHelp(_ text: LocalizedStringKey)` —— 写死的文案，查表翻译。
-- `instantHelp(_ text: some StringProtocol)` —— 运行期算出来的字符串（路径、
-  素材名、错误文案），走 `Text(verbatim:)`。
+- `instantHelp(verbatim text: some StringProtocol)` —— 运行期算出来的字符串
+  （路径、素材名、错误文案），走 `Text(verbatim:)`，不查表。
 
-系统的 `.help` 也是这么分的两个重载。混用会把用户的文件名当成本地化 key 去
-翻译。
+**`verbatim:` 这个参数标签是这套东西能翻译的前提，不许去掉。** 两个重载只差参数
+类型时，**字符串字面量在重载决议里优先选默认字面量类型 `String`** ——
+`.instantHelp("Close this panel")` 会静静地走进 verbatim 那条，永远不查表。
+这不是理论：2026-08-12 全 App 的提示就是这么在「译文明明补齐了」的情况下继续显示
+英文的（[案例](../bugfixes/2026-08-12-instant-tooltip-first-show-far-off.md)）。
+系统的 `.help` 用 `@_disfavoredOverload` 压住同一个坑；这里用参数标签，不依赖下划线
+属性，而且调用点自己就写着「这条不翻译」。守卫钉着这条。
 
 **新增任何提示文案，都要同时补进 `en.lproj` 和 `zh-Hans.lproj`**（en 填原文，
 zh-Hans 填译文）。查不到是**静默降级**：不报错、不崩，只是在中文界面里原样显示

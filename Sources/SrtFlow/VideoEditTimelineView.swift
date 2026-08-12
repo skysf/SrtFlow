@@ -585,7 +585,7 @@ struct VideoEditTimelineView: View {
                             clock.seek(to: cue.start + 0.05)
                             project.selectSubtitleCue(cue.id)
                         }
-                        .instantHelp(SubtitleSerializer.plainText(cue.text))
+                        .instantHelp(verbatim: SubtitleSerializer.plainText(cue.text))
                 }
             }
         }
@@ -1044,7 +1044,7 @@ private struct ClipBlockView: View {
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .contextMenu { contextMenu }
-        .instantHelp(clip.name)
+        .instantHelp(verbatim: clip.name)
         .offset(x: (clip.timelineStart + (dragOffset ?? 0)) * pps)
         // 备注气泡会铺到邻块上面去，所以悬着标记的块要抬起来，别被后画的块盖住。
         .zIndex(dragOffset != nil ? 10 : (markerHoverTime != nil ? 5 : 0))

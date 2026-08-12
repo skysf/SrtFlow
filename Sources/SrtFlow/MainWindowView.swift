@@ -225,7 +225,7 @@ struct MainWindowView: View {
             }
             .font(.caption)
             // 完整的一句（版本、来自哪里、是不是原生）留在提示里。
-            .instantHelp(engineSummary(runtime))
+            .instantHelp(verbatim: engineSummary(runtime))
         }
     }
 

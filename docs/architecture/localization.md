@@ -85,6 +85,16 @@
 - **不要用 `String(localized:)`**：它只认系统语言，不认 App 内的语言选择 —— 系统是
   英文、App 切成中文时，那一句会留在英文。要在代码里查表就用 `L10n`。
 
+### 自己写「收文案」的 API 时：两个重载会互相抢
+
+给自定义修饰符/组件同时提供 `LocalizedStringKey` 和 `some StringProtocol` 两个重载，
+**字符串字面量会优先选 `String` 那条**（默认字面量类型胜出），于是所有写死的文案
+悄悄绕过查表。`instantHelp` 栽过一次，全 App 的提示因此在译文补齐后仍是英文。
+
+两个可行解：给不查表的那条加参数标签（`instantHelp(verbatim:)`，本仓库的做法），
+或给它加 `@_disfavoredOverload`（系统 `.help` 的做法）。**只留一个重载也行**。
+不要指望「非泛型更特化所以会赢」—— 实测不会。
+
 ## 三、应用内切换语言的两个坑
 
 1. **SwiftPM 会把本地化目录名转小写**（`zh-Hans.lproj` → `zh-hans.lproj`），而

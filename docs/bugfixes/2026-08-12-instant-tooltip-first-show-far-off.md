@@ -62,6 +62,41 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
 `LabeledSlider(label: "…")` 这类经参数转交的文案，守卫原先也看不见（和当初漏掉
 `ToolbarIcon(help:)` 是同一个洞），一并补进扫描；`DispatchQueue(label:)` 排掉。
 
+### 四、译文补齐了，界面上还是英文：字面量根本没走查表那条重载
+
+**装了带全部译文的新包，提示照样是英文。** 这才是「提示没翻译」的真正根因，
+补表只是必要条件。
+
+`instantHelp` 有两个重载：
+
+```swift
+func instantHelp(_ text: LocalizedStringKey, …)          // 查表
+func instantHelp<S: StringProtocol>(_ text: S, …)        // verbatim，不查表
+```
+
+**字符串字面量在重载决议里优先选默认字面量类型 `String`**，所以全 App 的
+`.instantHelp("…")` 一直走的是下面那条 —— 从头到尾没查过表。系统的 `.help` 是同样
+的两个重载，它靠 `@_disfavoredOverload` 才让字面量落到 `LocalizedStringKey` 上；
+这里没有那道保险。
+
+在装好的 app 包里跑探针测出来的（判据是排版宽度，中文比英文窄一截）：
+
+```
+字面量选中的重载 = StringProtocol（verbatim，不查表）
+Bundle.main 直查 = 鼠标工具：选择 / 分割        ← 表、包、语言设置都没问题
+1 不注入 locale        109pt → 中文 ✓
+2 注入 zh-Hans         109pt → 中文 ✓
+4 Text 传值 + 注入      109pt → 中文 ✓        ← 提示面板那条路径也没问题
+```
+
+也就是说：**渲染路径一路正常，唯一断点在调用点的重载决议。** 走 `help:` 参数转交
+的那批（`ToolbarIcon`）因为参数显式声明成 `LocalizedStringKey`，一直是好的 ——
+用户截图里三条英文提示全是直接写字面量的调用点，一条不差。
+
+改法：给不查表的那条加参数标签 —— `instantHelp(verbatim:)`。无标签的门只剩
+`LocalizedStringKey`，字面量无处可去；调用点也自己写着「这条不翻译」。
+不用 `@_disfavoredOverload` 是为了不依赖下划线属性。
+
 ## 修复
 
 - `Sources/SrtFlow/InstantTooltip.swift`：hosting 外面垫一层普通 `NSView` 再挂成
@@ -73,6 +108,9 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
 - 顺着这条线把**全仓库**扫了一遍，另有 108 条界面文案（录屏面板与全部失败原因、
   工程菜单与文档提示、标记与导出）也从没进过表；复审又逼出 13 条藏在动态 key
   后面的（标记颜色、录屏来源、烧录范围说明）。合计 **194 条**。
+- `instantHelp` 的 verbatim 重载改成带标签的 `instantHelp(verbatim:)`，10 处传运行期
+  字符串的调用点跟着显式标注；标记颜色那处顺手改成 `LocalizedStringKey(color.title)`
+  （它本来就该翻译）。
 - 新增 `checks/LocalizationCoverage/`（Swift）+ `scripts/check-localization-coverage.sh`：
   把「写死的文案必须两张表都有」升成**全局**守卫，长期约束写进
   [本地化](../architecture/localization.md)。提示那一类不再单独维护一份规则。
@@ -104,6 +142,13 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
   **测出来抓不住的一类**：两个同类型占位符对调（`%@ … %@`）—— 调完序列一模一样，
   静态分辨不出，所以规矩改成「要换语序就用 `%1$@`」，并写进架构文档。
   （这一条本来在文档里写成「顺序也要一样、调换会红」，实测才发现是错的。）
+- 重载决议（`checks/instant-tooltip-wiring.sh` 新增第 4 节）：无标签的必须收
+  `LocalizedStringKey`、verbatim 那条必须带标签、不许再出现无标签的泛型重载、
+  调用点不许把字面量塞进 `verbatim:`。
+  **反向验证**：把 `verbatim:` 标签去掉 → 两条同时变红、退出码 1。
+  另跑了一次**负向编译**证明结构本身：无标签传 `String` 现在编不过 ——
+  `error: cannot convert value of type 'String' to expected argument type
+  'LocalizedStringKey'`，即字面量除了查表那条无路可走。
 - `plutil -lint` 两张表都 OK；`swift build --arch arm64` 通过。
 - hover 本身没法自动化（`.onHover` 对合成鼠标事件不响应，见
   [GUI 冒烟流程](../testing/gui-smoke-testing.md)），所以「鼠标一放上去」这一段
@@ -147,3 +192,16 @@ Split (B)` 之类）还留在表里，看上去「翻译过了」，其实调用
    `instant-tooltip-wiring.sh`，甚至引用了一个从不存在的 `checks/localized-strings-coverage.sh`
    （中途改过方案，注释没跟着改）。已统一。
    *教训：数字和路径是会烂的引用，改方案时要顺手全仓库搜一遍旧名字。*
+
+## 复审补记二：为什么「修好了」还是英文（同日）
+
+用户装上带全部译文的新包，提示依旧是英文 —— 我在只验了「表里有、包里有」之后
+就报告修好了，**没验最后一公里：那条文案到底走没走查表**。
+
+- 症状是「补了译文没用」，而我的验证全在译文那一侧（表里有、产物包里有、
+  `Bundle.main` 直查得到），三条都绿，于是看上去闭环了。真正断的是更前面一步。
+- **教训：验证要落在用户看得见的那一端。** 「表里有」不等于「界面上是中文」，
+  中间还隔着重载决议、bundle、环境 locale 三道。分层验证时，只验中间层等于没验。
+- 这次能定位，靠的是**在装好的 app 包里跑探针**（把 Bundle.main 换成真包），
+  一次就把「表/包/语言设置/渲染路径」四项排除干净，只剩重载决议。
+  遇到「代码看着对、装上就不对」，直接在真产物里量，比读代码快得多。

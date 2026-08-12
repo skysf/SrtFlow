@@ -71,9 +71,15 @@ extension View {
     }
 
     /// 内容是运行期算出来的字符串（路径、素材名、错误文案）时用这个重载。
-    /// 走 `verbatim`，**不**拿它当本地化键去查表 —— 系统的 `.help` 也是这么
-    /// 分的两个重载，改成查表会把用户的文件名当成 key 去翻译。
-    func instantHelp<S: StringProtocol>(_ text: S, shortcut: HelpShortcut? = nil) -> some View {
+    /// **不**拿它当本地化键去查表 —— 拿用户的文件名去翻译是另一种事故。
+    ///
+    /// **参数标签 `verbatim:` 不能去掉。** 去掉就和上面那个重载只差参数类型，
+    /// 而字符串字面量在重载决议里**优先选默认字面量类型 `String`** ——
+    /// `.instantHelp("Close this panel")` 会静静地走进这里，永远不查表。
+    /// 系统的 `.help` 靠 `@_disfavoredOverload` 压住同一个坑；这里用参数标签，
+    /// 不依赖下划线属性，而且调用点自己就写着「这条不翻译」。
+    /// 由来见 docs/bugfixes/2026-08-12-instant-tooltip-first-show-far-off.md。
+    func instantHelp<S: StringProtocol>(verbatim text: S, shortcut: HelpShortcut? = nil) -> some View {
         modifier(InstantHelpModifier(label: Text(verbatim: String(text)), shortcut: shortcut))
     }
 }
