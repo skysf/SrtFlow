@@ -73,6 +73,24 @@
   **SwiftUI 的 hover（`onContinuousHover`/`onHover`）对合成 mouseMoved 也不
   响应**（2026-08-08 实测：warp 到位 + 连发 move 均不触发 tracking area）——
   悬停类交互与捏合同级：状态机用自检钉住，手感留给用户真机过。
+- **横向滚动可注入**（2026-08-16 实测）：`CGEvent(scrollWheelEvent2Source:
+  units: .pixel, wheelCount: 2, wheel2: dx)`，光标先 warp 进滚动区**内**（点在
+  工具栏上整批静默无效）。滚动事件顺带会刷新 hover tracking——光标停在块上时
+  注入滚动，`onContinuousHover` 的 peek 会真的触发，可以借此驱动悬停类状态。
+- **带修饰键的注入会把修饰键留在系统状态里**（2026-08-16 踩坑）：Ctrl+滚轮
+  缩放注入（`event.flags = .maskControl`）之后，后续**无 flags** 的注入照样
+  继承住 Ctrl —— 左键点击全变成 Ctrl+点击（弹右键菜单）、普通滚动全变成缩放，
+  而且症状看起来就是「点击失效 / 滚不动」，极像业务 bug。修饰键注入收尾必须
+  补一个对应键的 keyUp（Ctrl=59）+ `flags = []` 走 HID 发出去，再继续别的注入。
+- **SRTFLOW_SMOKE_VIDEO 挂图片有竞态**：钩子在 Edit Video 的 onAppear 同步
+  触发，而 `addImages` 在 ffmpeg toolchain 未解析完时直接放弃（只留一条
+  notice）——首次进入必输，图片静默不上轨。绕法：把已导入的块删光让工程变空，
+  切去别的栏目再切回来，钩子会带着就绪的 toolchain 重跑。
+- **合成点击偶发整次丢失**（~1/10，与滞留是两回事）：关键判定别单点定生死，
+  同一点复测一次再下结论 —— 一次失败可能只是丢击，两次全失败才是真死区。
+- **「这块区域归谁」用右键探**（2026-08-16 定位标尺死区的关键）：在可疑位置
+  注入右键，看弹出的是谁的 contextMenu，无损且一击定位命中区归属；比对照
+  截图猜 z 序快得多。探完 Esc（keyCode 53 `postToPid`）收掉菜单。
 - **注入前查窗口叠放**：按坐标遍历 CGWindowList 确认目标点没被别的窗口盖住
   ——cmux 终端自己就常盖在上面，事件会全进错窗口，且截图（按窗口 ID）看不出
   任何异常，极易误判"注入无效"。

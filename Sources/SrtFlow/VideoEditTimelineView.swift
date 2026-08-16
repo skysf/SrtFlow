@@ -1683,6 +1683,14 @@ private struct ThumbnailStripView: View {
             }
         }
         .frame(height: height)
+        // 纯装饰，整条不吃事件。缩略图 `.scaledToFill().clipped()` 只裁**画面**
+        // 不裁**命中区**：竖版图按 tile 宽 fill 后纵向溢出 (tile宽×高宽比−条高)/2，
+        // tile 宽又随缩放涨（块宽/24）——放大后这片隐形命中区能高出块几百 pt，
+        // 把上面的标尺整段盖死（点标尺 = 选中图片，就是 2026-08-16 那个 bug）。
+        // 块的点选/拖动/悬停全挂在 ClipBlockView 那一层，底色矩形提供命中面，
+        // 这里让路零损失。案例见
+        // docs/bugfixes/2026-08-16-clipped-thumbnail-hit-area-covers-ruler.md。
+        .allowsHitTesting(false)
     }
 
     private func taskKey(width: Double) -> String {
@@ -1836,6 +1844,8 @@ private struct WaveformView: View {
             guard !Task.isCancelled, !loaded.isEmpty else { return }
             samples = loaded
         }
+        // 与缩略图条同一条合同：块内装饰不吃事件（守卫在 timeline-drag-wiring）。
+        .allowsHitTesting(false)
     }
 }
 
