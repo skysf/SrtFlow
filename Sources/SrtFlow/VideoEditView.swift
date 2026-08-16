@@ -260,7 +260,7 @@ struct VideoEditView: View {
                     Text("Add clips to start editing.")
                         .foregroundStyle(.secondary)
                 }
-                ShapeOverlayCanvas(project: project, boxSize: size)
+                ShapeOverlayCanvas(project: project, clock: clock, boxSize: size)
                 if let text = currentSubtitleText {
                     BurnInSubtitleOverlay(
                         text: text,
@@ -679,6 +679,10 @@ private struct ToolbarToggle: View {
 /// 画面上的形状：按归一化坐标画在预览框里，选中可拖动。
 private struct ShapeOverlayCanvas: View {
     @ObservedObject var project: VideoEditProject
+    /// 必须直接订阅时钟（和 `ClipTransformCanvas` 同款）：形状的出没跟着
+    /// 播放头走，只观察 project 的话，播放/扫帧时这层不重算 —— 形状要么
+    /// 到点不出现、要么过点不消失。
+    @ObservedObject var clock: PlayerClock
     let boxSize: CGSize
 
     /// 拖动开始时的中心（归一化），增量都相对它算。
@@ -690,12 +694,12 @@ private struct ShapeOverlayCanvas: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             // displayTime：悬停预览时形状的出没要跟画面那一帧走。
-            ForEach(project.visibleShapes(at: project.clock.displayTime)) { shape in
+            ForEach(project.visibleShapes(at: clock.displayTime)) { shape in
                 shapeView(shape)
             }
             // 选中形状的变换框：线条只给左右（改长度），正方形只给四角（保形），
             // 长方形全套八个。移动仍走形状本体的拖动手势，框体不拦事件。
-            if let shape = project.selectedShape, shape.contains(time: project.clock.displayTime) {
+            if let shape = project.selectedShape, shape.contains(time: clock.displayTime) {
                 ResizableFrameBox(
                     rect: resizeBoxRect(shape),
                     bounds: boxSize,

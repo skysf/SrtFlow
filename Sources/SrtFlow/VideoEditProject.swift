@@ -1188,6 +1188,25 @@ final class VideoEditProject: ObservableObject {
         perform(rebuildsPreview: false) { $0.updateShape(id, change) }
     }
 
+    /// 拖形状块两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
+    /// 形状没有素材边界：起点端最多回拉到 0；两端收缩的下限 0.2s 与检查器
+    /// 「Shows for」步进器的下限同一个数。
+    func liveTrimShape(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        beginLiveEdit()
+        liveApply { state in
+            state.updateShape(id) { shape in
+                let minDuration = 0.2
+                if leading {
+                    let delta = min(max(deltaSeconds, -shape.timelineStart), shape.duration - minDuration)
+                    shape.timelineStart += delta
+                    shape.duration -= delta
+                } else {
+                    shape.duration += max(deltaSeconds, -(shape.duration - minDuration))
+                }
+            }
+        }
+    }
+
     func deleteShape(_ id: UUID) {
         perform(rebuildsPreview: false) { state in
             state.shapes.removeAll { $0.id == id }

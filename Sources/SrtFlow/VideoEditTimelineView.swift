@@ -735,7 +735,14 @@ struct VideoEditTimelineView: View {
                     onDragChange: { translation, pointerViewportX in
                         updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
                     },
-                    onDragEnd: { endClipDrag() }
+                    onDragEnd: { endClipDrag() },
+                    canTrim: project.activeTool == .select,
+                    onTrim: { leading, delta in
+                        project.clock.endPeek()
+                        project.liveTrimShape(shape.id, leading: leading, deltaSeconds: delta)
+                    },
+                    // 形状不参与 AV 合成，收尾不用重建预览（同 updateShape）。
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
             }
         }
@@ -1601,8 +1608,16 @@ private struct ShapeBlockView: View {
     /// (手势总位移, 指针在滚动视口里的 x)。与剪辑块同一套语义。
     let onDragChange: (CGSize, Double) -> Void
     let onDragEnd: () -> Void
+    /// 分割工具下不给把手（与剪辑块同规矩）：父级传 `activeTool == .select`。
+    let canTrim: Bool
+    /// (leading, 手势开始以来的总位移秒数)。落到 `liveTrimShape`。
+    let onTrim: (Bool, Double) -> Void
+    let onTrimEnd: () -> Void
 
     @State private var isMoving = false
+    @State private var isTrimming = false
+
+    private var width: Double { max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps) }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -1615,11 +1630,7 @@ private struct ShapeBlockView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 5)
         // 宽和高都与框选的命中判定共用常量（`TimelineMarquee`）：画多大就按多大判。
-        .frame(
-            width: max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps),
-            height: TimelineMarquee.shapeHeight,
-            alignment: .leading
-        )
+        .frame(width: width, height: TimelineMarquee.shapeHeight, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(shape.color.swiftUIColor.opacity(0.55))
@@ -1629,6 +1640,9 @@ private struct ShapeBlockView: View {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
             }
         }
+        // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑块）。
+        .overlay(alignment: .leading) { trimHandle(leading: true) }
+        .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.shapeTopInset)
         .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
@@ -1648,6 +1662,33 @@ private struct ShapeBlockView: View {
                     onDragEnd()
                 }
         )
+    }
+
+    /// 与剪辑块的裁切把手同款：太窄不给（点不到移动区），手势必须用 .global
+    /// —— 把手挂在块边缘，.local 会随裁切生效跟着块边移动，位移被自己抵消。
+    @ViewBuilder
+    private func trimHandle(leading: Bool) -> some View {
+        if width > 26, canTrim {
+            Rectangle()
+                .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
+                .frame(width: isSelected ? 5 : 8)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                        .onChanged { value in
+                            isTrimming = true
+                            onTrim(leading, value.translation.width / pps)
+                        }
+                        .onEnded { _ in
+                            isTrimming = false
+                            onTrimEnd()
+                        }
+                )
+                .onHover { inside in
+                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                }
+        }
     }
 }
 
