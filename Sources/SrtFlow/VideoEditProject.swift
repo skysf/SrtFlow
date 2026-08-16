@@ -228,6 +228,16 @@ final class VideoEditProject: ObservableObject {
     /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
     @Published var activeTool: TimelineTool = .select
 
+    /// 预览右边那一列字幕表的显隐。放这里是因为不止一处要开它：工具栏的
+    /// Subtitles 按钮、生成面板的「编辑字幕」、时间线双击 cue 时的同步高亮。
+    /// **是界面状态，不进工程文件** —— 它不改成片的任何一帧。
+    @Published var showsSubtitleList = false
+
+    /// 正在被输入、还没落进模型的那一格字幕文本。规则与理由见
+    /// `VideoEditSubtitleDraft.swift` —— 一句话：保存流程先读模型再销毁视图，
+    /// 草稿留在视图里就会被漏掉。同样不进工程文件。
+    @Published var subtitleDraft: SubtitleTextDraft?
+
     // 三个开关，对应截图里的磁吸、吸附、链接。
     @Published var magnetEnabled = true {
         didSet { if magnetEnabled { perform { $0.packMain() } } }
@@ -1176,6 +1186,25 @@ final class VideoEditProject: ObservableObject {
     /// 形状不参与 AV 合成（叠层是 SwiftUI 画的），改它不用重建预览。
     func updateShape(_ id: UUID, _ change: @escaping (inout ShapeAnnotation) -> Void) {
         perform(rebuildsPreview: false) { $0.updateShape(id, change) }
+    }
+
+    /// 拖形状块两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
+    /// 形状没有素材边界：起点端最多回拉到 0；两端收缩的下限 0.2s 与检查器
+    /// 「Shows for」步进器的下限同一个数。
+    func liveTrimShape(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        beginLiveEdit()
+        liveApply { state in
+            state.updateShape(id) { shape in
+                let minDuration = 0.2
+                if leading {
+                    let delta = min(max(deltaSeconds, -shape.timelineStart), shape.duration - minDuration)
+                    shape.timelineStart += delta
+                    shape.duration -= delta
+                } else {
+                    shape.duration += max(deltaSeconds, -(shape.duration - minDuration))
+                }
+            }
+        }
     }
 
     func deleteShape(_ id: UUID) {

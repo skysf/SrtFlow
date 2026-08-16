@@ -123,6 +123,27 @@ extension VideoEditProject {
         }
     }
 
+    /// 合同 7：新增一条。返回新 cue 的 ID —— 调用方要立刻把它选中并聚焦，
+    /// 不然用户看见的是「按了 + 什么也没发生」（新条是空文本）。
+    ///
+    /// **还没有字幕轨时就地建一条空轨**：手写字幕是合法起点，不该逼用户先去
+    /// 外挂一个 .srt 或者跑一次识别。
+    @discardableResult
+    func linkedInsertCue(at time: TimeInterval, duration: TimeInterval = 2) -> UUID? {
+        var created: UUID?
+        perform(rebuildsPreview: false) { state in
+            var original = state.subtitle ?? SubtitleDocumentModel(format: .srt)
+            var companion = state.subtitleCompanion ?? SubtitleCompanion(origin: .imported)
+            created = LinkedSubtitleEditing.insertCue(
+                at: time, duration: duration, original: &original, companion: &companion
+            )
+            guard created != nil else { return }
+            state.subtitle = original
+            state.subtitleCompanion = companion.hasPersistentData ? companion : nil
+        }
+        return created
+    }
+
     /// 公共骨架：一次 perform = 一步撤销；空 companion 收敛回 nil。
     /// 字幕不参与 AV 合成，改动不用重建预览播放器。
     private func performLinked(

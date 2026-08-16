@@ -96,7 +96,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 定格、静帧、图片转视频 | [定格长期约束](docs/architecture/freeze-frame.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
-| 字幕轨、眼睛、预览叠层、烧录、布局、选择 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
+| 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换 | [本地化](docs/architecture/localization.md) |
@@ -156,7 +156,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
 - [定格](docs/architecture/freeze-frame.md) — 一次性提交、PNG 归属、波纹范围与静帧管线。
 - [字幕语言流](docs/architecture/subtitle-language-flow.md) — 目标语言可见性、预检与自动检测。
-- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局与选择模型（点选互斥 / 框选混选）。
+- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
 - [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、标记对所有选择互斥、命中区分层。
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑与已知盲区。
@@ -195,6 +195,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-08-12 压缩预览区时播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) — VStack 里拒绝再矮的那个把兄弟挤出边界；谁让步必须显式声明。
 - [2026-08-12 转场前面有硬切就导不出](docs/bugfixes/2026-08-12-xfade-timebase-mismatch.md) — xfade 硬检查 timebase、concat 输出固定 AVTB、只在接缝顺序上翻车。
 - [2026-08-12 框选复审的五条后续](docs/bugfixes/2026-08-12-marquee-review-followups.md) — 「整组同一位移」四处没收口、自检入口比生产浅一层的假绿、数个数的守卫也会假绿。
+- [2026-08-12 双击字幕的浮层弹在很偏左](docs/bugfixes/2026-08-12-cue-popover-anchored-at-row-origin.md) — `.offset` 只改渲染不改布局框，popover 锚在行首；验位置的样本不能挑在原点附近。
+- [2026-08-12 字幕三入口首测](docs/bugfixes/2026-08-12-subtitle-editing-surfaces-smoke-fixes.md) — HSplitView 不保护最后一栏；临时行不能给自己上焦点，聚焦失败会让按键变成快捷键。
+- [2026-08-12 字幕编辑复审的六条后续](docs/bugfixes/2026-08-12-subtitle-editing-review-followups.md) — 视图里的草稿会被「先写盘再销毁视图」漏掉；CAS 基线必须是会话快照；绑定拒绝写入时 UI 要回读。
+- [2026-08-16 竖图缩略图隐形命中区盖死标尺](docs/bugfixes/2026-08-16-clipped-thumbnail-hit-area-covers-ruler.md) — `.clipped()` 只裁绘制不裁命中；块内装饰必须不吃事件；右键是命中区探针。
+- [2026-08-16 形状叠层不跟播放头](docs/bugfixes/2026-08-16-shape-overlay-ignores-playhead.md) — 按 displayTime 取内容的叠层必须直接订阅 PlayerClock；形状块裁切把手照抄剪辑块合同。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

@@ -312,9 +312,23 @@
 "Selected only (%d)" = "仅选中内容（%d）";
 "Only audio is selected, so this exports an audio file (.m4a)." = "只选了音频，导出的会是音频文件（.m4a）。";
 "Export the timeline or the selected clips" = "导出时间线或选中的片段";
+"Render the timeline to a video file" = "把时间线导出成视频文件";
 
 "Auto" = "自动";
 "Canvas aspect ratio" = "画布比例";
+
+/* 视频剪辑的字幕列与就地编辑（三个入口：这一列、时间线双击 cue、预览双击字幕） */
+"Show or hide the subtitle list" = "显示或隐藏字幕列";
+"Close the subtitle list and show the inspector" = "关闭字幕列，回到检查器";
+"Generate or translate subtitle tracks" = "生成或翻译字幕轨";
+"Add a line at the playhead" = "在播放头处加一行";
+"Every subtitle track is hidden — turn an eye back on to edit." = "两条字幕轨都藏起来了 —— 打开任一只眼睛才能编辑。";
+"Write One Line" = "手写一行";
+"Start a subtitle track by hand, at the playhead" = "在播放头处手写一行，开一条字幕轨";
+"Hide or show the original subtitle track" = "隐藏或显示原文字幕轨";
+"Hide or show the translated subtitle track" = "隐藏或显示译文字幕轨";
+"Done" = "完成";
+"Finish editing this line" = "结束这一行的编辑";
 
 /* 原生字幕生成：面板、双轨编辑器、导出矩阵、阶段与错误 */
 "Generate, translate, and edit subtitle tracks" = "生成、翻译并编辑字幕轨";
@@ -444,7 +458,6 @@
 "Seconds to ramp the sound down to silence" = "渐出的秒数：声音从原来的音量降到静音";
 
 /* 视频编辑：导出 */
-"Render the timeline to a video file" = "把时间线导出成视频文件";
 "Cancel the export" = "取消这次导出";
 "Close the export panel" = "关闭导出面板";
 "Reveal the exported file in Finder" = "在 Finder 中显示导出的文件";

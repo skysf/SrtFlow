@@ -261,7 +261,35 @@ grep -q 'deinit' "$DRAG" || fail "TimelineAutoScroller 没有 deinit 兜底，ti
 grep -q 'dismantleNSView' "$DRAG" || fail "滚动视图参照物没有 dismantleNSView：视图树拆掉后心跳还在跑"
 grep -q 'onDisappear' "$VIEW" || fail "时间线没有 onDisappear：视图消失时自动滚动不会停"
 
+# ── 8. 块内装饰内容不吃事件 ────────────────────────────────────────────
+# `.clipped()` / `.clipShape` 只裁绘制，**不裁命中区**。缩略图 `.scaledToFill()`
+# 后被裁掉的溢出照样参与命中：竖版图在宽 tile 下（tile 宽随缩放涨）隐形命中区
+# 能高出块几百 pt，把标尺整段盖死 —— 点标尺变成选中图片
+# （docs/bugfixes/2026-08-16-clipped-thumbnail-hit-area-covers-ruler.md）。
+# 装饰(缩略图条/波形/关键帧菱形)必须整条 allowsHitTesting(false)；
+# 交互统一由 ClipBlockView 那层的手势 + 底色矩形命中面承担。
+extract_struct() {
+  awk -v pat="$1" '
+    index($0, pat) { inside = 1 }
+    inside { print }
+    inside && /^\}$/ { exit }
+  ' "$2"
+}
+for deco in 'struct ThumbnailStripView' 'struct WaveformView'; do
+  BODY="$(extract_struct "$deco" "$VIEW")"
+  if [ -z "$BODY" ]; then
+    fail "找不到 ${deco}（在 $VIEW），装饰命中守卫失去目标 —— 改名了就同步改这里"
+  else
+    printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
+      || fail "${deco} 没有 allowsHitTesting(false)：scaledToFill 的隐形溢出会把标尺/空白变成块的命中区"
+  fi
+done
+if BODY="$(extract_func 'private var keyframeMarkers' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
+    || fail "keyframeMarkers 没有 allowsHitTesting(false)：菱形会抢走块的点击"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底"
+echo "✓ timeline-drag-wiring：动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"

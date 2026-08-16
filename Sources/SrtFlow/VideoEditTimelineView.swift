@@ -24,6 +24,12 @@ struct VideoEditTimelineView: View {
     /// 正在被拖的字幕 cue。剪辑/形状块各自是独立视图、用自己的 `isMoving`
     /// 标记起手，cue 块是 `ForEach` 里的裸图形，只能在这一层按 id 记。
     @State private var movingCueID: UUID?
+    /// 双击打开了就地编辑浮层的那条 cue（编辑本体是 `SubtitleInlineEditor`，
+    /// 与预览里双击字幕共用同一份提交规则）。
+    ///
+    /// **连行别一起记**：原文行和译文行是同一批 cue ID 的镜像，只按 ID 判定的话
+    /// 双击一行会让两行同时弹出浮层。
+    @State private var editingCue: EditingCue?
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
     /// 垂直拖动瞄准的目标行（高亮它）。
@@ -40,6 +46,12 @@ struct VideoEditTimelineView: View {
     /// 滚动视口的命名坐标系。剪辑块的移动手势也钉在它上面（见 `moveGesture`），
     /// 所以不能是 private。
     fileprivate static let scrollSpace = "timelineScroll"
+
+    /// 就地编辑浮层的落点：哪一条 cue、开在哪一行上。
+    struct EditingCue: Equatable {
+        var id: UUID
+        var kind: SubtitleRowKind
+    }
 
     private var pps: Double { project.pixelsPerSecond }
 
@@ -723,7 +735,14 @@ struct VideoEditTimelineView: View {
                     onDragChange: { translation, pointerViewportX in
                         updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
                     },
-                    onDragEnd: { endClipDrag() }
+                    onDragEnd: { endClipDrag() },
+                    canTrim: project.activeTool == .select,
+                    onTrim: { leading, delta in
+                        project.clock.endPeek()
+                        project.liveTrimShape(shape.id, leading: leading, deltaSeconds: delta)
+                    },
+                    // 形状不参与 AV 合成，收尾不用重建预览（同 updateShape）。
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
             }
         }
@@ -769,10 +788,17 @@ struct VideoEditTimelineView: View {
                         .onTapGesture {
                             // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
                             // 带进这条字幕，画面上立刻有字可调。⌘/⇧ 点是加选。
-                            let flags = NSApp.currentEvent?.modifierFlags ?? []
+                            let event = NSApp.currentEvent
+                            let flags = event?.modifierFlags ?? []
                             let additive = flags.contains(.command) || flags.contains(.shift)
                             if !additive { clock.seek(to: cue.start + 0.05) }
                             project.selectSubtitleCue(cue.id, additive: additive)
+                            // 双击 = 就地改这条的文字。用 clickCount 分流，
+                            // 不另挂 count: 2 的手势：那会和块自己的拖动抢，
+                            // 单击选中还得等系统确认「不是双击」，慢半拍。
+                            guard !additive, (event?.clickCount ?? 1) >= 2 else { return }
+                            if clock.isPlaying { clock.togglePlayback() }
+                            editingCue = EditingCue(id: cue.id, kind: kind)
                         }
                         .gesture(
                             // 与剪辑/形状块同一套：坐标系钉在不动的滚动视口上
@@ -806,6 +832,45 @@ struct VideoEditTimelineView: View {
         // 灰显只是它的观感。框选那边本来就跳过隐藏轨（`Row.isHidden`）。
         .opacity(hidden ? 0.35 : 1)
         .allowsHitTesting(!hidden)
+        // 就地编辑的浮层**挂在整行上，锚点按 unit point 算到块中心**。
+        //
+        // 不许挂在 cue 块本身：块是用 `.offset` 画出去的，offset 只改渲染不改布局
+        // 框，popover 会锚在未偏移的原位 —— 也就是这一行的最左端，浮层于是弹在
+        // 离被点的字幕很远的地方（2026-08-12 用户报的第一版就是这样）。
+        .popover(
+            isPresented: Binding(
+                get: { editingCue?.kind == kind && editingCueValue(in: cues) != nil },
+                set: { if !$0 { editingCue = nil } }
+            ),
+            attachmentAnchor: .point(cueAnchor(editingCueValue(in: cues))),
+            arrowEdge: .top
+        ) {
+            if let cue = editingCueValue(in: cues) {
+                SubtitleInlineEditor(
+                    project: project,
+                    cueID: cue.id,
+                    editsOriginal: !project.state.subtitleHidden,
+                    editsTranslation: project.state.hasVisibleTranslation,
+                    onDone: { editingCue = nil }
+                )
+                .frame(width: 320)
+                .padding(12)
+            }
+        }
+    }
+
+    /// 正在就地编辑的那条 cue（在这一行的 cue 里找）。
+    private func editingCueValue(in cues: [SubtitleCue]?) -> SubtitleCue? {
+        guard let editingCue, let cues else { return nil }
+        return cues.first { $0.id == editingCue.id }
+    }
+
+    /// 浮层的锚点：这一行里那个块的**中心上沿**，换成行宽的比例。
+    private func cueAnchor(_ cue: SubtitleCue?) -> UnitPoint {
+        guard let cue, contentWidth > 1 else { return .top }
+        let width = max(TimelineMarquee.cueMinimumWidth, (cue.end - cue.start) * pps)
+        let center = cue.start * pps + width / 2
+        return UnitPoint(x: min(max(center / contentWidth, 0), 1), y: 0)
     }
 
     // MARK: - 播放头
@@ -1543,8 +1608,16 @@ private struct ShapeBlockView: View {
     /// (手势总位移, 指针在滚动视口里的 x)。与剪辑块同一套语义。
     let onDragChange: (CGSize, Double) -> Void
     let onDragEnd: () -> Void
+    /// 分割工具下不给把手（与剪辑块同规矩）：父级传 `activeTool == .select`。
+    let canTrim: Bool
+    /// (leading, 手势开始以来的总位移秒数)。落到 `liveTrimShape`。
+    let onTrim: (Bool, Double) -> Void
+    let onTrimEnd: () -> Void
 
     @State private var isMoving = false
+    @State private var isTrimming = false
+
+    private var width: Double { max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps) }
 
     var body: some View {
         HStack(spacing: 3) {
@@ -1557,11 +1630,7 @@ private struct ShapeBlockView: View {
         .foregroundStyle(.white)
         .padding(.horizontal, 5)
         // 宽和高都与框选的命中判定共用常量（`TimelineMarquee`）：画多大就按多大判。
-        .frame(
-            width: max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps),
-            height: TimelineMarquee.shapeHeight,
-            alignment: .leading
-        )
+        .frame(width: width, height: TimelineMarquee.shapeHeight, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 4)
                 .fill(shape.color.swiftUIColor.opacity(0.55))
@@ -1571,6 +1640,9 @@ private struct ShapeBlockView: View {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
             }
         }
+        // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑块）。
+        .overlay(alignment: .leading) { trimHandle(leading: true) }
+        .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.shapeTopInset)
         .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
@@ -1590,6 +1662,33 @@ private struct ShapeBlockView: View {
                     onDragEnd()
                 }
         )
+    }
+
+    /// 与剪辑块的裁切把手同款：太窄不给（点不到移动区），手势必须用 .global
+    /// —— 把手挂在块边缘，.local 会随裁切生效跟着块边移动，位移被自己抵消。
+    @ViewBuilder
+    private func trimHandle(leading: Bool) -> some View {
+        if width > 26, canTrim {
+            Rectangle()
+                .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
+                .frame(width: isSelected ? 5 : 8)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                        .onChanged { value in
+                            isTrimming = true
+                            onTrim(leading, value.translation.width / pps)
+                        }
+                        .onEnded { _ in
+                            isTrimming = false
+                            onTrimEnd()
+                        }
+                )
+                .onHover { inside in
+                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+                }
+        }
     }
 }
 
@@ -1625,6 +1724,14 @@ private struct ThumbnailStripView: View {
             }
         }
         .frame(height: height)
+        // 纯装饰，整条不吃事件。缩略图 `.scaledToFill().clipped()` 只裁**画面**
+        // 不裁**命中区**：竖版图按 tile 宽 fill 后纵向溢出 (tile宽×高宽比−条高)/2，
+        // tile 宽又随缩放涨（块宽/24）——放大后这片隐形命中区能高出块几百 pt，
+        // 把上面的标尺整段盖死（点标尺 = 选中图片，就是 2026-08-16 那个 bug）。
+        // 块的点选/拖动/悬停全挂在 ClipBlockView 那一层，底色矩形提供命中面，
+        // 这里让路零损失。案例见
+        // docs/bugfixes/2026-08-16-clipped-thumbnail-hit-area-covers-ruler.md。
+        .allowsHitTesting(false)
     }
 
     private func taskKey(width: Double) -> String {
@@ -1778,6 +1885,8 @@ private struct WaveformView: View {
             guard !Task.isCancelled, !loaded.isEmpty else { return }
             samples = loaded
         }
+        // 与缩略图条同一条合同：块内装饰不吃事件（守卫在 timeline-drag-wiring）。
+        .allowsHitTesting(false)
     }
 }
 

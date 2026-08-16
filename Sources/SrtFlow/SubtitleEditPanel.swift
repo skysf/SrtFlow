@@ -402,11 +402,14 @@ struct TimecodeField: View {
     }
 
     private func commit() {
-        if let parsed = Timecode.parse(text) {
-            value = parsed
-            text = Timecode.formatMillis(parsed, separator: ",")
-        } else {
+        guard let parsed = Timecode.parse(text) else {
             text = Timecode.formatMillis(value, separator: ",")
+            return
         }
+        value = parsed
+        // **回读，别显示 parsed。** 绑定有权拒绝（字幕表那边就拒绝 start >= end），
+        // 显示 parsed 会让格子里挂着一个根本没生效的时间：界面说 4 秒、
+        // 存盘和导出还是 1 秒，用户毫不知情（2026-08-12 复审 P2）。
+        text = Timecode.formatMillis(value, separator: ",")
     }
 }

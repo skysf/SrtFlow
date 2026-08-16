@@ -312,9 +312,23 @@
 "Selected only (%d)" = "Selected only (%d)";
 "Only audio is selected, so this exports an audio file (.m4a)." = "Only audio is selected, so this exports an audio file (.m4a).";
 "Export the timeline or the selected clips" = "Export the timeline or the selected clips";
+"Render the timeline to a video file" = "Render the timeline to a video file";
 
 "Auto" = "Auto";
 "Canvas aspect ratio" = "Canvas aspect ratio";
+
+/* 视频剪辑的字幕列与就地编辑（三个入口：这一列、时间线双击 cue、预览双击字幕） */
+"Show or hide the subtitle list" = "Show or hide the subtitle list";
+"Close the subtitle list and show the inspector" = "Close the subtitle list and show the inspector";
+"Generate or translate subtitle tracks" = "Generate or translate subtitle tracks";
+"Add a line at the playhead" = "Add a line at the playhead";
+"Every subtitle track is hidden — turn an eye back on to edit." = "Every subtitle track is hidden — turn an eye back on to edit.";
+"Write One Line" = "Write One Line";
+"Start a subtitle track by hand, at the playhead" = "Start a subtitle track by hand, at the playhead";
+"Hide or show the original subtitle track" = "Hide or show the original subtitle track";
+"Hide or show the translated subtitle track" = "Hide or show the translated subtitle track";
+"Done" = "Done";
+"Finish editing this line" = "Finish editing this line";
 
 /* 原生字幕生成：面板、双轨编辑器、导出矩阵、阶段与错误 */
 "Generate, translate, and edit subtitle tracks" = "Generate, translate, and edit subtitle tracks";
@@ -444,7 +458,6 @@
 "Seconds to ramp the sound down to silence" = "Seconds to ramp the sound down to silence";
 
 /* 视频编辑：导出 */
-"Render the timeline to a video file" = "Render the timeline to a video file";
 "Cancel the export" = "Cancel the export";
 "Close the export panel" = "Close the export panel";
 "Reveal the exported file in Finder" = "Reveal the exported file in Finder";
