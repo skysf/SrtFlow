@@ -313,15 +313,18 @@ struct VideoEditTimelineView: View {
             // 所以跨轨对齐（上面画中画的边缘对上下面主轨的边缘）一眼能看见。
             TimelineAlignmentGuides(times: clipDrag?.guides ?? [], pixelsPerSecond: pps)
 
-            // 主轨磁吸开着时松手会插进的那条缝。拖动中主轨不再当场重排，
-            // 落点靠这条线交代（时刻由 TimelineSnap.mainInsertion 算，落地同一个函数）。
-            if let time = mainInsertionTime,
+            // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
+            // 一眼看出这 6 秒会占到哪里（时刻和宽度由 TimelineSnap.mainInsertion
+            // 算，落地同一个函数 —— 框指哪儿、有多长，落地就是哪儿、就那么长）。
+            if let span = mainInsertionSpan,
                let layout = rowLayouts().first(where: { $0.spec.slot == .main }) {
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Color.teal)
-                    .frame(width: 3, height: layout.spec.height)
-                    .offset(x: time * pps - 1.5, y: layout.minY)
-                    .allowsHitTesting(false)
+                dropPlaceholder(span: span, y: layout.minY, height: layout.spec.height)
+            }
+
+            // 跨轨拖动：目标行上画出松手后的真实落点（等长占位框，位置与
+            // relocateClip 共用同一份挤开算法 —— 框不说谎）。
+            if let ghost = crossTrackGhost {
+                dropPlaceholder(span: ghost.span, y: ghost.y, height: ghost.height)
             }
 
             // 自动滚动要直接推 NSScrollView，放个零尺寸参照物把它认出来。
@@ -653,12 +656,48 @@ struct VideoEditTimelineView: View {
         }
     }
 
-    /// 主轨磁吸开着时，松手会插进哪条缝。只在块留在自己轨上时给
-    /// —— 跨轨落地走 `relocate`，插入位置是另一套算法，画在这儿会说谎。
-    private var mainInsertionTime: Double? {
-        // 跨轨落地走的是另一套插入算法，这条线画出来会说谎。
+    /// 主轨磁吸开着时，松手会插进的时间段。只在块留在自己轨上时给
+    /// —— 跨轨落地走 `relocate`，那边的占位框由 `crossTrackGhost` 画。
+    private var mainInsertionSpan: TimelineSpan? {
         guard dragTargetRow == nil else { return nil }
-        return clipDrag?.mainInsertionTime
+        return clipDrag?.mainInsertionSpan
+    }
+
+    /// 跨轨拖动中，目标行上的占位框：松手后被拖块会占据的时间段。
+    /// 落点由 `TimelineState.crossTrackLandingSpan` 给 —— 和落地那步的
+    /// `relocateClip` 共用同一份核心算法，框指哪儿、松手就落哪儿。
+    private var crossTrackGhost: (span: TimelineSpan, y: Double, height: Double)? {
+        guard let drag = clipDrag, case .clip = drag.subject,
+              let target = dragTargetRow else { return nil }
+        let span = project.state.crossTrackLandingSpan(
+            plan: drag.plan,
+            delta: drag.offset,
+            target: target.target,
+            magnet: project.magnetEnabled
+        )
+        let layouts = rowLayouts()
+        if let layout = layouts.first(where: { $0.spec.id == target.id }) {
+            return (span, layout.minY, layout.spec.height)
+        }
+        // 开新轨：行还不存在，占位框骑在那条插入线上，高度给个缩略值。
+        let height = 22.0
+        let y: Double = target.id == "new-top"
+            ? (layouts.first { $0.spec.slot != nil }?.minY ?? 30) - 4 - height / 2
+            : (layouts.last?.maxY ?? 30) + 4 - height / 2
+        return (span, y, height)
+    }
+
+    /// 占位框本体：半透明填充 + 虚线描边，和被拖素材落地后等长。不拦事件。
+    private func dropPlaceholder(span: TimelineSpan, y: Double, height: Double) -> some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.teal.opacity(0.18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.teal, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+            )
+            .frame(width: max(4, span.duration * pps), height: height)
+            .offset(x: span.start * pps, y: y)
+            .allowsHitTesting(false)
     }
 
     /// 垂直拖出 18pt 之后开始找目标行：同类行里挑离指尖最近的；

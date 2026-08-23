@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import SrtFlowCore
 
-// 定格（Freeze Frame）的时间线自检：分割 + 让位 + 音轨波纹 + 关键帧烘焙。
+// 定格（Freeze Frame）的时间线自检：分割 + 同轨让位 + 音轨不联动 + 关键帧烘焙。
 // 全是纯值变换，不碰 AVFoundation / ffmpeg / 磁盘。编译方式见
 // scripts/check-freeze-frame.sh。
 
@@ -88,22 +88,25 @@ do {
     checkClose(state.duration, 32, "磁吸关着总长同样 +2")
 }
 
-// MARK: - 3. 音频轨跟着让位（跨切口的先切开）
+// MARK: - 3. 音频轨一律不动（2026-08-23 产品决定：定格只动所在轨）
+//
+// 以前主轨定格会把跨切口的音频切开、切口右边的音频顺推。现在不动：把用户的
+// BGM 悄悄切成两半比「后面的音频要自己挪」更具破坏性，也和字幕/形状不动一致。
 
 do {
     var state = mainTimeline()
     state.audioTracks = [
-        // 跨切口：4s→20s，切点 15s 落在里面。
+        // 跨切口：4s→20s，切点 15s 落在里面 —— 不许被切开。
         EditLane(clips: [EditClip(
             sourceURL: media, isAudioOnly: true, sourceDuration: 16,
             timelineStart: 4, audioAssetDuration: 16
         )]),
-        // 切口之后：整段右移。
+        // 切口之后：也不动。
         EditLane(clips: [EditClip(
             sourceURL: media, isAudioOnly: true, sourceDuration: 3,
             timelineStart: 18, audioAssetDuration: 3
         )]),
-        // 切口之前：一动不动。
+        // 切口之前：不动。
         EditLane(clips: [EditClip(
             sourceURL: media, isAudioOnly: true, sourceDuration: 3,
             timelineStart: 1, audioAssetDuration: 3
@@ -112,12 +115,12 @@ do {
     let target = state.mainClips[1]
     state.insertFreeze(freeze(of: target, at: 15), splitting: target.id, at: 15)
 
-    check(state.audioTracks[0].clips.count == 2, "跨切口的音频段要被切开")
-    checkClose(state.audioTracks[0].clips[0].timelineStart, 4, "左半不动")
-    checkClose(state.audioTracks[0].clips[0].timelineEnd, 15, "左半在切口处收口")
-    checkClose(state.audioTracks[0].clips[1].timelineStart, 17, "右半让开 2 秒")
-    checkClose(state.audioTracks[1].clips[0].timelineStart, 20, "切口之后的音频右移 2 秒")
+    check(state.audioTracks[0].clips.count == 1, "跨切口的音频段不许被切开")
+    checkClose(state.audioTracks[0].clips[0].timelineStart, 4, "跨切口的音频不动")
+    checkClose(state.audioTracks[0].clips[0].timelineEnd, 20, "跨切口的音频长度不变")
+    checkClose(state.audioTracks[1].clips[0].timelineStart, 18, "切口之后的音频也不动")
     checkClose(state.audioTracks[2].clips[0].timelineStart, 1, "切口之前的音频不动")
+    checkClose(state.duration, 32, "视频照常 +2（音频不动不影响同轨让位）")
 }
 
 // MARK: - 4. 画中画定格只动自己那条轨
@@ -159,12 +162,14 @@ do {
     check(!state.isInsideMainTransition(time: 20), "没有转场的接缝应判定为 false")
 }
 
-// MARK: - 5b. 牵扯转场的主轨段不给定格（否则声画永久错开）
+// MARK: - 5b. 牵扯转场的主轨段不给定格（判据）
 //
-// 回归：转场时长有「不超过两边任一段 45%」的上限，定格把目标切短后那个上限会缩，
-// 于是 packMain() 让后面的画面移动的距离 ≠ 定格时长，而音频只顺推固定 2 秒。
-// 实测 A(0-10s, 1s 转场) 在 8.5s 定格：画面位移 2.325s、音频位移 2.0s，错位 0.325s。
-// 现在这种段一律不给定格，本检查同时钉住「判据」和「不禁的话真的会错」。
+// 禁用最初是因为当年音频会联动顺推固定 2 秒，而转场时长有「不超过两边任一段
+// 45%」的上限：定格切短目标后上限跟着缩，画面位移 2.325s ≠ 音频位移 2.0s，
+// 声画永久错开。2026-08-23 起定格不再联动音频，错位的前提没了；禁用先保留
+// （切短后转场被重新限长，画面位移不等于定格时长，落点不好预期），要放开是
+// 另一个产品决定 —— 见 docs/architecture/freeze-frame.md §4a。
+// 下面同时钉住：即便真放行，转场场景里音频也一样不动。
 
 do {
     var state = mainTimeline()
@@ -179,7 +184,7 @@ do {
     check(!state.participatesInMainTransition(clipID: state.mainClips[2].id),
           "离转场远的段不算")
 
-    // 钉住「为什么要禁」：同样的时间线放行的话，声画会差 0.325 秒。
+    // 钉住转场场景下的实际行为：画面位移由转场重新限长决定，音频纹丝不动。
     var drifting = TimelineState()
     var a = videoClip(start: 0, duration: 10)
     a.transitionAfter = .crossFade
@@ -197,10 +202,9 @@ do {
     drifting.packMain()
     let videoShift = drifting.mainClips.last!.timelineStart - videoBefore
     let audioShift = drifting.audioTracks[0].clips.last!.timelineStart - audioBefore
-    checkClose(videoShift, 2.325, "转场被重新限长后画面位移不是 2 秒")
-    checkClose(audioShift, 2.0, "音频只会顺推固定的定格时长")
-    check(abs(videoShift - audioShift) > 0.3,
-          "这就是必须在入口禁掉牵扯转场的段的原因（真放行会错位 0.325s）")
+    check(drifting.audioTracks[0].clips.count == 1, "音频段不许被切开")
+    checkClose(videoShift, 2.325, "转场被重新限长后画面位移不是定格时长")
+    checkClose(audioShift, 0, "定格不联动音频，转场场景也一样")
 }
 
 // MARK: - 6. 定格段继承静态变换；有动画时烘成静态值
