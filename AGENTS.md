@@ -141,6 +141,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   Translation、缓存与 macOS 15/26 分层。
 - [定格方案](docs/plans/2026-08-08-freeze-frame.md) — 产品参数、提交模型、分辨率政策与
   已知代价。
+- [转场库扩充](docs/plans/2026-08-23-transition-library.md) — 推移/擦除 8 种新转场的
+  选型约束（预览斜坡能精确表达才收）与悬停预览选择器。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 

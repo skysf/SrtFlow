@@ -157,16 +157,13 @@ struct VideoEditInspectorView: View {
             Divider()
             VStack(alignment: .leading, spacing: 6) {
                 Text("Transition to next clip").font(.callout).fontWeight(.medium)
-                // menu 而不是 segmented：四个英文段名撑爆右栏宽度上限，
-                // 整个检查器会横向溢出被裁。
-                Picker("", selection: transitionBinding(clip)) {
-                    ForEach(ClipTransition.allCases) { transition in
-                        Text(LocalizedStringKey(transition.title)).tag(transition)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
+                // 网格弹窗而不是 menu/segmented：12 种转场按族分组成卡片，
+                // 悬停卡片能看动画小样（见 VideoEditTransitionPicker.swift）。
+                TransitionPickerButton(
+                    selection: transitionBinding(clip),
+                    outgoingClip: clip,
+                    incomingClip: project.state.mainClips[location.clipIndex + 1]
+                )
                 if clip.transitionAfter != .none {
                     HStack {
                         Slider(

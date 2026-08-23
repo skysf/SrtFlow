@@ -73,6 +73,36 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
 这类粗粒度标志凑 —— 仅翻转被误送进近似路径就是白闪变暗。回归靠
 `scripts/check-preview-composition.sh` 真取帧量像素守着。
 
+**推移 / 擦除转场（2026-08-23 起，`ClipTransition` 三族）**：转场语义仍然
+作用在「压平到黑底之后」的段上。接缝分派集中在 CompositionBuilder 的
+「主轨接缝的转场分派」后处理（要等两侧的 fitted transform 都算完才判得了
+前提，别搬回主轨循环里）：
+
+- **推移族**（pushLeft/Right/Up/Down → xfade slideleft/…）：两段各挂平移
+  斜坡（出场滑出、进场从对面滑进），并把裁切收进「静止时的画布」——
+  压平模型里滑出画布的内容不会被滑回来看见，不裁的话放大出画布的段一滑
+  就穿帮。前提：两侧变换**轴对齐可逆**（90° 的 preferredTransform、翻转、
+  缩放、半透明、盖不满都行；任意角旋转、关键帧动画不行 —— 画布裁切表达
+  不了）。满足时逐像素等于「压平再整幅滑动」。
+- **擦除族**（wipeLeft/… → xfade wipeleft/…）：只给**出场段**挂线性缩小的
+  `setCropRectangleRamp` 窗口（∩ 用户裁切；求交的 min/max 在移动边扫过
+  用户裁切边处各有一个折点，必须进切片表）。进场段整幅垫底、**无任何
+  前提**：窗口外露出的就是进场段 + 黑底，天然贴合压平模型。出场段前提：
+  满幅不透明（`coversCanvasOpaquely`）+ 轴对齐。
+- 前提不满足 → 回退成叠化的「双向线性淡变」近似路径。
+- **方向语义是实测合同**：pushLeft/wipeLeft 的进场段从**右**边进来（画面
+  内容 / 擦除边向左运动），与 xfade 的 slide/wipe 逐向实测一致，写死在
+  `ClipTransition.motion` / `wipeRemainingRect` 里。改方向前先用纯色素材
+  跑一遍 xfade 确认，预览与导出必须同向。
+- 回归：`scripts/check-preview-composition.sh` 的推移/擦除组 —— 方向探针、
+  「两色探针」（分辨擦除露出自己的另半边 vs 推移滑进另半边，纯色素材下
+  两者长得一样）、旋转段回退；`scripts/check-export-frame-rate.sh` 逐种
+  转场真跑生产 `plan()` + ffmpeg（xfadeName 拼错在滤镜图配置期就 EINVAL）。
+
+转场选择器（`VideoEditTransitionPicker.swift`）的卡片小样是 SwiftUI 的示意
+动画，不走合成器；悬停演示的几何直接复用 `ClipTransition.motion` /
+`wipeRemainingRect`，跟合成模型同源。
+
 ## 交互层（ClipTransformCanvas / ResizableFrameBox）
 
 - 把手手势一律 `DragGesture(coordinateSpace: .global)` + 手势开始抓
