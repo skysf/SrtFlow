@@ -51,6 +51,7 @@ run_check "no-hardcoded-fps（扫描守卫）" checks/no-hardcoded-fps.sh
 run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-build-output.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
+run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
 # 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口

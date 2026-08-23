@@ -232,3 +232,11 @@
       要跟着变，导出的 .srt 序号与时间同序。
 - [ ] **原文轨隐藏**：+ 与「手写一行」置灰，按不动（合同只写原文轨）。
 - [ ] **竖版素材 / 窄窗口的预览输入框**：双击字幕后输入框完整可见，不被画面框裁掉。
+- [ ] **中文输入法退格删字**（2026-08-22 加）：在译文格里用拼音打几个字、再连续
+      退格删掉，任何一拍都不许把这条 cue 从轨上删掉，也不许触发空格播放 / V 切
+      眼睛 / M 打标记。焦点被 SwiftUI 偶发丢掉时全局快捷键必须给字幕草稿让路
+      （接线有 `checks/subtitle-editing-wiring.sh` 钉着，手感只能实测；案例见
+      [bugfixes/2026-08-22-subtitle-editing-backspace-deletes-cue.md](../bugfixes/2026-08-22-subtitle-editing-backspace-deletes-cue.md)）。
+- [ ] **删光一格文字再导出**：把某条译文/原文删成空，Original/Translated 的
+      SRT+VTT 都要能导出，文件里跳过这条空 cue（案例见
+      [bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md](../bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md)）。
