@@ -47,8 +47,12 @@ struct ClipDragSession {
     var start: Double { plan.draggedSpan.start + resolution.delta }
     var end: Double { plan.draggedSpan.end + resolution.delta }
     var guides: [Double] { resolution.guides }
-    /// 磁吸主轨松手会插进的那条缝（自由落点轨为 nil）。
-    var mainInsertionTime: Double? { resolution.mainInsertion?.time }
+    /// 磁吸主轨松手会插进的时间段（占位框画这里；自由落点轨为 nil）。
+    /// 宽度也来自 `TimelineSnap.mainInsertion` —— 框有多长，落地就占多长。
+    var mainInsertionSpan: TimelineSpan? {
+        guard let insertion = resolution.mainInsertion else { return nil }
+        return TimelineSpan(start: insertion.time, end: insertion.time + insertion.duration)
+    }
     /// 能不能把块拖到现有内容之外（弹性尾部）。
     var allowsFreeLanding: Bool { plan.allowsFreeLanding }
 

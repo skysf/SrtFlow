@@ -141,17 +141,13 @@ extension TimelineState {
 
     /// 这一段在主轨上牵扯着转场吗（自己往后叠，或者被前一段叠上来）。
     ///
-    /// **牵扯转场的段不给定格**，因为转场时长有个「不超过两边任一段 45%」的上限
-    /// （`transitionOverlap`）：定格把这一段切短之后，那个上限会跟着缩，于是
-    /// `packMain()` 让后面的画面移动的距离**不等于**定格时长，而音频只会老老实实
-    /// 顺推一个定格时长 —— 从切口往后声画就永久错开了。
-    ///
-    /// 实测：A 在 10s 结束、与 B 有 1s 转场，在 A 的 8.5s 定格，B 位移 2.325s
-    /// 而音频位移 2.0s，错位 0.325s。
-    ///
-    /// 要真正支持这种情况，就得按重排后的实际时间映射去推音频（每条转场缩多少
-    /// 各不相同，连定格段自己的落点都会变），复杂度远超这个功能该有的分量。
-    /// 先禁掉，等有真实需求再说。
+    /// **牵扯转场的段不给定格**。禁用最初是因为当年音频会联动顺推固定的定格
+    /// 时长，而转场时长有「不超过两边任一段 45%」的上限（`transitionOverlap`）：
+    /// 定格切短这一段后上限跟着缩，`packMain()` 让画面移动 2.325s、音频只推
+    /// 2.0s，声画从切口往后永久错开。2026-08-23 起定格不再联动音频（只动所在
+    /// 轨，见 docs/architecture/freeze-frame.md §4），错位的前提没了；禁用先
+    /// 保留 —— 定格切短目标后转场被重新限长，后面的画面位移不等于定格时长，
+    /// 落点不好预期。要放开是另一个产品决定，见 §4a。
     func participatesInMainTransition(clipID: UUID) -> Bool {
         guard let index = mainClips.firstIndex(where: { $0.id == clipID }) else { return false }
         if transitionOverlap(afterMainIndex: index) > 0 { return true }
@@ -177,11 +173,10 @@ extension TimelineState {
     /// 定格插入：把 `clipID` 在 `time` 处切开，同轨切口右边的一切让出
     /// `freeze` 那么长的位置，定格段落进中间。
     ///
-    /// 目标在**主轨**时音频轨也跟着让位（= 一次真正的插入编辑）：跨在切口上的
-    /// 音频段先切开再推右半，不切的话它的后半段会比画面早一整个定格时长。
-    /// 目标在画中画轨时只动那一条轨 —— 一个小窗的定格不该把整条节目的声音推走。
-    ///
-    /// 字幕、形状标注一律不动（产品决定，见 docs/architecture/）。
+    /// **只动目标所在的那一条轨**。音频、字幕、形状标注一律不动（产品决定，
+    /// 见 docs/architecture/freeze-frame.md §4）：把用户的 BGM 悄悄切成两半
+    /// 比「后面的音频要自己挪」更具破坏性。代价写在明处 —— 切口之后对好点的
+    /// 音频会比画面早一个定格时长，要不要顺推由用户自己决定。
     mutating func insertFreeze(_ freeze: EditClip, splitting clipID: UUID, at time: Double) {
         guard let location = location(of: clipID),
               clip(with: clipID)?.contains(time: time) == true else { return }
@@ -201,17 +196,6 @@ extension TimelineState {
         placed.timelineStart = time
         clips.insert(placed, at: location.clipIndex + 1)
         self[track: location.track] = clips
-
-        guard location.track.isMain else { return }
-
-        let straddling = audioTracks.flatMap(\.clips).filter { $0.contains(time: time) }.map(\.id)
-        for id in straddling { split(clipID: id, at: time) }
-        for lane in audioTracks.indices {
-            for index in audioTracks[lane].clips.indices
-            where audioTracks[lane].clips[index].timelineStart >= time - 0.0005 {
-                audioTracks[lane].clips[index].timelineStart += duration
-            }
-        }
     }
 }
 
@@ -304,30 +288,108 @@ extension TimelineState {
     }
 
     /// 把 `proposed` 让开同轨上别的块（重叠时往更近的那一侧躲）。
-    /// **只给跨轨落地用** —— 同轨移动的可行区间由 `ClipDragPlan` 冻结时算好。
+    /// **只给跨轨落地用** —— 同轨移动的落点由 `ClipDragPlan.fittedDelta` 解析。
     func clampedStart(id: UUID, proposed: Double, notBefore: Double = 0) -> Double {
         let floor = max(0, notBefore)
         guard let location = location(of: id), let clip = self.clip(with: id) else {
             return max(floor, proposed)
         }
+        let obstacles = self[track: location.track]
+            .filter { $0.id != id }
+            .map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
+        return Self.avoidingOverlap(
+            proposed: proposed,
+            duration: clip.timelineDuration,
+            obstacles: obstacles,
+            floor: floor
+        )
+    }
+
+    /// 「挤开重叠」的核心，纯函数。跨轨**落地**（`clampedStart`）和跨轨拖动中的
+    /// **占位框预览**（`crossTrackLandingSpan`）共用这一份 —— 各写一份的话，
+    /// 拖动中框指在一处、松手落在另一处，占位框就成了说谎的装饰。
+    static func avoidingOverlap(
+        proposed: Double,
+        duration: Double,
+        obstacles: [TimelineSpan],
+        floor: Double
+    ) -> Double {
         var start = max(floor, proposed)
-        let neighbours = self[track: location.track].filter { $0.id != id }
-        let duration = clip.timelineDuration
-        for other in neighbours.sorted(by: { $0.timelineStart < $1.timelineStart }) {
-            let overlaps = start < other.timelineEnd && other.timelineStart < start + duration
+        for other in obstacles.sorted(by: { $0.start < $1.start }) {
+            let overlaps = start < other.end && other.start < start + duration
             guard overlaps else { continue }
             // 往右让还是往左让，取决于想去的位置更靠哪边。
             // 但**往左不许越过整组的下界**：越过了就只能往右躲 —— 左边那点位置
             // 被拖块自己也许放得下，跟着它走的伙伴却会被各自夹在 0 上。
-            let left = other.timelineStart - duration
-            if proposed + duration / 2 < other.timelineStart + other.timelineDuration / 2,
+            let left = other.start - duration
+            if proposed + duration / 2 < other.start + other.duration / 2,
                left >= floor {
                 start = left
             } else {
-                start = other.timelineEnd
+                start = other.end
             }
         }
         return start
+    }
+
+    /// 跨轨拖动中的落点预览：松手后被拖块会落在目标轨的哪个时间段（占位框）。
+    ///
+    /// 必须和真正的落地给出同一个答案：磁吸主轨走 `TimelineSnap.mainInsertion`、
+    /// 其余走 `avoidingOverlap` —— 与 `relocateClip` 的两条分支一一对应、共用
+    /// 同一份核心。障碍按**落地那一刻**的样子算：跟着一起动的成员先平移 `delta`。
+    func crossTrackLandingSpan(
+        plan: ClipDragPlan,
+        delta: Double,
+        target: TrackDropTarget,
+        magnet: Bool
+    ) -> TimelineSpan {
+        let duration = plan.draggedSpan.duration
+        // relocateClip 到岸时的起点提案（它自己会 max(0, …)）。
+        let proposed = max(0, plan.draggedSpan.start + delta)
+        let movingIDs = Set(plan.members.map(\.id))
+
+        // 磁吸主轨：落点由插空决定（relocateClip 的 .main + magnet 分支）。
+        if target == .main, magnet {
+            guard let clip = clip(with: plan.draggedID) else {
+                return TimelineSpan(start: proposed, end: proposed + duration)
+            }
+            var moved = clip
+            moved.timelineStart = proposed
+            let insertion = TimelineSnap.mainInsertion(
+                among: mainClips.filter { !movingIDs.contains($0.id) },
+                moving: [moved],
+                draggedCenter: proposed + duration / 2
+            )
+            return TimelineSpan(start: insertion.time, end: insertion.time + insertion.duration)
+        }
+
+        let laneClips: [EditClip]
+        switch target {
+        case .main:
+            laneClips = mainClips
+        case .overlay(let index):
+            laneClips = overlayTracks.indices.contains(index) ? overlayTracks[index].clips : []
+        case .audio(let index):
+            laneClips = audioTracks.indices.contains(index) ? audioTracks[index].clips : []
+        case .newOverlayTop, .newAudioBottom:
+            laneClips = []
+        }
+        // applyDrag 落地时传的同一个下界（不许把整组顶过它）。
+        let floor = max(0, plan.draggedSpan.start + plan.groupLowerDelta)
+        // 目标轨上的障碍。跟着动的成员松手时也平移了 delta，按平移后的位置算。
+        let obstacles = laneClips
+            .filter { $0.id != plan.draggedID }
+            .map { clip -> TimelineSpan in
+                let shift = movingIDs.contains(clip.id) ? delta : 0
+                return TimelineSpan(
+                    start: clip.timelineStart + shift,
+                    end: clip.timelineEnd + shift
+                )
+            }
+        let start = Self.avoidingOverlap(
+            proposed: proposed, duration: duration, obstacles: obstacles, floor: floor
+        )
+        return TimelineSpan(start: start, end: start + duration)
     }
 }
 
@@ -384,6 +446,21 @@ extension TimelineState {
         // 1) 整组平移同一个 delta。逐块独立夹取会把相对错位夹坏 ——
         //    「拖 A、B 跟着」会变成「A 被旧位置的 B 顶回原地，整组没动」。
         move(plan.members, by: resolution.delta)
+
+        // 1b) 同轨「塞进装不下的间隙」：间隙右侧的不动内容让位，腾出差的那截
+        //     （只推被拖块自己的轨，别的轨、字幕、形状一概不动 —— 与定格插入
+        //     同款范围）。跨轨落地时不让位：块已经去了别的轨。
+        if target == nil, let push = resolution.sameTrackPush,
+           let location = location(of: plan.draggedID) {
+            let movingIDs = Set(plan.members.map(\.id))
+            var clips = self[track: location.track]
+            for index in clips.indices
+            where !movingIDs.contains(clips[index].id)
+                && clips[index].timelineStart >= push.at - 0.0005 {
+                clips[index].timelineStart += push.amount
+            }
+            self[track: location.track] = clips
+        }
 
         if let target {
             // 2) 跨轨：只搬被直接拖的那个，跟随块留在各自轨上（时刻第 1 步已定好）。

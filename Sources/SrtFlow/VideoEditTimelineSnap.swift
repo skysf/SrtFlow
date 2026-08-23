@@ -123,8 +123,11 @@ enum TimelineSnap {
     struct MainInsertion: Equatable {
         /// 插进 `rest` 的哪个下标。
         var index: Int
-        /// 插完打包后，被拖的那一组落在哪一刻（指示线画这里）。
+        /// 插完打包后，被拖的那一组落在哪一刻（占位框从这里画起）。
         var time: Double
+        /// 那一组落地后占多长（占位框的宽度）。组内转场会叠掉一部分，所以
+        /// 不一定等于成员时长之和 —— 同样在最终数组上算，框才不说谎。
+        var duration: Double
     }
 
     /// 主轨磁吸开着时，松手会插进哪条缝、那一组会落在哪。
@@ -154,11 +157,16 @@ enum TimelineSnap {
             index = i
             break
         }
-        // 2) 落在哪一刻：在最终数组上重算一次。
+        // 2) 落在哪一刻、占多长：都在最终数组上算。
         var final = rest
         final.insert(contentsOf: moving, at: index)
         let finalStarts = TimelineState.packedStarts(final)
-        return MainInsertion(index: index, time: index < finalStarts.count ? finalStarts[index] : 0)
+        let time = index < finalStarts.count ? finalStarts[index] : 0
+        let lastIndex = index + moving.count - 1
+        let end = lastIndex >= index && lastIndex < finalStarts.count
+            ? finalStarts[lastIndex] + final[lastIndex].timelineDuration
+            : time
+        return MainInsertion(index: index, time: time, duration: max(0, end - time))
     }
 }
 
@@ -266,8 +274,9 @@ struct ClipDragPlan: Equatable {
     ///
     /// 它们都没有障碍：形状行本来就允许重叠，字幕轨也不参与碰撞。挂进 `members`
     /// 的意义有两条 —— 一是落地时能拿到同一个 delta（别处再算一份必然分叉），
-    /// 二是 `allowedDeltaRange` 的下界会自动把它们算进去，整组一起停在 0 秒，
-    /// 而不是剪辑还能往左、字幕已经被各自夹在 0 上，相对错位当场压扁。
+    /// 二是 `groupLowerDelta`（`fittedDelta` 的下界）会自动把它们算进去，整组
+    /// 一起停在 0 秒，而不是剪辑还能往左、字幕已经被各自夹在 0 上，相对错位
+    /// 当场压扁。
     ///
     /// 纯值函数，自检直接调。
     func adding(shapes: [(id: UUID, span: TimelineSpan)], cues: [(id: UUID, span: TimelineSpan)]) -> ClipDragPlan {
@@ -290,40 +299,93 @@ struct ClipDragPlan: Equatable {
     ///
     /// 跨轨到岸让位（`clampedStart`）要用它：往左躲一旦越过这条线，伙伴就会各自
     /// 被 `max(0, …)` 单独夹住，整组的相对错位当场压扁 —— 那正是这套计划要防的
-    /// 东西。`allowedDeltaRange().lower` 不能拿来用：它还叠了**源轨**上的障碍，
+    /// 东西。不能改拿 `fittedDelta` 的下界：那里面还叠着**源轨**上的障碍，
     /// 而块都换轨了，那些障碍已经与它无关。
     var groupLowerDelta: Double { -(members.map(\.span.start).min() ?? 0) }
 
-    /// 整组能挪的位移区间。
+    /// 把 `desired` 落到最近的**合法**位移上（自由落点模式的落点核心）。
     ///
-    /// 碰撞只看**不动的**块，且「停在接触面」而不是「弹到障碍另一侧」——
-    /// 后者（老的 `clampedStart`）会让落点和拖动中看到的位置分叉。
-    func allowedDeltaRange() -> (lower: Double, upper: Double) {
-        // 谁都不许被推到负时间。
-        var lower = -(members.map(\.span.start).min() ?? 0)
-        var upper = Double.infinity
-        guard magnet == nil else { return (lower, upper) }
+    /// 「合法」= 没有任何成员压到自己轨上不动的块，且整组不进负时间。障碍
+    /// **不再是墙**：指针把块拖过障碍另一侧时，位移直接落到那一侧的接触面 ——
+    /// 这就是「同轨越过邻居、直接落进间隙」（2026-08-23 起；以前只能先挪去
+    /// 别的轨再挪回来）。就近原则保住了老手感：指针没过去时，落点仍是这一侧
+    /// 的接触面；装不下被拖块的间隙永远不会成为落点。
+    ///
+    /// 返回的 `lower`/`upper` 是落点所在**空档**的位移边界：吸附只许在空档内
+    /// 挪（吸出去就又压上别人了），正好嵌满的间隙两端相等。
+    func fittedDelta(desired: Double) -> (delta: Double, lower: Double, upper: Double) {
+        let floor = groupLowerDelta
         let epsilon = 0.0001
+        var d = max(desired, floor)
+
+        // 每个成员的每个障碍都排除掉一段位移开区间（落进去就会重叠）。
+        // 一开始就重叠的障碍（老工程/异常态）不设限，否则整组会被一个本来就
+        // 压着的块锁死在原地 —— 与老 allowedDeltaRange 同一条豁免。
+        var forbidden: [(lo: Double, hi: Double)] = []
         for member in members {
             for obstacle in member.obstacles {
-                if obstacle.start >= member.span.end - epsilon {
-                    upper = min(upper, obstacle.start - member.span.end)
-                } else if obstacle.end <= member.span.start + epsilon {
-                    lower = max(lower, obstacle.end - member.span.start)
-                }
-                // 一开始就重叠（老工程/异常态）：这个障碍不设限，
-                // 否则整组会被一个本来就压着的块锁死在原地。
+                let lo = obstacle.start - member.span.end
+                let hi = obstacle.end - member.span.start
+                guard !(lo < -epsilon && hi > epsilon) else { continue }
+                forbidden.append((lo, hi))
             }
         }
-        return (lower, min(max(lower, upper), .infinity))
+        // 合并重叠的区间。**严格重叠才并**：两段只是端点相接时，接点是一个
+        // 「正好嵌满」的合法落点（比如 5 秒的块嵌进两块之间正好 5 秒的缝）。
+        forbidden.sort { $0.lo < $1.lo }
+        var merged: [(lo: Double, hi: Double)] = []
+        for interval in forbidden {
+            if var last = merged.last, interval.lo < last.hi - epsilon {
+                last.hi = max(last.hi, interval.hi)
+                merged[merged.count - 1] = last
+            } else {
+                merged.append(interval)
+            }
+        }
+
+        // 落在某段禁区里：往更近的那一侧接触面躲；往左不许越过整组下界。
+        if let hit = merged.first(where: { d > $0.lo + epsilon && d < $0.hi - epsilon }) {
+            let leftAllowed = hit.lo >= floor - epsilon
+            d = leftAllowed && d - hit.lo <= hit.hi - d ? hit.lo : hit.hi
+        }
+
+        // 落点所在空档的边界（给吸附当夹取范围）。
+        var lower = floor
+        var upper = Double.infinity
+        for interval in merged {
+            if interval.hi <= d + epsilon { lower = max(lower, interval.hi) }
+            if interval.lo >= d - epsilon { upper = min(upper, interval.lo) }
+        }
+        return (d, lower, max(lower, upper))
+    }
+
+    /// 被拖块自己轨上的「装不下的真间隙」：两段障碍之间（或 0 点与第一段之间）
+    /// 有空档、但宽度不够放下被拖块，且 `center` 正悬在里面。
+    ///
+    /// 只在「组里除了被拖块，其余成员都没有障碍」时提供：让位只推被拖块自己
+    /// 的轨，别的成员要是也会撞上各自轨上的块，塞进来就是顾此失彼。
+    private func undersizedHole(centeredAt center: Double) -> (start: Double, width: Double)? {
+        guard let dragged = members.first(where: { $0.id == draggedID }),
+              members.allSatisfy({ $0.id == draggedID || $0.obstacles.isEmpty })
+        else { return nil }
+        let duration = draggedSpan.duration
+        var previousEnd = 0.0
+        for obstacle in dragged.obstacles {
+            let width = obstacle.start - previousEnd
+            if width > 0.0005, width < duration - 0.0005,
+               center >= previousEnd, center < obstacle.start {
+                return (previousEnd, width)
+            }
+            previousEnd = max(previousEnd, obstacle.end)
+        }
+        return nil
     }
 
     /// 解析这一拍的落点。`desiredDelta` 是手势位移换算出来的原始位移。
     func resolve(desiredDelta: Double, pixelsPerSecond: Double) -> DragResolution {
-        let range = allowedDeltaRange()
-        let clamped = min(max(desiredDelta, range.lower), range.upper)
-
         if let magnet {
+            // 磁吸模式只有「不进负时间」这一条界（插空不看同轨障碍）。
+            let clamped = max(desiredDelta, groupLowerDelta)
             // 磁吸主轨：块自由浮动跟手，落点由插空决定，不吸别人的边缘
             //（吸了也会被 packMain 覆盖，亮线是骗人的）。
             //
@@ -337,13 +399,40 @@ struct ClipDragPlan: Equatable {
             return DragResolution(delta: clamped, guides: [], mainInsertion: insertion)
         }
 
+        // 指针中心悬在一个**装不下**的真间隙上：落点 = 间隙起点，右侧让位
+        // 腾出（素材时长 − 间隙宽度）。这就是「把 6 秒的素材塞进 5 秒的缝」——
+        // 以前只能借道画中画、还会落成重叠，现在同轨一步到位（2026-08-23）。
+        let center = draggedSpan.start + desiredDelta + draggedSpan.duration / 2
+        if let hole = undersizedHole(centeredAt: center) {
+            let delta = hole.start - draggedSpan.start
+            // 让位只推被拖块的轨；整组仍不许被这一步带进负时间。
+            if delta >= groupLowerDelta - 0.0005 {
+                return DragResolution(
+                    delta: delta,
+                    guides: TimelineSnap.alignedCandidates(
+                        start: hole.start,
+                        duration: draggedSpan.duration,
+                        candidates: candidates,
+                        pixelsPerSecond: pixelsPerSecond
+                    ),
+                    mainInsertion: nil,
+                    sameTrackPush: SameTrackPush(
+                        at: hole.start,
+                        amount: draggedSpan.duration - hole.width
+                    )
+                )
+            }
+        }
+
+        // 自由落点：先落进最近的合法间隙（可越过障碍），再在那个空档内吸附。
+        let fit = fittedDelta(desired: desiredDelta)
         let snapped = TimelineSnap.resolve(
-            proposedStart: draggedSpan.start + clamped,
+            proposedStart: draggedSpan.start + fit.delta,
             duration: draggedSpan.duration,
             candidates: candidates,
             pixelsPerSecond: pixelsPerSecond,
-            minimumStart: draggedSpan.start + range.lower,
-            maximumStart: draggedSpan.start + range.upper
+            minimumStart: draggedSpan.start + fit.lower,
+            maximumStart: draggedSpan.start + fit.upper
         )
         return DragResolution(
             delta: snapped.start - draggedSpan.start,
@@ -361,4 +450,16 @@ struct DragResolution: Equatable {
     var guides: [Double]
     /// 磁吸主轨的插入位置（自由落点模式为 nil）。
     var mainInsertion: TimelineSnap.MainInsertion?
+    /// 同轨「塞进装不下的间隙」：落地时把被拖块自己轨上、`at` 右边的不动内容
+    /// 整体右移 `amount` 腾出位置（nil = 不用腾）。跨轨落地时忽略 —— 块都去了
+    /// 别的轨，这里腾出来的就是个没人用的空洞。
+    var sameTrackPush: SameTrackPush? = nil
+}
+
+/// 「塞进装不下的间隙」要腾的位置。
+struct SameTrackPush: Equatable {
+    /// 间隙起点（= 被拖块的落点）。
+    var at: Double
+    /// 要腾出的长度（= 素材时长 − 间隙宽度）。
+    var amount: Double
 }

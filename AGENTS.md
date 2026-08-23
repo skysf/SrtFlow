@@ -120,6 +120,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `checks/no-hardcoded-fps.sh`。
 - 定格时间线变换：`scripts/check-freeze-frame.sh`。
 - 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
+- 字幕编辑期间全局快捷键让路（⌫ 不删正在编辑的 cue）：
+  `checks/subtitle-editing-wiring.sh`。
 - 界面文案在 en / zh-Hans 两张表都配齐、无重复键、占位符一致：
   `scripts/check-localization-coverage.sh`。
 - 提示面板的真实落点（摆好之后不许自己变）：`scripts/check-instant-tooltip-panel.sh`。
@@ -139,6 +141,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   Translation、缓存与 macOS 15/26 分层。
 - [定格方案](docs/plans/2026-08-08-freeze-frame.md) — 产品参数、提交模型、分辨率政策与
   已知代价。
+- [转场库扩充](docs/plans/2026-08-23-transition-library.md) — 推移/擦除 8 种新转场的
+  选型约束（预览斜坡能精确表达才收）与悬停预览选择器。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -200,6 +204,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-08-12 字幕编辑复审的六条后续](docs/bugfixes/2026-08-12-subtitle-editing-review-followups.md) — 视图里的草稿会被「先写盘再销毁视图」漏掉；CAS 基线必须是会话快照；绑定拒绝写入时 UI 要回读。
 - [2026-08-16 竖图缩略图隐形命中区盖死标尺](docs/bugfixes/2026-08-16-clipped-thumbnail-hit-area-covers-ruler.md) — `.clipped()` 只裁绘制不裁命中；块内装饰必须不吃事件；右键是命中区探针。
 - [2026-08-16 形状叠层不跟播放头](docs/bugfixes/2026-08-16-shape-overlay-ignores-playhead.md) — 按 displayTime 取内容的叠层必须直接订阅 PlayerClock；形状块裁切把手照抄剪辑块合同。
+- [2026-08-22 带空 cue 的工程字幕文件导不出](docs/bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md) — 「哪些 cue 会被写出去」只能是序列化器一份账，校验在调用方另算一份就会把好文件报成坏的；块格式里空行是结构字符，cue 文本要先消毒。
+- [2026-08-22 编辑译文退格删字整条 cue 消失](docs/bugfixes/2026-08-22-subtitle-editing-backspace-deletes-cue.md) — 「第一响应者是文本视图」判不住所有正在打字的时刻，全局快捷键要给字幕草稿让路；⌫ 的每条到达路径（monitor / onDeleteCommand）都得堵。
+- [2026-08-23 提示悬浮在打开文件对话框上](docs/bugfixes/2026-08-23-tooltip-survives-open-panel.md) — 靠 hover 退出维护的状态必须假设退出事件永远不来（模态/键盘触发）；打断信号（mouseDown / keyDown / resignKey）才是兜底。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

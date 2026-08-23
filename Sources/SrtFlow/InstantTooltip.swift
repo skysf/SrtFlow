@@ -179,6 +179,9 @@ final class InstantTooltipController {
 
     private var panel: NSPanel?
     private weak var owner: TooltipAnchorBox?
+    /// 面板可见期间装上的「全局打断」监听（收起时拆掉，平时不拦事件）。
+    private var interactionMonitor: Any?
+    private var resignKeyObserver: NSObjectProtocol?
 
     private init() {}
 
@@ -217,22 +220,64 @@ final class InstantTooltipController {
 
         panel.setFrame(CGRect(origin: origin, size: size), display: false)
         panel.orderFront(nil)
+        installDismissTriggers()
     }
 
     func hide(owner box: TooltipAnchorBox) {
         guard owner === box else { return }
-        owner = nil
-        panel?.orderOut(nil)
+        dismiss()
     }
 
     fileprivate func hideIfOwned(by view: NSView) {
         guard let owner, owner.view === view else { return }
-        hide(owner: owner)
+        dismiss()
+    }
+
+    /// 收起面板并拆掉打断监听。所有隐藏路径都必须走这里，别直接 orderOut ——
+    /// 监听漏拆就成了常驻的全局事件拦截。
+    private func dismiss() {
+        owner = nil
+        panel?.orderOut(nil)
+        if let interactionMonitor {
+            NSEvent.removeMonitor(interactionMonitor)
+            self.interactionMonitor = nil
+        }
+        if let resignKeyObserver {
+            NotificationCenter.default.removeObserver(resignKeyObserver)
+            self.resignKeyObserver = nil
+        }
+    }
+
+    /// 只靠控件的 `hover(false)` 是收不干净的：点按钮弹出打开文件对话框后，
+    /// 模态会话里 hover 退出事件根本不派发（⌘O 触发时连点击都没有），提示会
+    /// 一直悬浮在对话框上面（docs/bugfixes/2026-08-23-tooltip-survives-open-panel.md）。
+    /// 所以面板可见期间：任何鼠标按下/按键/滚轮、或任何窗口失去 key（对话框
+    /// 弹出、切窗口的信号）都立刻收起 —— 系统 tooltip 也是这个语义。菜单栏
+    /// 触发的对话框走不到本地事件监听，靠 resignKey 那条兜住。
+    private func installDismissTriggers() {
+        if interactionMonitor == nil {
+            interactionMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .keyDown, .scrollWheel]
+            ) { [weak self] event in
+                MainActor.assumeIsolated { self?.dismiss() }
+                return event
+            }
+        }
+        if resignKeyObserver == nil {
+            resignKeyObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.dismiss() }
+            }
+        }
     }
 
     /// 自检读取用：提示面板当前的屏幕矩形（nil = 还没建过面板）。
     /// `checks/InstantTooltipPanel` 靠它盯住「摆好之后不许自己变尺寸」。
     var panelFrameForChecks: CGRect? { panel?.frame }
+
+    /// 自检读取用：面板当前可见吗。「对话框弹出时提示必须收起」的回归靠它。
+    var panelIsVisibleForChecks: Bool { panel?.isVisible ?? false }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(

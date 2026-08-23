@@ -180,6 +180,13 @@ enum VideoEditCompositionBuilder {
         var fadeIn: (duration: Double, delayedHalf: Bool)?
         /// 结尾的淡出，(时长, 前半就灭?)。
         var fadeOut: (duration: Double, earlyHalf: Bool)?
+        /// 推移转场：开头从这个画布偏移（像素）线性滑回原位。
+        var pushIn: (duration: Double, fromDX: CGFloat, fromDY: CGFloat)?
+        /// 推移转场：结尾从原位线性滑出到这个画布偏移。
+        var pushOut: (duration: Double, toDX: CGFloat, toDY: CGFloat)?
+        /// 擦除转场（只挂出场段）：结尾的可见画布窗口按方向线性缩小，
+        /// 露出来的就是垫在下面的进场段。
+        var wipeOut: (duration: Double, kind: ClipTransition)?
     }
 
     /// - Parameter renderSizeOverride: 导出预渲染要用外层时间线的画布尺寸，
@@ -226,6 +233,8 @@ enum VideoEditCompositionBuilder {
         // 铺斜坡统一交给 `makeAudioMix` —— 它同时也是「只改音量/渐变时不重建
         // 合成、只换 audioMix」那条快路径的实现，两条路共用一份才不会分叉。
         var audioPlan = AudioMixPlan()
+        // 主轨 clip 序号 → placed 序号（接缝后处理用；被跳过的段不在里面）。
+        var placedIndexByMainIndex: [Int: Int] = [:]
 
         for (index, clip) in state.mainClips.enumerated() {
             // 整轨隐藏 → 主轨完全不进合成（预览是黑场）；
@@ -253,13 +262,10 @@ enum VideoEditCompositionBuilder {
                 isOverlay: false
             )
 
-            // 进出场的渐变由前后两个转场决定。
-            let overlapBefore = index > 0 ? state.transitionOverlap(afterMainIndex: index - 1) : 0
-            let overlapAfter = state.transitionOverlap(afterMainIndex: index)
-            let kindBefore = index > 0 ? state.mainClips[index - 1].transitionAfter : .none
-            let kindAfter = clip.transitionAfter
-
-            var item = PlacedClip(
+            // 接缝的转场分派放到主轨循环之后统一做（推移/擦除的精确路径要看
+            // 接缝两侧换算好的变换，处理到前一段时后一段的还没算出来）。
+            placedIndexByMainIndex[index] = placed.count
+            placed.append(PlacedClip(
                 clip: clip,
                 track: videoTrack,
                 transform: fitted.transform,
@@ -267,28 +273,7 @@ enum VideoEditCompositionBuilder {
                 geometry: fitted.geometry,
                 isOverlay: false,
                 layer: 0
-            )
-            if overlapBefore > 0 {
-                // 叠化：后段整场垫在底下不淡入 —— 接缝两侧都「盖满画布且不透明」
-                // 时，这个叠法逐像素等于导出的 xfade dissolve。压黑/闪白：后半段才亮。
-                //
-                // 只要有一侧盖不满或半透明（缩小挪位、旋转透明角、整层透明度），
-                // 「垫底常亮」会让后段从转场第一帧就透出来，而导出是先把每段
-                // 压平到黑底再 dissolve。这种接缝改成双向线性淡变：后段从黑里
-                // 亮起来，贴合导出模型（代价是中点轻微变暗，见架构文档）。
-                // 判定必须用 coversCanvasOpaquely，别拿 hasVisualTransform 凑 ——
-                // 仅翻转照样满幅不透明，误走近似路径就是白闪变暗。
-                if kindBefore != .crossFade {
-                    item.fadeIn = (overlapBefore, true)
-                } else if !clip.coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
-                    || !state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false) {
-                    item.fadeIn = (overlapBefore, false)
-                }
-            }
-            if overlapAfter > 0 {
-                item.fadeOut = (overlapAfter, kindAfter != .crossFade)
-            }
-            placed.append(item)
+            ))
 
             // 声音
             if clip.hasAudio, !clip.isMuted,
@@ -296,6 +281,78 @@ enum VideoEditCompositionBuilder {
                let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
                await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &audioCursors[slot]) {
                 audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: true)
+            }
+        }
+
+        // MARK: 主轨接缝的转场分派
+        //
+        // 三族三条路（详见 docs/architecture/preview-free-transform.md）：
+        //
+        // - 淡变族（叠化/压黑/闪白）：叠化在接缝两侧都「盖满画布且不透明」时走
+        //   「后段垫底、前段淡出」，逐像素等于导出的 xfade dissolve；只要有一侧
+        //   盖不满或半透明（缩小挪位、旋转透明角、整层透明度），「垫底常亮」会让
+        //   后段从转场第一帧就透出来，而导出是先把每段压平到黑底再 dissolve ——
+        //   这种接缝改成双向线性淡变（代价是中点轻微变暗）。判定必须用
+        //   coversCanvasOpaquely，别拿 hasVisualTransform 凑：仅翻转照样满幅
+        //   不透明，误走近似路径就是白闪变暗。压黑/闪白走半程模型（前半灭后半亮）。
+        // - 推移族：两侧都轴对齐且非动画段 → 平移斜坡 + 「压平时的画布」裁切，
+        //   逐像素等于「压平到黑底再整幅滑动」（缩放/翻转/半透明/盖不满都不破坏
+        //   等价性，黑底垫着）；否则回退双向淡变。
+        // - 擦除族：出场段满幅不透明且轴对齐 → 给出场段挂线性缩小的裁切窗口，
+        //   露出来的就是垫底的进场段（进场段无任何前提：它差一块的地方露黑底，
+        //   和导出压平模型一致）；否则回退双向淡变。
+        // stride 而不是 1..<count：画中画预渲染的状态主轨是空的，1..<0 直接崩。
+        for index in stride(from: 1, to: state.mainClips.count, by: 1) {
+            let kind = state.mainClips[index - 1].transitionAfter
+            let overlap = state.transitionOverlap(afterMainIndex: index - 1)
+            guard kind != .none, overlap > 0 else { continue }
+            let outgoingIndex = placedIndexByMainIndex[index - 1]
+            let incomingIndex = placedIndexByMainIndex[index]
+
+            // 推移/擦除条件不满足时的回退：按叠化近似路径处理这条接缝。
+            func fallBackToFade() {
+                let halved = kind == .blackFade || kind == .whiteFade
+                if let outgoingIndex { placed[outgoingIndex].fadeOut = (overlap, halved) }
+                if let incomingIndex { placed[incomingIndex].fadeIn = (overlap, halved) }
+            }
+
+            switch kind.family {
+            case .fade:
+                let halved = kind != .crossFade
+                let exactUnderlay = kind == .crossFade
+                    && state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
+                    && state.mainClips[index].coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
+                if let outgoingIndex { placed[outgoingIndex].fadeOut = (overlap, halved) }
+                if let incomingIndex, !exactUnderlay {
+                    placed[incomingIndex].fadeIn = (overlap, halved)
+                }
+            case .push:
+                guard let outgoingIndex, let incomingIndex, let motion = kind.motion,
+                      pushSideExact(state.mainClips[index - 1], placed[outgoingIndex].transform),
+                      pushSideExact(state.mainClips[index], placed[incomingIndex].transform)
+                else {
+                    fallBackToFade()
+                    break
+                }
+                placed[outgoingIndex].pushOut = (
+                    overlap, motion.dx * renderSize.width, motion.dy * renderSize.height
+                )
+                placed[incomingIndex].pushIn = (
+                    overlap, -motion.dx * renderSize.width, -motion.dy * renderSize.height
+                )
+                // 压平模型里滑出画布的内容不会被滑回来看见：把两段都裁到
+                // 「静止时的画布」（源坐标），滑动时裁切随内容一起走。
+                clampCropToCanvas(&placed[outgoingIndex], renderSize: renderSize)
+                clampCropToCanvas(&placed[incomingIndex], renderSize: renderSize)
+            case .wipe:
+                guard let outgoingIndex, incomingIndex != nil,
+                      state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false),
+                      isAxisAlignedInvertible(placed[outgoingIndex].transform)
+                else {
+                    fallBackToFade()
+                    break
+                }
+                placed[outgoingIndex].wipeOut = (overlap, kind)
             }
         }
 
@@ -367,8 +424,11 @@ enum VideoEditCompositionBuilder {
         // 淡入淡出）时，它换到混合路径，`instruction.backgroundColor` 不再生效，
         // 未覆盖区域是零填充的 YUV 缓冲 —— 显示成暗绿色。所以这种时候垫一条
         // 真正的黑视频铺满全程当底，混合永远发生在不透明底之上。
+        // 推移/擦除也要黑底：滑走/擦掉后露出来的未覆盖区必须是黑，
+        // 而且裁切过的图层照样会把合成器切到混合路径。
         let needsOpaqueBase = placed.contains {
             $0.clip.minimumOpacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
+                || $0.pushIn != nil || $0.pushOut != nil || $0.wipeOut != nil
         }
         if needsOpaqueBase, let baseURL = await BlackBaseVideoFactory.videoURL() {
             let baseAsset = asset(for: baseURL)
@@ -761,6 +821,12 @@ enum VideoEditCompositionBuilder {
                 boundaries.insert(item.end - fadeOut.duration)
                 boundaries.insert(item.end - fadeOut.duration / 2)
             }
+            if let pushIn = item.pushIn { boundaries.insert(item.start + pushIn.duration) }
+            if let pushOut = item.pushOut { boundaries.insert(item.end - pushOut.duration) }
+            if let wipeOut = item.wipeOut {
+                boundaries.insert(item.end - wipeOut.duration)
+                addWipeCropBoundaries(for: item, renderSize: renderSize, into: &boundaries)
+            }
             addAnimationBoundaries(for: item, frameRate: frameRate, into: &boundaries)
         }
         let times = boundaries.filter { $0 >= 0 && $0 <= totalDuration }.sorted()
@@ -801,9 +867,39 @@ enum VideoEditCompositionBuilder {
                         )
                     }
                 } else {
-                    layer.setTransform(item.transform, at: time(sliceStart))
+                    // 推移转场的平移窗口边界都在切片表里，片内平移线性，
+                    // 端点求值 + 矩阵斜坡就是精确重建（平移分量线性插值无误差）。
+                    let from = pushTranslation(item, at: sliceStart)
+                    let to = pushTranslation(item, at: sliceEnd)
+                    if abs(from.dx - to.dx) < 0.0005, abs(from.dy - to.dy) < 0.0005 {
+                        layer.setTransform(
+                            item.transform.concatenating(CGAffineTransform(translationX: from.dx, y: from.dy)),
+                            at: time(sliceStart)
+                        )
+                    } else {
+                        layer.setTransformRamp(
+                            fromStart: item.transform.concatenating(CGAffineTransform(translationX: from.dx, y: from.dy)),
+                            toEnd: item.transform.concatenating(CGAffineTransform(translationX: to.dx, y: to.dy)),
+                            timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+                        )
+                    }
                 }
-                if let crop = item.cropRect {
+                if item.wipeOut != nil {
+                    // 擦除窗口（∩ 用户裁切）：窗口边界和求交折点都在切片表里，
+                    // 片内每条边都线性，端点求值 + 裁切斜坡精确重建。
+                    if let from = wipeCropRect(item, at: sliceStart, renderSize: renderSize),
+                       let to = wipeCropRect(item, at: sliceEnd, renderSize: renderSize) {
+                        if from.equalTo(to) {
+                            layer.setCropRectangle(from, at: time(sliceStart))
+                        } else {
+                            layer.setCropRectangleRamp(
+                                fromStartCropRectangle: from,
+                                toEndCropRectangle: to,
+                                timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+                            )
+                        }
+                    }
+                } else if let crop = item.cropRect {
                     layer.setCropRectangle(crop, at: time(sliceStart))
                 }
                 applyOpacity(layer, item: item, sliceStart: sliceStart, sliceEnd: sliceEnd)
@@ -913,5 +1009,98 @@ enum VideoEditCompositionBuilder {
             }
         }
         return Float(min(max(factor, 0), 1))
+    }
+
+    // MARK: 推移 / 擦除转场的几何
+
+    /// 推移能精确复刻 xfade slide 的前提：换算完的矩阵轴对齐（90° 的
+    /// preferredTransform、翻转、任何缩放都算；任意角旋转不算）且不是关键帧
+    /// 动画段（动画的「画布裁切」没法逐片跟着变换走）。半透明/盖不满都不用管：
+    /// 黑底垫着，逐像素等于「压平到黑底再整幅滑动」。
+    private static func pushSideExact(_ clip: EditClip, _ transform: CGAffineTransform) -> Bool {
+        !clip.isAnimated && isAxisAlignedInvertible(transform)
+    }
+
+    /// 轴对齐且可逆：画布矩形经它逆映射后仍是矩形，`setCropRectangle` 才表达得了。
+    private static func isAxisAlignedInvertible(_ t: CGAffineTransform) -> Bool {
+        guard abs(t.a * t.d - t.b * t.c) > 1e-9 else { return false }
+        return (abs(t.b) < 1e-6 && abs(t.c) < 1e-6) || (abs(t.a) < 1e-6 && abs(t.d) < 1e-6)
+    }
+
+    /// 把这段的裁切收进「静止时的画布」（换算回源坐标）。推移的压平模型里，
+    /// 滑出画布的内容不会被滑回来看见 —— 不裁的话放大出画布的段一滑就穿帮。
+    private static func clampCropToCanvas(_ item: inout PlacedClip, renderSize: CGSize) {
+        let mapped = CGRect(origin: .zero, size: renderSize)
+            .applying(item.transform.inverted())
+            .standardized
+        item.cropRect = item.cropRect.map { clampedIntersection($0, mapped) } ?? mapped
+    }
+
+    /// 交集恒返回矩形：分离时贴边给近零尺寸 —— 裁切斜坡要连续，不能蹦出 .null。
+    private static func clampedIntersection(_ a: CGRect, _ b: CGRect) -> CGRect {
+        let minX = max(a.minX, b.minX)
+        let minY = max(a.minY, b.minY)
+        let maxX = min(a.maxX, b.maxX)
+        let maxY = min(a.maxY, b.maxY)
+        return CGRect(x: minX, y: minY, width: max(0.001, maxX - minX), height: max(0.001, maxY - minY))
+    }
+
+    /// 推移转场在某时刻的画布平移（窗口内线性，窗口外为零；窗口边界都在
+    /// 切片表里，片内就是精确线性）。
+    private static func pushTranslation(_ item: PlacedClip, at timelineTime: Double) -> (dx: CGFloat, dy: CGFloat) {
+        var dx: CGFloat = 0
+        var dy: CGFloat = 0
+        if let push = item.pushIn, timelineTime < item.start + push.duration {
+            let u = min(max((timelineTime - item.start) / max(push.duration, 0.001), 0), 1)
+            dx += push.fromDX * CGFloat(1 - u)
+            dy += push.fromDY * CGFloat(1 - u)
+        }
+        if let push = item.pushOut {
+            let windowStart = item.end - push.duration
+            if timelineTime > windowStart {
+                let u = min(max((timelineTime - windowStart) / max(push.duration, 0.001), 0), 1)
+                dx += push.toDX * CGFloat(u)
+                dy += push.toDY * CGFloat(u)
+            }
+        }
+        return (dx, dy)
+    }
+
+    /// 擦除转场在某时刻的源坐标裁切矩形（窗口 ∩ 用户裁切）。窗口开始前
+    /// 就是整幅画布 —— 裁到画布对画面没有可见影响（画布外本来就看不见）。
+    private static func wipeCropRect(_ item: PlacedClip, at timelineTime: Double, renderSize: CGSize) -> CGRect? {
+        guard let wipe = item.wipeOut else { return item.cropRect }
+        let windowStart = item.end - wipe.duration
+        let progress = min(max((timelineTime - windowStart) / max(wipe.duration, 0.001), 0), 1)
+        let mapped = wipe.kind
+            .wipeRemainingRect(progress: progress, canvas: renderSize)
+            .applying(item.transform.inverted())
+            .standardized
+        return item.cropRect.map { clampedIntersection($0, mapped) } ?? mapped
+    }
+
+    /// 擦除窗口和用户裁切求交，交集的边是 min/max：移动边扫过用户裁切边的
+    /// 时刻各有一个折点，必须进切片表 —— 否则整窗一条斜坡会把「先不动、
+    /// 后缩空」拉直成匀速。
+    private static func addWipeCropBoundaries(
+        for item: PlacedClip, renderSize: CGSize, into boundaries: inout Set<Double>
+    ) {
+        guard let wipe = item.wipeOut, let crop = item.cropRect, let motion = wipe.kind.motion else { return }
+        let cropCanvas = crop.applying(item.transform).standardized
+        let windowStart = item.end - wipe.duration
+        let horizontal = motion.dx != 0
+        let span = horizontal ? renderSize.width : renderSize.height
+        guard span > 0 else { return }
+        let positions = horizontal ? [cropCanvas.minX, cropCanvas.maxX] : [cropCanvas.minY, cropCanvas.maxY]
+        for position in positions {
+            // 移动边的位置：dx<0 在 W(1-p)、dx>0 在 W·p（dy 同理，见
+            // wipeRemainingRect）。反解出经过 position 的进度。
+            let fraction = Double(position / span)
+            let progress = (motion.dx < 0 || motion.dy < 0) ? 1 - fraction : fraction
+            let crossing = windowStart + wipe.duration * progress
+            if crossing > windowStart + 0.0005, crossing < item.end - 0.0005 {
+                boundaries.insert(crossing)
+            }
+        }
     }
 }

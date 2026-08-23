@@ -137,6 +137,76 @@ func run() {
     )
     InstantTooltipController.shared.hide(owner: bottomBox)
 
+    // ---- 4. 全局打断必须收起提示（对话框悬浮回归） ----
+    //
+    // 由来（docs/bugfixes/2026-08-23-tooltip-survives-open-panel.md）：提示只靠
+    // 控件的 hover(false) 收，点「打开工程」弹出文件对话框后，模态会话里 hover
+    // 退出根本不派发，提示一直悬浮在对话框上面。修复是面板可见期间挂两条打断：
+    // 任何窗口失去 key、任何鼠标按下/按键/滚轮。这里把两条都真触发一遍。
+    //
+    // 4a. 窗口失去 key（对话框弹出、切窗口都会走到）。通知就是生产观察者的
+    //     订阅合同，直接发它 —— 不用真弹 NSOpenPanel（模态会话会卡住自检）。
+    if showAndSettle(box, label: "Open an existing .srtflowproj file") != nil {
+        check(
+            InstantTooltipController.shared.panelIsVisibleForChecks,
+            "打断用例的前提：面板此刻应当可见"
+        )
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+        check(
+            !InstantTooltipController.shared.panelIsVisibleForChecks,
+            "窗口失去 key（对话框弹出）后提示必须收起，不能悬浮在对话框上面"
+        )
+    } else {
+        print("FAIL 打断用例没弹出面板")
+        failures += 1
+    }
+
+    // 4b. 鼠标按下（点按钮那一下）。走 NSApp.sendEvent —— 本地事件监听挂在
+    //     应用派发这条路上，这就是生产路径。
+    if showAndSettle(box, label: "Open an existing .srtflowproj file") != nil {
+        check(
+            InstantTooltipController.shared.panelIsVisibleForChecks,
+            "点击打断用例的前提：面板此刻应当可见"
+        )
+        if let click = NSEvent.mouseEvent(
+            with: .leftMouseDown,
+            location: CGPoint(x: 50, y: 310),
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 1,
+            pressure: 1
+        ) {
+            app.sendEvent(click)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            check(
+                !InstantTooltipController.shared.panelIsVisibleForChecks,
+                "鼠标按下后提示必须收起（系统 tooltip 同款语义）"
+            )
+        } else {
+            print("FAIL 造不出合成鼠标事件")
+            failures += 1
+        }
+    } else {
+        print("FAIL 点击打断用例没弹出面板")
+        failures += 1
+    }
+
+    // 4c. 打断之后不许失灵：正常 hover 路径还能再弹出来。
+    if showAndSettle(box, label: "Split at playhead") != nil {
+        check(
+            InstantTooltipController.shared.panelIsVisibleForChecks,
+            "打断收起之后，下一次 show 必须照常弹出"
+        )
+        InstantTooltipController.shared.hide(owner: box)
+    } else {
+        print("FAIL 打断后再弹失败")
+        failures += 1
+    }
+
     window.close()
     bottomWindow.close()
 }

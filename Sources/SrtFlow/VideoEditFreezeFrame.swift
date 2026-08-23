@@ -46,8 +46,9 @@ extension VideoEditProject {
         // 藏起来的轨在预览和导出里都当不存在，没有「这一帧」可言。
         guard !state.isLaneHidden(location.track) else { return false }
         guard location.track.isMain else { return true }
-        // 主轨：牵扯转场的段一律不给定格（会让声画永久错开，理由见
-        // `participatesInMainTransition`），叠化区里也不给（画面是合成的）。
+        // 主轨：牵扯转场的段一律不给定格（切短后转场被重新限长、画面位移不可
+        // 预期，理由见 `participatesInMainTransition`），叠化区里也不给（画面
+        // 是合成的）。
         return !state.participatesInMainTransition(clipID: clip.id)
             && !state.isInsideMainTransition(time: time)
     }
@@ -163,7 +164,7 @@ extension VideoEditProject {
         //
         // **准入条件要整个重跑一遍**（`isFreezeEligible`），不能只比源范围：
         // 从主轨挪到画中画会保持同样的起点和源范围却走完全不同的 ripple 语义；
-        // 中途给这一段加转场则会让声画永久错开。
+        // 中途给这一段加转场则会踩进「转场段不给定格」的禁区。
         guard isCurrentGeneration(request.generation),
               let current = state.clip(with: request.clipID),
               request.matches(current),

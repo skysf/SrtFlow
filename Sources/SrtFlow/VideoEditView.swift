@@ -83,7 +83,12 @@ struct VideoEditView: View {
             project.flushAutosave()
         }
         .onDropOfFiles { urls in project.addMedia(urls: urls) }
-        .onDeleteCommand { project.deleteSelected() }
+        // ⌫ 的第二条路：monitor 放行后系统会把它解释成 delete command 送回来。
+        // 与 handleEvent 同一条纪律：字幕草稿开着（正在字幕输入框里编辑）时不删。
+        .onDeleteCommand {
+            guard project.subtitleDraft == nil else { return }
+            project.deleteSelected()
+        }
         .sheet(isPresented: $showsExportSheet) {
             VideoEditExportSheet(project: project, exporter: exporter)
         }
@@ -177,6 +182,11 @@ struct VideoEditView: View {
         case .keyDown:
             // 正在打字（哪怕是别的输入框）就别抢按键。
             if NSApp.keyWindow?.firstResponder is NSTextView { return event }
+            // 字幕草稿开着 = 用户正在字幕输入框里编辑。多行 TextField + 中文输入法
+            // 下第一响应者会偶发丢掉（上面那条判不住），这一拍的按键就会往下落进
+            // 快捷键：⌫ 把正在编辑的 cue 整条从轨上删掉，空格开播、V 切眼睛。
+            // 草稿随提交（回车/失焦）清空，不会长期挡住快捷键。
+            if project.subtitleDraft != nil { return event }
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }

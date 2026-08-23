@@ -14,6 +14,11 @@ let kfTol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: 1)
 //    （仅翻转也算满幅不透明 —— 误走近似路径就是白闪变暗的回归）。
 // 2. 有一侧半透明 → 近似「双向淡变」路径：转场开头**不许把后段全亮泄漏**
 //    （那是「垫底常亮」模型的错），中点允许记录在案的轻微下凹。
+// 3. 推移族：平移斜坡，方向要跟 xfade slide 的实测语义一致（pushLeft 的
+//    进场段从右边滑进来）；滑动的是**压平后的整幅**（两色探针分辨得出
+//    「滑进来的是另半边」）。条件不满足（如任意角旋转）回退双向淡变。
+// 4. 擦除族：出场段挂线性缩小的裁切窗口，方向同 xfade wipe 实测语义；
+//    两色探针要能证明露出的是**出场段窗口外的进场段**，而不是滑动。
 
 var failures = 0
 var checks = 0
@@ -44,6 +49,23 @@ struct SolidVideoError: Error, CustomStringConvertible {
 
 func makeSolidVideo(
     white: Double, seconds: Double, name: String, size: CGSize = CGSize(width: 64, height: 36)
+) async throws -> URL {
+    try await makeVideo(seconds: seconds, name: name, size: size) { _, _ in white }
+}
+
+/// 左半白右半黑的两色素材：分辨「擦除露出自己窗口外的进场段」和
+/// 「推移把画面另半边滑进来」的关键探针（纯色素材下两者长得一样）。
+func makeHalfToneVideo(
+    seconds: Double, name: String, size: CGSize = CGSize(width: 64, height: 36)
+) async throws -> URL {
+    try await makeVideo(seconds: seconds, name: name, size: size) { column, width in
+        column < width / 2 ? 1 : 0
+    }
+}
+
+func makeVideo(
+    seconds: Double, name: String, size: CGSize,
+    brightness: (_ column: Int, _ width: Int) -> Double
 ) async throws -> URL {
     let url = root.appendingPathComponent(name)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
@@ -77,11 +99,15 @@ func makeSolidVideo(
     }
     CVPixelBufferLockBaseAddress(buffer, [])
     if let base = CVPixelBufferGetBaseAddress(buffer) {
-        let level = UInt32(min(max(white, 0), 1) * 255)
-        let bgra: UInt32 = 0xFF00_0000 | (level << 16) | (level << 8) | level
-        let words = base.assumingMemoryBound(to: UInt32.self)
-        let count = CVPixelBufferGetBytesPerRow(buffer) * CVPixelBufferGetHeight(buffer) / 4
-        for index in 0..<count { words[index] = bgra }
+        let bytesPerRow = CVPixelBufferGetBytesPerRow(buffer)
+        let width = CVPixelBufferGetWidth(buffer)
+        for row in 0..<CVPixelBufferGetHeight(buffer) {
+            let words = (base + row * bytesPerRow).assumingMemoryBound(to: UInt32.self)
+            for column in 0..<width {
+                let level = UInt32(min(max(brightness(column, width), 0), 1) * 255)
+                words[column] = 0xFF00_0000 | (level << 16) | (level << 8) | level
+            }
+        }
     }
     CVPixelBufferUnlockBaseAddress(buffer, [])
     // 和产线 BlackBaseVideoFactory 同一课：isReadyForMoreMediaData 在 writer
@@ -141,6 +167,26 @@ func averageBrightness(_ built: VideoEditCompositionBuilder.Built, at seconds: D
     return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3 / 255
 }
 
+/// 归一化区域（左上原点，0…1）的平均亮度。推移/擦除的方向要分区量。
+func regionBrightness(
+    _ built: VideoEditCompositionBuilder.Built, at seconds: Double, region: CGRect
+) async -> Double {
+    let generator = AVAssetImageGenerator(asset: built.composition)
+    generator.videoComposition = built.videoComposition
+    generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 15)
+    generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 15)
+    guard let image = try? await generator.image(
+        at: CMTime(seconds: seconds, preferredTimescale: 600)
+    ).image else { return -1 }
+    let pixelRegion = CGRect(
+        x: region.minX * Double(image.width),
+        y: region.minY * Double(image.height),
+        width: region.width * Double(image.width),
+        height: region.height * Double(image.height)
+    )
+    return averageRGBA(image, region: pixelRegion).red
+}
+
 /// 从文件抽帧（预渲染中间片的验收用）。
 func frameImage(fromFile url: URL, at seconds: Double) async -> CGImage? {
     let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
@@ -165,8 +211,11 @@ func averageRGBA(_ image: CGImage, region: CGRect) -> (red: Double, alpha: Doubl
 
 // MARK: - 场景搭建
 
-/// 两段 4s 纯白，叠化 1s（重叠 3.0–4.0），可对第一段做改动。
-func whiteDissolveState(_ url1: URL, _ url2: URL, mutateFirst: (inout EditClip) -> Void) -> TimelineState {
+/// 两段 4s，任意转场 1s（重叠 3.0–4.0），可对第一段做改动。
+func seamState(
+    _ url1: URL, _ url2: URL, kind: ClipTransition,
+    mutateFirst: (inout EditClip) -> Void = { _ in }
+) -> TimelineState {
     let info = MediaInfo(
         duration: 4,
         displaySize: CGSize(width: 64, height: 36),
@@ -178,13 +227,18 @@ func whiteDissolveState(_ url1: URL, _ url2: URL, mutateFirst: (inout EditClip) 
         fileBytes: 1
     )
     var first = EditClip(sourceURL: url1, sourceDuration: 4, timelineStart: 0, info: info)
-    first.transitionAfter = .crossFade
+    first.transitionAfter = kind
     first.transitionDuration = 1
     mutateFirst(&first)
     let second = EditClip(sourceURL: url2, sourceDuration: 4, timelineStart: 3, info: info)
     var state = TimelineState()
     state.mainClips = [first, second]
     return state
+}
+
+/// 两段 4s 纯白，叠化 1s（重叠 3.0–4.0），可对第一段做改动。
+func whiteDissolveState(_ url1: URL, _ url2: URL, mutateFirst: (inout EditClip) -> Void) -> TimelineState {
+    seamState(url1, url2, kind: .crossFade, mutateFirst: mutateFirst)
 }
 
 // MARK: - 用例
@@ -437,6 +491,93 @@ Task {
             )
         } else {
             check(false, "半透明场景合成失败")
+        }
+
+        // ---- 推移 / 擦除转场 ----
+        //
+        // 方向语义来自 xfade 的纯色实测（2026-08-23）：pushLeft/wipeLeft 的
+        // 进场段从**右**边进来（画面/擦除边向左运动），以此类推。
+        do {
+            let black1 = try await makeSolidVideo(white: 0, seconds: 4, name: "black1.mp4")
+            let halfTone = try await makeHalfToneVideo(seconds: 4, name: "halftone.mp4")
+            let leftBand = CGRect(x: 0.05, y: 0.1, width: 0.35, height: 0.8)
+            let rightBand = CGRect(x: 0.6, y: 0.1, width: 0.35, height: 0.8)
+            let topBand = CGRect(x: 0.1, y: 0.05, width: 0.8, height: 0.35)
+            let bottomBand = CGRect(x: 0.1, y: 0.6, width: 0.8, height: 0.35)
+
+            // P1. 左推方向：白→黑，中点左半是还没滑走的出场段（白）、
+            //     右半是从右边滑进来的进场段（黑）。
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(white1, black1, kind: .pushLeft)
+            ) {
+                let left = await regionBrightness(built, at: 3.5, region: leftBand)
+                let right = await regionBrightness(built, at: 3.5, region: rightBand)
+                check(left > 0.85, "左推中点左半应是出场段（白），实测 \(left)")
+                check(right < 0.15, "左推中点右半应是进场段（黑），实测 \(right)")
+            } else {
+                check(false, "左推场景合成失败")
+            }
+
+            // P2. 右推方向相反：中点左黑右白。
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(white1, black1, kind: .pushRight)
+            ) {
+                let left = await regionBrightness(built, at: 3.5, region: leftBand)
+                let right = await regionBrightness(built, at: 3.5, region: rightBand)
+                check(left < 0.15, "右推中点左半应是进场段（黑），实测 \(left)")
+                check(right > 0.85, "右推中点右半应是出场段（白），实测 \(right)")
+            } else {
+                check(false, "右推场景合成失败")
+            }
+
+            // P3. 下擦除：进场段从顶上露出来 → 中点上黑下白。
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(white1, black1, kind: .wipeDown)
+            ) {
+                let top = await regionBrightness(built, at: 3.5, region: topBand)
+                let bottom = await regionBrightness(built, at: 3.5, region: bottomBand)
+                check(top < 0.15, "下擦除中点上半应是进场段（黑），实测 \(top)")
+                check(bottom > 0.85, "下擦除中点下半应是出场段（白），实测 \(bottom)")
+            } else {
+                check(false, "下擦除场景合成失败")
+            }
+
+            // P4. 推移 vs 擦除的本质区别（两色探针，出场段左白右黑、进场段全黑）：
+            //     中点画布左半边 —— 擦除显示出场段**自己的左半**（白），
+            //     左推显示的是**滑过来的右半**（黑）。纯色素材下两者长得一样，
+            //     这一对探针就是防「擦除写成了滑动」（或反过来）的。
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(halfTone, black1, kind: .wipeLeft)
+            ) {
+                let left = await regionBrightness(built, at: 3.5, region: leftBand)
+                check(left > 0.85, "左擦除中点左半应是出场段原位的左半（白），实测 \(left)")
+            } else {
+                check(false, "左擦除两色场景合成失败")
+            }
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(halfTone, black1, kind: .pushLeft)
+            ) {
+                let left = await regionBrightness(built, at: 3.5, region: leftBand)
+                check(left < 0.15, "左推中点左半应是滑过来的出场段右半（黑），实测 \(left)")
+            } else {
+                check(false, "左推两色场景合成失败")
+            }
+
+            // P5. 回退：任意角旋转的出场段不满足推移的精确前提 → 双向淡变，
+            //     不许出现硬切边（左右两半亮度要接近），也不许全亮。
+            if let built = await VideoEditCompositionBuilder.build(
+                from: seamState(white1, black1, kind: .pushLeft) { $0.rotationDegrees = 30 }
+            ) {
+                let left = await regionBrightness(built, at: 3.5, region: leftBand)
+                let right = await regionBrightness(built, at: 3.5, region: rightBand)
+                check(
+                    abs(left - right) < 0.3,
+                    "旋转段左推应回退成淡变（无滑动分界），实测左 \(left) 右 \(right)"
+                )
+                check(left < 0.8, "旋转段左推回退路径中点不该全亮，实测 \(left)")
+            } else {
+                check(false, "旋转段左推场景合成失败")
+            }
         }
 
         // ---- 工程帧率：24 / 30 / 60 各自的 frameDuration 与真实出帧数 ----

@@ -943,6 +943,259 @@ do {
     check(hit.cues == [cueID], "碰到块本体：选中")
 }
 
+// MARK: - 24. 同轨越过障碍：指针过了障碍就落到另一侧（2026-08-23 起）
+//
+// 以前障碍是墙（把块拖到主轨中间的间隙必须先挪去画中画再挪回来）。现在
+// `fittedDelta` 按「最近的合法间隙」解析：指针没越过障碍时仍停在这一侧的
+// 接触面（老手感），越过了就直接落到另一侧 —— 块画在哪儿就落在哪儿。
+
+do {
+    let aID = UUID()
+    let plan = ClipDragPlan(
+        draggedID: aID,
+        draggedSpan: TimelineSpan(start: 0, end: 5),
+        members: [member(aID, 0, 5, obstacles: [TimelineSpan(start: 10, end: 15)])],
+        candidates: [],
+        magnet: nil
+    )
+    checkClose(plan.resolve(desiredDelta: 9, pixelsPerSecond: pps).delta, 5,
+               "指针在障碍近侧：仍停在这一侧的接触面（老行为不变）")
+    checkClose(plan.resolve(desiredDelta: 12, pixelsPerSecond: pps).delta, 15,
+               "指针过了障碍远侧：落到另一侧的接触面（B 的终点）")
+    checkClose(plan.resolve(desiredDelta: 30, pixelsPerSecond: pps).delta, 30,
+               "彻底越过之后是自由落点")
+    checkClose(plan.resolve(desiredDelta: 15, pixelsPerSecond: pps).delta, 15,
+               "落点再解析一次不变（幂等，松手不跳）")
+}
+
+do {
+    // 装不下的间隙 = 塞进去 + 右侧让位（详见 §27）：5 秒的块对准 B=[10,12] 和
+    // C=[15,20] 之间那 3 秒的缝，落在缝的起点 12，让位 5-3=2 秒。
+    let aID = UUID()
+    let tight = ClipDragPlan(
+        draggedID: aID,
+        draggedSpan: TimelineSpan(start: 0, end: 5),
+        members: [member(aID, 0, 5, obstacles: [
+            TimelineSpan(start: 10, end: 12), TimelineSpan(start: 15, end: 20)
+        ])],
+        candidates: [],
+        magnet: nil
+    )
+    let squeezed = tight.resolve(desiredDelta: 11, pixelsPerSecond: pps)
+    checkClose(squeezed.delta, 12, "落在装不下的间隙起点")
+    checkClose(squeezed.sameTrackPush?.at ?? -1, 12, "让位从间隙起点开始")
+    checkClose(squeezed.sameTrackPush?.amount ?? -1, 2, "腾出差的那 2 秒")
+
+    // 正好 5 秒的间隙能精确嵌进去（两段禁区只在端点相接，接点是合法落点）。
+    let exact = ClipDragPlan(
+        draggedID: aID,
+        draggedSpan: TimelineSpan(start: 0, end: 5),
+        members: [member(aID, 0, 5, obstacles: [
+            TimelineSpan(start: 10, end: 13), TimelineSpan(start: 18, end: 20)
+        ])],
+        candidates: [],
+        magnet: nil
+    )
+    checkClose(exact.resolve(desiredDelta: 13.5, pixelsPerSecond: pps).delta, 13,
+               "5 秒的块正好嵌进 5 秒的间隙")
+}
+
+do {
+    // 端到端：磁吸关掉的主轨，把末尾的块直接拖进前面两块之间的间隙 ——
+    // 这正是「以前必须先挪去画中画再挪回来」的那个场景。
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 5)
+    let b = clip(start: 12, duration: 5)
+    let tail = clip(start: 20, duration: 6)
+    state.mainClips = [a, b, tail]
+
+    let run = performDrag(state, dragged: tail.id, moving: [tail.id], desiredDelta: -14)
+    checkClose(run.state.clip(with: tail.id)?.timelineStart ?? -1, 6,
+               "末尾的块直接落进中间的间隙（6 秒块落在 [5,12] 间隙的就近接触面）")
+    check(run.state.mainClips.map(\.id) == [a.id, tail.id, b.id],
+          "主轨数组顺序跟着时间顺序走")
+}
+
+// MARK: - 25. 磁吸插空的占位框：起点和宽度都来自最终数组
+
+do {
+    let a = clip(start: 0, duration: 10)
+    let b = clip(start: 20, duration: 10)
+    let moving = clip(start: 40, duration: 6)
+    let insertion = TimelineSnap.mainInsertion(among: [a, b], moving: [moving], draggedCenter: 12)
+    checkClose(insertion.time, 10, "插在两段中间")
+    checkClose(insertion.duration, 6, "占位框和素材等长")
+
+    let m2 = clip(start: 50, duration: 4)
+    let group = TimelineSnap.mainInsertion(among: [a, b], moving: [moving, m2], draggedCenter: 12)
+    checkClose(group.duration, 10, "多选整组：占位框 = 组内各段之和（无转场时）")
+
+    let empty = TimelineSnap.mainInsertion(among: [a], moving: [], draggedCenter: 0)
+    checkClose(empty.duration, 0, "没有主轨成员在动：宽度为 0，不画框")
+}
+
+// MARK: - 26. 跨轨占位框不许说谎：预览的落点 = 松手后的落点
+//
+// 预览（crossTrackLandingSpan）和落地（relocateClip）共用 avoidingOverlap /
+// mainInsertion 这两份核心。这里端到端对表：框指哪儿，松手就落哪儿。
+
+do {
+    // 自由落点：目标画中画轨 [6,11] 有占位，预览和落地都该让到 11。
+    var state = TimelineState()
+    let dragged = clip(start: 0, duration: 5)
+    let blocker = clip(start: 6, duration: 5)
+    state.mainClips = [dragged]
+    state.overlayTracks = [EditLane(clips: [blocker])]
+
+    guard let plan = ClipDragPlan.make(
+        in: state, draggedID: dragged.id, movingIDs: [dragged.id],
+        candidates: [], magnetMain: false
+    ) else { print("FAIL 造不出计划"); exit(1) }
+    let resolution = plan.resolve(desiredDelta: 6, pixelsPerSecond: pps)
+    let ghost = state.crossTrackLandingSpan(
+        plan: plan, delta: resolution.delta, target: .overlay(0), magnet: false
+    )
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: .overlay(0), magnet: false)
+    checkClose(ghost.start, next.clip(with: dragged.id)?.timelineStart ?? -1,
+               "占位框指哪儿，松手就落哪儿")
+    checkClose(ghost.duration, 5, "占位框和素材等长")
+}
+
+do {
+    // 磁吸主轨：从画中画拖回主轨，占位框 = mainInsertion 的缝（含宽度）。
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 10)
+    let b = clip(start: 10, duration: 10)
+    let dragged = clip(start: 2, duration: 6)
+    state.mainClips = [a, b]
+    state.overlayTracks = [EditLane(clips: [dragged])]
+
+    guard let plan = ClipDragPlan.make(
+        in: state, draggedID: dragged.id, movingIDs: [dragged.id],
+        candidates: [], magnetMain: false
+    ) else { print("FAIL 造不出计划"); exit(1) }
+    let resolution = plan.resolve(desiredDelta: 10, pixelsPerSecond: pps)
+    let ghost = state.crossTrackLandingSpan(
+        plan: plan, delta: resolution.delta, target: .main, magnet: true
+    )
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: .main, magnet: true)
+    next.packMain()   // perform 之后那一次重排（幂等）
+    checkClose(ghost.start, next.clip(with: dragged.id)?.timelineStart ?? -1,
+               "磁吸主轨的占位框也不许说谎")
+    checkClose(ghost.duration, 6, "宽度 = 素材时长")
+}
+
+do {
+    // 开新轨（没有障碍）：占位框就是「起点 + delta」夹在下界上。
+    var state = TimelineState()
+    let dragged = clip(start: 3, duration: 4)
+    state.mainClips = [dragged]
+
+    guard let plan = ClipDragPlan.make(
+        in: state, draggedID: dragged.id, movingIDs: [dragged.id],
+        candidates: [], magnetMain: false
+    ) else { print("FAIL 造不出计划"); exit(1) }
+    let resolution = plan.resolve(desiredDelta: 5, pixelsPerSecond: pps)
+    let ghost = state.crossTrackLandingSpan(
+        plan: plan, delta: resolution.delta, target: .newOverlayTop, magnet: false
+    )
+    var next = state
+    next.applyDrag(plan, resolution: resolution, crossTrack: .newOverlayTop, magnet: false)
+    checkClose(ghost.start, next.clip(with: dragged.id)?.timelineStart ?? -1,
+               "开新轨的占位框 = 落地位置")
+}
+
+// MARK: - 27. 塞进装不下的间隙：落在间隙起点，右侧让位（2026-08-23，用户反馈）
+//
+// 场景：主轨排满、只有一块比素材短的间隙，磁吸关着。老逻辑「装不下不给进」
+// 让块彻底动弹不得，用户只能借道画中画（还会落成重叠）。现在指针中心悬在
+// 这种间隙上就落在间隙起点，右侧内容自动右移腾出差的那截 —— 只推本轨，
+// 与定格插入同款范围。
+
+do {
+    // L=[0,10]、间隙 [10,15]（5s）、R=[15,25]、被拖的 D=[25,31]（6s，装不下）。
+    var state = TimelineState()
+    let l = clip(start: 0, duration: 10)
+    let r = clip(start: 15, duration: 10)
+    let d = clip(start: 25, duration: 6)
+    state.mainClips = [l, r, d]
+
+    // 中心对准间隙（12.5s）：desired = 12.5 - (25 + 3) = -15.5。
+    let run = performDrag(state, dragged: d.id, moving: [d.id], desiredDelta: -15.5)
+    checkClose(run.resolution.delta, -15, "落点 = 间隙起点 10（delta -15）")
+    checkClose(run.resolution.sameTrackPush?.amount ?? -1, 1, "要腾 6-5=1 秒")
+    checkClose(run.state.clip(with: d.id)?.timelineStart ?? -1, 10, "D 落在间隙起点")
+    checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 16, "R 让位 1 秒")
+    checkClose(run.state.clip(with: l.id)?.timelineStart ?? -1, 0, "间隙左边的不动")
+    check(run.state.mainClips.map(\.id) == [l.id, d.id, r.id], "数组顺序 = 时间顺序")
+}
+
+do {
+    // 排满 + 小间隙的「彻底拖不动」场景：D 被夹在中间也一样塞得进。
+    var state = TimelineState()
+    let a = clip(start: 0, duration: 8)
+    let gapAfterA = 4.0   // 间隙 [8,12]，4 秒
+    let b = clip(start: 12, duration: 8)
+    let d = clip(start: 20, duration: 6)   // 紧贴 B，6 秒 > 4 秒
+    let e = clip(start: 26, duration: 8)   // 紧贴 D
+    state.mainClips = [a, b, d, e]
+    _ = gapAfterA
+
+    // 中心对准间隙（10s）：desired = 10 - 23 = -13。
+    let run = performDrag(state, dragged: d.id, moving: [d.id], desiredDelta: -13)
+    checkClose(run.state.clip(with: d.id)?.timelineStart ?? -1, 8, "被夹住的块也能塞进间隙")
+    checkClose(run.state.clip(with: b.id)?.timelineStart ?? -1, 14, "B 让位 2 秒")
+    checkClose(run.state.clip(with: e.id)?.timelineStart ?? -1, 28, "D 右边的 E 也顺推 2 秒")
+    checkClose(run.state.clip(with: a.id)?.timelineStart ?? -1, 0, "间隙左边的 A 不动")
+}
+
+do {
+    // 间隙装得下（≥ 素材）就走普通间隙落点，不触发让位。
+    var state = TimelineState()
+    let l = clip(start: 0, duration: 10)
+    let r = clip(start: 18, duration: 10)   // 间隙 [10,18] = 8s
+    let d = clip(start: 28, duration: 6)
+    state.mainClips = [l, r, d]
+
+    let run = performDrag(state, dragged: d.id, moving: [d.id], desiredDelta: -17)
+    check(run.resolution.sameTrackPush == nil, "装得下的间隙不用腾位置")
+    checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 18, "邻居一动不动")
+    let landed = run.state.clip(with: d.id)?.timelineStart ?? -1
+    check(landed >= 10 - 0.001 && landed <= 12 + 0.001, "块落在间隙里，实得 \(landed)")
+}
+
+do {
+    // 跨轨落地时忽略让位：块去了别的轨，本轨不许平白多出一个洞。
+    var state = TimelineState()
+    let l = clip(start: 0, duration: 10)
+    let r = clip(start: 15, duration: 10)
+    let d = clip(start: 25, duration: 6)
+    state.mainClips = [l, r, d]
+
+    let run = performDrag(
+        state, dragged: d.id, moving: [d.id], desiredDelta: -15.5,
+        crossTrack: .newOverlayTop
+    )
+    checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 15,
+               "跨轨走了就不推本轨的邻居")
+    check(run.state.overlayTracks.count == 1, "块落在新画中画轨上")
+}
+
+do {
+    // 音频轨同样适用（规则挂在自由落点模式上，不挑轨道类型）。
+    var state = TimelineState()
+    let l = EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 10, timelineStart: 0)
+    let r = EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 10, timelineStart: 14)
+    let d = EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 6, timelineStart: 24)
+    state.audioTracks = [EditLane(clips: [l, r, d])]
+
+    let run = performDrag(state, dragged: d.id, moving: [d.id], desiredDelta: -15)
+    checkClose(run.state.clip(with: d.id)?.timelineStart ?? -1, 10, "音频块塞进音轨的间隙")
+    checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 16, "右边的音频让位 2 秒")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

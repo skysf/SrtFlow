@@ -242,6 +242,53 @@ func main() async {
         check(abs(produced - 132) <= 2, "\(name) 应出约 132 帧（实得 \(produced)）")
     }
 
+    // MARK: 每一种转场都要能真出片
+    //
+    // xfadeName 是手写映射：拼错一个名字、或哪天换了一份不带该 transition 的
+    // ffmpeg，都是配置滤镜图阶段直接 EINVAL —— 用户看到的是「别的转场都行，
+    // 就这一种一导就失败」。逐种真跑最小时间线（两段 2s 叠 0.5s）。
+    for transition in ClipTransition.allCases where transition != .none {
+        var state = TimelineState()
+        state.frameRate = .fps24
+        state.canvasRatio = .wide16x9
+        state.mainClips = [
+            EditClip(
+                sourceURL: audioSrc, sourceDuration: 2, timelineStart: 0,
+                transitionAfter: transition, transitionDuration: 0.5, info: audioInfo
+            ),
+            EditClip(sourceURL: audioSrc, sourceDuration: 2, timelineStart: 1.5, info: audioInfo),
+        ]
+        let output = root.appendingPathComponent("transition-\(transition.rawValue).mp4")
+        let plan: VideoEditExportGraph.Plan
+        do {
+            plan = try await VideoEditExportGraph.plan(
+                state: state,
+                settings: VideoEncodeSettings(),
+                subtitleStyle: BurnInStyle(name: "check"),
+                subtitleFontURL: nil,
+                output: output
+            )
+        } catch {
+            check(false, "转场 \(transition.rawValue) 的 plan() 失败：\(error)")
+            continue
+        }
+        defer { try? FileManager.default.removeItem(at: plan.workspace) }
+
+        guard let xfade = transition.xfadeName else {
+            check(false, "转场 \(transition.rawValue) 缺 xfade 名字")
+            continue
+        }
+        check(plan.arguments.joined(separator: " ").contains("xfade=transition=\(xfade)"),
+              "转场 \(transition.rawValue) 的滤镜图里应有 xfade=transition=\(xfade)")
+        let (code, out) = run(ffmpegPath, plan.arguments)
+        check(code == 0, "转场 \(transition.rawValue) 的 ffmpeg 执行失败：\(out.suffix(300))")
+        guard code == 0 else { continue }
+        // 2+2 秒叠掉 0.5 秒 = 3.5 秒 × 24fps = 84 帧
+        let produced = frameCount(plan.tempOutput)
+        check(abs(produced - 84) <= 2,
+              "转场 \(transition.rawValue) 应出约 84 帧（实得 \(produced)）")
+    }
+
     print("\(checks) checks, \(failures) failures")
     print("实测帧数：\(measured.sorted { $0.key < $1.key }.map { "\($0.key)fps→\($0.value)帧" }.joined(separator: "  "))")
     if failures == 0 { print("All checks passed") }

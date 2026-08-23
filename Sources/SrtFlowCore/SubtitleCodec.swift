@@ -270,10 +270,14 @@ public enum SubtitleSerializer {
 
     static func serializeSRT(_ doc: SubtitleDocumentModel) -> String {
         var out = ""
-        for (index, cue) in doc.cues.enumerated() {
-            out += "\(index + 1)\n"
+        var index = 0
+        for cue in doc.cues {
+            let lines = blockLines(cue.text)
+            guard !lines.isEmpty else { continue }
+            index += 1
+            out += "\(index)\n"
             out += "\(Timecode.formatMillis(cue.start, separator: ",")) --> \(Timecode.formatMillis(cue.end, separator: ","))\n"
-            out += plainText(cue.text) + "\n\n"
+            out += lines.joined(separator: "\n") + "\n\n"
         }
         return out
     }
@@ -281,8 +285,10 @@ public enum SubtitleSerializer {
     static func serializeVTT(_ doc: SubtitleDocumentModel) -> String {
         var out = "WEBVTT\n\n"
         for cue in doc.cues {
+            let lines = blockLines(cue.text)
+            guard !lines.isEmpty else { continue }
             out += "\(Timecode.formatMillis(cue.start, separator: ".")) --> \(Timecode.formatMillis(cue.end, separator: "."))\n"
-            out += plainText(cue.text) + "\n\n"
+            out += lines.joined(separator: "\n") + "\n\n"
         }
         return out
     }
@@ -294,10 +300,43 @@ public enum SubtitleSerializer {
         }
         var out = ""
         for cue in doc.cues {
+            let lines = blockLines(cue.text)
+            guard !lines.isEmpty else { continue }
             out += "\(Timecode.formatMillis(cue.start, separator: ",")) --> \(Timecode.formatMillis(cue.end, separator: ","))\n"
-            out += plainText(cue.text) + "\n\n"
+            out += lines.joined(separator: "\n") + "\n\n"
         }
         return out
+    }
+
+    /// SRT/VTT 这类块格式里，空行是 cue 之间的分隔符 —— cue 文本自己带的空行
+    /// 写出去会把这条 cue 劈成两块（后半没有时间行，回读时被整段丢掉）；
+    /// 通篇为空的 cue 写出去则只剩一个孤零零的时间行。所以写盘前统一算一遍
+    /// 「真正落进块里的行」：去 ASS 标签、拆行、丢掉空白行。
+    /// 编辑器允许空文本 cue 存在（新建、拆分的后半都是空的），跳过是写盘的事，
+    /// 不改模型。
+    static func blockLines(_ text: String) -> [String] {
+        plainText(text)
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+    }
+
+    /// `serialize(_:format:)` 的产物回读后应有的 cue 数 —— 写盘校验必须问这里，
+    /// 不得在调用方按 `text.isEmpty` 之类的判据自己再算一份（两份规则一旦分叉，
+    /// 校验就会把好文件报成坏的，2026-08-22 案例）。
+    public static func emittedCueCount(_ doc: SubtitleDocumentModel, format: SubtitleFormat) -> Int {
+        switch format {
+        case .srt, .vtt:
+            return doc.cues.filter { !blockLines($0.text).isEmpty }.count
+        case .text:
+            // 无时间模式逐行写、回读逐行成 cue：一条多行 cue 会变成多条。
+            if doc.cues.allSatisfy({ $0.start == 0 && $0.end == 0 }) {
+                return doc.cues.reduce(0) { $0 + blockLines($1.text).count }
+            }
+            return doc.cues.filter { !blockLines($0.text).isEmpty }.count
+        case .ass, .ssa:
+            // Dialogue 行不怕空文本，逐条照写、逐条读回。
+            return doc.cues.count
+        }
     }
 
     // MARK: - ASS / SSA

@@ -112,7 +112,10 @@ public enum SubtitleExportPlanner {
         try Data(content.utf8).write(to: temp, options: .atomic)
         let readBack = try String(contentsOf: temp, encoding: .utf8)
         let parsed = SubtitleParser.parse(readBack, format: format, filename: url.lastPathComponent)
-        let expected = output.cues.filter { !$0.text.isEmpty }.count
+        // 期望数只能问序列化器（它知道哪些 cue 会被跳过）。在这里按 text.isEmpty
+        // 自己算过一份：空 cue 序列化后只剩时间行、回读仍算一条，两边差 1，
+        // 好文件被报成 "verification failed"（2026-08-22 案例）。
+        let expected = SubtitleSerializer.emittedCueCount(output, format: format)
         guard parsed.cues.count == expected else {
             throw WriteError(
                 message: "Subtitle file verification failed for “\(url.lastPathComponent)”."

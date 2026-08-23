@@ -463,7 +463,7 @@ final class VideoEditProject: ObservableObject {
         )
         let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
         // 形状行允许重叠，形状自己没有障碍；跟着走的剪辑要带上各自轨上的障碍，
-        // 整组的可行位移由所有成员一起决定（`allowedDeltaRange`）。
+        // 整组的可行位移由所有成员一起决定（`fittedDelta`）。
         let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .shape)]
             + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
         return ClipDragPlan(
