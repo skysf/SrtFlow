@@ -58,8 +58,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
    `LenientCodableEnum`、`liveApply` / `perform`。
 3. **控制单文件体积。** 新类型或新功能默认按职责开新文件。单文件超过约 800 行即为
    警戒线；改到超标文件时，可顺手拆出职责独立的部分，但不要借题做一次性大重构。
-   当前待瘦身：`VideoEditTimelineView.swift`、`VideoEditProject.swift`、
-   `VideoEditModels.swift`。
+   当前待瘦身：`VideoEditProject.swift`、`VideoEditModels.swift`、
+   `VideoEditCompositionBuilder.swift`。
+   时间线视图已于 2026-09-18 按职责拆成一族文件（`VideoEditTimeline*.swift`，
+   分工写在 `VideoEditTimelineView.swift` 顶部），**单文件 800 行的上限由
+   `checks/timeline-drag-wiring.sh` 第 0 节钉住**，别再往里堆。
 
 ### 验证纪律
 
@@ -92,6 +95,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 轨道模型、时间线行结构、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md) |
 | 画面渐入渐出、alpha 斜坡、转场仲裁 | [画面渐入渐出](docs/architecture/video-fades.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
+| 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出 | [画面文字](docs/architecture/text-overlays.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、音频滤镜链、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
@@ -118,6 +122,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 预览合成真取帧：`scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
+- 入场/出场动画的两条管线对账（预览取帧 vs 真导出抽帧）：`scripts/check-clip-animation.sh`。
 - 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧）：
   `scripts/check-video-fade.sh`。
 - 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
@@ -152,6 +157,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   已知代价。
 - [转场库扩充](docs/plans/2026-08-23-transition-library.md) — 推移/擦除 8 种新转场的
   选型约束（预览斜坡能精确表达才收）与悬停预览选择器。
+- [画面段的入场/出场动画](docs/plans/2026-09-18-clip-animation.md) — 产品决策（效果清单、
+  吞掉画面渐变、不露边口径）、选型约束与分刀。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -166,6 +173,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
 - [声音：音量与渐入渐出](docs/architecture/audio-fades.md) — 唯一夹紧点、转场仲裁、dB 换算、只换 audioMix 的快路径。
 - [画面渐入渐出](docs/architecture/video-fades.md) — 渐变露出的是下一层、alpha 斜坡两条管线同账、与声音共用的夹紧规则。
+- [画面段的入场 / 出场动画](docs/architecture/clip-animation.md) — 五种效果都落在三种斜坡上、效果与画面渐变共用一个槽（老工程零迁移）、铺满画布不露边的补偿、逐帧效果走预渲染的代价。
 - [视频轨对等化](docs/architecture/video-tracks.md) — 取消画中画、一轨一色、⌥ 点击穿透，以及尚未对齐的两项。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
@@ -219,6 +227,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-08-22 带空 cue 的工程字幕文件导不出](docs/bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md) — 「哪些 cue 会被写出去」只能是序列化器一份账，校验在调用方另算一份就会把好文件报成坏的；块格式里空行是结构字符，cue 文本要先消毒。
 - [2026-08-22 编辑译文退格删字整条 cue 消失](docs/bugfixes/2026-08-22-subtitle-editing-backspace-deletes-cue.md) — 「第一响应者是文本视图」判不住所有正在打字的时刻，全局快捷键要给字幕草稿让路；⌫ 的每条到达路径（monitor / onDeleteCommand）都得堵。
 - [2026-08-23 提示悬浮在打开文件对话框上](docs/bugfixes/2026-08-23-tooltip-survives-open-panel.md) — 靠 hover 退出维护的状态必须假设退出事件永远不来（模态/键盘触发）；打断信号（mouseDown / keyDown / resignKey）才是兜底。
+- [2026-09-18 轨道一多就没法上下滚](docs/bugfixes/2026-09-18-timeline-cannot-scroll-vertically.md) — 时间线改双向滚动；轨道头列/标尺各自钉住且只有它们订阅滚动量；裸 VStack 会替整条界面要高度，把工具栏挤出窗口。
+- [2026-09-18 框选的框不跟鼠标](docs/bugfixes/2026-09-18-marquee-anchored-at-stale-scroll-offset.md) — 手势要用的量必须现读 NSScrollView，preference/@State 这类异步观察值在起手那一拍还是旧的；全时间线只有框选用绝对坐标，所以只有它会露馅。
+- [2026-09-18 预渲染烤进了该让位的渐变](docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md) — 临时时间线没有邻居，任何依赖邻居的仲裁都必须由调用方算好传进去；仲裁只能有一处。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

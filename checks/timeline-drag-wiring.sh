@@ -10,7 +10,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# 时间线视图在 2026-09-18 按职责拆成了一族文件（拆分前单文件 2101 行）。
+# 每条检查都钉在**它该在的那个文件**上：路径写错 = 守卫扫了个空文件还是绿的，
+# 所以下面先逐个确认文件在，缺一个立刻红。
 VIEW="Sources/SrtFlow/VideoEditTimelineView.swift"
+MARQUEE_VIEW="Sources/SrtFlow/VideoEditTimelineMarqueeGesture.swift"
+DRAG_WIRING="Sources/SrtFlow/VideoEditTimelineDragWiring.swift"
+CLIP_BLOCK="Sources/SrtFlow/VideoEditTimelineClipBlock.swift"
+SHAPE_ROW="Sources/SrtFlow/VideoEditTimelineShapeRow.swift"
+TEXT_ROW="Sources/SrtFlow/VideoEditTimelineTextRow.swift"
+SUBTITLE_ROW="Sources/SrtFlow/VideoEditTimelineSubtitleRow.swift"
+RULER="Sources/SrtFlow/VideoEditTimelineRuler.swift"
+THUMBS="Sources/SrtFlow/VideoEditTimelineThumbnails.swift"
+WAVEFORM="Sources/SrtFlow/VideoEditTimelineWaveform.swift"
+ZOOM="Sources/SrtFlow/VideoEditTimelinePinchZoom.swift"
+GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
+HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
+# 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
+TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
+  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
+  "$HEADER_COLUMN")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -31,6 +50,12 @@ extract_func() {
   ' "$2"
 }
 
+# 只看**真代码行**：注释里写了同一串不算接上了（第 10 节反向验证时踩过一次
+# 假绿 —— 文件头的说明文字里正好有那行代码的样子）。
+grep_code() {
+  grep -n "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .
+}
+
 require_func() {
   local body
   body="$(extract_func "$1" "$2")"
@@ -41,9 +66,22 @@ require_func() {
   printf '%s\n' "$body"
 }
 
+# ── 0. 拆分后的文件都必须在，且都不许再长回「什么都往里塞」的那种体积 ──
+# 这一族本来是一个 2101 行的文件，谁都不敢动。拆完之后守卫得自己盯住两件事：
+# 路径别失效（扫空文件 = 假绿），单文件别再超过仓库约 800 行的警戒线。
+for file in "${TIMELINE_VIEWS[@]}"; do
+  if [ ! -f "${file}" ]; then
+    fail "找不到 ${file}：时间线视图这一族的文件被改名/删了，守卫会扫空 —— 同步改这里"
+    continue
+  fi
+  LINES="$(wc -l < "${file}" | tr -d ' ')"
+  [ "${LINES}" -le 800 ] \
+    || fail "${file} 已经 ${LINES} 行，超过 800 行警戒线：按职责再拆一刀，别让它长回老样子"
+done
+
 # ── 1. 正在被拖 / 被裁的块必须豁免那条 0.12s 重排动画 ─────────────────
 # 漏掉任一半，块画出来的就是「低通滤波后的鼠标」——手越快落后越多。
-ANIM="$(grep -n '\.animation(.*value: clip\.timelineStart' "$VIEW" || true)"
+ANIM="$(grep -n '\.animation(.*value: clip\.timelineStart' "$CLIP_BLOCK" || true)"
 if [ -z "$ANIM" ]; then
   fail "找不到剪辑块那条 .animation(..., value: clip.timelineStart)，接线守卫失去目标"
 else
@@ -54,7 +92,7 @@ fi
 # ── 2. 拖动过程中一个字都不许写进 TimelineState ────────────────────────
 # 每一拍改 state 会连带整个编辑器视图树重建 + 重挂自动保存，mouseDragged
 # 随即积压，块就追不上光标了。
-if UPDATE_BODY="$(require_func 'private func updateClipDrag' "$VIEW")"; then
+if UPDATE_BODY="$(require_func 'func updateClipDrag' "$DRAG_WIRING")"; then
   for forbidden in 'liveApply' 'liveMove' 'commitDrag' 'commitFreeDrag' 'relocate' 'project.perform'; do
     printf '%s\n' "$UPDATE_BODY" | grep -q "$forbidden" \
       && fail "updateClipDrag 里出现了 ${forbidden}：拖动中禁止写 TimelineState"
@@ -65,8 +103,8 @@ if UPDATE_BODY="$(require_func 'private func updateClipDrag' "$VIEW")"; then
 fi
 
 # ── 3. 一轮拖动的输入必须在手势开始时冻结 ──────────────────────────────
-for entry in 'private func beginClipDrag' 'private func beginShapeDrag' 'private func beginCueDrag'; do
-  if BODY="$(require_func "$entry" "$VIEW")"; then
+for entry in 'func beginClipDrag' 'func beginShapeDrag' 'func beginCueDrag'; do
+  if BODY="$(require_func "$entry" "$DRAG_WIRING")"; then
     printf '%s\n' "$BODY" | grep -q '[dD]ragPlan(' \
       || fail "${entry} 没有冻结这一轮的输入（dragPlan/shapeDragPlan）"
   fi
@@ -171,7 +209,7 @@ fi
 # 和拖块同一条约束。每一拍写 @Published 的选择会连带预览区、检查器、所有块
 # 连同缩略图与波形重建，还要重挂一次自动保存，框立刻跟不上光标。
 for entry in 'private func updateMarquee' 'private func applyMarqueePoint'; do
-  if BODY="$(require_func "$entry" "$VIEW")"; then
+  if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
     for forbidden in 'applyBoxSelection' 'project.select' 'clearSelection' 'project.perform' 'liveApply'; do
       printf '%s\n' "$BODY" | grep -q "$forbidden" \
         && fail "${entry} 里出现了 ${forbidden}：拖框中禁止写 project"
@@ -179,15 +217,19 @@ for entry in 'private func updateMarquee' 'private func applyMarqueePoint'; do
   fi
 done
 # 落地只有一次，且只在松手那一下。
-if BODY="$(require_func 'private func endMarquee' "$VIEW")"; then
+if BODY="$(require_func 'private func endMarquee' "$MARQUEE_VIEW")"; then
   COUNT="$(printf '%s\n' "$BODY" | grep -c 'applyBoxSelection' || true)"
   [ "$COUNT" -eq 1 ] || fail "endMarquee 里有 ${COUNT} 处 applyBoxSelection，应当正好 1 处"
 fi
 # 拖框中的高亮必须走「看框不看模型」的那个助手，绕过去就没有实时反馈了。
 grep -q 'isSelected: isSelected(clip: clip.id)' "$VIEW" \
   || fail "剪辑块的选中态没走 isSelected(clip:)：拖框中不会实时高亮"
-grep -q 'isSelected: isSelected(shape: shape.id)' "$VIEW" \
+grep -q 'isSelected: isSelected(shape: shape.id)' "$SHAPE_ROW" \
   || fail "形状块的选中态没走 isSelected(shape:)：拖框中不会实时高亮"
+grep -q 'isSelected: isSelected(text: overlay.id)' "$TEXT_ROW" \
+  || fail "文字块的选中态没走 isSelected(text:)：拖框中不会实时高亮"
+grep -q 'isSelected(cue: cue.id)' "$SUBTITLE_ROW" \
+  || fail "字幕 cue 的选中态没走 isSelected(cue:)：拖框中不会实时高亮"
 # 混选只能从 selectBox 这一个入口进来。
 OTHER_BOX="$(grep -rn 'selectBox(' Sources/SrtFlow --include='*.swift' \
   | grep -v 'VideoEditSelection.swift' \
@@ -198,7 +240,7 @@ OTHER_BOX="$(grep -rn 'selectBox(' Sources/SrtFlow --include='*.swift' \
 # 块自己会在手指底下挪窝（.offset），边缘自动滚动还会把整块内容抽走，
 # 两者都会污染以块自身为参照的 translation。
 # 光查「有没有写 coordinateSpace:」是假绿 —— 写成 .local 一样能绿。
-GESTURE="$(grep -n 'DragGesture(minimumDistance: 4' "$VIEW" || true)"
+GESTURE="$(grep -n 'DragGesture(minimumDistance: 4' "${TIMELINE_VIEWS[@]}" || true)"
 if [ -z "$GESTURE" ]; then
   fail "找不到块的移动手势，接线守卫失去目标"
 else
@@ -210,7 +252,7 @@ fi
 # 三类块都要真的把移动手势接上：剪辑、形状、字幕 cue。少一类，「拖任意一个被
 # 选中的东西，整片跟着走」对那一类就是空话 —— cue 就这么漏过一轮（复审第 3 条）。
 # 不用「数手势个数」：容器上还挂着拉框手势，数得出来的绿是假绿。
-if BODY="$(require_func 'private func subtitleRow' "$VIEW")"; then
+if BODY="$(require_func 'func subtitleRow' "$SUBTITLE_ROW")"; then
   printf '%s\n' "$BODY" | grep -q 'DragGesture(minimumDistance: 4' \
     || fail "字幕 cue 块没有移动手势：从 cue 起手拖不动整组"
   printf '%s\n' "$BODY" | grep -q 'beginCueDrag(' \
@@ -231,13 +273,13 @@ if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
   printf '%s\n' "$BODY" | grep -q 'movingCueID = nil' \
     || fail "onDisappear 没清 movingCueID：下一次拖同一条 cue 会失效一次"
 fi
-grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$VIEW" \
+grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$SHAPE_ROW" \
   || fail "形状块没有接上 beginShapeDrag"
 grep -q 'beginClipDrag(' "$VIEW" || fail "剪辑块没有接上 beginClipDrag"
 
 # ── 5b. 框选的纵向命中必须按「画出来的块」算，不是整行 ─────────────────
 # 字幕/形状块在行内上下都留了白，按整行判的话框从留白里扫过也会选中。
-if BODY="$(require_func 'private func marqueeRows' "$VIEW")"; then
+if BODY="$(require_func 'private func marqueeRows' "$MARQUEE_VIEW")"; then
   for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
     printf '%s\n' "$BODY" | grep -q "TimelineMarquee.${constant}" \
       || fail "marqueeRows 没用 TimelineMarquee.${constant}：框选纵向又按整行判了"
@@ -245,20 +287,20 @@ if BODY="$(require_func 'private func marqueeRows' "$VIEW")"; then
 fi
 # 画块的地方必须读同一批常量，否则「画」和「判」还是会分叉。
 for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
-  COUNT="$(grep -c "TimelineMarquee.${constant}" "$VIEW" || true)"
+  COUNT="$(grep -h -c "TimelineMarquee.${constant}" "${TIMELINE_VIEWS[@]}" | paste -sd+ - | bc)"
   [ "$COUNT" -ge 2 ] || fail "TimelineMarquee.${constant} 在视图里只用了 ${COUNT} 处：画和判没共用"
 done
 
 # ── 6. 缩放只有一个会夹范围的入口 ──────────────────────────────────────
 # pps 掉到 1 以下时，位移换算会被 max(pps, 1) 兜底，1:1 跟手当场坏掉。
-grep -n 'pixelsPerSecond.wrappedValue = ' "$VIEW" | grep -vq 'clamped' \
+grep -n 'pixelsPerSecond.wrappedValue = ' "$ZOOM" | grep -vq 'clamped' \
   && fail "捏合直接给 pixelsPerSecond 赋了未夹的值"
 grep -rn 'project.pixelsPerSecond = \|pixelsPerSecond = min(\|pixelsPerSecond = max(' Sources/SrtFlow/VideoEditView.swift \
   && fail "工具栏绕开了 setPixelsPerSecond 这个唯一缩放入口"
 
 # ── 7. 自动滚动的心跳必须有取消兜底 ────────────────────────────────────
 grep -q 'deinit' "$DRAG" || fail "TimelineAutoScroller 没有 deinit 兜底，timer 可能永远留在 RunLoop 上"
-grep -q 'dismantleNSView' "$DRAG" || fail "滚动视图参照物没有 dismantleNSView：视图树拆掉后心跳还在跑"
+grep -q 'dismantleNSView' "$GEOMETRY" || fail "滚动视图参照物没有 dismantleNSView：视图树拆掉后心跳还在跑"
 grep -q 'onDisappear' "$VIEW" || fail "时间线没有 onDisappear：视图消失时自动滚动不会停"
 
 # ── 8. 块内装饰内容不吃事件 ────────────────────────────────────────────
@@ -275,21 +317,108 @@ extract_struct() {
     inside && /^\}$/ { exit }
   ' "$2"
 }
-for deco in 'struct ThumbnailStripView' 'struct WaveformView'; do
-  BODY="$(extract_struct "$deco" "$VIEW")"
+for deco in "struct ThumbnailStripView:${THUMBS}" "struct WaveformView:${WAVEFORM}"; do
+  DECO_FILE="${deco##*:}"
+  DECO_NAME="${deco%:*}"
+  BODY="$(extract_struct "$DECO_NAME" "$DECO_FILE")"
   if [ -z "$BODY" ]; then
-    fail "找不到 ${deco}（在 $VIEW），装饰命中守卫失去目标 —— 改名了就同步改这里"
+    fail "找不到 ${DECO_NAME}（在 ${DECO_FILE}），装饰命中守卫失去目标 —— 改名了就同步改这里"
   else
     printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
-      || fail "${deco} 没有 allowsHitTesting(false)：scaledToFill 的隐形溢出会把标尺/空白变成块的命中区"
+      || fail "${DECO_NAME} 没有 allowsHitTesting(false)：scaledToFill 的隐形溢出会把标尺/空白变成块的命中区"
   fi
 done
-if BODY="$(extract_func 'private var keyframeMarkers' "$VIEW")"; then
+if BODY="$(extract_func 'private var keyframeMarkers' "$CLIP_BLOCK")"; then
   printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
     || fail "keyframeMarkers 没有 allowsHitTesting(false)：菱形会抢走块的点击"
+fi
+
+# ── 9. 滚动量只有一个来源：从 NSScrollView 现读 ────────────────────────
+# 框选是时间线上唯一用**绝对坐标**的手势：手势报的是指针在视口里的位置，框要画
+# 在滚动内容里，中间差的正是这一份滚动量。它以前由「GeometryReader → preference
+# → @State」异步喂过来，起手那一拍读到的可能还是上一次布局的值，框就整体画到
+# 指针左边、偏差正好等于当时的滚动量，滚得远一点框直接跑出视口 = 看起来「框选
+# 没反应」（docs/bugfixes/2026-09-18-marquee-anchored-at-stale-scroll-offset.md）。
+# 别的手势走 translation 这种相对量，同一个错误在它们身上自己抵消 —— 所以这条
+# 只能靠守卫钉住，出了事也只有框选看得见。
+[ -f "$GEOMETRY" ] || fail "找不到 ${GEOMETRY}：滚动量的现读入口没了"
+# 9a. 谁都不许再把滚动量缓存进视图状态，或退回 preference 那条异步链路。
+for file in "${TIMELINE_VIEWS[@]}"; do
+  [ -f "${file}" ] || continue
+  grep -n '@State.*scrollOffset' "${file}" \
+    && fail "${file} 又把滚动量缓存进了 @State：手势要的是现读值"
+done
+grep -rn 'TimelineScrollOffsetKey\|preference(\s*key: *TimelineScroll' Sources/SrtFlow --include='*.swift' \
+  && fail "滚动量又走回 preference 观察：那是异步的，起手那一拍会读到旧值"
+# 9b. 框选的锚点和当前点都必须现读（两处都要，只改一处 = 框会自己长歪）。
+for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
+  if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
+    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetX' \
+      || fail "${entry} 没有现读滚动量（scrollGeometry.offsetX）：框会偏出一个滚动量"
+  fi
+done
+# 9c. 四个拖动入口冻结的「起手滚动量」同样现读 —— 那个值和自动滚动中的现读值
+# 相减，差一点点就是块在自动滚动开始那一瞬间猛跳一段。
+COUNT="$(grep -c 'originScrollOffset: scrollGeometry\.offsetX' "$DRAG_WIRING" || true)"
+[ "$COUNT" -eq 4 ] \
+  || fail "拖动入口只有 ${COUNT} 处现读起手滚动量，应当 4 处（剪辑/形状/文字/字幕）"
+# 9d. 除了几何入口，谁都不许自己去摸滚动位置。捏合那条是按坐标 hitTest 现找的
+# 独立路径（事件监视器里拿不到视图树），暂时豁免。
+OTHER_SCROLLER="$(grep -rn 'contentView\.bounds\.origin\|clipView\.scroll(to:' Sources/SrtFlow --include='*.swift' \
+  | grep -v "^${GEOMETRY}:" | grep -v "^${ZOOM}:" || true)"
+[ -z "$OTHER_SCROLLER" ] \
+  || fail "滚动位置只能由 TimelineScrollGeometry 读/推：${OTHER_SCROLLER}"
+
+# ── 10. 纵向滚动：两处「钉住」必须同源，且只有它们订阅滚动量 ───────────
+# 轨道多到一屏放不下时时间线双向滚动（2026-09-18）。轨道头列在滚动区外、标尺在
+# 滚动内容里，两边各自减/加**同一个** `geometry.offset.y` 才能永远对得上。
+# 案例：docs/bugfixes/2026-09-18-timeline-cannot-scroll-vertically.md
+grep -q 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" \
+  || fail "时间线不是双向滚动了：轨道一多下面几条又会被整条裁掉"
+grep_code 'offset(y: -geometry\.offset\.y)' "$HEADER_COLUMN" \
+  || fail "轨道头列没跟着纵向滚动量走：它和轨道行会错开"
+grep_code 'offset(y: geometry\.offset\.y)' "$RULER" \
+  || fail "标尺没钉住：纵向滚动时刻度会跟着轨道一起滚走"
+# 轨道头列的固有高度是所有行加起来（十来条轨 500pt 往上）。直接摆进 HStack 的话
+# 整条时间线会按这个高度要地方，VSplitView 给不了，工具栏和标尺当场被挤出窗口。
+if BODY="$(require_func 'var body: some View' "$HEADER_COLUMN")"; then
+  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+    || fail "轨道头列又自己决定高度了：它必须画在弹性容器上，否则会把工具栏挤出窗口"
+fi
+# 订阅（@ObservedObject）只许出现在这两处：别处订阅 = 滚动的每一帧重建整棵
+# 时间线视图树（和第 0 节「拖动中不写 state」同一条理由，换了个轴）。
+SUBSCRIBERS="$(grep -ln '@ObservedObject var geometry: TimelineScrollGeometry' "${TIMELINE_VIEWS[@]}" || true)"
+EXPECTED="$(printf '%s\n%s\n' "$HEADER_COLUMN" "$RULER" | sort)"
+[ "$(printf '%s\n' "$SUBSCRIBERS" | sort)" = "$EXPECTED" ] \
+  || fail "订阅滚动量的不只是轨道头列和标尺：$SUBSCRIBERS"
+grep -q '@State var scrollGeometry = TimelineScrollGeometry()' "$VIEW" \
+  || fail "时间线主体必须用 @State 持有滚动几何（@StateObject/@ObservedObject 会订阅 → 每帧重建整棵树）"
+# 播放跟随只碰横向：scrollTo 的锚点是双轴的，会把正在看的下面几条轨拽回顶上。
+# （注释里提这个名字不算 —— 只看真代码行。）
+grep -rn 'scrollTo(' "${TIMELINE_VIEWS[@]}" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \
+  && fail "播放跟随又走回 ScrollViewProxy.scrollTo：那个锚点是双轴的，会把纵向位置一起拽走"
+# 没在推的那一轴一个字都不许碰：内容比视口窄时 SwiftUI 会居中（origin 是负的），
+# 顺手夹一下就会让整条时间线横着跳一大段。
+if BODY="$(require_func 'private func scroll(dx' "$GEOMETRY")"; then
+  printf '%s\n' "$BODY" | grep -q 'dx == 0 ? current.x' \
+    || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：纵向自动滚动那一拍会横着跳"
+  printf '%s\n' "$BODY" | grep -q 'dy == 0 ? current.y' \
+    || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：横向自动滚动那一拍会竖着跳"
+fi
+# 框选的两个端点在**两个轴**上都要补滚动量。
+for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
+  if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
+    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetY' \
+      || fail "${entry} 没补纵向滚动量：滚下去之后框会整体偏出一个纵向滚动量"
+  fi
+done
+# 跨轨判定要按「此刻露出来的是哪几条轨」算（纵向自动滚动期间指针不动、内容在滚）。
+if BODY="$(require_func 'func verticalTarget(' "$DRAG_WIRING")"; then
+  printf '%s\n' "$BODY" | grep -q 'originScrollOffsetY' \
+    || fail "verticalTarget 没补纵向滚动量：纵向自动滚出来的轨道永远选不中"
 fi
 
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：文件分工与体积 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"

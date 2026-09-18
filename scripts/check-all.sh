@@ -69,6 +69,8 @@ run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链）" scrip
 run_check "export-alpha-compositing（上层轨动画段 fill+matte）" scripts/check-export-alpha-compositing.sh
 run_check "audio-fade（渐入渐出真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
 run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
+# 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
+run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
 

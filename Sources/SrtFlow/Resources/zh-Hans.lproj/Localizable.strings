@@ -666,14 +666,11 @@
 /* 视频编辑：上层视频轨与画面渐变（2026-09-17） */
 "Add to Upper Track…" = "添加到上层轨道…";
 "Upper track clips" = "上层轨道片段";
-"Fade" = "画面渐变";
+"Fade" = "淡变";
 "Fade in" = "渐入";
 "Fade out" = "渐出";
-"Seconds for the picture to ramp up from fully transparent" = "渐入的秒数：画面从全透明升到原来的不透明度";
-"Seconds for the picture to ramp down to fully transparent" = "渐出的秒数：画面从原来的不透明度降到全透明";
 "On an upper track the clip fades to and from whatever is on the track below, not to black." = "在上层轨道上，这一段渐变到的是下面那条轨的画面，不是黑场。";
 "On the bottom track the clip fades to and from black." = "在最底下那条轨上，这一段渐变到的是黑场。";
-"A transition already cross-fades the picture at that seam, so the fade on that side is skipped." = "那个接缝上的转场已经在做画面交叉淡变，所以这一边的渐变不生效。";
 "Click again with Option held to select the clip underneath" = "按住 Option 再点一下，选中压在下面的那一段";
 
 /* 画面文字标注（2026-09-17） */
@@ -737,3 +734,19 @@
 "Start at" = "起手不透明度";
 "Focus starts fully opaque — like a camera pulling into focus." = "对焦从完全不透明起手 —— 像相机把焦点拉清楚。";
 "Focus fades in from nothing, so the camera-focus feel is gone." = "对焦从全透明淡进来，相机对焦那个味道就没了。";
+
+/* 画面段的入场 / 出场动画（2026-09-18，接管原「画面渐变」两行） */
+"Zoom" = "缓推";
+"How this clip comes in" = "这一段怎么进来";
+"How this clip goes out" = "这一段怎么出去";
+"On an upper track the clip animates over whatever is on the track below." = "在上层轨道上，动画露出来的是下面那条轨的画面。";
+"On the bottom track the clip animates over black." = "在最底下那条轨上，动画露出来的是黑场。";
+"In and out are longer than this clip, so both were shortened to fit." = "入场加出场比这一段还长，两边已经按比例收短了。";
+"A transition already covers that seam, so the in or out on that side is skipped." = "那个接缝上的转场已经接管了画面，所以这一边的入场/出场不生效。";
+"Animating a long clip makes exporting slower — the whole clip is re-rendered first." = "给长段加动画会让导出变慢 —— 导出前要先把整段重渲一遍。";
+
+/* 批量套用入场 / 出场动画（2026-09-18） */
+"Mixed" = "多个值";
+"Applies to all %d picture clips selected" = "会套用到选中的 %d 段画面";
+"How these clips come in" = "这些段怎么进来";
+"How these clips go out" = "这些段怎么出去";

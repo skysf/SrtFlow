@@ -140,30 +140,6 @@ enum VideoEditExportGraph {
             .appendingPathComponent("export-output")
             .appendingPathExtension(output.pathExtension)
 
-        // 关键帧动画的段：先用预览同一套合成渲成中间片（AnimatedClipPrerenderer），
-        // ffmpeg 图里当普通素材吃。主轨一条黑底 422；上层轨 fill+matte 两条
-        //（alphamerge 合回带 alpha 的流），细节见 AnimatedClipPrerenderer。
-        enum Prerendered {
-            case main(URL)
-            case overlay(fill: URL, matte: URL)
-        }
-        var prerendered: [UUID: Prerendered] = [:]
-        for clip in mainVisible where clip.isAnimated {
-            prerendered[clip.id] = .main(try await AnimatedClipPrerenderer.renderMain(
-                clip: clip, renderSize: renderSize, frameRate: state.frameRate,
-                    into: workspace, cancellation: cancellation
-            ))
-        }
-        for lane in overlayLanes {
-            for clip in lane.clips where clip.isAnimated && !clip.needsStillConversion {
-                let pair = try await AnimatedClipPrerenderer.renderOverlay(
-                    clip: clip, renderSize: renderSize, frameRate: state.frameRate,
-                    into: workspace, cancellation: cancellation
-                )
-                prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
-            }
-        }
-
         // 形状 → 整幅透明 PNG。
         var shapeFiles: [(shape: ShapeAnnotation, filename: String)] = []
         for (index, shape) in state.shapes.enumerated() {
@@ -279,6 +255,53 @@ enum VideoEditExportGraph {
         }
         if total > cursor + 0.01 {
             segments.append(MainSegment(clip: nil, duration: total - cursor))
+        }
+
+        // MARK: 逐帧动画段的预渲染
+        //
+        // 关键帧动画和预设入/出场（位移/缩放/擦除）的段：先用预览同一套合成渲成
+        // 中间片（AnimatedClipPrerenderer），ffmpeg 图里当普通素材吃。主轨一条
+        // 黑底 422；上层轨 fill+matte 两条（alphamerge 合回带 alpha 的流），
+        // 细节见 AnimatedClipPrerenderer。
+        //
+        // **必须排在分节之后**：中间片里要不要烤进头尾渐变，取决于这条接缝上有没有
+        // 转场，而那个判据只有分节表算得出来（转场只在两段真的首尾相叠时成立）。
+        // 预渲染的临时时间线里只有它自己、没有邻居，仲裁不做完就传进去的话，
+        // 本该让位给 xfade 的渐变会被烤进画面 —— 见
+        // docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md。
+        enum Prerendered {
+            case main(URL)
+            case overlay(fill: URL, matte: URL)
+        }
+        var prerendered: [UUID: Prerendered] = [:]
+        for (segmentIndex, segment) in segments.enumerated() {
+            guard let clip = segment.clip, clip.needsPerFrameRender else { continue }
+            prerendered[clip.id] = .main(try await AnimatedClipPrerenderer.renderMain(
+                clip: clip,
+                // 判据与下面非预渲染分支的 `VideoFade.effective` 逐字相同。
+                fades: VideoFade.effective(
+                    clip: clip,
+                    hasTransitionBefore: segmentIndex > 0 && segments[segmentIndex - 1].transition != .none,
+                    hasTransitionAfter: segment.transition != .none
+                ),
+                renderSize: renderSize, frameRate: state.frameRate,
+                into: workspace, cancellation: cancellation
+            ))
+        }
+        for lane in overlayLanes {
+            for clip in lane.clips where clip.needsPerFrameRender && !clip.needsStillConversion {
+                let pair = try await AnimatedClipPrerenderer.renderOverlay(
+                    clip: clip,
+                    // 上层视频轨没有轨内转场，那条边永远归用户的渐变管
+                    //（与预览合成的 `hasTransitionAfter` 同款注释）。
+                    fades: VideoFade.effective(
+                        clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
+                    ),
+                    renderSize: renderSize, frameRate: state.frameRate,
+                    into: workspace, cancellation: cancellation
+                )
+                prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
+            }
         }
 
         // MARK: 每节的视频/音频流

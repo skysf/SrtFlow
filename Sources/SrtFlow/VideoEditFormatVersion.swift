@@ -188,6 +188,29 @@ extension TimelineState {
         textOverlays.contains { $0.animation.usesFocus }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v15-only 持久数据。
+    ///
+    /// **登记清单（新增 v15-only 字段必须同步补进来）：**
+    /// 1. `EditClip.presetAnimation` —— 画面段的入场 / 出场动画
+    ///    （效果 + 强度；时长复用 v10 就有的 `videoFade*`）。
+    ///
+    /// **按需，而且只认非 `.fade` 的效果**：`.fade` 落的就是 v10 的那两个时长键，
+    /// 旧版读得懂、渲出来一模一样，抬版本纯属误伤（用户只是设了个淡入，工程却
+    /// 再也回不去旧版）。其余几种要逐帧变换/裁切，旧版不认识 `presetAnimation`
+    /// 这个键，那一段会**静默变回硬切或纯淡入** —— 入场那一下正是画面最显眼的
+    /// 地方，成片当场就不一样；随手编辑触发自动保存，调好的动画就永久没了。
+    /// 判断标准同 docs/bugfixes/2026-08-04-transform-review.md。
+    ///
+    /// 与 `EditClip.encode` 的按需写键必须同源：那边判的是 `isEmpty`
+    /// （效果全是 `.none` 才不写），这边判的是"有没有非 fade 的效果"——
+    /// 只设了 `.fade` 的段照样落键（强度也跟着存下来），但不抬版本。
+    var requiresFormatVersion15: Bool {
+        allClips.contains { clip in
+            clip.presetAnimation.entrance.needsPerFrameRender
+                || clip.presetAnimation.exit.needsPerFrameRender
+        }
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

@@ -43,6 +43,9 @@ extension EditClip {
             info: info,
             stillImageURL: image
         )
+        // 预设的入/出场跟着渐变一起抄（两者共用同一对时长字段，抄一半就会出现
+        // "有效果没时长"这种半截状态）。
+        freeze.presetAnimation = presetAnimation
         if isAnimated {
             freeze.placement = animatedPlacement(atTimeline: time, canvas: canvas)
             freeze.rotationDegrees = animatedRotation(atTimeline: time)
@@ -124,6 +127,9 @@ extension TimelineState {
             stillImageURL: left.stillImageURL
         )
         right.needsStillConversion = left.needsStillConversion
+        // 预设的入/出场**不抄给右半**：它的时长就是 `videoFade*`，而那两个字段
+        // 切开之后本来就不跟过来（切口右边没有"头尾渐变"可言），只抄效果会留下
+        // 一个时长为 0 的空壳。左半照旧留着自己那份。
         // 标记同样锚在源时间上，所以两半各带一份**完整**的标记表，各自只画落在
         // 自己窗口里的那些 —— 切口两边谁也不会丢标记，跟关键帧一个处理法。
         right.markers = left.markers

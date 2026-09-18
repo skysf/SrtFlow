@@ -3,6 +3,11 @@
 > 2026-09-17 随「上层视频轨对等化」一起引入。改 `VideoEditVideoFade.swift`、
 > CompositionBuilder 的「单段画面渐变」后处理、或 ExportGraph 的
 > `transformSteps` 之前必读。
+>
+> **2026-09-18 起它在界面上叫「In / Out = Fade」**：Inspector 的渐变两行被
+> [入场 / 出场动画](clip-animation.md)那一块接管了，本文描述的模型、字段
+> （`videoFade*Duration`）、夹紧和转场仲裁**一个字没变** —— 变的只是它现在是
+> 五种效果里的一种，其余四种要逐帧渲染、走预渲染那条路。
 
 ## 这是什么，不是什么
 

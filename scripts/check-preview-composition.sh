@@ -32,6 +32,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
   Sources/SrtFlow/VideoEditAudioFade.swift \
   Sources/SrtFlow/VideoEditVideoFade.swift \
+  Sources/SrtFlow/VideoEditClipAnimation.swift \
+  Sources/SrtFlow/VideoEditClipAnimator.swift \
   Sources/SrtFlow/VideoEditTrackPalette.swift \
   Sources/SrtFlow/VideoEditTextStyle.swift \
   Sources/SrtFlow/VideoEditTextEasing.swift \

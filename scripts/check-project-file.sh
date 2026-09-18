@@ -39,6 +39,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
   Sources/SrtFlow/VideoEditAudioFade.swift \
   Sources/SrtFlow/VideoEditVideoFade.swift \
+  Sources/SrtFlow/VideoEditClipAnimation.swift \
+  Sources/SrtFlow/VideoEditClipAnimator.swift \
   Sources/SrtFlow/VideoEditTrackPalette.swift \
   Sources/SrtFlow/VideoEditTextStyle.swift \
   Sources/SrtFlow/VideoEditTextEasing.swift \
@@ -156,11 +158,11 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   Sources/SrtFlow/VideoEditProject+Markers.swift \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'ClipMarkerStrip\('
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
 # 标记的帽子是可命中的子视图，指针一进去块自己的 onContinuousHover 立刻收到
 # .ended。没有这道让位，鼠标一碰标记画面就弹回播放头（扫帧 peek 被掐断）。
 require "扫帧 peek 要给标记让位" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'guard markerHoverTime == nil else'
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'guard markerHoverTime == nil else'
 # 标记纯属编辑期标注：进了合成/导出就等于把它烧进成片。
 forbid "标记不许进预览合成" \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift '\.markers'
@@ -186,7 +188,7 @@ require "烧录必须与预览同一份合同（眼睛说了算）" \
 forbid "导出面板不许再自己选烧哪条轨" \
   Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'enum Burn'
 require "时间线要给译文轨一只自己的眼睛" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'toggleTranslationHidden\(\)'
+  Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleTranslationHidden\(\)'
 
 # 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
 require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
@@ -248,6 +250,39 @@ forbid "coordinator 不许自己新建 configuration（会与上一次完全相�
   'TranslationSession\.Configuration\(source:'
 require "发布 pendingJob 之后必须装起跑看门狗（没人收尾就如实报错）" \
   Sources/SrtFlow/SubtitleGen/TranslationHost.swift 'armStartWatchdog\('
+
+# 入场/出场动画（2026-09-18）：纯值合同在上面断言过了，这里钉住生产接线。
+#
+# 效果和时长是同一个槽，**必须一起改**（不变量见 ClipPresetAnimation.isEmpty）：
+# 只改效果会让用户选完 Rise 画面纹丝不动；只清时长会让界面显示"无"而画面还在淡。
+require "选上效果时要顺手给时长（入场）" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'clip\.videoFadeInDuration = Self\.duration\('
+require "选上效果时要顺手给时长（出场）" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'clip\.videoFadeOutDuration = Self\.duration\('
+# 批量套用：写入路径收 [UUID]，界面把多选的段整批传进来。窄回单段就等于
+# 悄悄砍掉批量能力（一节课几十张图，一张张点不现实）。
+require "效果的写入必须收一组 id" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'func setClipPresetKind\(_ ids: \[UUID\]'
+require "强度的写入必须收一组 id" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'func liveSetClipPresetIntensity\(_ ids: \[UUID\]'
+require "多选时 Inspector 要给批量面板" \
+  Sources/SrtFlow/VideoEditInspector.swift 'multiClipAnimationSection\('
+# 逐帧效果的段导出前必须预渲染；判据只有 needsPerFrameRender 一个。
+require "导出路由必须问 needsPerFrameRender（主轨）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift \
+  'segment\.clip, clip\.needsPerFrameRender'
+require "导出路由必须问 needsPerFrameRender（上层轨）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift \
+  'where clip\.needsPerFrameRender'
+# 预渲染的临时时间线里没有邻居，转场仲裁只能由调用方算好传进去
+# （docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md）。
+require "预渲染必须接收仲裁过的渐变窗口" \
+  Sources/SrtFlow/VideoEditPrerender.swift \
+  'private static func normalized\(_ clip: EditClip, fades: FadeWindow\)'
 
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2

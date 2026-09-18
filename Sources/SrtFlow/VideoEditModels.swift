@@ -404,6 +404,13 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 关键帧动画（位置/缩放/旋转/不透明度）；nil = 无。类型与取值见
     /// VideoEditAnimation.swift。
     var animation: ClipAnimation?
+    /// 预设的入场 / 出场动画（Inspector 的 Animation 区）。**时长不在这里**，
+    /// 它和画面渐变共用 `videoFadeInDuration/OutDuration`；类型与仲裁见
+    /// VideoEditClipAnimation.swift，逐帧求值见 VideoEditClipAnimator.swift。
+    ///
+    /// 不进 `init`（同 `markers`）：绝大多数段没设动画，摊进按成员构造器只会让
+    /// 每个调用点都要多写一行。
+    var presetAnimation: ClipPresetAnimation = .default
 
     /// 用户打在这段素材上的标记。锚在源时间上，只影响编辑期的显示，不进合成
     /// 和导出。类型与读写见 VideoEditClipMarker.swift。
@@ -496,6 +503,9 @@ struct EditClip: Identifiable, Hashable, Sendable {
     ///
     /// 画面渐变也算：它要在 rgba 上做 alpha 斜坡，只有变换链那条路会先
     /// `format=rgba`，轻量路径挂不上 `fade`（见 VideoEditVideoFade.swift）。
+    ///
+    /// **预设入/出场动画不必单列**：要逐帧的效果一律走预渲染，根本到不了这条
+    /// 判据；而它的时长就是 `videoFade*`，`hasVideoFade` 已经把它覆盖住了。
     var hasVisualTransform: Bool {
         placement != nil || abs(rotationDegrees) > 0.01 || opacity < 0.999
             || flippedHorizontally || flippedVertically || !(crop?.isEmpty ?? true)
@@ -507,11 +517,11 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 叠化的「后段垫底、前段淡出」路径只有在接缝两侧都满足这个条件时才逐像素
     /// 精确等于 xfade dissolve —— 判定条件必须是它，不能拿 `hasVisualTransform`
     /// 凑数：仅翻转（甚至放大出画布的摆放）照样满幅不透明，走近似路径纯属
-    /// 误伤（白闪变暗）。旋转保守地一律当不满幅；带关键帧动画的段同样保守
-    /// 走近似路径（逐时刻判定不值得）。
+    /// 误伤（白闪变暗）。旋转保守地一律当不满幅；带关键帧动画或预设入/出场
+    /// 动画的段同样保守走近似路径（逐时刻判定不值得）。
     func coversCanvasOpaquely(canvas: CGSize) -> Bool {
         guard opacity >= 0.999, abs(rotationDegrees) <= 0.01, !isAnimated,
-              !hasVideoFade else { return false }
+              !hasVideoFade, !needsPerFrameAnimation else { return false }
         let frame = resolvedPlacement(canvas: canvas).frame(in: canvas)
         return frame.minX <= 0.5 && frame.minY <= 0.5
             && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
@@ -987,6 +997,7 @@ extension EditClip: Codable {
         case placement, info, audioAssetDuration, stillImageURL
         case videoFadeInDuration, videoFadeOutDuration
         case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
+        case presetAnimation
         case markers
         case fadeInDuration, fadeOutDuration
     }
@@ -1025,6 +1036,19 @@ extension EditClip: Codable {
         // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
         // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
         markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
+        // v14 及更早：画面渐变只有时长、没有"效果"这个概念。合并成一个槽之后，
+        // 这些段就是 In/Out = Fade —— 不认回来的话，老工程一打开，调好的淡入淡出
+        // 会因为 `kind == .none` 当场失效（不变量见 `ClipPresetAnimation.isEmpty`）。
+        if let stored = try c.decodeIfPresent(ClipPresetAnimation.self, forKey: .presetAnimation) {
+            presetAnimation = stored
+        } else {
+            presetAnimation = ClipPresetAnimation(
+                entrance: videoFadeInDuration > 0 ? .fade : .none,
+                exit: videoFadeOutDuration > 0 ? .fade : .none,
+                intensity: ClipPresetAnimation.default.intensity
+            )
+        }
+        presetAnimation.clampToValidRange()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -1061,6 +1085,10 @@ extension EditClip: Codable {
         // 没有标记的段不写这个键：绝大多数工程一枚标记都没有，键写出来只是把
         // 每段的 JSON 撑大一行。
         if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
+        // 没设入/出场效果的段不写这个键（判据是 `isEmpty`，与格式版本闸门
+        // `requiresFormatVersion15` 同源）：强度是跟着效果走的，没效果时它的值
+        // 不影响任何一帧画面，写出来只会把每段的 JSON 撑大一行。
+        if !presetAnimation.isEmpty { try c.encode(presetAnimation, forKey: .presetAnimation) }
     }
 }
 

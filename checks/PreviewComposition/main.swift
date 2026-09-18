@@ -472,7 +472,7 @@ Task {
             animation.height.set(1.0, atSourceTime: 4, tolerance: kfTol)
             clip.animation = animation
             let intermediate = try await AnimatedClipPrerenderer.renderMain(
-                clip: clip, renderSize: CGSize(width: 64, height: 36),
+                clip: clip, fades: clip.videoFades, renderSize: CGSize(width: 64, height: 36),
                 frameRate: .fps30, into: root
             )
             if let frame = await frameImage(fromFile: intermediate, at: 2) {
@@ -502,7 +502,7 @@ Task {
             animation.centerX.set(0.5, atSourceTime: 4, tolerance: kfTol)
             pip.animation = animation
             let pair = try await AnimatedClipPrerenderer.renderOverlay(
-                clip: pip, renderSize: CGSize(width: 64, height: 36),
+                clip: pip, fades: pip.videoFades, renderSize: CGSize(width: 64, height: 36),
                 frameRate: .fps30, into: root
             )
             if let fillFrame = await frameImage(fromFile: pair.fill, at: 2),
@@ -725,6 +725,124 @@ Task {
                 check(false, "三档帧率没有全部测到")
             }
         }
+
+        // MARK: 预设入场 / 出场动画（2026-09-18）
+        //
+        // 求值器是纯函数，先把曲线本身钉死；再真建合成、真取帧，验证它确实
+        // 落到了图层指令上。场景与 checks/VideoFade 里的**一一对应** ——
+        // 两条管线同账是这套东西的核心合同。
+        // 长期约束见 docs/architecture/clip-animation.md。
+        do {
+            func state(_ kind: ClipPresetKind, reveal: Double, covers: Bool) -> ClipAnimationState {
+                // 2 秒窗口、段长 10：local = reveal × 2 就落在入场窗口里。
+                ClipAnimator.state(
+                    resolved: ResolvedClipPreset(
+                        entrance: kind, exit: .none,
+                        window: FadeWindow(fadeIn: 2, fadeOut: 0), intensity: 0.6
+                    ),
+                    local: reveal * 2, span: 10, coversCanvas: covers
+                )
+            }
+
+            // 1. Fade 必须是**线性**：它就是 v10 起的画面渐变，导出侧走 ffmpeg
+            //    的 `fade`（默认线性）。这里换成缓动曲线，同一个工程"只设淡入"
+            //    和"淡入 + 另一侧有位移动画"就会渲出两种画面。
+            for point in [0.25, 0.5, 0.75] {
+                checkClose(state(.fade, reveal: point, covers: true).opacity, point, 0.0001,
+                           "Fade 的不透明度必须线性（与 ffmpeg 的 fade 逐帧对齐）")
+            }
+
+            // 2. 盖满画布的段：**任何时刻缩放都不许小于 1**，否则边上会露出
+            //    底下那一层（主轨是黑场）。这是产品决策第 4 条的机器守卫。
+            for kind in [ClipPresetKind.rise, .pop, .zoom] {
+                for step in 0...20 {
+                    let value = state(kind, reveal: Double(step) / 20, covers: true)
+                    check(value.scale >= 1 - 0.0001,
+                          "\(kind.title) 在铺满画布的段上不许缩到 1 以下（会露黑边），实测 \(value.scale)")
+                    // 位移多少，就得放大多少盖回去。
+                    check(value.scale >= 1 + 2 * abs(value.offset.y) - 0.0001,
+                          "\(kind.title) 的位移必须有对应的放大补偿，实测 scale \(value.scale) / offset \(value.offset.y)")
+                }
+            }
+
+            // 3. 不铺满的段反过来：Pop 要从小弹出来（那才是"弹"），
+            //    没有可露的边，也就不补放大。
+            let popSmall = state(.pop, reveal: 0, covers: false)
+            check(popSmall.scale < 0.9, "角落里的小图 Pop 要从小弹出来，实测 \(popSmall.scale)")
+            let popCover = state(.pop, reveal: 0, covers: true)
+            check(popCover.scale > 1.1, "铺满画布的段 Pop 反过来从大落到位，实测 \(popCover.scale)")
+
+            // 4. 擦除是线性几何量（裁切斜坡靠它精确重建，不必逐帧加密）。
+            for point in [0.25, 0.5, 0.75] {
+                checkClose(state(.wipe, reveal: point, covers: true).reveal ?? -1, point, 0.0001,
+                           "擦除进度必须线性")
+            }
+            check(!ClipPresetKind.wipe.needsDenseSampling, "擦除不需要按帧加密（线性）")
+            check(ClipPresetKind.rise.needsDenseSampling, "带缓动的效果必须按帧加密")
+
+            // 5. 真取帧：擦除半程时左半边已揭开、右半边还是垫底的黑。
+            //    与 checks/VideoFade 场景 6 是同一份几何。
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var wiped = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            wiped.presetAnimation.entrance = .wipe
+            wiped.videoFadeInDuration = 2
+            var wipeState = TimelineState()
+            wipeState.mainClips = [wiped]
+            if let built = await VideoEditCompositionBuilder.build(from: wipeState) {
+                let leftBand = CGRect(x: 0, y: 0.25, width: 0.25, height: 0.5)
+                let rightBand = CGRect(x: 0.75, y: 0.25, width: 0.25, height: 0.5)
+                let left = await regionBrightness(built, at: 1.0, region: leftBand)
+                let right = await regionBrightness(built, at: 1.0, region: rightBand)
+                check(left > 0.7, "擦除半程左侧应当已揭开，实测 \(left)")
+                check(right < 0.3, "擦除半程右侧应当还是黑，实测 \(right)")
+                let after = await averageBrightness(built, at: 3.0)
+                check(after > 0.9, "擦除结束后应当是完整画面，实测 \(after)")
+            } else {
+                check(false, "擦除入场场景合成失败")
+            }
+
+            // 6. 真取帧：铺满画布的段做上浮入场，**底边不许露出黑条**。
+            //    量的是"底边和中心一样亮"——上浮自带淡入，两处的绝对亮度
+            //    全程在变，但补偿到位的话它们永远相等。
+            // 画布用 320×180 而不是 64×36：补偿撤掉后露出来的黑条只有几个像素，
+            // 36 px 高的画布上量不出来 —— 守卫红不了就等于没守（AGENTS.md）。
+            // 强度拉满、探针压在动画前段，同样是为了让黑条足够宽。
+            let bigWhite = try await makeSolidVideo(
+                white: 1, seconds: 4, name: "rise-big.mp4", size: CGSize(width: 320, height: 180)
+            )
+            var bigInfo = info
+            bigInfo.displaySize = CGSize(width: 320, height: 180)
+            var rose = EditClip(sourceURL: bigWhite, sourceDuration: 4, timelineStart: 0, info: bigInfo)
+            rose.presetAnimation.entrance = .rise
+            rose.presetAnimation.intensity = 1
+            rose.videoFadeInDuration = 2
+            var riseState = TimelineState()
+            riseState.mainClips = [rose]
+            if let built = await VideoEditCompositionBuilder.build(from: riseState) {
+                // 入场是**从下方浮上来**，所以动画中这一段是压低的，缺口在**上边**；
+                // 两条边都量，省得下次把方向改了守卫却看不见。
+                let topBand = CGRect(x: 0.25, y: 0, width: 0.5, height: 0.1)
+                let bottomBand = CGRect(x: 0.25, y: 0.9, width: 0.5, height: 0.1)
+                let centerBand = CGRect(x: 0.25, y: 0.45, width: 0.5, height: 0.1)
+                for at in [0.3, 0.5, 0.8] {
+                    let center = await regionBrightness(built, at: at, region: centerBand)
+                    for (band, label) in [(topBand, "上边"), (bottomBand, "下边")] {
+                        let edge = await regionBrightness(built, at: at, region: band)
+                        check(abs(edge - center) < 0.08,
+                              "上浮入场 \(at)s：\(label)不许比中心暗（露黑边），实测 边 \(edge) / 中 \(center)")
+                    }
+                }
+                let after = await averageBrightness(built, at: 3.0)
+                check(after > 0.9, "上浮结束后应当是完整画面，实测 \(after)")
+            } else {
+                check(false, "上浮入场场景合成失败")
+            }
+        }
+
     } catch {
         check(false, "自检执行失败：\(error)")
     }
