@@ -45,7 +45,9 @@ struct VideoEditTimelineView: View {
 
     /// 滚动视口的命名坐标系。剪辑块的移动手势也钉在它上面（见 `moveGesture`），
     /// 所以不能是 private。
-    fileprivate static let scrollSpace = "timelineScroll"
+    /// 手势坐标系的名字。文字块在 VideoEditTimelineTextRow.swift 里，
+    /// 也要钉在这同一个空间上，所以不能是 fileprivate。
+    static let scrollSpace = "timelineScroll"
 
     /// 就地编辑浮层的落点：哪一条 cue、开在哪一行上。
     struct EditingCue: Equatable {
@@ -57,7 +59,7 @@ struct VideoEditTimelineView: View {
 
     /// 内容总宽度：留出结尾空白，方便把素材拖到最后。
     ///
-    /// 拖动中额外给一段**弹性尾部**：自由落点的轨道（画中画/音频/磁吸关掉的主轨/
+    /// 拖动中额外给一段**弹性尾部**：自由落点的轨道（上层轨/音频/磁吸关掉的主轨/
     /// 形状）允许把块拖到现有内容之外，内容宽度按投影落点临时长出去，还留半个
     /// 视口好继续拖；松手后由新的 `project.duration` 接管，没落地就自己缩回来。
     /// 磁吸主轨**不给** —— 它最终只能插进现有故事线的某条缝，扩太远只会把真正的
@@ -109,6 +111,9 @@ struct VideoEditTimelineView: View {
         var slot: TrackSlot?
         var isRuler = false
         var isShapes = false
+        /// 文字行的层号（nil = 不是文字行）。重叠的文字自动多分一层，
+        /// 层号由 `TextOverlayStacking` 算出来，不进模型。
+        var textLevel: Int?
         /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
         var subtitleKind: SubtitleRowKind?
         /// 整轨隐藏中（灰显，不可编辑）。
@@ -117,14 +122,22 @@ struct VideoEditTimelineView: View {
 
     private var rows: [RowSpec] {
         var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
-        // 画中画轨：编号大的画在上面，行也放上面 —— 行的上下顺序就是叠放顺序。
+        // 上层视频轨：编号大的画在上面，行也放上面 —— 行的上下顺序就是叠放顺序。
+        // 图标与主轨**同一个**：它们是对等的视频轨，区别只有叠放次序（行的位置
+        // 已经表达了）和颜色。用 pip 图标会把「这是个小窗」的旧心智带回来。
         for index in project.state.overlayTracks.indices.reversed() {
             result.append(RowSpec(
                 id: "overlay-\(project.state.overlayTracks[index].id)",
-                icon: "pip",
-                height: project.overlayRowHeight,
+                icon: "film",
+                height: project.videoRowHeight,
                 slot: .overlay(index),
                 isHidden: project.state.overlayTracks[index].isHidden
+            ))
+        }
+        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序，而文字压在形状之上。
+        for level in (0..<TextOverlayStacking.levelCount(for: project.state.textOverlays)).reversed() {
+            result.append(RowSpec(
+                id: "text-\(level)", icon: "textformat", height: 26, slot: nil, textLevel: level
             ))
         }
         if !project.state.shapes.isEmpty {
@@ -133,7 +146,7 @@ struct VideoEditTimelineView: View {
         result.append(RowSpec(
             id: "main",
             icon: "film",
-            height: project.mainRowHeight,
+            height: project.videoRowHeight,
             slot: .main,
             isHidden: project.state.mainHidden
         ))
@@ -232,8 +245,9 @@ struct VideoEditTimelineView: View {
         }
     }
 
-    /// 左侧的轨道头：类型图标 + 整轨隐藏的眼睛（快捷键 V），行高和右边严格一致。
-    /// 在主轨/画中画/音频的图标上**上下拖**可以调那一类轨道的行高。
+    /// 左侧的轨道头：轨道色条 + 类型图标 + 整轨隐藏的眼睛（快捷键 V），
+    /// 行高和右边严格一致。在视频轨/音频轨的图标上**上下拖**可以调那一类
+    /// 轨道的行高。
     private var headerColumn: some View {
         VStack(alignment: .center, spacing: rowSpacing) {
             ForEach(rows) { row in
@@ -242,6 +256,14 @@ struct VideoEditTimelineView: View {
                         Color.clear
                     } else {
                         HStack(spacing: 3) {
+                            // 轨道色条：与这条轨上所有块同色。空轨在时间线上
+                            // 一个块都没有，只有它能告诉用户那是哪条轨。
+                            if let slot = row.slot {
+                                Capsule()
+                                    .fill(project.state.trackAccent(for: slot))
+                                    .frame(width: 3, height: max(10, row.height - 10))
+                                    .opacity(row.isHidden ? 0.3 : 1)
+                            }
                             Image(systemName: row.icon)
                                 .font(.caption)
                                 .foregroundStyle(row.isHidden ? .tertiary : .secondary)
@@ -292,8 +314,7 @@ struct VideoEditTimelineView: View {
 
     private func rowKind(_ row: RowSpec) -> TrackRowKind {
         switch row.slot {
-        case .main: return .main
-        case .overlay: return .overlay
+        case .main, .overlay: return .video
         case .audio: return .audio
         case nil: return .other
         }
@@ -310,7 +331,7 @@ struct VideoEditTimelineView: View {
             .padding(.vertical, 2)
 
             // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
-            // 所以跨轨对齐（上面画中画的边缘对上下面主轨的边缘）一眼能看见。
+            // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
             TimelineAlignmentGuides(times: clipDrag?.guides ?? [], pixelsPerSecond: pps)
 
             // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
@@ -408,6 +429,7 @@ struct VideoEditTimelineView: View {
             base: TimelineMarquee.Hit(
                 clips: project.selectedClipIDs,
                 shapes: project.selectedShapeIDs,
+                texts: project.selectedTextIDs,
                 cues: project.selectedSubtitleCueIDs
             )
         )
@@ -438,10 +460,11 @@ struct VideoEditTimelineView: View {
         autoScroller.stop()
         defer { marquee = nil }
         guard let session = marquee else { return }
-        // 空框 = 点了一下空白：三类一起清（和 `.onTapGesture` 同义）。
+        // 空框 = 点了一下空白：四类一起清（和 `.onTapGesture` 同义）。
         project.applyBoxSelection(
             clips: session.hit.clips,
             shapes: session.hit.shapes,
+            texts: session.hit.texts,
             cues: session.hit.cues
         )
     }
@@ -459,6 +482,10 @@ struct VideoEditTimelineView: View {
             } else if spec.isShapes {
                 items = project.state.shapes.map {
                     TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .shape)
+                }
+            } else if let level = spec.textLevel {
+                items = textOverlays(atLevel: level).map {
+                    TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .text)
                 }
             } else if let kind = spec.subtitleKind {
                 // 译文轨是原文轨的镜像（同 ID 同时间），从哪一行框中的都是同一条 cue。
@@ -479,6 +506,9 @@ struct VideoEditTimelineView: View {
             if spec.isShapes {
                 minY = layout.minY + TimelineMarquee.shapeTopInset
                 maxY = minY + TimelineMarquee.shapeHeight
+            } else if spec.textLevel != nil {
+                minY = layout.minY + TimelineMarquee.textTopInset
+                maxY = minY + TimelineMarquee.textHeight
             } else if spec.subtitleKind != nil {
                 minY = layout.minY + TimelineMarquee.cueTopInset
                 maxY = minY + TimelineMarquee.cueHeight
@@ -504,6 +534,10 @@ struct VideoEditTimelineView: View {
         marquee?.hit.shapes.contains(id) ?? project.selectedShapeIDs.contains(id)
     }
 
+    private func isSelected(text id: UUID) -> Bool {
+        marquee?.hit.texts.contains(id) ?? project.selectedTextIDs.contains(id)
+    }
+
     private func isSelected(cue id: UUID) -> Bool {
         marquee?.hit.cues.contains(id) ?? project.selectedSubtitleCueIDs.contains(id)
     }
@@ -520,6 +554,8 @@ struct VideoEditTimelineView: View {
             )
         } else if row.isShapes {
             shapesRow
+        } else if let level = row.textLevel {
+            textRow(level: level)
         } else if let kind = row.subtitleKind {
             subtitleRow(kind: kind)
         } else if let slot = row.slot {
@@ -604,6 +640,16 @@ struct VideoEditTimelineView: View {
         clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollOffset)
     }
 
+    private func beginTextDrag(_ overlay: TextOverlay) {
+        project.clock.endPeek()
+        // 和剪辑/形状对称：拖一个没选中的 = 单选它；拖已选中的 = 整组一起动。
+        if !project.selectedTextIDs.contains(overlay.id) {
+            project.selectText(overlay.id, additive: false)
+        }
+        guard let plan = project.textDragPlan(textID: overlay.id) else { return }
+        clipDrag = ClipDragSession(subject: .text, plan: plan, originScrollOffset: scrollOffset)
+    }
+
     /// 字幕 cue 起手的拖动。与剪辑/形状三处严格对称，包括「拖一个没选中的
     /// = 单选它再拖」这条语义。
     private func beginCueDrag(_ cue: SubtitleCue) {
@@ -641,8 +687,8 @@ struct VideoEditTimelineView: View {
         }
         guard let drag = clipDrag else { return }
         switch drag.subject {
-        case .shape, .subtitleCue:
-            // 这两类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
+        case .shape, .text, .subtitleCue:
+            // 这三类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
             // 和剪辑同一个 applyDrag（`commitFreeDrag`），位移只有一份。
             project.commitFreeDrag(drag.plan, resolution: drag.resolution)
         case .clip:
@@ -781,6 +827,62 @@ struct VideoEditTimelineView: View {
                         project.liveTrimShape(shape.id, leading: leading, deltaSeconds: delta)
                     },
                     // 形状不参与 AV 合成，收尾不用重建预览（同 updateShape）。
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                )
+            }
+        }
+    }
+
+    // MARK: - 文字行
+
+    /// 这一层上的文字。层号纯显示用，由时间重叠关系算出来。
+    private func textOverlays(atLevel level: Int) -> [TextOverlay] {
+        let levels = project.textOverlayLevels
+        return project.state.textOverlays.enumerated()
+            .filter { levels.indices.contains($0.offset) && levels[$0.offset] == level }
+            .map(\.element)
+    }
+
+    private func textRow(level: Int) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(.quaternary.opacity(0.25))
+                .frame(width: contentWidth)
+            ForEach(textOverlays(atLevel: level)) { overlay in
+                TextBlockView(
+                    overlay: overlay,
+                    pps: pps,
+                    isSelected: isSelected(text: overlay.id),
+                    // 文字和剪辑走**同一套**拖动会话（冻结候选、自由落点解析、
+                    // 边缘自动滚动、松手落一次），理由同形状块。
+                    dragOffset: dragOffset(movingID: overlay.id),
+                    onSelect: {
+                        let flags = NSApp.currentEvent?.modifierFlags ?? []
+                        project.selectText(
+                            overlay.id,
+                            additive: flags.contains(.command) || flags.contains(.shift)
+                        )
+                    },
+                    onEdit: {
+                        // 播放头先落进这段文字的区间，否则预览里它根本不显示，
+                        // 就地编辑的输入框会浮在一片空白上。
+                        project.clock.endPeek()
+                        clock.seek(to: overlay.timelineStart, precise: true)
+                        project.selectText(overlay.id, additive: false)
+                        // 数字元件不进就地编辑（内容在检查器里调）。
+                        if overlay.number == nil { project.textEditingRequest = overlay.id }
+                    },
+                    onDragBegin: { beginTextDrag(overlay) },
+                    onDragChange: { translation, pointerViewportX in
+                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
+                    },
+                    onDragEnd: { endClipDrag() },
+                    canTrim: project.activeTool == .select,
+                    onTrim: { leading, delta in
+                        project.clock.endPeek()
+                        project.liveTrimTextOverlay(overlay.id, leading: leading, deltaSeconds: delta)
+                    },
+                    // 文字不参与 AV 合成，收尾不用重建预览（同 updateTextOverlay）。
                     onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
             }
@@ -1183,7 +1285,8 @@ private struct TimelineScrollOffsetKey: PreferenceKey {
 
 /// 轨道行的类别，行高各记各的。
 private enum TrackRowKind {
-    case main, overlay, audio, other
+    /// 主轨和上层轨合成一类：行高共用一个值，拖哪条都一起动。
+    case video, audio, other
 }
 
 /// 轨道头图标上的上下拖：调那一类轨道的行高。
@@ -1214,8 +1317,7 @@ private struct RowHeightDragModifier: ViewModifier {
 
     private var current: Double {
         switch kind {
-        case .main: return project.mainRowHeight
-        case .overlay: return project.overlayRowHeight
+        case .video: return project.videoRowHeight
         case .audio: return project.audioRowHeight
         case .other: return 0
         }
@@ -1223,8 +1325,7 @@ private struct RowHeightDragModifier: ViewModifier {
 
     private func apply(_ height: Double) {
         switch kind {
-        case .main: project.mainRowHeight = min(max(height, 28), 120)
-        case .overlay: project.overlayRowHeight = min(max(height, 24), 110)
+        case .video: project.videoRowHeight = min(max(height, 28), 120)
         case .audio: project.audioRowHeight = min(max(height, 20), 100)
         case .other: break
         }
@@ -1381,14 +1482,14 @@ private struct ClipBlockView: View {
             .fill(fillStyle)
     }
 
+    /// 块的填充色**按所在轨道**取，不是按轨道种类 —— 多条上层视频轨全是
+    /// 一个颜色的话，一眼看不出某个块属于哪一条。见 TrackPalette。
     private var fillStyle: Color {
-        if isAudioRow || clip.isAudioOnly {
-            return Color.blue.opacity(0.42)
-        }
-        if case .overlay = slot {
-            return Color.purple.opacity(0.4)
-        }
-        return Color.teal.opacity(0.36)
+        // 纯音频段被拖到视频轨上（少见但允许）时按音频色走：颜色跟的是
+        // 「这块是什么」，块上画的也是波形。
+        let index = project.state.trackColorIndex(for: slot)
+        if isAudioRow || clip.isAudioOnly { return TrackPalette.clipFill(audio: index) }
+        return TrackPalette.clipFill(video: index)
     }
 
     @ViewBuilder
@@ -1609,7 +1710,7 @@ private struct ClipBlockView: View {
                 Button("Detach Audio") { project.detachAudio(from: clip.id) }
             }
             if slot.isMain {
-                Button("Move to Picture-in-Picture") { project.toggleOverlay(clip.id) }
+                Button("Move to Upper Track") { project.toggleOverlay(clip.id) }
             } else if case .overlay = slot {
                 Button("Move to Main Track") { project.toggleOverlay(clip.id) }
             }

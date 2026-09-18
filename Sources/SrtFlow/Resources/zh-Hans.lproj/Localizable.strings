@@ -212,7 +212,6 @@
 "Add clips to start editing." = "添加素材开始剪辑。";
 "Add" = "添加";
 "Add Media…" = "添加素材…";
-"Add Picture-in-Picture…" = "添加画中画…";
 "Add Subtitle File…" = "添加字幕文件…";
 "Undo" = "撤销";
 "Redo" = "重做";
@@ -231,7 +230,7 @@
 "Zoom in" = "放大时间线";
 "Split at Playhead" = "在播放头处分割";
 "Detach Audio" = "分离音频";
-"Move to Picture-in-Picture" = "移到画中画轨";
+"Move to Upper Track" = "移到上层轨道";
 "Move to Main Track" = "移回主轨";
 "Speed" = "速度";
 "Duration" = "时长";
@@ -255,7 +254,6 @@
 "Wipe" = "擦除";
 "Pick a transition — hover a card to preview it" = "选择转场 —— 鼠标悬停卡片可预览效果";
 "Transitions overlap the two clips, so the total length gets shorter by the transition time." = "转场会让两段重叠，总时长会缩短一个转场的时间。";
-"Picture-in-picture" = "画中画";
 "Size" = "大小";
 "Split" = "分割";
 "Select" = "选择";
@@ -460,7 +458,6 @@
 "Back to 0 dB (original level)" = "回到 0 dB（原始音量）";
 "Cut this clip in two at the playhead" = "在播放头处把这一段切成两段";
 "Remove this clip from the timeline" = "把这一段从时间线上删除";
-"Dock the picture-in-picture here" = "把画中画停到这个角上";
 "Remove this shape from the timeline" = "把这个图形从时间线上删除";
 "Unlink this subtitle file from the project" = "把这个字幕文件从工程里解除关联";
 "Split at playhead" = "在播放头处分割";
@@ -665,3 +662,78 @@
 "slow" = "slow";
 "slower" = "slower";
 "veryslow" = "veryslow";
+
+/* 视频编辑：上层视频轨与画面渐变（2026-09-17） */
+"Add to Upper Track…" = "添加到上层轨道…";
+"Upper track clips" = "上层轨道片段";
+"Fade" = "画面渐变";
+"Fade in" = "渐入";
+"Fade out" = "渐出";
+"Seconds for the picture to ramp up from fully transparent" = "渐入的秒数：画面从全透明升到原来的不透明度";
+"Seconds for the picture to ramp down to fully transparent" = "渐出的秒数：画面从原来的不透明度降到全透明";
+"On an upper track the clip fades to and from whatever is on the track below, not to black." = "在上层轨道上，这一段渐变到的是下面那条轨的画面，不是黑场。";
+"On the bottom track the clip fades to and from black." = "在最底下那条轨上，这一段渐变到的是黑场。";
+"A transition already cross-fades the picture at that seam, so the fade on that side is skipped." = "那个接缝上的转场已经在做画面交叉淡变，所以这一边的渐变不生效。";
+"Click again with Option held to select the clip underneath" = "按住 Option 再点一下，选中压在下面的那一段";
+
+/* 画面文字标注（2026-09-17） */
+"Empty text" = "空文字";
+"Edit this text on the preview" = "在预览里编辑这段文字";
+"Finish editing this text" = "结束编辑这段文字";
+"Pick the typeface for this text" = "为这段文字选择字体";
+"Search" = "搜索";
+"Center" = "居中";
+"How lines line up inside the text box" = "多行文字在文本框里怎么对齐";
+"Box width" = "文本框宽度";
+"Line height" = "行高";
+"Tracking" = "字距";
+"Fill" = "填充";
+"Solid" = "纯色";
+"Gradient" = "渐变";
+"Draw an outline around the letters" = "给文字描一圈边";
+"Drop a soft shadow behind the letters" = "在文字后面投一层柔和的阴影";
+"Offset X" = "横向偏移";
+"Offset Y" = "纵向偏移";
+"Blur" = "模糊";
+"Backdrop" = "底板";
+"Put a coloured plate behind the text" = "在文字后面垫一块色板";
+"Corner" = "圆角";
+"Pad X" = "横向内边距";
+"Pad Y" = "纵向内边距";
+"Drag the text on the preview to place it, or its block on the timeline to retime it. Double-click the text to edit the words." = "在预览里拖动文字来摆位置，拖时间线上的块来改时间。双击文字就能改字。";
+
+/* 文字动画（2026-09-17） */
+"Animation" = "动画";
+"Emphasis" = "强调";
+"Intensity" = "强度";
+"Rise" = "上浮";
+"Pop" = "弹入";
+"Typewriter" = "打字机";
+"Cascade" = "逐字上浮";
+"Draw on" = "描边生长";
+"Breathe" = "呼吸";
+"Runs the whole time the text is on screen" = "文字显示期间一直循环";
+"Draw on needs an outline — turn on Outline above." = "描边生长要先开描边 —— 到上面把「描边」打开。";
+"In and out are longer than this text lasts, so both were shortened to fit." = "入场加出场比这段文字还长，两边已经按比例收短了。";
+"A looping animation on a long text makes exporting slower." = "长文字上的循环动画会让导出变慢。";
+"A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "那个接缝上的转场已经在做声音交叉淡变，所以这一边的渐变不生效。";
+
+/* 数字元件（2026-09-17） */
+"Number" = "数字";
+"Count up" = "数值递增";
+"Odometer" = "老虎机";
+"Count up changes the whole number; Odometer rolls each digit on its own wheel" = "数值递增让整个数字连续变化；老虎机让每一位在自己的数字带上滚";
+"Roll for" = "滚动时长";
+"Decimals" = "小数位";
+"Thousands" = "千分位";
+"Group thousands with commas" = "用逗号按三位分组";
+"Prefix" = "前缀";
+"Suffix" = "后缀";
+"Numbers always use a comma for thousands and a period for the decimal point, so the same project renders identically on any machine." = "数字一律用逗号做千分位、句点做小数点，这样同一份工程在任何机器上渲出来都一样。";
+"Drag the number on the preview to place it, or its block on the timeline to retime it." = "在预览里拖动数字来摆位置，拖时间线上的块来改时间。";
+
+/* 对焦动画（2026-09-18） */
+"Focus" = "对焦";
+"Start at" = "起手不透明度";
+"Focus starts fully opaque — like a camera pulling into focus." = "对焦从完全不透明起手 —— 像相机把焦点拉清楚。";
+"Focus fades in from nothing, so the camera-focus feel is gone." = "对焦从全透明淡进来，相机对焦那个味道就没了。";

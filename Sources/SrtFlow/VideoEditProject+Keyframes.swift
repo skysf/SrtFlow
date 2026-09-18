@@ -99,7 +99,7 @@ extension VideoEditProject {
     /// 行复原：清掉这一行的关键帧轨，并把静态字段回到默认。
     func clearKeyframes(_ id: UUID, _ property: KeyframeProperty) {
         guard let clip = state.clip(with: id) else { return }
-        let fallback = clip.defaultPlacement(canvas: renderSize, isOverlay: isOverlayClip(id))
+        let fallback = clip.defaultPlacement(canvas: renderSize)
         perform { state in
             state.update(id) { c in
                 var animation = c.animation ?? ClipAnimation()
@@ -155,8 +155,7 @@ extension VideoEditProject {
         let t = clock.time
         let source = clip.sourceTime(atTimeline: t)
         let placement = clip.animatedPlacement(
-            atTimeline: t, canvas: renderSize, isOverlay: isOverlayClip(id)
-        )
+            atTimeline: t, canvas: renderSize)
         let rotation = clip.animatedRotation(atTimeline: t)
         let opacityValue = clip.animatedOpacity(atTimeline: t)
         let tol = sourceTolerance(for: clip)
@@ -188,8 +187,7 @@ extension VideoEditProject {
         let t = clock.time
         let source = clip.sourceTime(atTimeline: t)
         let placement = clip.animatedPlacement(
-            atTimeline: t, canvas: renderSize, isOverlay: isOverlayClip(id)
-        )
+            atTimeline: t, canvas: renderSize)
         let rotation = clip.animatedRotation(atTimeline: t)
         let opacityValue = clip.animatedOpacity(atTimeline: t)
         let tol = sourceTolerance(for: clip)

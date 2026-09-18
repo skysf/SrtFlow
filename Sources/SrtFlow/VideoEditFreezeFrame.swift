@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 //
 // **一行合成器代码都不用写**：抽出来的 PNG 走的是图片素材的老管线
 // （`StillImageClipFactory` 转静帧循环视频 → 当普通剪辑用），所以定格段天生
-// 支持转场、变速、画中画、关键帧、导出。
+// 支持转场、变速、上层视频轨、关键帧、导出。
 //
 // 和图片导入的区别是**提交模型**：图片导入是「占位块先上轨、后台转完再替换」，
 // 定格是**转码全部成功之后一次性提交**。原因见 `runFreeze` 的注释。
@@ -37,7 +37,7 @@ extension VideoEditProject {
     /// 能不能对这一段在这个时刻定格。
     ///
     /// 入口要用，**提交前的 CAS 也要再跑一遍** —— 抽帧+转码那 1~2 秒里用户可能
-    /// 给这一段加了转场、把它挪去画中画、或者把整条轨藏起来。
+    /// 给这一段加了转场、把它挪去上层轨、或者把整条轨藏起来。
     func isFreezeEligible(_ clip: EditClip, at time: Double) -> Bool {
         // 纯音频没有画面；图片段本来就是静止的；还在转静帧的占位段连素材都没有。
         guard !clip.isAudioOnly, !clip.isStillImage, !clip.needsStillConversion else { return false }
@@ -159,11 +159,11 @@ extension VideoEditProject {
         }
 
         // CAS：抽帧+转码这 1~2 秒里，用户完全可能把目标段拖走、裁掉、改速度、
-        // 加转场、挪去画中画、把整条轨藏起来。那样这一帧对应的时间线位置已经
+        // 加转场、挪去上层轨、把整条轨藏起来。那样这一帧对应的时间线位置已经
         // 不成立了，整单作废比插错地方强。
         //
         // **准入条件要整个重跑一遍**（`isFreezeEligible`），不能只比源范围：
-        // 从主轨挪到画中画会保持同样的起点和源范围却走完全不同的 ripple 语义；
+        // 从主轨挪到上层轨会保持同样的起点和源范围却走完全不同的 ripple 语义；
         // 中途给这一段加转场则会踩进「转场段不给定格」的禁区。
         guard isCurrentGeneration(request.generation),
               let current = state.clip(with: request.clipID),
@@ -175,15 +175,12 @@ extension VideoEditProject {
             return
         }
 
-        let isOverlay = !request.track.isMain
         let freeze = current.makeFreezeClip(
             image: image,
             still: still,
             info: info,
             at: request.cutTime,
-            canvas: renderSize,
-            isOverlay: isOverlay
-        )
+            canvas: renderSize)
         perform { state in
             state.insertFreeze(freeze, splitting: request.clipID, at: request.cutTime)
         }
@@ -321,7 +318,7 @@ extension VideoEditProject {
 /// 提交前拿它逐字段核对（CAS），对不上就整单作废。
 private struct FreezeRequest {
     var clipID: UUID
-    /// 目标当时在哪条轨。**必须记**：主轨和画中画的 ripple 语义完全不同，
+    /// 目标当时在哪条轨。**必须记**：主轨和上层轨的 ripple 语义仍不相同，
     /// 而挪轨可以保持起点和源范围不变，光比那些字段是发现不了的。
     var track: TrackSlot
     var sourceURL: URL

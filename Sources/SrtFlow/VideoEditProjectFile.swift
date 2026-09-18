@@ -25,10 +25,10 @@ struct VideoEditProjectFile: Codable {
     var media: [MediaRecord]
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 9
+    static let latestFormatVersion = 14
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
-    /// `...7` / `...8` / `...9`（登记清单在那边）。
+    /// `...7` … `...14`（登记清单在那边）。
     static let baselineFormatVersion = 3
     static let fileExtension = "srtflowproj"
 
@@ -46,6 +46,10 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion7
         _ = timeline.requiresFormatVersion8
         _ = timeline.requiresFormatVersion9
+        _ = timeline.requiresFormatVersion11
+        _ = timeline.requiresFormatVersion12
+        _ = timeline.requiresFormatVersion13
+        _ = timeline.requiresFormatVersion14
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
@@ -219,6 +223,10 @@ enum VideoEditProjectIO {
         timeline.normalizeSubtitleCompanion()
         // 老版本存盘的主轨数组可能乱序（磁吸关掉的拖动不重排），打开时治好。
         timeline.sortMainClipsByStart()
+        // 轨道颜色：v9 及更早没有 colorIndex 键，按当时的行序补一次。补在读盘
+        // 这一步而不是等第一次编辑 —— `perform` 的补号会和用户那次改动一起
+        // 进撤销栈，把「打开就该有的颜色」算成用户改的，撤销一下颜色就没了。
+        timeline.assignMissingTrackColors()
         let projectDirectory = url.deletingLastPathComponent()
         let stored = Dictionary(file.media.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         var records: [String: MediaRecord] = [:]

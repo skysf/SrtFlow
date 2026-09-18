@@ -19,6 +19,7 @@ enum TimelineMarquee {
     /// 这里都读它，别在任何一边再写一个字面量。
     static let clipMinimumWidth: Double = 6
     static let shapeMinimumWidth: Double = 24
+    static let textMinimumWidth: Double = 24
     static let cueMinimumWidth: Double = 2
 
     /// 块在自己那一行里画出来的**纵向**位置（行顶算起的留白 + 块高）。
@@ -33,11 +34,16 @@ enum TimelineMarquee {
     static let cueHeight: Double = 14
     static let shapeTopInset: Double = 3
     static let shapeHeight: Double = 20
+    /// 文字块与形状块同尺寸（两者都是"标注"，视觉上该是一族）。分成两组常量
+    /// 而不是共用一个，是为了将来任一方微调时不会连坐另一方。
+    static let textTopInset: Double = 3
+    static let textHeight: Double = 20
 
-    /// 框里能选中的三类东西。
+    /// 框里能选中的四类东西。
     enum Kind: Equatable {
         case clip
         case shape
+        case text
         case subtitleCue
     }
 
@@ -59,6 +65,7 @@ enum TimelineMarquee {
             switch kind {
             case .clip: self.minimumWidth = TimelineMarquee.clipMinimumWidth
             case .shape: self.minimumWidth = TimelineMarquee.shapeMinimumWidth
+            case .text: self.minimumWidth = TimelineMarquee.textMinimumWidth
             case .subtitleCue: self.minimumWidth = TimelineMarquee.cueMinimumWidth
             }
         }
@@ -85,15 +92,17 @@ enum TimelineMarquee {
     struct Hit: Equatable {
         var clips: Set<UUID> = []
         var shapes: Set<UUID> = []
+        var texts: Set<UUID> = []
         var cues: Set<UUID> = []
 
-        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && cues.isEmpty }
+        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty }
 
         /// 加选（⌘/⇧ 拖框）：在原有选择上并集。
         func union(_ other: Hit) -> Hit {
             Hit(
                 clips: clips.union(other.clips),
                 shapes: shapes.union(other.shapes),
+                texts: texts.union(other.texts),
                 cues: cues.union(other.cues)
             )
         }
@@ -169,6 +178,7 @@ enum TimelineMarquee {
                 switch item.kind {
                 case .clip: hit.clips.insert(item.id)
                 case .shape: hit.shapes.insert(item.id)
+                case .text: hit.texts.insert(item.id)
                 case .subtitleCue: hit.cues.insert(item.id)
                 }
             }

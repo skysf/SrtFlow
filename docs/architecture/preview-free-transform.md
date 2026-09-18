@@ -9,14 +9,26 @@
 `EditClip.placement: ClipPlacement?` —— 中心 + 宽高，全部是**相对画布的 0…1
 归一化值**（宽随画布宽、高随画布高）。约定：
 
-- **nil = 默认布局**：主轨等比铺满居中；画中画走 `overlayFraction` +
-  `overlayAnchor` 九宫格。老工程、没摆过的段都是 nil。九宫格的尺寸是
-  「画布宽 × fraction」，但**高度会爆出画布的（竖版素材）整体等比收进画布**
-  —— 公式只有 `OverlayAnchor.defaultSize` 一份，`defaultPlacement`、
-  合成 `fittingTransform`、导出九宫格 `scale=w:h:force_original_aspect_ratio=
-  decrease` 三处必须都走它的账（横版素材算出来和收高前逐像素一致）。
-- **九宫格和自由摆放互斥**：点停靠位、动大小滑块都会把 `placement` 清回 nil
-  （`setOverlayLayout` / `overlaySizeBinding`），否则那些控件看起来"失灵"。
+- **nil = 默认布局 = 等比铺满画布、居中，不分轨道**（2026-09-17 起）。
+  主轨和上层视频轨走**同一份账**，公式只有 `defaultPlacement` 一处，
+  合成 `fittingTransform` 和导出 `transformSteps` 都从它派生。老工程、
+  没摆过的段都是 nil。
+
+  在此之前上层轨是「画中画」：nil 表示按 `overlayFraction`（画布宽 40%）+
+  `overlayAnchor` 九宫格停在角上。那两个字段、`OverlayAnchor`、导出的
+  `xExpression`/`yExpression` 九宫格表达式**全部删除**，没有迁移 ——
+  这是一次语义换代，工程格式因此升到 v10（见 VideoEditFormatVersion.swift
+  的 `requiresFormatVersion10`）。
+
+- **等比是 contain，留空处不补黑**。比例对不上的素材两侧（或上下）留空，
+  露出来的是**下面那一层**：主轨下面是画布黑底，上层轨下面是主轨画面。
+  这来自 overlay 合成本身 —— 导出侧**不许**给上层轨补 `pad`，补了就把
+  主轨遮死。回归靠 `scripts/check-video-fade.sh` 的四个像素探针守着。
+
+- **上层轨盖住主轨是正常语义**，不是 bug：上层段满幅不透明时，那段时间
+  主轨就是看不见。连带后果是预览里点画面只会命中最上面那一段，所以
+  `ClipTransformCanvas.selectClip` 提供 **⌥ 点击在命中的那一摞里轮换**
+  —— 没有它，被盖住的主轨在预览里选不中。
 - 宽高**各自独立**（拉边把手允许变形），所以不能只存一个 scale。
 - `resolvedPlacement(canvas:isOverlay:)` 是唯一的"此刻实际框"换算口；
   预览选中框、拖动起点、Inspector 的 Position/Scale 都从它取。
@@ -32,7 +44,8 @@ Transform 面板追加的四个字段（都有「无操作」默认值，全默�
   的画面填进摆放框；**默认摆放框按裁后的宽高比算**（裁成 1:1 默认就显示成
   正方形），见 `croppedDisplaySize`。
 
-**变换顺序是合同**：裁切 → 翻转 → 缩放进摆放框 → 绕框中心旋转 → 平移到位。
+**变换顺序是合同**：裁切 → 翻转 → 缩放进摆放框 → 绕框中心旋转 → 平移到位
+→ 画面渐变（`docs/architecture/video-fades.md`）。
 预览（`fittingTransform` 拼 CGAffineTransform + `setCropRectangle`）和导出
 （filter 链顺序）都按这个来，改一边必改另一边。
 
@@ -48,7 +61,7 @@ Inspector 的 ±1px 步进整个吞回默认值，点了没反应。
 | 管线 | 落点 |
 | --- | --- |
 | 预览（AVFoundation） | `fittingTransform`：完整 CGAffineTransform（翻转=负缩放）+ `setCropRectangle`（裁切矩形要逆着 preferredTransform 换算回源轨自然坐标）+ layer opacity（转场斜坡整体乘 clip.opacity） |
-| 导出（ffmpeg） | `transformSteps`：`crop` → `hflip/vflip` → `scale` → `format=rgba`（旋转/半透明才加）→ `rotate=θ:ow=rotw(θ):oh=roth(θ):c=black@0` → `colorchannelmixer=aa`；主轨叠 `color=black` 画布，**overlay 用中心表达式 `cx-w/2`** —— 旋转会把输出框撑大，只有中心是不变量。**不用 pad**：pad 不接受负坐标/超界，overlay 允许探出画面 |
+| 导出（ffmpeg） | `transformSteps`：`crop` → `hflip/vflip` → `scale` → `format=rgba`（旋转/半透明/画面渐变才加）→ `rotate=θ:ow=rotw(θ):oh=roth(θ):c=black@0` → `colorchannelmixer=aa` → `fade=…:alpha=1`（画面渐变，必须在链尾）；主轨叠 `color=black` 画布，**overlay 用中心表达式 `cx-w/2`** —— 旋转会把输出框撑大，只有中心是不变量。**不用 pad**：pad 不接受负坐标/超界，overlay 允许探出画面 |
 
 改任何一边都要对照另一边；验收标准是同一时刻预览截图和导出抽帧长一样。
 像素尺寸过 `evenPixel`（正偶数，yuv420 要求），坐标取整。

@@ -20,6 +20,10 @@ private let localizedCalls = [
     "Text", "L10n", "Label", "Button", "Toggle", "Picker", "TextField",
     "Section", "Stepper", "Menu", "Link", "LocalizedStringKey",
     "instantHelp", "confirmationDialog",
+    // 仓库自己的控件：第一个实参就是 LocalizedStringKey，最后还是进 Text。
+    // 不列进来的话，整条检查器右栏（全是 labelledSlider）都是扫描盲区 ——
+    // 2026-09-17 加文字功能时发现「Box width」这类文案一条都没被守到。
+    "labelledSlider", "decorationRow",
 ]
 /// 带实参标签的查表调用：`String(localized: "…")`。
 ///
@@ -177,6 +181,10 @@ func scan(_ files: [String]) -> [Occurrence] {
 /// 做法：先从调用点收集用到的属性名（`title`、`blurb`、`displayName`…），再回头
 /// 把这些名字的**计算属性体**里的字面量都当成 key。覆盖不了在初始化时赋值的存储
 /// 属性（那要真求值才知道），那部分靠两张表键集必须相同兜住。
+///
+/// 第二类同样扫不到调用点：**返回 `LocalizedStringKey` 的函数/属性**。
+/// 2026-09-17 加文字动画时发现这是个盲区 —— 检查器里好几条提示文案从没被
+/// 守过，全靠写的人自觉。
 func dynamicKeys(in files: [String]) -> [Occurrence] {
     let callSite = try! NSRegularExpression(
         pattern: #"(?:L10n|LocalizedStringKey)\(\s*([A-Za-z_][A-Za-z0-9_.]*)\s*\)"#
@@ -197,6 +205,17 @@ func dynamicKeys(in files: [String]) -> [Occurrence] {
 
     let literal = try! NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
     var found: [Occurrence] = []
+
+    // 返回 LocalizedStringKey 的函数/属性：文案写在 return 后面，调用点只有
+    // 一个变量名，前面那几条调用点规则一条都够不着。`?` 是为了把
+    // `-> LocalizedStringKey?`（"没有提示就返回 nil"那种）也一起收进来。
+    let keyReturning = try! NSRegularExpression(
+        pattern: #"(?:->|:)\s*LocalizedStringKey\??\s*\{"#
+    )
+    for (path, source) in sources {
+        found += literals(inBodiesMatching: keyReturning, source: source, path: path, literal: literal)
+    }
+
     for (path, source) in sources {
         for name in propertyNames {
             let declaration = try! NSRegularExpression(pattern: "\\bvar\\s+\(name)\\s*:\\s*String\\s*\\{")
@@ -225,6 +244,42 @@ func dynamicKeys(in files: [String]) -> [Occurrence] {
                     found.append(Occurrence(key: unescaped(String(body[range])), file: path, line: line))
                 }
             }
+        }
+    }
+    return found
+}
+
+
+/// 扫出所有匹配 `declaration` 的声明，把各自**函数体里的字面量**当成 key。
+///
+/// 从开花括号数到配对的闭花括号，只取这个声明自己的体。
+func literals(
+    inBodiesMatching declaration: NSRegularExpression,
+    source: String, path: String, literal: NSRegularExpression
+) -> [Occurrence] {
+    var found: [Occurrence] = []
+    let ns = source as NSString
+    declaration.enumerateMatches(in: source, range: NSRange(location: 0, length: ns.length)) { match, _, _ in
+        guard let match, let start = Range(match.range, in: source)?.upperBound else { return }
+        var depth = 1
+        var end = start
+        var index = start
+        while index < source.endIndex {
+            if source[index] == "{" { depth += 1 }
+            if source[index] == "}" {
+                depth -= 1
+                if depth == 0 { end = index; break }
+            }
+            index = source.index(after: index)
+        }
+        guard depth == 0 else { return }
+        let body = String(source[start..<end])
+        let line = source[source.startIndex..<start]
+            .reduce(into: 1) { count, ch in if ch == "\n" { count += 1 } }
+        let bodyRange = NSRange(location: 0, length: (body as NSString).length)
+        literal.enumerateMatches(in: body, range: bodyRange) { hit, _, _ in
+            guard let hit, let range = Range(hit.range(at: 1), in: body) else { return }
+            found.append(Occurrence(key: unescaped(String(body[range])), file: path, line: line))
         }
     }
     return found

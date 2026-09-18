@@ -667,8 +667,8 @@ do {
 
 // MARK: - 16. 框选之后整组一起移动：剪辑 + 形状 + 字幕 cue 同一个 delta
 //
-// 三类改的字段不同（剪辑/形状改 timelineStart，cue 要两轨同步），但**位移只有
-// 一个**。谁自己算一份，谁就会在磁吸那条分支上和别人分叉。
+// 四类改的字段不同（剪辑/形状/文字改 timelineStart，cue 要两轨同步），但**位移
+// 只有一个**。谁自己算一份，谁就会在磁吸那条分支上和别人分叉。
 
 do {
     var state = TimelineState()
@@ -677,6 +677,8 @@ do {
     var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 1, width: 0.3, height: 0.2)
     shape.duration = 2
     state.shapes = [shape]
+    let textOverlay = TextOverlay(text: "hi", timelineStart: 1, duration: 2)
+    state.textOverlays = [textOverlay]
     var doc = SubtitleDocumentModel()
     let cueID = UUID()
     doc.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "hi")]
@@ -695,6 +697,7 @@ do {
     }
     let plan = base.adding(
         shapes: [(id: shape.id, span: TimelineSpan(start: 1, end: 3))],
+        texts: [(id: textOverlay.id, span: TimelineSpan(start: 1, end: 3))],
         cues: [(id: cueID, span: TimelineSpan(start: 1, end: 3))]
     )
     let resolution = plan.resolve(desiredDelta: 4, pixelsPerSecond: pps)
@@ -703,6 +706,7 @@ do {
 
     checkClose(next.clip(with: c.id)?.timelineStart ?? -1, 4, "剪辑挪了 4 秒")
     checkClose(next.shapes.first?.timelineStart ?? -1, 5, "形状跟着挪同一个 delta")
+    checkClose(next.textOverlays.first?.timelineStart ?? -1, 5, "文字跟着挪同一个 delta")
     checkClose(next.subtitle?.cues.first?.start ?? -1, 5, "原文 cue 跟着挪")
     checkClose(next.subtitle?.cues.first?.end ?? -1, 7, "cue 时长不变")
     checkClose(next.subtitleCompanion?.translation?.cues.first?.start ?? -1, 5,
@@ -745,6 +749,7 @@ do {
     }
     let plan = base.adding(
         shapes: [(id: shape.id, span: TimelineSpan(start: 0, end: 2))],
+        texts: [],
         cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))]
     )
     let resolution = plan.resolve(desiredDelta: 15, pixelsPerSecond: pps)
@@ -899,7 +904,9 @@ do {
     ) else {
         print("FAIL 造不出计划"); exit(1)
     }
-    let plan = base.adding(shapes: [], cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))])
+    let plan = base.adding(
+        shapes: [], texts: [], cues: [(id: cueID, span: TimelineSpan(start: 0, end: 2))]
+    )
     checkClose(plan.groupLowerDelta, 0, "整组下界由起点最小的成员（cue 在 0s）决定")
 
     let resolution = plan.resolve(desiredDelta: 0, pixelsPerSecond: pps)

@@ -98,6 +98,96 @@ extension TimelineState {
     /// v5 的无条件要求接管（一律写 latest），这里保留为登记清单。
     var requiresFormatVersion9: Bool { hasAudioFades }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v10-only 持久数据。
+    ///
+    /// **登记清单（新增 v10-only 字段必须同步补进来）：**
+    /// 1. `EditClip.videoFadeInDuration` / `videoFadeOutDuration` —— 画面的
+    ///    渐入渐出时长。
+    /// 2. **上层视频轨的默认摆放语义**（不是某个键，是 `placement == nil` 的
+    ///    含义变了）。
+    /// 3. `EditLane.colorIndex` —— 轨道颜色。
+    ///
+    /// 为什么无条件为真：第 2 条不是可选数据，而是一次**语义换代**。
+    /// 2026-09-17 起上层视频轨不再是画中画 —— `placement == nil` 从「按
+    /// `overlayFraction`/`overlayAnchor` 停在右上角的小框」改成「等比铺满居中」，
+    /// 而那两个键已经删了。只认 v9 的旧版照常打开新工程，上层轨的每一段都会
+    /// 变回 40% 宽的角落小窗，**成片当场就不一样**；用户随手编辑触发自动保存，
+    /// 画面渐变和轨道颜色再一起被抹掉。判断标准同
+    /// docs/bugfixes/2026-08-04-transform-review.md：问的不是「新版能不能读旧
+    /// 文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// 所以这条走 v5–v7 的**无条件**写法，不像 v4/v8/v9 那样按需 —— 任何一份
+    /// 带上层视频轨的新工程都有 v10 语义，而「有没有上层轨」不该由用户去猜。
+    /// writer 的定版仍被 v5 的无条件要求接管（一律写 latest），这里保留为登记清单。
+    var requiresFormatVersion10: Bool { true }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v11-only 持久数据。
+    ///
+    /// **登记清单（新增 v11-only 字段必须同步补进来）：**
+    /// 1. `TimelineState.textOverlays` —— 画面上的文字标注（连同它的
+    ///    `TextStyle`：字体、填充/渐变、描边、投影、底板、对齐、行距、字距）。
+    ///
+    /// 走 v4/v8/v9 的**按需**写法：没有文字的工程不带 v11 数据，也就不该被抬
+    /// 进 v11（`TimelineState.encode` 里空数组不落盘，两处必须一致）。判断标准
+    /// 同 docs/bugfixes/2026-08-04-transform-review.md：问的不是「新版能不能读
+    /// 旧文件」，而是「旧版拿到新文件会不会毁数据」——
+    /// 只认 v10 的旧版打开带文字的工程，`textOverlays` 这个键它不认识，
+    /// 画面上的字**当场消失**；用户随手编辑触发自动保存，这段文字就永久没了。
+    ///
+    /// writer 的定版仍被 v5 的无条件要求接管（一律写 latest），这里保留为
+    /// 登记清单。
+    var requiresFormatVersion11: Bool { !textOverlays.isEmpty }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v12-only 持久数据。
+    ///
+    /// **登记清单（新增 v12-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.animation` —— 文字的入场 / 出场 / 强调动画。
+    ///
+    /// 同样是**按需**：没设动画的文字不落 `animation` 键
+    ///（`TextOverlay.encode` 里 `isEmpty` 时跳过），两处必须一致。
+    ///
+    /// 为什么带动画就必须抬：只认 v11 的旧版不认识这个键，打开之后文字会变成
+    /// **硬切出现**——入场的那一下正是标题最显眼的地方，成片当场就不一样；
+    /// 随手编辑触发自动保存，调好的动画就永久没了。判断标准同
+    /// docs/bugfixes/2026-08-04-transform-review.md。
+    var requiresFormatVersion12: Bool {
+        textOverlays.contains { !$0.animation.isEmpty }
+    }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v13-only 持久数据。
+    ///
+    /// **登记清单（新增 v13-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.number` —— 数字滚动（起止值、小数位、千分位、前后缀、
+    ///    形态、滚动时长）。
+    ///
+    /// 同样是**按需**：普通文字不落 `number` 键，两处必须一致。
+    ///
+    /// 为什么带数字就必须抬：只认 v12 的旧版不认识这个键，那一段会退回显示
+    /// `text` 字段 —— 而数字元件的 `text` 是空的，于是画面上**整段消失**。
+    /// 随手编辑触发自动保存，配好的数字就永久没了。
+    var requiresFormatVersion13: Bool {
+        textOverlays.contains { $0.number != nil }
+    }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v14-only 持久数据。
+    ///
+    /// **登记清单（新增 v14-only 字段必须同步补进来）：**
+    /// 1. `TextAnimationKind.focus` —— 对焦（边放大边从模糊收清）。
+    /// 2. `TextAnimation.focusStartOpacity` —— 对焦起手/收尾的不透明度。
+    ///
+    /// **新增的枚举值也算持久数据。** `TextAnimationKind` 是宽容解码的
+    /// （`LenientCodableEnum`，不认识就退回 `.none`），这正是危险所在：
+    /// 只认 v13 的旧版打开之后，那一段的入场/出场**静默变成"无动画"**，
+    /// 标题最显眼的那一下当场没了；随手编辑触发自动保存就永久丢失。
+    /// 判断标准同 docs/bugfixes/2026-08-04-transform-review.md —— 问的不是
+    /// 「新版能不能读旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// 按需：没用到对焦的工程不带 v14 数据
+    ///（`TextAnimation.encode` 里 `usesFocus` 为假时不落那个键，两处一致）。
+    var requiresFormatVersion14: Bool {
+        textOverlays.contains { $0.animation.usesFocus }
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

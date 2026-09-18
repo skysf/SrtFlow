@@ -27,6 +27,13 @@ func checkEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String, lin
     check(actual == expected, "\(message): got \(actual), expected \(expected)", line: line)
 }
 
+/// 浮点比较：摆放框的归一化值都要量到亚像素，别用 == 也别抄一份 abs()。
+func checkClose(_ actual: Double, _ expected: Double, _ tolerance: Double,
+                _ message: String, line: Int = #line) {
+    check(abs(actual - expected) <= tolerance,
+          "\(message)：got \(actual), expected \(expected)±\(tolerance)", line: line)
+}
+
 func check(_ condition: Bool, _ message: String, line: Int = #line) {
     checks += 1
     if !condition {
@@ -295,10 +302,15 @@ Task {
             }
         }
 
-        // 4. 画中画默认布局：竖版素材按「画布宽 40%」算出的高度会爆出画布，
-        //    必须整体等比收进画布（上下各留 2% 边距）。黑色竖版画中画叠在
-        //    白色主轨上，整幅亮度 = 1 - 黑块占比，算出来就能分辨有没有收：
-        //    没收（黑块被画布裁掉一截）≈0.61，收了 ≈0.73。
+        // 4. 上层视频轨的默认布局 = **等比铺满画布、居中**，和主轨同一份账
+        //    （2026-09-17 起上层轨不再是画中画）。比例对不上的素材两侧留空，
+        //    留空处**不补黑** —— 露出来的是下面那一层。
+        //
+        //    黑色竖版素材（36×64）铺在白色主轨（画布 64×36）上：contain 之后
+        //    高度顶满、宽 = 36 × (36/64) = 20.25，占画布宽 20.25/64 = 31.6%，
+        //    整幅亮度 = 1 − 0.316 ≈ 0.684。这个数同时排掉两种错法：
+        //      · 旧的画中画九宫格（宽 40%、停右上角、收进画布）≈ 0.73；
+        //      · 两侧补黑（把主轨遮死）≈ 0.32。
         do {
             let portrait = try await makeSolidVideo(
                 white: 0, seconds: 4, name: "portrait.mp4", size: CGSize(width: 36, height: 64)
@@ -310,21 +322,64 @@ Task {
             )
             var portraitInfo = info
             portraitInfo.displaySize = CGSize(width: 36, height: 64)
+
+            // 先钉模型层的契约：默认摆放必须顶满高度、居中、宽按比例收。
+            let portraitClip = EditClip(
+                sourceURL: portrait, sourceDuration: 4, timelineStart: 0, info: portraitInfo
+            )
+            let box = portraitClip.defaultPlacement(canvas: CGSize(width: 64, height: 36))
+            checkClose(box.height, 1, 0.001, "上层轨竖版素材默认要顶满画布高度")
+            checkClose(box.width, 20.25 / 64, 0.001, "宽度按等比 contain 收")
+            checkClose(box.centerX, 0.5, 0.001, "水平居中")
+            checkClose(box.centerY, 0.5, 0.001, "垂直居中")
+
             var state = TimelineState()
             state.mainClips = [
                 EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
             ]
-            state.overlayTracks = [EditLane(clips: [
-                EditClip(sourceURL: portrait, sourceDuration: 4, timelineStart: 0, info: portraitInfo)
-            ])]
+            state.overlayTracks = [EditLane(clips: [portraitClip])]
             if let built = await VideoEditCompositionBuilder.build(from: state) {
                 let level = await averageBrightness(built, at: 2)
                 check(
-                    level > 0.69 && level < 0.77,
-                    "竖版画中画默认布局要等比收进画布，实测亮度 \(level)（未收≈0.61）"
+                    level > 0.66 && level < 0.71,
+                    "上层轨竖版素材要等比铺满画布，实测亮度 \(level)（旧九宫格≈0.73、两侧补黑≈0.32）"
                 )
             } else {
-                check(false, "竖版画中画场景合成失败")
+                check(false, "上层轨竖版素材场景合成失败")
+            }
+        }
+
+        // 5. 单段画面渐变（上层轨）：渐变露出来的是**下面那一层**，不是黑场。
+        //
+        //    黑色满幅素材盖在白色主轨上，给它 2s 渐入：t=0 应当全白（上层
+        //    完全透明，主轨透出来），t=1 是半程（≈0.5），t=3 渐变结束后全黑。
+        //    如果渐变被实现成「淡向黑色」，t=0 就会是黑的 —— 这条守卫专门钉
+        //    这个方向，别改成只量中点。
+        do {
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            let black = try await makeSolidVideo(
+                white: 0, seconds: 4, name: "fadeblack.mp4", size: CGSize(width: 64, height: 36)
+            )
+            var top = EditClip(sourceURL: black, sourceDuration: 4, timelineStart: 0, info: info)
+            top.videoFadeInDuration = 2
+            var state = TimelineState()
+            state.mainClips = [
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
+            ]
+            state.overlayTracks = [EditLane(clips: [top])]
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let atStart = await averageBrightness(built, at: 0.05)
+                let atMid = await averageBrightness(built, at: 1.0)
+                let atEnd = await averageBrightness(built, at: 3.0)
+                check(atStart > 0.9, "渐入起点上层全透明，应当看到主轨的白，实测 \(atStart)")
+                check(atMid > 0.35 && atMid < 0.65, "渐入半程应当在两者中间，实测 \(atMid)")
+                check(atEnd < 0.1, "渐变结束后上层不透明，应当全黑，实测 \(atEnd)")
+            } else {
+                check(false, "上层轨画面渐变场景合成失败")
             }
         }
 

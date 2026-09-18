@@ -7,7 +7,7 @@ import SrtFlowCore
 
 extension TimelineState {
 
-    /// 重叠 cue 排序合同的轨道秩：主轨 0，画中画 1+i，音频再往后；
+    /// 重叠 cue 排序合同的轨道秩：主轨 0，上层视频轨 1+i，音频再往后；
     /// 无 provenance（外挂/手工 cue）传 nil → -1 排最前；来路不明排最后。
     func subtitleLaneRank(of clipID: UUID?) -> Int {
         guard let clipID else { return -1 }
@@ -30,7 +30,7 @@ extension TimelineState {
     /// 都开=双语、只开一条=那一条、都关（或没有字幕）=nil。
     ///
     /// 这取代了以前的「Preview track」模式选择器：显示什么不再是一个额外的
-    /// 模式，而是「哪几条轨看得见」的自然结果，与主轨/画中画/音频的眼睛同一
+    /// 模式，而是「哪几条轨看得见」的自然结果，与主轨/上层轨/音频的眼睛同一
     /// 心智（2026-08-09 用户拍板）。
     var visibleSubtitleChoice: SubtitleTrackChoice? {
         let original = !subtitleHidden && subtitle != nil

@@ -8,7 +8,7 @@ import SrtFlowCore
 ///
 /// 整个画面走一张 filter_complex 图：每段 trim + 变速（atempo 保音调），
 /// 转场用 xfade（fadeblack / fade / fadewhite，和预览的时间账一致），
-/// 画中画用 overlay，形状渲成整幅透明 PNG 按时间叠上去，字幕最后烧。
+/// 上层视频轨用 overlay，形状渲成整幅透明 PNG 按时间叠上去，字幕最后烧。
 @MainActor
 final class VideoEditExporter: ObservableObject {
     static let shared = VideoEditExporter()

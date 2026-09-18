@@ -212,7 +212,6 @@
 "Add clips to start editing." = "Add clips to start editing.";
 "Add" = "Add";
 "Add Media…" = "Add Media…";
-"Add Picture-in-Picture…" = "Add Picture-in-Picture…";
 "Add Subtitle File…" = "Add Subtitle File…";
 "Undo" = "Undo";
 "Redo" = "Redo";
@@ -231,7 +230,7 @@
 "Zoom in" = "Zoom in";
 "Split at Playhead" = "Split at Playhead";
 "Detach Audio" = "Detach Audio";
-"Move to Picture-in-Picture" = "Move to Picture-in-Picture";
+"Move to Upper Track" = "Move to Upper Track";
 "Move to Main Track" = "Move to Main Track";
 "Speed" = "Speed";
 "Duration" = "Duration";
@@ -255,7 +254,6 @@
 "Wipe" = "Wipe";
 "Pick a transition — hover a card to preview it" = "Pick a transition — hover a card to preview it";
 "Transitions overlap the two clips, so the total length gets shorter by the transition time." = "Transitions overlap the two clips, so the total length gets shorter by the transition time.";
-"Picture-in-picture" = "Picture-in-picture";
 "Size" = "Size";
 "Split" = "Split";
 "Select" = "Select";
@@ -460,7 +458,6 @@
 "Back to 0 dB (original level)" = "Back to 0 dB (original level)";
 "Cut this clip in two at the playhead" = "Cut this clip in two at the playhead";
 "Remove this clip from the timeline" = "Remove this clip from the timeline";
-"Dock the picture-in-picture here" = "Dock the picture-in-picture here";
 "Remove this shape from the timeline" = "Remove this shape from the timeline";
 "Unlink this subtitle file from the project" = "Unlink this subtitle file from the project";
 "Split at playhead" = "Split at playhead";
@@ -665,3 +662,78 @@
 "slow" = "slow";
 "slower" = "slower";
 "veryslow" = "veryslow";
+
+/* 视频编辑：上层视频轨与画面渐变（2026-09-17） */
+"Add to Upper Track…" = "Add to Upper Track…";
+"Upper track clips" = "Upper track clips";
+"Fade" = "Fade";
+"Fade in" = "Fade in";
+"Fade out" = "Fade out";
+"Seconds for the picture to ramp up from fully transparent" = "Seconds for the picture to ramp up from fully transparent";
+"Seconds for the picture to ramp down to fully transparent" = "Seconds for the picture to ramp down to fully transparent";
+"On an upper track the clip fades to and from whatever is on the track below, not to black." = "On an upper track the clip fades to and from whatever is on the track below, not to black.";
+"On the bottom track the clip fades to and from black." = "On the bottom track the clip fades to and from black.";
+"A transition already cross-fades the picture at that seam, so the fade on that side is skipped." = "A transition already cross-fades the picture at that seam, so the fade on that side is skipped.";
+"Click again with Option held to select the clip underneath" = "Click again with Option held to select the clip underneath";
+
+/* 画面文字标注（2026-09-17） */
+"Empty text" = "Empty text";
+"Edit this text on the preview" = "Edit this text on the preview";
+"Finish editing this text" = "Finish editing this text";
+"Pick the typeface for this text" = "Pick the typeface for this text";
+"Search" = "Search";
+"Center" = "Center";
+"How lines line up inside the text box" = "How lines line up inside the text box";
+"Box width" = "Box width";
+"Line height" = "Line height";
+"Tracking" = "Tracking";
+"Fill" = "Fill";
+"Solid" = "Solid";
+"Gradient" = "Gradient";
+"Draw an outline around the letters" = "Draw an outline around the letters";
+"Drop a soft shadow behind the letters" = "Drop a soft shadow behind the letters";
+"Offset X" = "Offset X";
+"Offset Y" = "Offset Y";
+"Blur" = "Blur";
+"Backdrop" = "Backdrop";
+"Put a coloured plate behind the text" = "Put a coloured plate behind the text";
+"Corner" = "Corner";
+"Pad X" = "Pad X";
+"Pad Y" = "Pad Y";
+"Drag the text on the preview to place it, or its block on the timeline to retime it. Double-click the text to edit the words." = "Drag the text on the preview to place it, or its block on the timeline to retime it. Double-click the text to edit the words.";
+
+/* 文字动画（2026-09-17） */
+"Animation" = "Animation";
+"Emphasis" = "Emphasis";
+"Intensity" = "Intensity";
+"Rise" = "Rise";
+"Pop" = "Pop";
+"Typewriter" = "Typewriter";
+"Cascade" = "Cascade";
+"Draw on" = "Draw on";
+"Breathe" = "Breathe";
+"Runs the whole time the text is on screen" = "Runs the whole time the text is on screen";
+"Draw on needs an outline — turn on Outline above." = "Draw on needs an outline — turn on Outline above.";
+"In and out are longer than this text lasts, so both were shortened to fit." = "In and out are longer than this text lasts, so both were shortened to fit.";
+"A looping animation on a long text makes exporting slower." = "A looping animation on a long text makes exporting slower.";
+"A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "A transition already cross-fades the sound at that seam, so the fade on that side is skipped.";
+
+/* 数字元件（2026-09-17） */
+"Number" = "Number";
+"Count up" = "Count up";
+"Odometer" = "Odometer";
+"Count up changes the whole number; Odometer rolls each digit on its own wheel" = "Count up changes the whole number; Odometer rolls each digit on its own wheel";
+"Roll for" = "Roll for";
+"Decimals" = "Decimals";
+"Thousands" = "Thousands";
+"Group thousands with commas" = "Group thousands with commas";
+"Prefix" = "Prefix";
+"Suffix" = "Suffix";
+"Numbers always use a comma for thousands and a period for the decimal point, so the same project renders identically on any machine." = "Numbers always use a comma for thousands and a period for the decimal point, so the same project renders identically on any machine.";
+"Drag the number on the preview to place it, or its block on the timeline to retime it." = "Drag the number on the preview to place it, or its block on the timeline to retime it.";
+
+/* 对焦动画（2026-09-18） */
+"Focus" = "Focus";
+"Start at" = "Start at";
+"Focus starts fully opaque — like a camera pulling into focus." = "Focus starts fully opaque — like a camera pulling into focus.";
+"Focus fades in from nothing, so the camera-focus feel is gone." = "Focus fades in from nothing, so the camera-focus feel is gone.";

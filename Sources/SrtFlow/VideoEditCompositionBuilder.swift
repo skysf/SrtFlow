@@ -4,7 +4,7 @@ import Foundation
 import SrtFlowCore
 
 /// 预览合成的纯色底素材：64×36 的两帧纯色 H.264，AVAssetWriter 直接生成，
-/// 不依赖 ffmpeg。黑底垫在半透明合成下面；白底给关键帧画中画的蒙版
+/// 不依赖 ffmpeg。黑底垫在半透明合成下面；白底给上层轨关键帧段的蒙版
 /// 预渲染当「白块」用。放在缓存目录，被系统清掉就重新写一个。
 ///
 /// actor + 单飞：预览重建高频触发，并发进来只允许一个真正去写；生成先落
@@ -136,7 +136,7 @@ actor BlackBaseVideoFactory {
 /// 把时间线状态翻译成 AVFoundation 的预览合成。
 ///
 /// 结构：主轨用**两条**合成视频轨 A/B 交替放段落 —— 转场要求前后两段在重叠区
-/// 同时有画面，同一条轨做不到。画中画每条时间线轨各占一条合成轨。转场用
+/// 同时有画面，同一条轨做不到。上层视频轨每条时间线轨各占一条合成轨。转场用
 /// 透明度渐变近似（压黑/闪白在导出时由 xfade 精确渲染，预览的时间账完全一致）。
 /// 变速用 scaleTimeRange，播放条目上配 `.spectral` 保音调，跟导出的 atempo 听感一致。
 enum VideoEditCompositionBuilder {
@@ -170,9 +170,7 @@ enum VideoEditCompositionBuilder {
         var cropRect: CGRect?
         /// 关键帧动画的段每片重算变换用；静态段是 nil。
         var geometry: ClipGeometry?
-        /// 动画摆放的默认基准（主轨铺满还是画中画九宫格）。
-        var isOverlay = false
-        /// 画面的叠放层级，越大越靠上（主轨 0，画中画 1+轨号）。
+        /// 画面的叠放层级，越大越靠上（主轨 0，上层视频轨 1+轨号）。
         var layer: Int
         var start: Double { clip.timelineStart }
         var end: Double { clip.timelineEnd }
@@ -201,7 +199,7 @@ enum VideoEditCompositionBuilder {
     ) async -> Built? {
         // 主轨按数组顺序进 A/B 轨，插入游标只会前进：乱序的输入会让
         // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
-        // 改动入口已维持有序，这里再守一道 —— 画中画轨（下面）同款 sorted。
+        // 改动入口已维持有序，这里再守一道 —— 上层视频轨（下面）同款 sorted。
         var state = state
         state.sortMainClipsByStart()
         guard !state.isEmpty else { return nil }
@@ -258,9 +256,7 @@ enum VideoEditCompositionBuilder {
                 naturalSize: naturalSize,
                 preferredTransform: preferred,
                 renderSize: renderSize,
-                clip: clip,
-                isOverlay: false
-            )
+                clip: clip)
 
             // 接缝的转场分派放到主轨循环之后统一做（推移/擦除的精确路径要看
             // 接缝两侧换算好的变换，处理到前一段时后一段的还没算出来）。
@@ -271,7 +267,6 @@ enum VideoEditCompositionBuilder {
                 transform: fitted.transform,
                 cropRect: fitted.cropRect,
                 geometry: fitted.geometry,
-                isOverlay: false,
                 layer: 0
             ))
 
@@ -301,7 +296,7 @@ enum VideoEditCompositionBuilder {
         // - 擦除族：出场段满幅不透明且轴对齐 → 给出场段挂线性缩小的裁切窗口，
         //   露出来的就是垫底的进场段（进场段无任何前提：它差一块的地方露黑底，
         //   和导出压平模型一致）；否则回退双向淡变。
-        // stride 而不是 1..<count：画中画预渲染的状态主轨是空的，1..<0 直接崩。
+        // stride 而不是 1..<count：上层轨预渲染的状态主轨是空的，1..<0 直接崩。
         for index in stride(from: 1, to: state.mainClips.count, by: 1) {
             let kind = state.mainClips[index - 1].transitionAfter
             let overlap = state.transitionOverlap(afterMainIndex: index - 1)
@@ -320,8 +315,8 @@ enum VideoEditCompositionBuilder {
             case .fade:
                 let halved = kind != .crossFade
                 let exactUnderlay = kind == .crossFade
-                    && state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
-                    && state.mainClips[index].coversCanvasOpaquely(canvas: renderSize, isOverlay: false)
+                    && state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize)
+                    && state.mainClips[index].coversCanvasOpaquely(canvas: renderSize)
                 if let outgoingIndex { placed[outgoingIndex].fadeOut = (overlap, halved) }
                 if let incomingIndex, !exactUnderlay {
                     placed[incomingIndex].fadeIn = (overlap, halved)
@@ -346,7 +341,7 @@ enum VideoEditCompositionBuilder {
                 clampCropToCanvas(&placed[incomingIndex], renderSize: renderSize)
             case .wipe:
                 guard let outgoingIndex, incomingIndex != nil,
-                      state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize, isOverlay: false),
+                      state.mainClips[index - 1].coversCanvasOpaquely(canvas: renderSize),
                       isAxisAlignedInvertible(placed[outgoingIndex].transform)
                 else {
                     fallBackToFade()
@@ -356,7 +351,7 @@ enum VideoEditCompositionBuilder {
             }
         }
 
-        // MARK: 画中画轨
+        // MARK: 上层视频轨
 
         for (trackIndex, lane) in state.overlayTracks.enumerated()
         where !lane.clips.isEmpty && !lane.isHidden {
@@ -381,16 +376,13 @@ enum VideoEditCompositionBuilder {
                     naturalSize: naturalSize,
                     preferredTransform: preferred,
                     renderSize: renderSize,
-                    clip: clip,
-                    isOverlay: true
-                )
+                    clip: clip)
                 placed.append(PlacedClip(
                     clip: clip,
                     track: videoTrack,
                     transform: fitted.transform,
                     cropRect: fitted.cropRect,
                     geometry: fitted.geometry,
-                    isOverlay: true,
                     layer: 1 + trackIndex
                 ))
 
@@ -415,6 +407,38 @@ enum VideoEditCompositionBuilder {
                 guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first else { continue }
                 guard await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &cursor) else { continue }
                 audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: false)
+            }
+        }
+
+        // MARK: 单段画面渐变
+        //
+        // 转场已经在上面的接缝分派里占好了它那条边（淡变族挂 fadeIn/fadeOut，
+        // 推移族挂 pushIn/pushOut，擦除族挂 wipeOut）。这里补的是**用户给单段
+        // 设的**渐变，所以有转场的一边一律让位 —— 判据与声音同源
+        // （`FadeWindow.suppressing`），叠加会在接缝处把画面压暗一块。
+        //
+        // 渐变露出来的是这一段底下那层：主轨的底下是黑底轨，上层视频轨的底下
+        // 是主轨画面。同一条斜坡、两种观感，导出侧靠 `fade=…:alpha=1` 对齐。
+        for index in placed.indices {
+            let clip = placed[index].clip
+            let mainIndex = state.mainClips.firstIndex { $0.id == clip.id }
+            let hasTransitionBefore = mainIndex.map {
+                $0 > 0 && state.transitionOverlap(afterMainIndex: $0 - 1) > 0
+            } ?? false
+            // 上层视频轨目前没有轨内转场，那条边永远归用户的渐变管。
+            let hasTransitionAfter = mainIndex.map {
+                state.transitionOverlap(afterMainIndex: $0) > 0
+            } ?? false
+            let window = VideoFade.effective(
+                clip: clip,
+                hasTransitionBefore: hasTransitionBefore,
+                hasTransitionAfter: hasTransitionAfter
+            )
+            if window.fadeIn > 0, placed[index].fadeIn == nil {
+                placed[index].fadeIn = (window.fadeIn, false)
+            }
+            if window.fadeOut > 0, placed[index].fadeOut == nil {
+                placed[index].fadeOut = (window.fadeOut, false)
             }
         }
 
@@ -454,7 +478,6 @@ enum VideoEditCompositionBuilder {
                     ),
                     cropRect: nil,
                     geometry: nil,
-                    isOverlay: false,
                     layer: Int.min
                 ))
             }
@@ -510,7 +533,7 @@ enum VideoEditCompositionBuilder {
                 // `isMuted ? 0 : volume`，走同一条路才能同样享受「提前钉音量」——
                 // 以前静音段是 `setVolume(0, at: 段起点)`，钉在起点上等于把
                 // 1.0 → 0 的跳变留在段内，静音段的开头照样会漏出一下声音。
-                // （主轨和画中画的静音段压根不进合成，能走到这儿的只有音频轨。）
+                // （主轨和上层轨的静音段压根不进合成，能走到这儿的只有音频轨。）
                 if lane.isMainTrack, let index = state.mainClips.firstIndex(where: { $0.id == clipID }) {
                     addVolumeRamps(
                         params: params,
@@ -523,7 +546,7 @@ enum VideoEditCompositionBuilder {
                         previousEnd: previousEnd
                     )
                 } else {
-                    // 画中画和音频轨都没有转场，用户设的渐变直接生效。
+                    // 上层视频轨和音频轨都没有轨内转场，用户设的渐变直接生效。
                     addVolumeRamps(
                         params: params, clip: clip, fades: clip.audioFades, previousEnd: previousEnd
                     )
@@ -603,15 +626,15 @@ enum VideoEditCompositionBuilder {
 
     /// 素材画面摆进输出画布的完整变换：源自带旋转摆正 → 裁切区挪到原点 →
     /// 缩放（翻转就是负缩放）→ 绕摆放框中心旋转 → 平移到摆放框。
-    /// 摆放框：用户摆过的（placement）优先，否则默认布局（主轨等比铺满居中、
-    /// 画中画按停靠位，都按**裁后的**宽高比）。返回的 cropRect 是换算回源轨
-    /// 自然坐标系的裁切矩形，layer instruction 用它真正剪掉框外像素。
+    /// 摆放框：用户摆过的（placement）优先，否则默认布局（等比铺满居中，按
+    /// **裁后的**宽高比）—— 主轨和上层视频轨同一份账，不再分叉。返回的
+    /// cropRect 是换算回源轨自然坐标系的裁切矩形，layer instruction 用它真正
+    /// 剪掉框外像素。
     private static func fittingTransform(
         naturalSize: CGSize,
         preferredTransform: CGAffineTransform,
         renderSize: CGSize,
-        clip: EditClip,
-        isOverlay: Bool
+        clip: EditClip
     ) -> (transform: CGAffineTransform, cropRect: CGRect?, geometry: ClipGeometry?) {
         let bounds = CGRect(origin: .zero, size: naturalSize).applying(preferredTransform)
         let display = CGSize(width: abs(bounds.width), height: abs(bounds.height))
@@ -634,15 +657,8 @@ enum VideoEditCompositionBuilder {
         if clip.isAnimated || clip.placement != nil {
             // 动画段（以及摆过的段）统一走归一化摆放：和预览里的交互框
             // 完全同一套换算，动画哪个分量没打关键帧就用它的静态/默认值。
-            target = clip.animatedPlacement(atTimeline: clip.timelineStart, canvas: renderSize, isOverlay: isOverlay)
+            target = clip.animatedPlacement(atTimeline: clip.timelineStart, canvas: renderSize)
                 .frame(in: renderSize)
-        } else if isOverlay {
-            let inset = renderSize.width * 0.02
-            let size = OverlayAnchor.defaultSize(
-                display: source.size, canvas: renderSize, fraction: clip.overlayFraction, inset: inset
-            )
-            let origin = clip.overlayAnchor.origin(canvas: renderSize, overlay: size, inset: inset)
-            target = CGRect(origin: origin, size: size)
         } else {
             let scale = min(renderSize.width / source.width, renderSize.height / source.height)
             let size = CGSize(width: source.width * scale, height: source.height * scale)
@@ -717,7 +733,7 @@ enum VideoEditCompositionBuilder {
     ) -> CGAffineTransform {
         let clamped = min(max(timelineTime, item.start), item.end)
         let target = item.clip
-            .animatedPlacement(atTimeline: clamped, canvas: renderSize, isOverlay: item.isOverlay)
+            .animatedPlacement(atTimeline: clamped, canvas: renderSize)
             .frame(in: renderSize)
         return placedTransform(
             geometry: geometry,

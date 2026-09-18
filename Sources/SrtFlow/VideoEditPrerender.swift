@@ -61,14 +61,14 @@ final class ExportCancellationToken: @unchecked Sendable {
 ///
 /// 主轨段：合在黑底上出一条 ProRes 422，xfade/concat 照常吃。
 ///
-/// 画中画段：默认合成器的 `backgroundColor` **只支持不透明色**（alpha 被
+/// 上层视频轨的段：默认合成器的 `backgroundColor` **只支持不透明色**（alpha 被
 /// 忽略，文档明说），透明背景根本出不来 —— 所以走 fill + matte 双渲染：
 /// - fill：内容本身（带完整不透明度）合在黑底上；
 /// - matte：一块纯白素材套上**同一份**摆放/旋转/不透明度动画合在黑底上，
 ///   白 = 可见、黑 = 透明，边缘的抗锯齿灰阶就是 alpha 渐变。
 /// 两条的权重必须一字不差（都是 coverage×opacity）：ffmpeg 里先用 matte
 /// 把 fill 除回真实色再 `alphamerge` 合回带 alpha 的流，原位叠放——
-/// 权重不一致除法就约不干净（细节见 VideoEditExporter 的画中画滤镜段）。
+/// 权重不一致除法就约不干净（细节见 VideoEditExporter 的上层轨滤镜段）。
 enum AnimatedClipPrerenderer {
     struct PrerenderError: LocalizedError {
         var message: String
@@ -98,7 +98,7 @@ enum AnimatedClipPrerenderer {
         )
     }
 
-    /// 画中画动画段 → (fill, matte) 两条黑底 ProRes 422 中间片。
+    /// 上层轨动画段 → (fill, matte) 两条黑底 ProRes 422 中间片。
     static func renderOverlay(
         clip: EditClip,
         renderSize: CGSize,
@@ -108,7 +108,7 @@ enum AnimatedClipPrerenderer {
     ) async throws -> (fill: URL, matte: URL) {
         // 摆放基准固化成显式 placement：fill 和 matte 的默认布局必须一字不差
         //（matte 的白块素材尺寸和原素材不同，靠素材推默认布局会各说各话）。
-        let basePlacement = clip.resolvedPlacement(canvas: renderSize, isOverlay: true)
+        let basePlacement = clip.resolvedPlacement(canvas: renderSize)
 
         var fill = normalized(clip)
         fill.placement = basePlacement

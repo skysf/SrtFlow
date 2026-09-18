@@ -119,8 +119,8 @@ extension EditClip {
     var isAnimated: Bool { !(animation?.isEmpty ?? true) }
 
     /// 此刻实际生效的摆放：动画轨逐分量覆盖在静态摆放（或默认布局）上。
-    func animatedPlacement(atTimeline time: Double, canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
-        var base = resolvedPlacement(canvas: canvas, isOverlay: isOverlay)
+    func animatedPlacement(atTimeline time: Double, canvas: CGSize) -> ClipPlacement {
+        var base = resolvedPlacement(canvas: canvas)
         guard let animation else { return base }
         let source = sourceTime(atTimeline: time)
         if let value = animation.centerX.value(atSourceTime: source) { base.centerX = value }

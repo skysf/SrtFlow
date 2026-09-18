@@ -271,6 +271,9 @@ struct VideoEditView: View {
                         .foregroundStyle(.secondary)
                 }
                 ShapeOverlayCanvas(project: project, clock: clock, boxSize: size)
+                // 文字压在形状之上、字幕之下 —— 与导出滤镜链一字不差
+                //（docs/architecture/text-overlays.md）。
+                TextOverlayCanvas(project: project, clock: clock, boxSize: size)
                 if let text = currentSubtitleText {
                     BurnInSubtitleOverlay(
                         text: text,
@@ -566,10 +569,20 @@ struct VideoEditView: View {
     private var addMenu: some View {
         Menu {
             Button("Add Media…") { pickMedia(toOverlay: false) }
-            Button("Add Picture-in-Picture…") { pickMedia(toOverlay: true) }
+            Button("Add to Upper Track…") { pickMedia(toOverlay: true) }
                 .disabled(project.state.mainClips.isEmpty)
             Button("Add Subtitle File…") { pickSubtitle() }
             Divider()
+            Button {
+                project.addTextOverlay()
+            } label: {
+                Label("Text", systemImage: "textformat")
+            }
+            Button {
+                project.addNumberOverlay()
+            } label: {
+                Label("Number", systemImage: "number")
+            }
             ForEach(ShapeKind.allCases) { kind in
                 Button {
                     project.addShape(kind)
