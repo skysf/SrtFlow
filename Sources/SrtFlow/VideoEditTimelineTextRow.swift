@@ -19,7 +19,8 @@ struct TextBlockView: View {
     let onEdit: () -> Void
     let onDragBegin: () -> Void
     /// (手势总位移, 指针在滚动视口里的 x)。与剪辑块同一套语义。
-    let onDragChange: (CGSize, Double) -> Void
+    /// (手势总位移, 指针在滚动视口里的位置)。与剪辑块同一套语义。
+    let onDragChange: (CGSize, CGPoint) -> Void
     let onDragEnd: () -> Void
     /// 分割工具下不给把手（与剪辑块同规矩）。
     let canTrim: Bool
@@ -68,7 +69,7 @@ struct TextBlockView: View {
                         isMoving = true
                         onDragBegin()
                     }
-                    onDragChange(value.translation, value.location.x)
+                    onDragChange(value.translation, value.location)
                 }
                 .onEnded { _ in
                     isMoving = false
@@ -145,8 +146,8 @@ extension VideoEditTimelineView {
                         if overlay.number == nil { project.textEditingRequest = overlay.id }
                     },
                     onDragBegin: { beginTextDrag(overlay) },
-                    onDragChange: { translation, pointerViewportX in
-                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
+                    onDragChange: { translation, pointerViewport in
+                        updateClipDrag(translation: translation, pointerViewport: pointerViewport)
                     },
                     onDragEnd: { endClipDrag() },
                     canTrim: project.activeTool == .select,

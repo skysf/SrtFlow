@@ -34,10 +34,14 @@ extension VideoEditTimelineView {
         project.clock.endPeek()
         let flags = NSEvent.modifierFlags
         marquee = TimelineMarquee.Session(
-            // 锚点存**滚动内容**的坐标：视口坐标 + 此刻的滚动量。这个量必须
-            // **现读**（`TimelineScrollGeometry`）—— 缓存进 `@State` 的版本在
-            // 起手这一拍可能还是上一次布局的值，框就会整体画到指针左边。
-            anchor: CGPoint(x: start.x + scrollGeometry.offsetX, y: start.y),
+            // 锚点存**滚动内容**的坐标：视口坐标 + 此刻的滚动量（两轴都要补，
+            // 时间线 2026-09-18 起也能上下滚）。这个量必须**现读**
+            //（`TimelineScrollGeometry`）—— 缓存进 `@State` 的版本在起手这一拍
+            // 可能还是上一次布局的值，框就会整体画到指针左边。
+            anchor: CGPoint(
+                x: start.x + scrollGeometry.offsetX,
+                y: start.y + scrollGeometry.offsetY
+            ),
             additive: flags.contains(.command) || flags.contains(.shift),
             base: TimelineMarquee.Hit(
                 clips: project.selectedClipIDs,
@@ -52,7 +56,10 @@ extension VideoEditTimelineView {
     private func updateMarquee(pointer: CGPoint) {
         guard marquee != nil else { return }
         applyMarqueePoint(pointer: pointer)
-        autoScroller.update(pointerX: pointer.x, viewportWidth: viewportWidth) {
+        autoScroller.update(
+            pointer: pointer,
+            viewport: CGSize(width: viewportWidth, height: viewportHeight)
+        ) {
             // 自动滚动那一拍指针没动，只有滚动量变了 —— 框要跟着内容继续长。
             applyMarqueePoint(pointer: pointer)
         }
@@ -61,7 +68,10 @@ extension VideoEditTimelineView {
     private func applyMarqueePoint(pointer: CGPoint) {
         guard var session = marquee else { return }
         session.update(
-            current: CGPoint(x: pointer.x + scrollGeometry.offsetX, y: pointer.y),
+            current: CGPoint(
+                x: pointer.x + scrollGeometry.offsetX,
+                y: pointer.y + scrollGeometry.offsetY
+            ),
             rows: marqueeRows(),
             pixelsPerSecond: pps
         )
@@ -81,8 +91,9 @@ extension VideoEditTimelineView {
         )
     }
 
-    /// 喂给命中判定的行模型。y 用滚动内容的坐标 —— 时间线没有纵向滚动，
-    /// 视口坐标和内容坐标在 y 上是同一个数（`rowLayouts` 也按这个排）。
+    /// 喂给命中判定的行模型。y 用**滚动内容**的坐标（`rowLayouts` 就是按这个
+    /// 排的）；指针那边在 `applyMarqueePoint` 里已经补过 `offsetY` 了 ——
+    /// 2026-09-18 时间线能上下滚之后，视口 y 和内容 y 不再是同一个数。
     private func marqueeRows() -> [TimelineMarquee.Row] {
         rowLayouts().compactMap { layout -> TimelineMarquee.Row? in
             let spec = layout.spec

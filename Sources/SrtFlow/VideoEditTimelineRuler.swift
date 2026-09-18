@@ -7,6 +7,37 @@ import SwiftUI
 // 警戒线）。标尺自己只管画刻度和把点击换算成 seek，播放头画在滚动内容那一层。
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按文件扫描，挪动这里的东西要同步改它。
 
+// MARK: - 钉在视口顶上的标尺
+
+/// 纵向滚动时标尺**不跟着走**：轨道多的时候，看下面那几条轨还得能看见时间。
+///
+/// 做法是加回一个纵向滚动量（轨道头列是减，因为它在滚动区外面）。这里和轨道头列
+/// 是**仅有的两处**订阅 `TimelineScrollGeometry` 的地方 —— 时间线主体只用 `@State`
+/// 持有它、不订阅，否则滚动的每一帧都要重建整棵时间线视图树
+/// （docs/architecture/timeline-drag-gestures.md §5c）。
+struct TimelinePinnedRuler: View {
+    let pps: Double
+    let duration: Double
+    /// 行距：标尺的不透明底要盖住它，不然滚上来的块会从缝里露出来。
+    let rowSpacing: Double
+    @ObservedObject var geometry: TimelineScrollGeometry
+    let onSeek: (Double, Bool) -> Void
+
+    var body: some View {
+        TimelineRuler(pps: pps, duration: duration, onSeek: onSeek)
+            // 自带不透明底：它盖在滚上去的轨道行上面，透明的话会看见块从刻度
+            // 底下穿过去。上面 2pt 是内容的 padding，下面一格是行距。
+            .background(alignment: .top) {
+                Color(nsColor: .windowBackgroundColor)
+                    .frame(height: 26 + 2 + rowSpacing)
+                    .offset(y: -2)
+            }
+            .offset(y: geometry.offset.y)
+            // 盖在轨道行之上（VStack 按 zIndex 决定绘制与命中顺序）。
+            .zIndex(50)
+    }
+}
+
 // MARK: - 行高拖调
 
 /// 轨道行的类别，行高各记各的。

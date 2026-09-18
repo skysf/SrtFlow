@@ -60,8 +60,9 @@ struct VideoEditTimelineView: View {
     /// 正好是当时的滚动量（docs/bugfixes/2026-09-18-marquee-anchored-at-stale-
     /// scroll-offset.md）。别再把它缓存回 `@State`。
     @State var scrollGeometry = TimelineScrollGeometry()
-    /// 可见视口的宽度（自动滚动要拿它判断指针到没到边）。
+    /// 可见视口的尺寸（自动滚动要拿它判断指针到没到边）。
     @State var viewportWidth: Double = 0
+    @State var viewportHeight: Double = 0
     /// 拖到边缘时推 NSScrollView 的心跳。
     @State var autoScroller = TimelineAutoScroller()
 
@@ -218,118 +219,55 @@ struct VideoEditTimelineView: View {
 
     private var timeline: some View {
         HStack(alignment: .top, spacing: 0) {
-            headerColumn
+            TimelineHeaderColumn(
+                rows: rows,
+                rowSpacing: rowSpacing,
+                project: project,
+                geometry: scrollGeometry,
+                resizeBase: $headerResizeBase
+            )
             Divider()
             GeometryReader { viewport in
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        scrolledContent
-                            .frame(width: contentWidth, alignment: .topLeading)
-                    }
-                    // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
-                    // 由 TimelineMagnificationBridge 里的 local monitor 处理。
-                    .overlay(
-                        TimelineMagnificationBridge(pixelsPerSecond: $project.pixelsPerSecond)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    )
-                    .coordinateSpace(name: Self.scrollSpace)
-                    .onChange(of: viewport.size.width, initial: true) { _, width in
-                        viewportWidth = width
-                    }
-                    .onChange(of: clock.time) { _, newTime in
-                        followPlayhead(newTime, proxy: proxy, viewportWidth: viewport.size.width)
-                    }
-                    // 视图消失（切栏目、关窗、切工程）时心跳必须跟着停 ——
-                    // 正常松手走 onEnded，这条管的是「手势没有终点」的那些死法。
-                    .onDisappear {
-                        autoScroller.stop()
-                        clipDrag = nil
-                        dragTargetRow = nil
-                        marquee = nil
-                        // 手势的「起手标记」也要一起清。留着的话，视图回来之后
-                        // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
-                        // beginCueDrag —— 整次拖动没有会话，等于白拖一回。
-                        movingCueID = nil
-                    }
+                // **双向**滚动：轨道多到一屏放不下时要能上下滚（2026-09-18；
+                // 在那之前只有横向，下面的轨道整条被裁掉、只能靠放大窗口看见）。
+                // 轨道头列和标尺各自跟着 `scrollGeometry` 钉住，别的都跟着滚。
+                ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    scrolledContent
+                        .frame(width: contentWidth, alignment: .topLeading)
+                }
+                // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
+                // 由 TimelineMagnificationBridge 里的 local monitor 处理。
+                .overlay(
+                    TimelineMagnificationBridge(pixelsPerSecond: $project.pixelsPerSecond)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                )
+                .coordinateSpace(name: Self.scrollSpace)
+                .onChange(of: viewport.size.width, initial: true) { _, width in
+                    viewportWidth = width
+                }
+                .onChange(of: viewport.size.height, initial: true) { _, height in
+                    viewportHeight = height
+                }
+                .onChange(of: clock.time) { _, newTime in
+                    followPlayhead(newTime)
+                }
+                // 视图消失（切栏目、关窗、切工程）时心跳必须跟着停 ——
+                // 正常松手走 onEnded，这条管的是「手势没有终点」的那些死法。
+                .onDisappear {
+                    autoScroller.stop()
+                    clipDrag = nil
+                    dragTargetRow = nil
+                    marquee = nil
+                    // 手势的「起手标记」也要一起清。留着的话，视图回来之后
+                    // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
+                    // beginCueDrag —— 整次拖动没有会话，等于白拖一回。
+                    movingCueID = nil
                 }
             }
         }
-    }
-
-    /// 左侧的轨道头：轨道色条 + 类型图标 + 整轨隐藏的眼睛（快捷键 V），
-    /// 行高和右边严格一致。在视频轨/音频轨的图标上**上下拖**可以调那一类
-    /// 轨道的行高。
-    private var headerColumn: some View {
-        VStack(alignment: .center, spacing: rowSpacing) {
-            ForEach(rows) { row in
-                Group {
-                    if row.isRuler {
-                        Color.clear
-                    } else {
-                        HStack(spacing: 3) {
-                            // 轨道色条：与这条轨上所有块同色。空轨在时间线上
-                            // 一个块都没有，只有它能告诉用户那是哪条轨。
-                            if let slot = row.slot {
-                                Capsule()
-                                    .fill(project.state.trackAccent(for: slot))
-                                    .frame(width: 3, height: max(10, row.height - 10))
-                                    .opacity(row.isHidden ? 0.3 : 1)
-                            }
-                            Image(systemName: row.icon)
-                                .font(.caption)
-                                .foregroundStyle(row.isHidden ? .tertiary : .secondary)
-                            if let slot = row.slot {
-                                Button {
-                                    project.toggleLaneHidden(slot)
-                                } label: {
-                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .instantHelp("Hide or show this track", shortcut: .plain("V"))
-                            } else if let kind = row.subtitleKind {
-                                // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录
-                                // 都跳过），只是隐藏状态不挂在 slot 上。
-                                Button {
-                                    switch kind {
-                                    case .original: project.toggleSubtitleHidden()
-                                    case .translation: project.toggleTranslationHidden()
-                                    }
-                                } label: {
-                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .instantHelp(kind == .original
-                                      ? "Hide or show the original subtitle track"
-                                      : "Hide or show the translated subtitle track")
-                            }
-                        }
-                    }
-                }
-                .frame(width: 54, height: row.height)
-                .contentShape(Rectangle())
-                .modifier(RowHeightDragModifier(
-                    kind: rowKind(row),
-                    project: project,
-                    base: $headerResizeBase
-                ))
-            }
-        }
-        .padding(.vertical, 2)
     }
 
     var rowSpacing: Double { 5 }
-
-    private func rowKind(_ row: RowSpec) -> TrackRowKind {
-        switch row.slot {
-        case .main, .overlay: return .video
-        case .audio: return .audio
-        case nil: return .other
-        }
-    }
 
     private var scrolledContent: some View {
         ZStack(alignment: .topLeading) {
@@ -415,9 +353,12 @@ struct VideoEditTimelineView: View {
     @ViewBuilder
     private func rowView(_ row: RowSpec) -> some View {
         if row.isRuler {
-            TimelineRuler(
+            // 标尺钉在视口顶上：纵向滚动时它不跟着走。
+            TimelinePinnedRuler(
                 pps: pps,
                 duration: project.duration,
+                rowSpacing: rowSpacing,
+                geometry: scrollGeometry,
                 onSeek: { time, precise in
                     clock.seek(to: min(max(0, time), project.duration), precise: precise)
                 }
@@ -450,8 +391,8 @@ struct VideoEditTimelineView: View {
                     dragOffset: dragOffset(for: clip),
                     project: project,
                     onDragBegin: { beginClipDrag(clip, slot: slot) },
-                    onDragChange: { translation, pointerViewportX in
-                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
+                    onDragChange: { translation, pointerViewport in
+                        updateClipDrag(translation: translation, pointerViewport: pointerViewport)
                     },
                     onDragEnd: { endClipDrag() },
                     onTrim: { leading, delta in
@@ -501,23 +442,15 @@ struct VideoEditTimelineView: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .offset(x: x - 4.5)
         .allowsHitTesting(false)
-        // 播放头本身是 .offset 画的，不占布局位置，scrollTo 找不到它 ——
-        // 所以另放一个**占真实布局**的锚点跟着播放头走，滚动认那个。
-        .overlay(alignment: .topLeading) {
-            HStack(spacing: 0) {
-                Color.clear.frame(width: max(0, x), height: 1)
-                Color.clear.frame(width: 1, height: 1).id(Self.playheadAnchor)
-                Spacer(minLength: 0)
-            }
-            .allowsHitTesting(false)
-        }
     }
-
-    private static let playheadAnchor = "playhead-anchor"
 
     /// 播放时让播放头留在视野里：只有它快滚出去了才动一下，
     /// 平时不跟着走 —— 每帧都居中会看得人晕。
-    private func followPlayhead(_ time: Double, proxy: ScrollViewProxy, viewportWidth: Double) {
+    ///
+    /// **只碰横向。** 以前走 `ScrollViewProxy.scrollTo(_:anchor:)`，那个锚点是
+    /// 双轴的：时间线能上下滚之后（2026-09-18），正在看下面几条轨时一按播放，
+    /// 画面会被连带拽回最顶上。
+    private func followPlayhead(_ time: Double) {
         guard clock.isPlaying, viewportWidth > 80 else { return }
         guard abs(time - lastFollowTime) > 0.15 else { return }
         lastFollowTime = time
@@ -527,9 +460,7 @@ struct VideoEditTimelineView: View {
         let leftEdge = offset + 40
         let rightEdge = offset + viewportWidth - 80
         guard x < leftEdge || x > rightEdge else { return }
-        withAnimation(.easeOut(duration: 0.2)) {
-            // 挪到视野偏左的位置，后面还留着一大段能看。
-            proxy.scrollTo(Self.playheadAnchor, anchor: UnitPoint(x: 0.15, y: 0))
-        }
+        // 挪到视野偏左的位置，后面还留着一大段能看。
+        scrollGeometry.scrollHorizontally(to: x - viewportWidth * 0.15, animated: true)
     }
 }

@@ -39,7 +39,8 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .clip(slot: slot),
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX
+            originScrollOffset: scrollGeometry.offsetX,
+            originScrollOffsetY: scrollGeometry.offsetY
         )
     }
 
@@ -50,7 +51,12 @@ extension VideoEditTimelineView {
             project.selectShape(shape.id, additive: false)
         }
         guard let plan = project.shapeDragPlan(shapeID: shape.id) else { return }
-        clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollGeometry.offsetX)
+        clipDrag = ClipDragSession(
+            subject: .shape,
+            plan: plan,
+            originScrollOffset: scrollGeometry.offsetX,
+            originScrollOffsetY: scrollGeometry.offsetY
+        )
     }
 
     func beginTextDrag(_ overlay: TextOverlay) {
@@ -60,7 +66,12 @@ extension VideoEditTimelineView {
             project.selectText(overlay.id, additive: false)
         }
         guard let plan = project.textDragPlan(textID: overlay.id) else { return }
-        clipDrag = ClipDragSession(subject: .text, plan: plan, originScrollOffset: scrollGeometry.offsetX)
+        clipDrag = ClipDragSession(
+            subject: .text,
+            plan: plan,
+            originScrollOffset: scrollGeometry.offsetX,
+            originScrollOffsetY: scrollGeometry.offsetY
+        )
     }
 
     /// 字幕 cue 起手的拖动。与剪辑/形状三处严格对称，包括「拖一个没选中的
@@ -71,18 +82,23 @@ extension VideoEditTimelineView {
             project.selectSubtitleCue(cue.id, additive: false)
         }
         guard let plan = project.cueDragPlan(cueID: cue.id) else { return }
-        clipDrag = ClipDragSession(subject: .subtitleCue, plan: plan, originScrollOffset: scrollGeometry.offsetX)
+        clipDrag = ClipDragSession(
+            subject: .subtitleCue,
+            plan: plan,
+            originScrollOffset: scrollGeometry.offsetX,
+            originScrollOffsetY: scrollGeometry.offsetY
+        )
     }
 
-    /// `pointerViewportX` 是指针在滚动视口里的 x（手势坐标系就钉在视口上）。
-    func updateClipDrag(translation: CGSize, pointerViewportX: Double) {
+    /// `pointerViewport` 是指针在滚动视口里的位置（手势坐标系就钉在视口上）。
+    func updateClipDrag(translation: CGSize, pointerViewport: CGPoint) {
         guard var drag = clipDrag else { return }
         drag.update(translation: translation, scrollOffset: scrollGeometry.offsetX, pixelsPerSecond: pps)
         clipDrag = drag
         dragTargetRow = verticalTarget(for: drag, dy: translation.height)
         autoScroller.update(
-            pointerX: pointerViewportX,
-            viewportWidth: viewportWidth
+            pointer: pointerViewport,
+            viewport: CGSize(width: viewportWidth, height: viewportHeight)
         ) {
             // 自动滚动那一拍指针没动，位移还是上一次那个，只有滚动量变了 ——
             // 新的滚动量同样现读，别让心跳再传一份数进来。
@@ -175,7 +191,10 @@ extension VideoEditTimelineView {
               let clip = project.state.clip(with: drag.draggedID) else { return nil }
         let layouts = rowLayouts()
         guard let source = layouts.first(where: { $0.spec.slot == slot }) else { return nil }
-        let pointY = source.midY + dy
+        // 纵向自动滚动那一路：指针没动、内容在它底下滚走了，得把这段补上，
+        // 否则新露出来的轨道永远选不中（同横向那条补偿，见 ClipDragSession）。
+        let scrolled = scrollGeometry.offsetY - drag.originScrollOffsetY
+        let pointY = source.midY + dy + scrolled
 
         var candidates: [(id: String, midY: Double, target: VideoEditProject.RowTarget)] = []
         if clip.isAudioOnly {

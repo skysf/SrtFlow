@@ -25,9 +25,11 @@ THUMBS="Sources/SrtFlow/VideoEditTimelineThumbnails.swift"
 WAVEFORM="Sources/SrtFlow/VideoEditTimelineWaveform.swift"
 ZOOM="Sources/SrtFlow/VideoEditTimelinePinchZoom.swift"
 GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
+HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
 # 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
-  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY")
+  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
+  "$HEADER_COLUMN")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -46,6 +48,12 @@ extract_func() {
     inside { print }
     inside && /^    \}$/ { exit }
   ' "$2"
+}
+
+# 只看**真代码行**：注释里写了同一串不算接上了（第 10 节反向验证时踩过一次
+# 假绿 —— 文件头的说明文字里正好有那行代码的样子）。
+grep_code() {
+  grep -n "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .
 }
 
 require_func() {
@@ -361,7 +369,56 @@ OTHER_SCROLLER="$(grep -rn 'contentView\.bounds\.origin\|clipView\.scroll(to:' S
 [ -z "$OTHER_SCROLLER" ] \
   || fail "滚动位置只能由 TimelineScrollGeometry 读/推：${OTHER_SCROLLER}"
 
+# ── 10. 纵向滚动：两处「钉住」必须同源，且只有它们订阅滚动量 ───────────
+# 轨道多到一屏放不下时时间线双向滚动（2026-09-18）。轨道头列在滚动区外、标尺在
+# 滚动内容里，两边各自减/加**同一个** `geometry.offset.y` 才能永远对得上。
+# 案例：docs/bugfixes/2026-09-18-timeline-cannot-scroll-vertically.md
+grep -q 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" \
+  || fail "时间线不是双向滚动了：轨道一多下面几条又会被整条裁掉"
+grep_code 'offset(y: -geometry\.offset\.y)' "$HEADER_COLUMN" \
+  || fail "轨道头列没跟着纵向滚动量走：它和轨道行会错开"
+grep_code 'offset(y: geometry\.offset\.y)' "$RULER" \
+  || fail "标尺没钉住：纵向滚动时刻度会跟着轨道一起滚走"
+# 轨道头列的固有高度是所有行加起来（十来条轨 500pt 往上）。直接摆进 HStack 的话
+# 整条时间线会按这个高度要地方，VSplitView 给不了，工具栏和标尺当场被挤出窗口。
+if BODY="$(require_func 'var body: some View' "$HEADER_COLUMN")"; then
+  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+    || fail "轨道头列又自己决定高度了：它必须画在弹性容器上，否则会把工具栏挤出窗口"
+fi
+# 订阅（@ObservedObject）只许出现在这两处：别处订阅 = 滚动的每一帧重建整棵
+# 时间线视图树（和第 0 节「拖动中不写 state」同一条理由，换了个轴）。
+SUBSCRIBERS="$(grep -ln '@ObservedObject var geometry: TimelineScrollGeometry' "${TIMELINE_VIEWS[@]}" || true)"
+EXPECTED="$(printf '%s\n%s\n' "$HEADER_COLUMN" "$RULER" | sort)"
+[ "$(printf '%s\n' "$SUBSCRIBERS" | sort)" = "$EXPECTED" ] \
+  || fail "订阅滚动量的不只是轨道头列和标尺：$SUBSCRIBERS"
+grep -q '@State var scrollGeometry = TimelineScrollGeometry()' "$VIEW" \
+  || fail "时间线主体必须用 @State 持有滚动几何（@StateObject/@ObservedObject 会订阅 → 每帧重建整棵树）"
+# 播放跟随只碰横向：scrollTo 的锚点是双轴的，会把正在看的下面几条轨拽回顶上。
+# （注释里提这个名字不算 —— 只看真代码行。）
+grep -rn 'scrollTo(' "${TIMELINE_VIEWS[@]}" | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \
+  && fail "播放跟随又走回 ScrollViewProxy.scrollTo：那个锚点是双轴的，会把纵向位置一起拽走"
+# 没在推的那一轴一个字都不许碰：内容比视口窄时 SwiftUI 会居中（origin 是负的），
+# 顺手夹一下就会让整条时间线横着跳一大段。
+if BODY="$(require_func 'private func scroll(dx' "$GEOMETRY")"; then
+  printf '%s\n' "$BODY" | grep -q 'dx == 0 ? current.x' \
+    || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：纵向自动滚动那一拍会横着跳"
+  printf '%s\n' "$BODY" | grep -q 'dy == 0 ? current.y' \
+    || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：横向自动滚动那一拍会竖着跳"
+fi
+# 框选的两个端点在**两个轴**上都要补滚动量。
+for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
+  if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
+    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetY' \
+      || fail "${entry} 没补纵向滚动量：滚下去之后框会整体偏出一个纵向滚动量"
+  fi
+done
+# 跨轨判定要按「此刻露出来的是哪几条轨」算（纵向自动滚动期间指针不动、内容在滚）。
+if BODY="$(require_func 'func verticalTarget(' "$DRAG_WIRING")"; then
+  printf '%s\n' "$BODY" | grep -q 'originScrollOffsetY' \
+    || fail "verticalTarget 没补纵向滚动量：纵向自动滚出来的轨道永远选不中"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：文件分工与体积 / 滚动量现读 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：文件分工与体积 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"

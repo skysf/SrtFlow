@@ -78,7 +78,7 @@ extension VideoEditTimelineView {
                                     }
                                     updateClipDrag(
                                         translation: value.translation,
-                                        pointerViewportX: value.location.x
+                                        pointerViewport: value.location
                                     )
                                 }
                                 .onEnded { _ in

@@ -23,9 +23,10 @@ struct ClipBlockView: View {
     let dragOffset: Double?
     @ObservedObject var project: VideoEditProject
     let onDragBegin: () -> Void
-    /// (手势总位移, 指针在滚动视口里的 x)。垂直分量用来跨轨，x 用来判断到没到
-    /// 视口边缘（自动滚动）。两者都在视口坐标系里量，见 `moveGesture`。
-    let onDragChange: (CGSize, Double) -> Void
+    /// (手势总位移, 指针在滚动视口里的位置)。位移的垂直分量用来跨轨，指针位置
+    /// 用来判断到没到视口边缘（两轴的自动滚动）。都在视口坐标系里量，
+    /// 见 `moveGesture`。
+    let onDragChange: (CGSize, CGPoint) -> Void
     let onDragEnd: () -> Void
     let onTrim: (Bool, Double) -> Void
     let onTrimEnd: () -> Void
@@ -176,7 +177,7 @@ struct ClipBlockView: View {
                     isMoving = true
                     onDragBegin()
                 }
-                onDragChange(value.translation, value.location.x)
+                onDragChange(value.translation, value.location)
             }
             .onEnded { _ in
                 isMoving = false

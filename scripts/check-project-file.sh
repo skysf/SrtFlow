@@ -188,7 +188,7 @@ require "烧录必须与预览同一份合同（眼睛说了算）" \
 forbid "导出面板不许再自己选烧哪条轨" \
   Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'enum Burn'
 require "时间线要给译文轨一只自己的眼睛" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'toggleTranslationHidden\(\)'
+  Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleTranslationHidden\(\)'
 
 # 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
 require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
