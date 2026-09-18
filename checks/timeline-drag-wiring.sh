@@ -34,6 +34,8 @@ PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
 DRAG="Sources/SrtFlow/VideoEditTimelineDrag.swift"
+ROW_SELECT_ENTRY="Sources/SrtFlow/VideoEditProject+RowSelection.swift"
+ROW_SELECT_RULE="Sources/SrtFlow/VideoEditTimelineRowSelection.swift"
 FAILED=0
 
 fail() {
@@ -439,7 +441,46 @@ if BODY="$(require_func 'private var playhead' "$VIEW")"; then
     && fail "播放头把手又画回滚动内容里了：纵向滚下去会被钉住的标尺盖住"
 fi
 
+# ── 13. 轨道头：三格固定宽度 + 点一下选中整行 ──────────────────────────
+# 路径先确认：扫空文件还是绿的（第 0 节同一条教训）。
+for file in "$ROW_SELECT_ENTRY" "$ROW_SELECT_RULE"; do
+  [ -f "${file}" ] \
+    || fail "找不到 ${file}：轨道头点选的判据/接线被改名了，守卫会扫空 —— 同步改这里"
+done
+# 「隐藏的行点不出选择」这条必须留在纯值里（自检编得动它），别挪回视图。
+grep_code 'isLaneHidden' "$ROW_SELECT_RULE" \
+  || fail "轨道头点选不再判隐藏轨了：会选中一批在时间线上碰都碰不到的块，⌫ 一按就删"
+# 对齐：色条/图标/眼睛三格**都得写死宽度**。靠 HStack 居中的话，film 比
+# music.note 宽、字幕行没有色条，每行总宽不同 → 色条和眼睛的 x 一行一个样
+#（2026-09-18 用户报的「这一列要对齐」）。
+for cell in 'TimelineHeaderMetrics.accentWidth' 'TimelineHeaderMetrics.iconWidth' \
+            'TimelineHeaderMetrics.eyeWidth'; do
+  grep_code "frame(width: ${cell})" "$HEADER_COLUMN" \
+    || fail "轨道头少了固定宽度的那一格（${cell}）：这一列又会一行一个样"
+done
+# 没有色条/没有眼睛的行也必须占着那一格，否则那几行整体左移。
+if BODY="$(require_func 'private var eye: some View' "$HEADER_COLUMN")"; then
+  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+    || fail "没有眼睛的行没占住眼睛那一格：它的图标会跑到别人眼睛的位置上"
+fi
+# 点选：轨道头点一下选中整行，判据只有 TimelineRowSelection 一份。
+grep_code 'project.selectRow(' "$HEADER_COLUMN" \
+  || fail "轨道头没接上点选：点非眼睛的地方应当选中这一行的全部素材"
+grep_code 'selectedClipIDs\|selectedShapeIDs\|selectedTextIDs\|selectedSubtitleCueIDs' "$HEADER_COLUMN" \
+  && fail "轨道头自己写选择了：只能走 project.selectRow（判据留在 TimelineRowSelection）"
+if BODY="$(require_func 'func selectRow(' "$ROW_SELECT_ENTRY")"; then
+  printf '%s\n' "$BODY" | grep -q 'TimelineRowSelection.ids(' \
+    || fail "selectRow 没走纯值 TimelineRowSelection.ids：那份判据自检就够不着了"
+  printf '%s\n' "$BODY" | grep -q 'guard !result.isEmpty else { return }' \
+    || fail "selectRow 少了空行早退：点空轨会把用户已有的选择抹掉"
+fi
+# 眼睛必须还是 Button：它自己把点击吃掉，才不会连带触发整行点选。
+if BODY="$(require_func 'private func eyeButton(' "$HEADER_COLUMN")"; then
+  printf '%s\n' "$BODY" | grep -q 'Button(action: action)' \
+    || fail "眼睛不是 Button 了：点眼睛会连带把整条轨的素材选中"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"

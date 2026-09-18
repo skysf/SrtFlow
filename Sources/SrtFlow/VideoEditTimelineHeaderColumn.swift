@@ -4,7 +4,8 @@ import SwiftUI
 // MARK: - 左侧轨道头列
 //
 // 轨道色条 + 类型图标 + 整轨隐藏的眼睛，行高和右边的轨道行严格一致。
-// 在视频轨/音频轨的图标上**上下拖**可以调那一类轨道的行高。
+// 在视频轨/音频轨的图标上**上下拖**可以调那一类轨道的行高；点一下（非眼睛的
+// 地方）选中这一行的全部素材。
 //
 // 它在滚动区**外面**（横向滚动不该把轨道头滚走），所以时间线纵向滚动时得自己
 // 跟上：`.offset(y: -geometry.offset.y)`。这是**唯一**一处订阅
@@ -27,7 +28,7 @@ struct TimelineHeaderColumn: View {
         // `Color.clear` 的固有尺寸是弹性的：面板给多少就是多少，真正的那一列
         // 画在它上面、超出的部分裁掉。
         Color.clear
-            .frame(width: 54)
+            .frame(width: TimelineHeaderMetrics.columnWidth)
             .overlay(alignment: .top) { column }
             .clipped()
             // `.clipped()` 只裁绘制不裁命中：没有这一条，滚出视口的那些眼睛
@@ -38,60 +39,7 @@ struct TimelineHeaderColumn: View {
     private var column: some View {
         VStack(alignment: .center, spacing: rowSpacing) {
             ForEach(rows) { row in
-                Group {
-                    if row.isRuler {
-                        Color.clear
-                    } else {
-                        HStack(spacing: 3) {
-                            // 轨道色条：与这条轨上所有块同色。空轨在时间线上
-                            // 一个块都没有，只有它能告诉用户那是哪条轨。
-                            if let slot = row.slot {
-                                Capsule()
-                                    .fill(project.state.trackAccent(for: slot))
-                                    .frame(width: 3, height: max(10, row.height - 10))
-                                    .opacity(row.isHidden ? 0.3 : 1)
-                            }
-                            Image(systemName: row.icon)
-                                .font(.caption)
-                                .foregroundStyle(row.isHidden ? .tertiary : .secondary)
-                            if let slot = row.slot {
-                                Button {
-                                    project.toggleLaneHidden(slot)
-                                } label: {
-                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .instantHelp("Hide or show this track", shortcut: .plain("V"))
-                            } else if let kind = row.subtitleKind {
-                                // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录
-                                // 都跳过），只是隐藏状态不挂在 slot 上。
-                                Button {
-                                    switch kind {
-                                    case .original: project.toggleSubtitleHidden()
-                                    case .translation: project.toggleTranslationHidden()
-                                    }
-                                } label: {
-                                    Image(systemName: row.isHidden ? "eye.slash" : "eye")
-                                        .font(.system(size: 9))
-                                        .foregroundStyle(row.isHidden ? .orange : .secondary)
-                                }
-                                .buttonStyle(.borderless)
-                                .instantHelp(kind == .original
-                                      ? "Hide or show the original subtitle track"
-                                      : "Hide or show the translated subtitle track")
-                            }
-                        }
-                    }
-                }
-                .frame(width: 54, height: row.height)
-                .contentShape(Rectangle())
-                .modifier(RowHeightDragModifier(
-                    kind: rowKind(row),
-                    project: project,
-                    base: $resizeBase
-                ))
+                TimelineHeaderRow(row: row, project: project, resizeBase: $resizeBase)
             }
         }
         .padding(.vertical, 2)
@@ -99,8 +47,130 @@ struct TimelineHeaderColumn: View {
         // 两边就永远对得上（不用各自去量位置）。
         .offset(y: -geometry.offset.y)
     }
+}
 
-    private func rowKind(_ row: VideoEditTimelineView.RowSpec) -> TrackRowKind {
+// MARK: - 三格的固定宽度
+
+/// 轨道头一行的排版尺寸。
+///
+/// **三格都必须写死宽度。** 以前是「色条 + 图标 + 眼睛」直接塞进居中的 HStack：
+/// `film` 比 `music.note` 宽、字幕行压根没有色条，于是每一行的 HStack 总宽都不
+/// 一样，居中之后色条和眼睛的 x **一行一个样**（2026-09-18 用户报的「这一列要
+/// 对齐」）。每格宽度固定 → 每行总宽相同 → 居中即对齐，不用去量任何位置。
+enum TimelineHeaderMetrics {
+    static let columnWidth: Double = 54
+    static let accentWidth: Double = 3
+    static let iconWidth: Double = 16
+    static let eyeWidth: Double = 14
+    static let spacing: Double = 3
+}
+
+// MARK: - 轨道头的一行
+
+private struct TimelineHeaderRow: View {
+    let row: VideoEditTimelineView.RowSpec
+    @ObservedObject var project: VideoEditProject
+    @Binding var resizeBase: Double?
+
+    var body: some View {
+        Group {
+            if row.isRuler {
+                Color.clear
+            } else {
+                HStack(spacing: TimelineHeaderMetrics.spacing) {
+                    accent
+                    icon
+                    eye
+                }
+            }
+        }
+        .frame(width: TimelineHeaderMetrics.columnWidth, height: row.height)
+        .contentShape(Rectangle())
+        // 点一下（非眼睛的地方）= 选中这一行的全部素材。眼睛是 Button，它自己
+        // 把点击吃掉，落不到这里。调行高那条是 `minimumDistance: 2` 的拖动，
+        // 没挪动的点击不会被它吃掉。
+        .onTapGesture { selectRow() }
+        .modifier(RowHeightDragModifier(
+            kind: rowKind,
+            project: project,
+            base: $resizeBase
+        ))
+    }
+
+    // MARK: 三格
+
+    /// 轨道色条：与这条轨上所有块同色。空轨在时间线上一个块都没有，只有它能
+    /// 告诉用户那是哪条轨。没有色条的行（文字/形状/字幕）**也占着这一格**，
+    /// 否则那几行的图标和眼睛会整体左移。
+    @ViewBuilder
+    private var accent: some View {
+        Group {
+            if let slot = row.slot {
+                Capsule()
+                    .fill(project.state.trackAccent(for: slot))
+                    .frame(width: TimelineHeaderMetrics.accentWidth, height: max(10, row.height - 10))
+                    .opacity(row.isHidden ? 0.3 : 1)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: TimelineHeaderMetrics.accentWidth)
+    }
+
+    private var icon: some View {
+        Image(systemName: row.icon)
+            .font(.caption)
+            .foregroundStyle(row.isHidden ? .tertiary : .secondary)
+            .frame(width: TimelineHeaderMetrics.iconWidth)
+    }
+
+    /// 整轨显隐的眼睛。没有眼睛的行（文字/形状）一样占着这一格 —— 少了它，
+    /// 那几行的图标就会跑到别人眼睛的位置上。
+    @ViewBuilder
+    private var eye: some View {
+        Group {
+            if let slot = row.slot {
+                eyeButton { project.toggleLaneHidden(slot) }
+                    .instantHelp("Hide or show this track", shortcut: .plain("V"))
+            } else if let kind = row.subtitleKind {
+                // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录都跳过），
+                // 只是隐藏状态不挂在 slot 上。
+                eyeButton {
+                    switch kind {
+                    case .original: project.toggleSubtitleHidden()
+                    case .translation: project.toggleTranslationHidden()
+                    }
+                }
+                .instantHelp(kind == .original
+                      ? "Hide or show the original subtitle track"
+                      : "Hide or show the translated subtitle track")
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: TimelineHeaderMetrics.eyeWidth)
+    }
+
+    private func eyeButton(_ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: row.isHidden ? "eye.slash" : "eye")
+                .font(.system(size: 9))
+                .foregroundStyle(row.isHidden ? .orange : .secondary)
+        }
+        .buttonStyle(.borderless)
+    }
+
+    // MARK: 点选
+
+    /// ⌘/⇧ 点是加选 / 取消，和块的点选一致。选谁由 `TimelineRowSelection` 决定
+    /// （空行、隐藏行什么都不做）—— 这里不自己判断任何一条。
+    private func selectRow() {
+        guard let target = row.selectionRow else { return }
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        project.selectRow(target, additive: flags.contains(.command) || flags.contains(.shift))
+    }
+
+    private var rowKind: TrackRowKind {
         switch row.slot {
         case .main, .overlay: return .video
         case .audio: return .audio

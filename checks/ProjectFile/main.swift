@@ -2189,6 +2189,108 @@ do {
                "定格段连效果一起抄（时长也抄了，两者不能只抄一半）")
 }
 
+// MARK: - 23. 轨道头点一下：选中这一行的全部素材
+//
+// 左侧轨道头点**非眼睛**的区域 = 选中这一行的素材（2026-09-18 用户拍板）。
+// 判据是纯值（`TimelineRowSelection`），视图只做「行 → 身份」的翻译。这里守四条边：
+//
+//   1. **一行只产出一类**：点选的互斥（第 21 节）因此一条都没松，混选仍然只能
+//      从框选进来。
+//   2. **隐藏的行返回空**：隐藏 = 不可编辑（时间线那边直接关了命中测试），
+//      轨道头是同一条合同的另一半。漏了它，用户能从轨道头选中一批在时间线上
+//      碰都碰不到的块，⌫ 一按就删掉看不见的东西。
+//   3. **空行也返回空**，调用方据此「什么都不做」—— 不是「选中 0 个」：后者会
+//      把用户手上已有的选择抹掉，而他只是点空了一下轨道头。
+//   4. **⌘/⇧ 是整行并入 / 整行减掉**，不是逐个翻转。逐个翻转的话，一行里已经
+//      选中的那几块会被取消 —— 用户看到的是「加选反而少了几块」。
+
+do {
+    let media = root.appendingPathComponent("rowselect.mp4")
+    makeFile(media)
+
+    var state = TimelineState()
+    let mainA = EditClip(sourceURL: media, sourceDuration: 3, timelineStart: 0)
+    let mainB = EditClip(sourceURL: media, sourceDuration: 3, timelineStart: 4)
+    state.mainClips = [mainA, mainB]
+    let overlayClip = EditClip(sourceURL: media, sourceDuration: 2, timelineStart: 1)
+    // 一条隐藏的上层轨 + 一条正常音频轨 + 一条空音频轨。
+    state.overlayTracks = [EditLane(clips: [overlayClip], isHidden: true)]
+    let audioClip = EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 5, timelineStart: 0)
+    state.audioTracks = [EditLane(clips: [audioClip]), EditLane()]
+    state.shapes = [
+        ShapeAnnotation(kind: .square, timelineStart: 1, width: 0.25),
+        ShapeAnnotation(kind: .line, timelineStart: 6, width: 0.4)
+    ]
+    // 两段**时间上重叠**的文字 → 必然分成两层，点一行只能选到那一层的。
+    let textLow = TextOverlay(text: "上", timelineStart: 0, duration: 4)
+    let textHigh = TextOverlay(text: "下", timelineStart: 1, duration: 4)
+    state.textOverlays = [textLow, textHigh]
+    let cueA = SubtitleCue(index: 1, start: 0, end: 2, text: "hello")
+    let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
+    state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
+    var translated = SubtitleDocumentModel(cues: [cueA, cueB])
+    translated.cues[0].text = "你好"
+    state.subtitleCompanion = SubtitleCompanion(
+        translation: translated, targetLanguage: "zh-Hans", sourceLanguage: "en", origin: .imported)
+
+    // ── 轨道行：选中整轨；隐藏轨和空轨都是空 ──
+    let main = TimelineRowSelection.ids(for: .track(.main), in: state)
+    checkEqual(main.ids, [mainA.id, mainB.id], "点主轨头选中主轨上的全部素材")
+    check(main.category == .clips, "轨道行只产出剪辑这一类")
+    checkEqual(TimelineRowSelection.ids(for: .track(.overlay(0)), in: state).ids, [],
+               "隐藏的轨点头不选中任何东西（隐藏 = 不可编辑）")
+    checkEqual(TimelineRowSelection.ids(for: .track(.audio(0)), in: state).ids, [audioClip.id],
+               "音频轨头选中这条轨上的素材")
+    checkEqual(TimelineRowSelection.ids(for: .track(.audio(1)), in: state).ids, [],
+               "空轨点头是空 —— 调用方据此什么都不做")
+
+    // ── 形状行 / 文字行 ──
+    let shapes = TimelineRowSelection.ids(for: .shapes, in: state)
+    checkEqual(shapes.ids, Set(state.shapes.map(\.id)), "形状行选中全部形状")
+    check(shapes.category == .shapes, "形状行只产出形状这一类")
+    let level0 = TimelineRowSelection.ids(for: .textLevel(0), in: state)
+    let level1 = TimelineRowSelection.ids(for: .textLevel(1), in: state)
+    check(level0.category == .texts, "文字行只产出文字这一类")
+    checkEqual(level0.ids.count, 1, "重叠的两段文字分在两层，一层只有一段")
+    checkEqual(level1.ids.count, 1, "另一层也只有一段")
+    checkEqual(level0.ids.union(level1.ids), [textLow.id, textHigh.id], "两层加起来是全部文字")
+    check(level0.ids.isDisjoint(with: level1.ids), "两层不许选到同一段文字")
+    checkEqual(TimelineRowSelection.ids(for: .textLevel(9), in: state).ids, [],
+               "不存在的层是空，不是崩")
+
+    // ── 字幕行：两轨镜像（同 ID），各自的眼睛各自判 ──
+    let original = TimelineRowSelection.ids(for: .subtitle(.original), in: state)
+    checkEqual(original.ids, [cueA.id, cueB.id], "原文字幕行选中全部 cue")
+    check(original.category == .subtitleCues, "字幕行只产出 cue 这一类")
+    checkEqual(TimelineRowSelection.ids(for: .subtitle(.translation), in: state).ids,
+               [cueA.id, cueB.id], "译文轨是镜像：同一批 cue")
+    var subtitleHidden = state
+    subtitleHidden.subtitleHidden = true
+    checkEqual(TimelineRowSelection.ids(for: .subtitle(.original), in: subtitleHidden).ids, [],
+               "关掉原文那只眼睛后，点它的轨道头不选中任何 cue")
+    checkEqual(TimelineRowSelection.ids(for: .subtitle(.translation), in: subtitleHidden).ids,
+               [cueA.id, cueB.id], "原文的眼睛管不到译文那一行")
+    var noSubtitle = TimelineState()
+    checkEqual(TimelineRowSelection.ids(for: .subtitle(.original), in: noSubtitle).ids, [],
+               "没有字幕轨时是空，不是崩")
+    noSubtitle.subtitle = SubtitleDocumentModel(cues: [cueA])
+    checkEqual(TimelineRowSelection.ids(for: .subtitle(.translation), in: noSubtitle).ids, [],
+               "没有译文轨时译文行是空")
+
+    // ── ⌘/⇧ 的加选规则：整行并入 / 整行减掉 ──
+    let other = UUID()
+    checkEqual(TimelineRowSelection.applying([mainA.id, mainB.id], to: [other], additive: false),
+               [mainA.id, mainB.id], "普通点是改选：把原来的换掉")
+    checkEqual(TimelineRowSelection.applying([mainA.id, mainB.id], to: [other], additive: true),
+               [other, mainA.id, mainB.id], "⌘点是加选：并进已有的选择")
+    checkEqual(TimelineRowSelection.applying([mainA.id, mainB.id], to: [other, mainA.id], additive: true),
+               [other, mainA.id, mainB.id],
+               "行里只选中了一部分时，⌘点补齐整行 —— 不是把已选的那几块翻转掉")
+    checkEqual(TimelineRowSelection.applying([mainA.id, mainB.id],
+                                             to: [other, mainA.id, mainB.id], additive: true),
+               [other], "整行都已选中时，⌘点整行减掉")
+}
+
 try? manager.removeItem(at: root)
 
 print("\(checks) checks, \(failures) failures")
