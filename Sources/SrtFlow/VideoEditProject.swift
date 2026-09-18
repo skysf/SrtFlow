@@ -1122,7 +1122,9 @@ final class VideoEditProject: ObservableObject {
     typealias RowTarget = TrackDropTarget
 
 
-    /// 整轨隐藏/显示（快捷键 V）。隐藏的轨灰显不可编辑，预览和导出都跳过。
+    /// 整轨隐藏/显示（轨道头那只眼睛）。隐藏的轨灰显不可编辑，预览和导出都跳过。
+    /// 单段那一级是 `EditClip.isHidden`（V），两级互不覆盖 ——
+    /// 合同见 docs/architecture/clip-visibility.md。
     func toggleLaneHidden(_ slot: TrackSlot) {
         perform { state in
             switch slot {
@@ -1200,13 +1202,22 @@ final class VideoEditProject: ObservableObject {
         perform { $0.frameRate = rate }
     }
 
-    /// V 键：切换选中剪辑所在的轨；什么都没选就切主轨。
-    func toggleHiddenForSelectionLane() {
-        if let id = selectedClipIDs.first, let location = state.location(of: id) {
-            toggleLaneHidden(location.track)
-        } else {
-            toggleLaneHidden(.main)
+    /// V 键：切换**选中的那几段**的显隐（2026-09-18 用户拍板）。
+    ///
+    /// 什么都没选时**什么都不做** —— 以前这里是「没选就切主轨」，那是在用户没
+    /// 指定对象时替他挑了一个最大的目标。整轨显隐现在只有轨道头那只眼睛一个入口。
+    ///
+    /// 链接开着时连带它分离出来的音频一起切（同删除/变速：`linkedClipIDs`）。
+    /// 切成什么由 `ClipVisibility.nextHidden` 定：一批里只要还有显示的就全部
+    /// 隐藏 —— 逐个翻转会让混合状态永远回不到「全显示」。
+    func toggleHiddenForSelection() {
+        guard !selectedClipIDs.isEmpty else { return }
+        var ids = selectedClipIDs
+        if linkageEnabled {
+            for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
         }
+        let hidden = ClipVisibility.nextHidden(for: ids, in: state)
+        perform { $0.setHidden(hidden, ids: ids) }
     }
 
     /// 主轨 ↔ 上层视频轨。

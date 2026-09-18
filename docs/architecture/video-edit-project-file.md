@@ -79,6 +79,8 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v12 | `TextOverlay.animation`（**按需写入**） | 调好的入场/出场/强调动画被静默丢掉，文字变成**硬切出现** —— 入场那一下正是标题最显眼的地方，成片当场不一样；随手编辑触发自动保存即永久丢失。没设动画的文字不落这个键。合同见 [画面文字](text-overlays.md) |
 | v13 | `TextOverlay.number`（**按需写入**） | 数字元件退回显示 `text` —— 而它的 `text` 是空的，于是画面上**整段消失**；随手编辑触发自动保存即永久丢失。合同见 [画面文字](text-overlays.md) |
 | v14 | `TextAnimationKind.focus`、`TextAnimation.focusStartOpacity`（**按需写入**） | **新增的枚举值也算持久数据**：`TextAnimationKind` 宽容解码，旧版遇到 `focus` 会退回 `.none` —— 那一段的入场/出场静默消失，标题最显眼的那一下当场没了；随手编辑触发自动保存即永久丢失。合同见 [画面文字](text-overlays.md) |
+| v15 | `EditClip.presetAnimation`（**按需**，只认非 fade 的效果） | 段的入场/出场动画退回硬切或纯淡入，成片当场不一样。合同见 [画面段的入场 / 出场动画](clip-animation.md) |
+| v16 | `EditClip.isHidden` —— 单段隐藏（快捷键 V，**按需写入**） | 用户藏起来的镜头**回到成片里**：旧版不认识这个键，打开就照常渲染它，随手编辑触发自动保存即永久抹掉，只能一段段重新找出来再藏一遍。合同见 [段的显隐](clip-visibility.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

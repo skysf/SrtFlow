@@ -139,6 +139,18 @@ struct VideoEditTimelineView: View {
         var subtitleKind: SubtitleRowKind?
         /// 整轨隐藏中（灰显，不可编辑）。
         var isHidden = false
+
+        /// 轨道头点一下要选中谁；nil = 这一行没有可选的东西（标尺）。
+        /// 判据本体在 `TimelineRowSelection` —— 这里只做「行 → 身份」的翻译，
+        /// 一条规则都不许在这儿写（空轨、隐藏轨那些边界都归它判）。
+        var selectionRow: TimelineRowSelection.Row? {
+            if isRuler { return nil }
+            if let slot { return .track(slot) }
+            if let subtitleKind { return .subtitle(subtitleKind) }
+            if let textLevel { return .textLevel(textLevel) }
+            if isShapes { return .shapes }
+            return nil
+        }
     }
 
     private var rows: [RowSpec] {

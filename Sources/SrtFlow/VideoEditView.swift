@@ -168,7 +168,7 @@ struct VideoEditView: View {
 
     // MARK: - 键盘
 
-    /// 空格播放/暂停；V 切换所在轨的隐藏；A/B 切换选择/分割工具；M 打标记。
+    /// 空格播放/暂停；V 切换**选中那几段**的隐藏；A/B 切换选择/分割工具；M 打标记。
     /// 这个视图只在「视频剪辑」栏可见时存在，监听不会漏到别的页面。
     private func installEventMonitor() {
         guard eventMonitor == nil else { return }
@@ -184,7 +184,7 @@ struct VideoEditView: View {
             if NSApp.keyWindow?.firstResponder is NSTextView { return event }
             // 字幕草稿开着 = 用户正在字幕输入框里编辑。多行 TextField + 中文输入法
             // 下第一响应者会偶发丢掉（上面那条判不住），这一拍的按键就会往下落进
-            // 快捷键：⌫ 把正在编辑的 cue 整条从轨上删掉，空格开播、V 切眼睛。
+            // 快捷键：⌫ 把正在编辑的 cue 整条从轨上删掉，空格开播、V 切段的显隐。
             // 草稿随提交（回车/失焦）清空，不会长期挡住快捷键。
             if project.subtitleDraft != nil { return event }
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
@@ -207,7 +207,7 @@ struct VideoEditView: View {
                 if !project.state.isEmpty { clock.togglePlayback() }
                 return nil
             case "v":
-                project.toggleHiddenForSelectionLane()
+                project.toggleHiddenForSelection()
                 return nil
             case "a":
                 project.activeTool = .select

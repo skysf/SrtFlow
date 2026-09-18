@@ -27,14 +27,14 @@ enum VideoEditExportGraph {
 
     /// 这份时间线导出来是不是纯音频（选中导出时给保存面板挑扩展名用）。
     static func isAudioOnly(_ state: TimelineState) -> Bool {
-        let mainVisible = state.mainHidden
-            ? []
-            : state.mainClips.filter { !$0.needsStillConversion }
-        let overlayVisible = state.overlayTracks
-            .filter { !$0.isHidden }
-            .flatMap(\.clips)
+        let mainVisible = ClipVisibility.visible(state.mainHidden ? [] : state.mainClips)
             .filter { !$0.needsStillConversion }
-        let hasAudio = !state.audioTracks.filter { !$0.isHidden }.flatMap(\.clips).isEmpty
+        let overlayVisible = ClipVisibility.visible(
+            state.overlayTracks.filter { !$0.isHidden }.flatMap(\.clips)
+        ).filter { !$0.needsStillConversion }
+        let hasAudio = !ClipVisibility.visible(
+            state.audioTracks.filter { !$0.isHidden }.flatMap(\.clips)
+        ).isEmpty
         return mainVisible.isEmpty && overlayVisible.isEmpty && hasAudio
     }
 
@@ -67,9 +67,10 @@ enum VideoEditExportGraph {
         // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
         // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
         // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。
-        let pendingStills = ((state.mainHidden ? [] : state.mainClips)
-            + state.overlayTracks.filter { !$0.isHidden }.flatMap(\.clips))
-            .filter(\.needsStillConversion)
+        let pendingStills = ClipVisibility.visible(
+            (state.mainHidden ? [] : state.mainClips)
+                + state.overlayTracks.filter { !$0.isHidden }.flatMap(\.clips)
+        ).filter(\.needsStillConversion)
         if !pendingStills.isEmpty {
             let names = pendingStills
                 .map(\.name)
@@ -84,13 +85,16 @@ enum VideoEditExportGraph {
         // 与预览合成的 1/30 各写一遍 —— 改帧率必须两边一起动，漏一处就是
         // 「预览 24、导出 30」。文件末尾有扫描守卫防止再写死。
         let fps = state.frameRate.fps
-        // 隐藏的轨和还在转静帧的占位块都不进成片。
-        let mainVisible = (state.mainHidden ? [] : state.mainClips)
+        // 隐藏的轨、单独隐藏的段（V）、还在转静帧的占位块都不进成片。
+        // 两级隐藏同一条语义，见 docs/architecture/clip-visibility.md。
+        let mainVisible = ClipVisibility.visible(state.mainHidden ? [] : state.mainClips)
             .filter { !$0.needsStillConversion }
         let overlayLanes = state.overlayTracks.filter { !$0.isHidden }
         let audioLanes = state.audioTracks.filter { !$0.isHidden }
-        let overlayVisible = overlayLanes.flatMap(\.clips).filter { !$0.needsStillConversion }
-        let audioClips = audioLanes.flatMap(\.clips).filter { !$0.isMuted }
+        let overlayVisible = ClipVisibility.visible(overlayLanes.flatMap(\.clips))
+            .filter { !$0.needsStillConversion }
+        let audioClips = ClipVisibility.visible(audioLanes.flatMap(\.clips))
+            .filter { !$0.isMuted }
 
         let hasVisual = !mainVisible.isEmpty || !overlayVisible.isEmpty
         guard hasVisual || !audioClips.isEmpty else {

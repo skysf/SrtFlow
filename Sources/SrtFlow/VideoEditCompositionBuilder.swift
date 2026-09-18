@@ -242,9 +242,11 @@ enum VideoEditCompositionBuilder {
         var placedIndexByMainIndex: [Int: Int] = [:]
 
         for (index, clip) in state.mainClips.enumerated() {
-            // 整轨隐藏 → 主轨完全不进合成（预览是黑场）；
+            // 整轨隐藏 → 主轨完全不进合成（预览是黑场）；单独隐藏的段（V）同理
+            // —— 两级隐藏的渲染语义是同一条，画面和声音都不进（见
+            // docs/architecture/clip-visibility.md）。
             // 还在后台转静帧的图片占位块也先跳过，转完会重建。
-            guard !state.mainHidden, !clip.needsStillConversion else { continue }
+            guard !state.mainHidden, !clip.isHidden, !clip.needsStillConversion else { continue }
             let slot = index % 2
             guard let videoTrack = (slot == 0 ? videoA : videoB) else { continue }
             let sourceAsset = asset(for: clip.sourceURL)
@@ -308,6 +310,11 @@ enum VideoEditCompositionBuilder {
             let kind = state.mainClips[index - 1].transitionAfter
             let overlap = state.transitionOverlap(afterMainIndex: index - 1)
             guard kind != .none, overlap > 0 else { continue }
+            // 任一侧被单独隐藏 → 这条接缝不存在。隐藏的那段没有 placed 条目，
+            // 不拦的话只有活着的那一侧挂上淡变 = 预览里它淡进黑场，而导出那边
+            // 转场要求两段真的首尾相叠、隐藏的段早被滤掉 = 硬切。两边必须同解。
+            guard !state.mainClips[index - 1].isHidden, !state.mainClips[index].isHidden
+            else { continue }
             let outgoingIndex = placedIndexByMainIndex[index - 1]
             let incomingIndex = placedIndexByMainIndex[index]
 
@@ -371,7 +378,8 @@ enum VideoEditCompositionBuilder {
             var videoCursor = 0.0
             var audioCursor = 0.0
 
-            for clip in lane.clips.sorted(by: { $0.timelineStart < $1.timelineStart })
+            for clip in ClipVisibility.visible(lane.clips)
+                .sorted(by: { $0.timelineStart < $1.timelineStart })
             where !clip.needsStillConversion {
                 let sourceAsset = asset(for: clip.sourceURL)
                 guard let sourceVideo = try? await sourceAsset.loadTracks(withMediaType: .video).first else { continue }
@@ -409,7 +417,8 @@ enum VideoEditCompositionBuilder {
                 withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { continue }
             var cursor = 0.0
-            for clip in lane.clips.sorted(by: { $0.timelineStart < $1.timelineStart }) {
+            for clip in ClipVisibility.visible(lane.clips)
+                .sorted(by: { $0.timelineStart < $1.timelineStart }) {
                 let sourceAsset = asset(for: clip.sourceURL)
                 guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first else { continue }
                 guard await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &cursor) else { continue }

@@ -416,6 +416,21 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 和导出。类型与读写见 VideoEditClipMarker.swift。
     var markers: [ClipMarker] = []
 
+    /// 这一段**单独**隐藏（快捷键 V）。画面和声音都不进预览、不进成片 —— 与整轨
+    /// 隐藏同一个心智，只是单位从一条轨变成一段素材。
+    ///
+    /// 隐藏的段在时间线上**仍然可选、可拖、可裁**（只是灰显 + 一枚斜杠眼睛）。
+    /// 整轨隐藏那边是「灰显且不可编辑」，这里刻意不同：按完 V 就再也点不中它的话，
+    /// 用户只能靠撤销把它找回来。
+    ///
+    /// 与 `EditLane.isHidden` / `mainHidden` **互不覆盖**：轨隐藏了，段上的这个
+    /// 标记原样留着；轨放出来，之前单独藏起来的段还是藏着。
+    ///
+    /// 不进 `init`（同 `markers` / `presetAnimation`）：绝大多数段没隐藏，摊进
+    /// 按成员构造器只会让每个调用点都多写一行。合同见
+    /// docs/architecture/clip-visibility.md。
+    var isHidden = false
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -825,8 +840,19 @@ extension TimelineState {
     /// （placement）**：那是相对完整画面摆的，画面本身都不在这次导出里。
     /// 没升轨的上层轨保持原样（含摆放），所见即所得。
     func selectionForExport(ids: Set<UUID>) -> TimelineState {
-        let picked = allClips.filter { ids.contains($0.id) }
-        guard let earliest = picked.map(\.timelineStart).min() else { return self }
+        // 起点按**真的会导出的**段算。把隐藏的段算进来的话，藏在最前面的那一段
+        // 会把整条子时间线往后推，成片开头多出一截黑场。
+        let picked = ClipVisibility.visible(allClips.filter { ids.contains($0.id) })
+        guard let earliest = picked.map(\.timelineStart).min() else {
+            // 选中的全是隐藏的段：给一份空的时间线，让导出当场报「先加一段素材」。
+            // 这里**不能 return self** —— 那会把整条时间线导出去，而用户点的是
+            // 「只导出选中的」（同 needsStillConversion 那条：宁可拦下来说清楚，
+            // 也不要「导出成功」但内容不是他要的）。
+            var empty = TimelineState()
+            empty.canvasRatio = canvasRatio
+            empty.frameRate = frameRate
+            return empty
+        }
 
         func shifted(_ clip: EditClip) -> EditClip {
             var copy = clip
@@ -835,14 +861,16 @@ extension TimelineState {
             return copy
         }
 
+        // 隐藏的段（单段的 V，和整轨的眼睛）一律不进这份子时间线：所见即所得，
+        // 「只导出选中的」不该把用户明明藏起来的东西导出去。
         var sub = TimelineState()
-        sub.mainClips = mainClips.filter { ids.contains($0.id) }.map(shifted)
+        sub.mainClips = ClipVisibility.visible(mainClips.filter { ids.contains($0.id) }).map(shifted)
         for lane in overlayTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            let clips = ClipVisibility.visible(lane.clips.filter { ids.contains($0.id) }).map(shifted)
             if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
         }
         for lane in audioTracks where !lane.isHidden {
-            let clips = lane.clips.filter { ids.contains($0.id) }.map(shifted)
+            let clips = ClipVisibility.visible(lane.clips.filter { ids.contains($0.id) }).map(shifted)
             if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
         }
         if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
@@ -1000,6 +1028,7 @@ extension EditClip: Codable {
         case presetAnimation
         case markers
         case fadeInDuration, fadeOutDuration
+        case isHidden
     }
 
     init(from decoder: Decoder) throws {
@@ -1036,6 +1065,9 @@ extension EditClip: Codable {
         // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
         // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
         markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
+        // 缺键 = 没隐藏。老工程（v15 及更早）根本没有这个概念，回退 false
+        // 就是它们当时的渲染结果 —— 升级不改变谁已经做好的片子。
+        isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
         // v14 及更早：画面渐变只有时长、没有"效果"这个概念。合并成一个槽之后，
         // 这些段就是 In/Out = Fade —— 不认回来的话，老工程一打开，调好的淡入淡出
         // 会因为 `kind == .none` 当场失效（不变量见 `ClipPresetAnimation.isEmpty`）。
@@ -1066,6 +1098,9 @@ extension EditClip: Codable {
         // 缺键按 0 解码，跟「关」完全同义，所以按需写是安全的。
         if fadeInDuration > 0 { try c.encode(fadeInDuration, forKey: .fadeInDuration) }
         if fadeOutDuration > 0 { try c.encode(fadeOutDuration, forKey: .fadeOutDuration) }
+        // 同声音渐变：没隐藏的段不写这个键（绝大多数段都是），缺键按 false
+        // 解码，与「没隐藏」完全同义。写了它的工程才算 v16 数据。
+        if isHidden { try c.encode(isHidden, forKey: .isHidden) }
         try c.encodeIfPresent(linkGroup, forKey: .linkGroup)
         try c.encode(transitionAfter, forKey: .transitionAfter)
         try c.encode(transitionDuration, forKey: .transitionDuration)

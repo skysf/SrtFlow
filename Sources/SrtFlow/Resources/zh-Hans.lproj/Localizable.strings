@@ -229,6 +229,8 @@
 "Zoom out" = "缩小时间线";
 "Zoom in" = "放大时间线";
 "Split at Playhead" = "在播放头处分割";
+"Hide Clip" = "隐藏这一段";
+"Show Clip" = "显示这一段";
 "Detach Audio" = "分离音频";
 "Move to Upper Track" = "移到上层轨道";
 "Move to Main Track" = "移回主轨";

@@ -39,8 +39,10 @@ extension VideoEditProject {
     /// 入口要用，**提交前的 CAS 也要再跑一遍** —— 抽帧+转码那 1~2 秒里用户可能
     /// 给这一段加了转场、把它挪去上层轨、或者把整条轨藏起来。
     func isFreezeEligible(_ clip: EditClip, at time: Double) -> Bool {
-        // 纯音频没有画面；图片段本来就是静止的；还在转静帧的占位段连素材都没有。
-        guard !clip.isAudioOnly, !clip.isStillImage, !clip.needsStillConversion else { return false }
+        // 纯音频没有画面；图片段本来就是静止的；还在转静帧的占位段连素材都没有；
+        // 单独藏起来的段（V）和藏起来的轨一样，在预览和成片里都不存在。
+        guard !clip.isAudioOnly, !clip.isStillImage, !clip.needsStillConversion, !clip.isHidden
+        else { return false }
         guard clip.contains(time: time) else { return false }
         guard let location = state.location(of: clip.id) else { return false }
         // 藏起来的轨在预览和导出里都当不存在，没有「这一帧」可言。

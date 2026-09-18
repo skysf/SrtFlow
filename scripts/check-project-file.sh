@@ -57,6 +57,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
+  Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
@@ -163,6 +165,34 @@ require "剪辑块要真的画出标记条" \
 # .ended。没有这道让位，鼠标一碰标记画面就弹回播放头（扫帧 peek 被掐断）。
 require "扫帧 peek 要给标记让位" \
   Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'guard markerHoverTime == nil else'
+# 单段隐藏（V，2026-09-18 用户拍板）：两级隐藏的渲染语义是同一条，
+# 预览和 ffmpeg 两条链路都得滤掉它 —— 漏一条就是「预览里没了、成片里还在」。
+# 合同见 docs/architecture/clip-visibility.md。
+require "预览合成的主轨要跳过单独隐藏的段" \
+  Sources/SrtFlow/VideoEditCompositionBuilder.swift 'guard !state\.mainHidden, !clip\.isHidden'
+require "预览合成的上层轨/音频轨要走 ClipVisibility.visible" \
+  Sources/SrtFlow/VideoEditCompositionBuilder.swift 'ClipVisibility\.visible\('
+require "任一侧被隐藏的接缝不许挂转场（否则预览淡进黑场、导出却是硬切）" \
+  Sources/SrtFlow/VideoEditCompositionBuilder.swift 'guard !state\.mainClips\[index - 1\]\.isHidden'
+require "ffmpeg 导出要滤掉隐藏的段" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'ClipVisibility\.visible\('
+require "「只导出选中的」也要滤掉隐藏的段" \
+  Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
+require "V 键切的是选中的那几段" \
+  Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelection\(\)'
+forbid "V 不许再切整轨（整轨显隐只剩轨道头那只眼睛一个入口）" \
+  Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelectionLane'
+require "V 的切换规则必须走纯值 ClipVisibility.nextHidden" \
+  Sources/SrtFlow/VideoEditProject.swift 'ClipVisibility\.nextHidden\('
+require "链接开着时 V 连带分离出来的音频一起切" \
+  Sources/SrtFlow/VideoEditProject.swift 'if linkageEnabled \{'
+require "定格不给隐藏的段（它在预览和成片里都不存在）" \
+  Sources/SrtFlow/VideoEditFreezeFrame.swift '!clip\.isHidden'
+require "隐藏的段在时间线上要灰显（否则看不出它不会进成片）" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'clip\.isHidden \? 0\.4 : 1'
+require "轨道头的眼睛仍是整轨显隐的入口" \
+  Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleLaneHidden\('
+
 # 标记纯属编辑期标注：进了合成/导出就等于把它烧进成片。
 forbid "标记不许进预览合成" \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift '\.markers'

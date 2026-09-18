@@ -94,6 +94,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 轨道模型、时间线行结构、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md) |
+| 段的显隐（V / 眼睛）、隐藏段进不进预览和成片 | [段的显隐](docs/architecture/clip-visibility.md)、[视频轨对等化](docs/architecture/video-tracks.md) |
 | 画面渐入渐出、alpha 斜坡、转场仲裁 | [画面渐入渐出](docs/architecture/video-fades.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出 | [画面文字](docs/architecture/text-overlays.md) |
@@ -230,6 +231,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-18 轨道一多就没法上下滚](docs/bugfixes/2026-09-18-timeline-cannot-scroll-vertically.md) — 时间线改双向滚动；轨道头列/标尺各自钉住且只有它们订阅滚动量；裸 VStack 会替整条界面要高度，把工具栏挤出窗口。
 - [2026-09-18 框选的框不跟鼠标](docs/bugfixes/2026-09-18-marquee-anchored-at-stale-scroll-offset.md) — 手势要用的量必须现读 NSScrollView，preference/@State 这类异步观察值在起手那一拍还是旧的；全时间线只有框选用绝对坐标，所以只有它会露馅。
 - [2026-09-18 预渲染烤进了该让位的渐变](docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md) — 临时时间线没有邻居，任何依赖邻居的仲裁都必须由调用方算好传进去；仲裁只能有一处。
+- [2026-09-18 自检脚本的源文件清单漏掉新依赖](docs/bugfixes/2026-09-18-check-script-source-list-drift.md) — 手抄的清单会漂，八项检查齐红在同一条编译错误上。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

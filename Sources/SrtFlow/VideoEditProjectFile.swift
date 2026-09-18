@@ -25,7 +25,7 @@ struct VideoEditProjectFile: Codable {
     var media: [MediaRecord]
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 15
+    static let latestFormatVersion = 16
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
     /// `...7` … `...14`（登记清单在那边）。
@@ -51,6 +51,7 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion13
         _ = timeline.requiresFormatVersion14
         _ = timeline.requiresFormatVersion15
+        _ = timeline.requiresFormatVersion16
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline

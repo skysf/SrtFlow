@@ -29,6 +29,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
   Sources/SrtFlow/VideoEditAudioFade.swift \
   Sources/SrtFlow/VideoEditVideoFade.swift \
