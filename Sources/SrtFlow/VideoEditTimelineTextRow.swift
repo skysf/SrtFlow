@@ -98,3 +98,67 @@ struct TextBlockView: View {
         }
     }
 }
+
+// MARK: - 文字行
+//
+// 行本体和块放在一起：层号由重叠关系算出来，不进模型。
+
+extension VideoEditTimelineView {
+
+    // MARK: - 文字行
+
+    /// 这一层上的文字。层号纯显示用，由时间重叠关系算出来。
+    func textOverlays(atLevel level: Int) -> [TextOverlay] {
+        let levels = project.textOverlayLevels
+        return project.state.textOverlays.enumerated()
+            .filter { levels.indices.contains($0.offset) && levels[$0.offset] == level }
+            .map(\.element)
+    }
+
+    func textRow(level: Int) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 4)
+                .fill(.quaternary.opacity(0.25))
+                .frame(width: contentWidth)
+            ForEach(textOverlays(atLevel: level)) { overlay in
+                TextBlockView(
+                    overlay: overlay,
+                    pps: pps,
+                    isSelected: isSelected(text: overlay.id),
+                    // 文字和剪辑走**同一套**拖动会话（冻结候选、自由落点解析、
+                    // 边缘自动滚动、松手落一次），理由同形状块。
+                    dragOffset: dragOffset(movingID: overlay.id),
+                    onSelect: {
+                        let flags = NSApp.currentEvent?.modifierFlags ?? []
+                        project.selectText(
+                            overlay.id,
+                            additive: flags.contains(.command) || flags.contains(.shift)
+                        )
+                    },
+                    onEdit: {
+                        // 播放头先落进这段文字的区间，否则预览里它根本不显示，
+                        // 就地编辑的输入框会浮在一片空白上。
+                        project.clock.endPeek()
+                        clock.seek(to: overlay.timelineStart, precise: true)
+                        project.selectText(overlay.id, additive: false)
+                        // 数字元件不进就地编辑（内容在检查器里调）。
+                        if overlay.number == nil { project.textEditingRequest = overlay.id }
+                    },
+                    onDragBegin: { beginTextDrag(overlay) },
+                    onDragChange: { translation, pointerViewportX in
+                        updateClipDrag(translation: translation, pointerViewportX: pointerViewportX)
+                    },
+                    onDragEnd: { endClipDrag() },
+                    canTrim: project.activeTool == .select,
+                    onTrim: { leading, delta in
+                        project.clock.endPeek()
+                        project.liveTrimTextOverlay(overlay.id, leading: leading, deltaSeconds: delta)
+                    },
+                    // 文字不参与 AV 合成，收尾不用重建预览（同 updateTextOverlay）。
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                )
+            }
+        }
+    }
+
+}

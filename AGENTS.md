@@ -58,8 +58,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
    `LenientCodableEnum`、`liveApply` / `perform`。
 3. **控制单文件体积。** 新类型或新功能默认按职责开新文件。单文件超过约 800 行即为
    警戒线；改到超标文件时，可顺手拆出职责独立的部分，但不要借题做一次性大重构。
-   当前待瘦身：`VideoEditTimelineView.swift`、`VideoEditProject.swift`、
-   `VideoEditModels.swift`。
+   当前待瘦身：`VideoEditProject.swift`、`VideoEditModels.swift`、
+   `VideoEditCompositionBuilder.swift`。
+   时间线视图已于 2026-09-18 按职责拆成一族文件（`VideoEditTimeline*.swift`，
+   分工写在 `VideoEditTimelineView.swift` 顶部），**单文件 800 行的上限由
+   `checks/timeline-drag-wiring.sh` 第 0 节钉住**，别再往里堆。
 
 ### 验证纪律
 

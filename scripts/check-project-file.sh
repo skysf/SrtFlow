@@ -158,11 +158,11 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   Sources/SrtFlow/VideoEditProject+Markers.swift \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'ClipMarkerStrip\('
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
 # 标记的帽子是可命中的子视图，指针一进去块自己的 onContinuousHover 立刻收到
 # .ended。没有这道让位，鼠标一碰标记画面就弹回播放头（扫帧 peek 被掐断）。
 require "扫帧 peek 要给标记让位" \
-  Sources/SrtFlow/VideoEditTimelineView.swift 'guard markerHoverTime == nil else'
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'guard markerHoverTime == nil else'
 # 标记纯属编辑期标注：进了合成/导出就等于把它烧进成片。
 forbid "标记不许进预览合成" \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift '\.markers'
