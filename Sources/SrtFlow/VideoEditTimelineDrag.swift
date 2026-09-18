@@ -107,15 +107,17 @@ final class TimelineAutoScroller {
     /// 完全贴边时的速度（点/秒）。中间按penetration平方渐进，刚进边缘时很慢。
     static let maxSpeed: Double = 900
 
-    private weak var scrollView: NSScrollView?
+    /// 推滚动量这件事本身归 `TimelineScrollGeometry`（整个时间线只有它碰
+    /// `NSScrollView`）；这里只管心跳。
+    private var geometry: TimelineScrollGeometry?
     private var timer: Timer?
     private var direction: Double = 0
     private var speed: Double = 0
-    private var onScroll: ((Double) -> Void)?
+    private var onScroll: (() -> Void)?
 
-    func attach(_ scrollView: NSScrollView?) {
-        self.scrollView = scrollView
-        if scrollView == nil { stop() }
+    func attach(_ geometry: TimelineScrollGeometry?) {
+        self.geometry = geometry
+        if geometry == nil { stop() }
     }
 
     deinit {
@@ -124,8 +126,10 @@ final class TimelineAutoScroller {
     }
 
     /// 每次拖动回调都调一次。`pointerX` 是指针在**可见视口**里的 x。
-    /// 进边缘就开始滚，离开边缘就停；`onScroll` 拿到新的滚动量去重算落点。
-    func update(pointerX: Double, viewportWidth: Double, onScroll: @escaping (Double) -> Void) {
+    /// 进边缘就开始滚，离开边缘就停；滚过之后回调一次，调用方自己去
+    /// `TimelineScrollGeometry` 现读新的滚动量重算落点 —— 心跳不传这个数，
+    /// 传了就等于又多出一个「滚动量的来源」。
+    func update(pointerX: Double, viewportWidth: Double, onScroll: @escaping () -> Void) {
         self.onScroll = onScroll
         guard viewportWidth > Self.edgeWidth * 2 else { return stop() }
 
@@ -177,64 +181,12 @@ final class TimelineAutoScroller {
 
     private func tick(interval: Double) {
         // 滚动视图没了（视图树被拆、切走工程）也算到头，别空转。
-        guard scrollView != nil, onScroll != nil else { return stop() }
-        guard let offset = scroll(by: direction * speed * interval) else {
+        guard let geometry, geometry.isAttached, onScroll != nil else { return stop() }
+        guard geometry.scrollHorizontally(by: direction * speed * interval) != nil else {
             // 已经顶到头了：停掉心跳，别空转。
             stop()
             return
         }
-        onScroll?(offset)
-    }
-
-    /// 推一段滚动量，返回推完的滚动位置；没能再动就返回 nil。
-    private func scroll(by dx: Double) -> Double? {
-        guard dx != 0,
-              let scrollView,
-              let documentView = scrollView.documentView else { return nil }
-        let clipView = scrollView.contentView
-        let minX = documentView.bounds.minX
-        let maxX = max(minX, documentView.bounds.maxX - clipView.bounds.width)
-        let current = clipView.bounds.origin.x
-        let next = min(max(current + dx, minX), maxX)
-        guard abs(next - current) > 0.01 else { return nil }
-        clipView.scroll(to: NSPoint(x: next, y: clipView.bounds.origin.y))
-        scrollView.reflectScrolledClipView(clipView)
-        return next
-    }
-}
-
-/// 把时间线那个 `NSScrollView` 交给自动滚动用。放在滚动内容里，
-/// `enclosingScrollView` 直接就是它 —— 不用像捏合那样按坐标 hitTest 去找。
-struct TimelineScrollViewAccessor: NSViewRepresentable {
-    let scroller: TimelineAutoScroller
-
-    func makeNSView(context: Context) -> ScrollViewProbe {
-        let view = ScrollViewProbe(frame: .zero)
-        view.onAttach = { [scroller] scrollView in scroller.attach(scrollView) }
-        return view
-    }
-
-    func updateNSView(_ nsView: ScrollViewProbe, context: Context) {
-        nsView.onAttach = { [scroller] scrollView in scroller.attach(scrollView) }
-        scroller.attach(nsView.enclosingScrollView)
-    }
-
-    /// 视图树被拆掉（切栏目、关窗）时把滚动视图撤下来，心跳跟着停。
-    static func dismantleNSView(_ nsView: ScrollViewProbe, coordinator: ()) {
-        nsView.onAttach?(nil)
-        nsView.onAttach = nil
-    }
-
-    @MainActor
-    final class ScrollViewProbe: NSView {
-        var onAttach: ((NSScrollView?) -> Void)?
-
-        override func viewDidMoveToWindow() {
-            super.viewDidMoveToWindow()
-            onAttach?(enclosingScrollView)
-        }
-
-        /// 纯参照物，事件一概不碰。
-        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        onScroll?()
     }
 }

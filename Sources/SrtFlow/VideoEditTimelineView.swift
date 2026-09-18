@@ -38,8 +38,6 @@ struct VideoEditTimelineView: View {
     /// 正在拉的选择框。同一条约束：**拖框中不写 `project`**，高亮谁只由它的
     /// `hit` 决定，松手才 `applyBoxSelection` 落一次。
     @State var marquee: TimelineMarquee.Session?
-    /// 拉框起手时的滚动量：自动滚动把内容抽走时要补回来（同 `ClipDragSession`）。
-    @State var marqueeOriginScrollOffset: Double = 0
     /// 正在被拖的字幕 cue。剪辑/形状块各自是独立视图、用自己的 `isMoving`
     /// 标记起手，cue 块是 `ForEach` 里的裸图形，只能在这一层按 id 记。
     @State var movingCueID: UUID?
@@ -55,8 +53,13 @@ struct VideoEditTimelineView: View {
     @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
     /// 轨道头上下拖调行高的基准。
     @State private var headerResizeBase: Double?
-    /// 时间线横向已滚动了多少（判断播放头还在不在视野里、拖到边缘要不要自动滚）。
-    @State var scrollOffset: Double = 0
+    /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
+    ///
+    /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
+    /// 框选起手那一拍读到的可能还是上一次布局的值，框就整体画到指针左边、偏差
+    /// 正好是当时的滚动量（docs/bugfixes/2026-09-18-marquee-anchored-at-stale-
+    /// scroll-offset.md）。别再把它缓存回 `@State`。
+    @State var scrollGeometry = TimelineScrollGeometry()
     /// 可见视口的宽度（自动滚动要拿它判断指针到没到边）。
     @State var viewportWidth: Double = 0
     /// 拖到边缘时推 NSScrollView 的心跳。
@@ -222,14 +225,6 @@ struct VideoEditTimelineView: View {
                     ScrollView(.horizontal, showsIndicators: true) {
                         scrolledContent
                             .frame(width: contentWidth, alignment: .topLeading)
-                            .background(
-                                GeometryReader { content in
-                                    Color.clear.preference(
-                                        key: TimelineScrollOffsetKey.self,
-                                        value: -content.frame(in: .named(Self.scrollSpace)).minX
-                                    )
-                                }
-                            )
                     }
                     // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
                     // 由 TimelineMagnificationBridge 里的 local monitor 处理。
@@ -238,7 +233,6 @@ struct VideoEditTimelineView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     )
                     .coordinateSpace(name: Self.scrollSpace)
-                    .onPreferenceChange(TimelineScrollOffsetKey.self) { scrollOffset = $0 }
                     .onChange(of: viewport.size.width, initial: true) { _, width in
                         viewportWidth = width
                     }
@@ -365,8 +359,9 @@ struct VideoEditTimelineView: View {
                 dropPlaceholder(span: ghost.span, y: ghost.y, height: ghost.height)
             }
 
-            // 自动滚动要直接推 NSScrollView，放个零尺寸参照物把它认出来。
-            TimelineScrollViewAccessor(scroller: autoScroller)
+            // 滚动量的现读与自动滚动都要直接摸 NSScrollView，放个零尺寸参照物
+            // 把它认出来。
+            TimelineScrollViewAccessor(geometry: scrollGeometry, scroller: autoScroller)
                 .frame(width: 0, height: 0)
 
             // 垂直拖动的目标行高亮：现有行描边，新轨画一条插入线。
@@ -528,20 +523,13 @@ struct VideoEditTimelineView: View {
         lastFollowTime = time
 
         let x = time * pps
-        let leftEdge = scrollOffset + 40
-        let rightEdge = scrollOffset + viewportWidth - 80
+        let offset = scrollGeometry.offsetX
+        let leftEdge = offset + 40
+        let rightEdge = offset + viewportWidth - 80
         guard x < leftEdge || x > rightEdge else { return }
         withAnimation(.easeOut(duration: 0.2)) {
             // 挪到视野偏左的位置，后面还留着一大段能看。
             proxy.scrollTo(Self.playheadAnchor, anchor: UnitPoint(x: 0.15, y: 0))
         }
-    }
-}
-
-/// 时间线横向滚动量。
-private struct TimelineScrollOffsetKey: PreferenceKey {
-    static let defaultValue: Double = 0
-    static func reduce(value: inout Double, nextValue: () -> Double) {
-        value = nextValue()
     }
 }

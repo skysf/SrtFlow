@@ -24,9 +24,10 @@ RULER="Sources/SrtFlow/VideoEditTimelineRuler.swift"
 THUMBS="Sources/SrtFlow/VideoEditTimelineThumbnails.swift"
 WAVEFORM="Sources/SrtFlow/VideoEditTimelineWaveform.swift"
 ZOOM="Sources/SrtFlow/VideoEditTimelinePinchZoom.swift"
+GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 # 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
-  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM")
+  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -291,7 +292,7 @@ grep -rn 'project.pixelsPerSecond = \|pixelsPerSecond = min(\|pixelsPerSecond = 
 
 # ── 7. 自动滚动的心跳必须有取消兜底 ────────────────────────────────────
 grep -q 'deinit' "$DRAG" || fail "TimelineAutoScroller 没有 deinit 兜底，timer 可能永远留在 RunLoop 上"
-grep -q 'dismantleNSView' "$DRAG" || fail "滚动视图参照物没有 dismantleNSView：视图树拆掉后心跳还在跑"
+grep -q 'dismantleNSView' "$GEOMETRY" || fail "滚动视图参照物没有 dismantleNSView：视图树拆掉后心跳还在跑"
 grep -q 'onDisappear' "$VIEW" || fail "时间线没有 onDisappear：视图消失时自动滚动不会停"
 
 # ── 8. 块内装饰内容不吃事件 ────────────────────────────────────────────
@@ -324,7 +325,43 @@ if BODY="$(extract_func 'private var keyframeMarkers' "$CLIP_BLOCK")"; then
     || fail "keyframeMarkers 没有 allowsHitTesting(false)：菱形会抢走块的点击"
 fi
 
+# ── 9. 滚动量只有一个来源：从 NSScrollView 现读 ────────────────────────
+# 框选是时间线上唯一用**绝对坐标**的手势：手势报的是指针在视口里的位置，框要画
+# 在滚动内容里，中间差的正是这一份滚动量。它以前由「GeometryReader → preference
+# → @State」异步喂过来，起手那一拍读到的可能还是上一次布局的值，框就整体画到
+# 指针左边、偏差正好等于当时的滚动量，滚得远一点框直接跑出视口 = 看起来「框选
+# 没反应」（docs/bugfixes/2026-09-18-marquee-anchored-at-stale-scroll-offset.md）。
+# 别的手势走 translation 这种相对量，同一个错误在它们身上自己抵消 —— 所以这条
+# 只能靠守卫钉住，出了事也只有框选看得见。
+[ -f "$GEOMETRY" ] || fail "找不到 ${GEOMETRY}：滚动量的现读入口没了"
+# 9a. 谁都不许再把滚动量缓存进视图状态，或退回 preference 那条异步链路。
+for file in "${TIMELINE_VIEWS[@]}"; do
+  [ -f "${file}" ] || continue
+  grep -n '@State.*scrollOffset' "${file}" \
+    && fail "${file} 又把滚动量缓存进了 @State：手势要的是现读值"
+done
+grep -rn 'TimelineScrollOffsetKey\|preference(\s*key: *TimelineScroll' Sources/SrtFlow --include='*.swift' \
+  && fail "滚动量又走回 preference 观察：那是异步的，起手那一拍会读到旧值"
+# 9b. 框选的锚点和当前点都必须现读（两处都要，只改一处 = 框会自己长歪）。
+for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
+  if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
+    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetX' \
+      || fail "${entry} 没有现读滚动量（scrollGeometry.offsetX）：框会偏出一个滚动量"
+  fi
+done
+# 9c. 四个拖动入口冻结的「起手滚动量」同样现读 —— 那个值和自动滚动中的现读值
+# 相减，差一点点就是块在自动滚动开始那一瞬间猛跳一段。
+COUNT="$(grep -c 'originScrollOffset: scrollGeometry\.offsetX' "$DRAG_WIRING" || true)"
+[ "$COUNT" -eq 4 ] \
+  || fail "拖动入口只有 ${COUNT} 处现读起手滚动量，应当 4 处（剪辑/形状/文字/字幕）"
+# 9d. 除了几何入口，谁都不许自己去摸滚动位置。捏合那条是按坐标 hitTest 现找的
+# 独立路径（事件监视器里拿不到视图树），暂时豁免。
+OTHER_SCROLLER="$(grep -rn 'contentView\.bounds\.origin\|clipView\.scroll(to:' Sources/SrtFlow --include='*.swift' \
+  | grep -v "^${GEOMETRY}:" | grep -v "^${ZOOM}:" || true)"
+[ -z "$OTHER_SCROLLER" ] \
+  || fail "滚动位置只能由 TimelineScrollGeometry 读/推：${OTHER_SCROLLER}"
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：文件分工与体积 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：文件分工与体积 / 滚动量现读 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"

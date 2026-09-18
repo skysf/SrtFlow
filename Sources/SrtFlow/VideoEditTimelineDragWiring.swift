@@ -39,7 +39,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .clip(slot: slot),
             plan: plan,
-            originScrollOffset: scrollOffset
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -50,7 +50,7 @@ extension VideoEditTimelineView {
             project.selectShape(shape.id, additive: false)
         }
         guard let plan = project.shapeDragPlan(shapeID: shape.id) else { return }
-        clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollOffset)
+        clipDrag = ClipDragSession(subject: .shape, plan: plan, originScrollOffset: scrollGeometry.offsetX)
     }
 
     func beginTextDrag(_ overlay: TextOverlay) {
@@ -60,7 +60,7 @@ extension VideoEditTimelineView {
             project.selectText(overlay.id, additive: false)
         }
         guard let plan = project.textDragPlan(textID: overlay.id) else { return }
-        clipDrag = ClipDragSession(subject: .text, plan: plan, originScrollOffset: scrollOffset)
+        clipDrag = ClipDragSession(subject: .text, plan: plan, originScrollOffset: scrollGeometry.offsetX)
     }
 
     /// 字幕 cue 起手的拖动。与剪辑/形状三处严格对称，包括「拖一个没选中的
@@ -71,23 +71,27 @@ extension VideoEditTimelineView {
             project.selectSubtitleCue(cue.id, additive: false)
         }
         guard let plan = project.cueDragPlan(cueID: cue.id) else { return }
-        clipDrag = ClipDragSession(subject: .subtitleCue, plan: plan, originScrollOffset: scrollOffset)
+        clipDrag = ClipDragSession(subject: .subtitleCue, plan: plan, originScrollOffset: scrollGeometry.offsetX)
     }
 
     /// `pointerViewportX` 是指针在滚动视口里的 x（手势坐标系就钉在视口上）。
     func updateClipDrag(translation: CGSize, pointerViewportX: Double) {
         guard var drag = clipDrag else { return }
-        drag.update(translation: translation, scrollOffset: scrollOffset, pixelsPerSecond: pps)
+        drag.update(translation: translation, scrollOffset: scrollGeometry.offsetX, pixelsPerSecond: pps)
         clipDrag = drag
         dragTargetRow = verticalTarget(for: drag, dy: translation.height)
         autoScroller.update(
             pointerX: pointerViewportX,
             viewportWidth: viewportWidth
-        ) { offset in
-            // 自动滚动那一拍指针没动，位移还是上一次那个，只有滚动量变了。
-            scrollOffset = offset
+        ) {
+            // 自动滚动那一拍指针没动，位移还是上一次那个，只有滚动量变了 ——
+            // 新的滚动量同样现读，别让心跳再传一份数进来。
             guard var drag = clipDrag else { return }
-            drag.update(translation: drag.translation, scrollOffset: offset, pixelsPerSecond: pps)
+            drag.update(
+                translation: drag.translation,
+                scrollOffset: scrollGeometry.offsetX,
+                pixelsPerSecond: pps
+            )
             clipDrag = drag
         }
     }

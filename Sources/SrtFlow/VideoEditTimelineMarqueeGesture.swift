@@ -32,10 +32,12 @@ extension VideoEditTimelineView {
     private func beginMarquee(at start: CGPoint) {
         // 拉框期间把悬停预览收掉，画面回播放头 —— 和拖块的处理一致。
         project.clock.endPeek()
-        marqueeOriginScrollOffset = scrollOffset
         let flags = NSEvent.modifierFlags
         marquee = TimelineMarquee.Session(
-            anchor: CGPoint(x: start.x + scrollOffset, y: start.y),
+            // 锚点存**滚动内容**的坐标：视口坐标 + 此刻的滚动量。这个量必须
+            // **现读**（`TimelineScrollGeometry`）—— 缓存进 `@State` 的版本在
+            // 起手这一拍可能还是上一次布局的值，框就会整体画到指针左边。
+            anchor: CGPoint(x: start.x + scrollGeometry.offsetX, y: start.y),
             additive: flags.contains(.command) || flags.contains(.shift),
             base: TimelineMarquee.Hit(
                 clips: project.selectedClipIDs,
@@ -49,18 +51,17 @@ extension VideoEditTimelineView {
     /// `pointer` 是指针在滚动视口里的位置（手势坐标系钉在视口上）。
     private func updateMarquee(pointer: CGPoint) {
         guard marquee != nil else { return }
-        applyMarqueePoint(pointer: pointer, scrollOffset: scrollOffset)
-        autoScroller.update(pointerX: pointer.x, viewportWidth: viewportWidth) { offset in
+        applyMarqueePoint(pointer: pointer)
+        autoScroller.update(pointerX: pointer.x, viewportWidth: viewportWidth) {
             // 自动滚动那一拍指针没动，只有滚动量变了 —— 框要跟着内容继续长。
-            scrollOffset = offset
-            applyMarqueePoint(pointer: pointer, scrollOffset: offset)
+            applyMarqueePoint(pointer: pointer)
         }
     }
 
-    private func applyMarqueePoint(pointer: CGPoint, scrollOffset: Double) {
+    private func applyMarqueePoint(pointer: CGPoint) {
         guard var session = marquee else { return }
         session.update(
-            current: CGPoint(x: pointer.x + scrollOffset, y: pointer.y),
+            current: CGPoint(x: pointer.x + scrollGeometry.offsetX, y: pointer.y),
             rows: marqueeRows(),
             pixelsPerSecond: pps
         )
