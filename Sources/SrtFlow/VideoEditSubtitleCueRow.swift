@@ -6,7 +6,7 @@ import SrtFlowCore
 /// 新建一行之后要由外面把光标放进去，而行自己是会被重建的临时值 ——
 /// 从行内部延迟写自己的 `@FocusState` 实测无效（写进的是已经作废的那份），
 /// 表现为按下 + 之后光标不在新行上，接着打的字全被当成快捷键吃掉
-/// （空格播放、V 切眼睛、M 打标记）。2026-08-12 冒烟实测。
+/// （空格播放、V 切段的显隐、M 打标记）。2026-08-12 冒烟实测。
 enum SubtitleFieldFocus: Hashable {
     case original(UUID)
     case translation(UUID)}

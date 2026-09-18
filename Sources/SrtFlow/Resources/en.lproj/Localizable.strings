@@ -229,6 +229,8 @@
 "Zoom out" = "Zoom out";
 "Zoom in" = "Zoom in";
 "Split at Playhead" = "Split at Playhead";
+"Hide Clip" = "Hide Clip";
+"Show Clip" = "Show Clip";
 "Detach Audio" = "Detach Audio";
 "Move to Upper Track" = "Move to Upper Track";
 "Move to Main Track" = "Move to Main Track";

@@ -52,8 +52,16 @@ struct ClipBlockView: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            background
-            content
+            // 单独隐藏的段（V）：灰显去色，但**不关命中** —— 它还得点得中、拖得动、
+            // 能再按一次 V 放出来（整轨隐藏那边才是「灰显且不可编辑」，合同见
+            // docs/architecture/clip-visibility.md）。选中框不跟着变淡，否则
+            // 「藏着而且正选中」这个状态看不出来。
+            ZStack(alignment: .topLeading) {
+                background
+                content
+            }
+            .opacity(clip.isHidden ? 0.4 : 1)
+            .saturation(clip.isHidden ? 0 : 1)
             if isSelected {
                 // 白框 + 青色光晕：选中的是谁一目了然。
                 RoundedRectangle(cornerRadius: 5)
@@ -130,6 +138,10 @@ struct ClipBlockView: View {
                 }
                 if clip.isMuted, !clip.isAudioOnly {
                     Image(systemName: "speaker.slash").font(.system(size: 8))
+                }
+                // 灰显本身还不够：轨道整条藏起来时块也是灰的，两种状态得分得开。
+                if clip.isHidden {
+                    Image(systemName: "eye.slash").font(.system(size: 8))
                 }
                 if clip.transitionAfter != .none {
                     Spacer(minLength: 2)
@@ -317,6 +329,11 @@ struct ClipBlockView: View {
         Button("Split at Playhead") {
             project.select(clip.id, additive: false)
             project.splitAtPlayhead()
+        }
+        // 和 V 同一个动作，同样把「先选中这一段」替用户做了。
+        Button(clip.isHidden ? "Show Clip" : "Hide Clip") {
+            project.select(clip.id, additive: false)
+            project.toggleHiddenForSelection()
         }
         // 右键这一项和 M 是同一个动作，只是把「先选中这一段」替用户做了 ——
         // 快捷键得能被发现，藏在文档里的快捷键等于没有。

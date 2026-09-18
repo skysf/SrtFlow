@@ -89,7 +89,7 @@ struct VideoEditSubtitlePanel: View {
                         // 新增只写**原文轨**（合同 7），而且新行的光标要落在原文
                         // 那一格 —— 原文轨藏着时既违反「隐藏 = 不可编辑」，
                         // 也没有那个输入框可以聚焦，接着打的字会被当成快捷键
-                        //（空格播放、V 切眼睛、M 打标记）。所以直接置灰（复审 P2）。
+                        //（空格播放、V 切段的显隐、M 打标记）。所以直接置灰（复审 P2）。
                         .disabled(!canEditOriginal)
                         .instantHelp("Add a line at the playhead")
                     Button(action: removeSelected) { Image(systemName: "minus") }

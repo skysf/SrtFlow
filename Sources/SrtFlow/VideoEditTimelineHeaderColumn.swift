@@ -131,7 +131,7 @@ private struct TimelineHeaderRow: View {
         Group {
             if let slot = row.slot {
                 eyeButton { project.toggleLaneHidden(slot) }
-                    .instantHelp("Hide or show this track", shortcut: .plain("V"))
+                    .instantHelp("Hide or show this track")
             } else if let kind = row.subtitleKind {
                 // 字幕轨的眼睛：语义与其他轨道一致（预览+烧录都跳过），
                 // 只是隐藏状态不挂在 slot 上。

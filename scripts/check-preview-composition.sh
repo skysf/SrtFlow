@@ -49,6 +49,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \

@@ -211,6 +211,23 @@ extension TimelineState {
         }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v16-only 持久数据。
+    ///
+    /// **登记清单（新增 v16-only 字段必须同步补进来）：**
+    /// 1. `EditClip.isHidden` —— 单段隐藏（快捷键 V）。
+    ///
+    /// 为什么要升版本：这个键直接决定**成片里有没有这一段**。只认 v15 的旧版
+    /// 不认识它，打开后那几段会原样出现在预览和导出里 —— 用户藏起来的镜头当场
+    /// 回到成片；随手编辑触发自动保存，标记就被永久抹掉，他得重新一段段找出来
+    /// 再藏一遍。判断标准同 docs/bugfixes/2026-08-04-transform-review.md。
+    ///
+    /// **按需**：没有任何段被隐藏的工程不带 v16 数据（`EditClip.encode` 里
+    /// `isHidden` 为假时不落那个键，两处必须同源）。所以没用过 V 的工程照旧
+    /// 能被旧版打开。
+    var requiresFormatVersion16: Bool {
+        allClips.contains { $0.isHidden }
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

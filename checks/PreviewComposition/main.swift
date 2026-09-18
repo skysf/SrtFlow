@@ -843,6 +843,53 @@ Task {
             }
         }
 
+        // N. 单段隐藏（快捷键 V）：那一段在预览里真的没有画面
+        //
+        // 两级隐藏（整轨的眼睛 / 单段的 V）渲染语义是同一条：画面和声音都不进。
+        // 纯值那边（checks/ProjectFile）只证明「过滤函数算得对」，这里真取帧：
+        // 藏起来的那一段所在时刻必须是黑的，邻居一帧都不许受影响。
+        // 合同见 docs/architecture/clip-visibility.md。
+        do {
+            let info = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            var state = TimelineState()
+            state.mainClips = [
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info),
+                EditClip(sourceURL: white2, sourceDuration: 4, timelineStart: 4, info: info)
+            ]
+            state.mainClips[1].isHidden = true
+            if let built = await VideoEditCompositionBuilder.build(from: state) {
+                let visible = await averageBrightness(built, at: 2.0)
+                check(visible > 0.9, "没藏的那一段照常出画面，实测 \(visible)")
+                let hidden = await averageBrightness(built, at: 6.0)
+                check(hidden < 0.1, "藏起来的那一段所在时刻必须是黑场，实测 \(hidden)")
+            } else {
+                check(false, "单段隐藏场景合成失败")
+            }
+
+            // 接缝：前一段挂着叠化、后一段被藏起来 —— 这条接缝不存在，活着的
+            // 那一侧**不许**淡进黑场（导出那边隐藏段早被滤掉、转场退回硬切，
+            // 两边必须同解）。量的是转场本该发生的时刻。
+            var seam = TimelineState()
+            seam.mainClips = [
+                EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info),
+                EditClip(sourceURL: white2, sourceDuration: 4, timelineStart: 3, info: info)
+            ]
+            seam.mainClips[0].transitionAfter = .crossFade
+            seam.mainClips[0].transitionDuration = 1
+            seam.mainClips[1].isHidden = true
+            if let built = await VideoEditCompositionBuilder.build(from: seam) {
+                let inSeam = await averageBrightness(built, at: 3.5)
+                check(inSeam > 0.9,
+                      "后一段被藏起来时，前一段不许在接缝里淡出（导出是硬切），实测 \(inSeam)")
+            } else {
+                check(false, "隐藏段接缝场景合成失败")
+            }
+        }
+
     } catch {
         check(false, "自检执行失败：\(error)")
     }
