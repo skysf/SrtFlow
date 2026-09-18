@@ -353,6 +353,66 @@ func main() async {
         }
     }
 
+    // MARK: 5. 预渲染的中间片**不许**把该让位的渐变烤进画面
+    //
+    // 回归守卫，事故见 docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md：
+    // 带逐帧动画的段走 AnimatedClipPrerenderer 渲中间片，而那条临时时间线里
+    // 只有它自己、没有邻居 —— 仲裁不在外面做完就传进去的话，`VideoFade.effective`
+    // 会以为「两边都没转场」，把本该归 xfade 的渐变烤进画面。预览侧是正确让位的，
+    // 于是表现为「预览让位、成片还在淡黑」。
+    //
+    // 这一条只能量像素：中间片是当普通素材进图的，滤镜图上看不出区别。
+    do {
+        let tol = KeyframeTrack.sourceTolerance(frameRate: .fps24, speed: 1)
+        var animation = ClipAnimation()
+        // 恒等动画：值全程是 1，画面不变，但足够让这一段走预渲染那条路。
+        animation.opacity.set(1, atSourceTime: 0, tolerance: tol)
+        animation.opacity.set(1, atSourceTime: 2, tolerance: tol)
+
+        var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
+        first.animation = animation
+        first.transitionAfter = .crossFade
+        first.transitionDuration = 0.5
+        // 结尾这条边归转场管 —— 设了也不该生效（修复前会被烤进中间片）。
+        first.videoFadeOutDuration = 1
+        let second = EditClip(
+            sourceURL: black, sourceDuration: 2, timelineStart: 1.5, info: info(canvas, seconds: 2)
+        )
+        var state = TimelineState()
+        state.mainClips = [first, second]
+        if let product = await export(state, name: "prerender-seam.mp4") {
+            // t=1.4：在「被烤进去的渐出」窗口里（1.0→2.0）、但还没进转场窗口
+            // （1.5→2.0）。让位了就是满白；没让位的话此刻只剩 60% 亮度。
+            if let level = brightness(product, at: 1.4, name: "prerender-seam") {
+                check(level > 0.9, "接缝那一边的渐变必须让位给转场，不许烤进中间片，实测 \(level)")
+            }
+        }
+    }
+
+    // MARK: 6. 预设入场动画：逐帧效果真的进了成片
+    //
+    // 擦除是几何量，成片上一量就知道对不对：2s 的窗口走到半程时，
+    // 左半边该是这一段的画面、右半边还是垫在下面的黑底。
+    do {
+        var clip = EditClip(sourceURL: white, sourceDuration: 4, timelineStart: 0, info: landscape)
+        clip.presetAnimation.entrance = .wipe
+        clip.videoFadeInDuration = 2
+        var state = TimelineState()
+        state.mainClips = [clip]
+        check(clip.needsPerFrameRender, "擦除入场必须走逐帧路径（否则 ffmpeg 的 fade 顶不了这活）")
+        if let product = await export(state, name: "preset-wipe.mp4") {
+            if let level = pixel(product, x: 8, y: 18, at: 1.0, name: "preset-wipe-left") {
+                check(level > 0.7, "擦除半程时左侧应当已经揭开（白），实测 \(level)")
+            }
+            if let level = pixel(product, x: 56, y: 18, at: 1.0, name: "preset-wipe-right") {
+                check(level < 0.3, "擦除半程时右侧还没揭开，应当是垫底的黑，实测 \(level)")
+            }
+            if let level = brightness(product, at: 3.0, name: "preset-wipe-end") {
+                check(level > 0.9, "动画结束后应当是完整画面（白），实测 \(level)")
+            }
+        }
+    }
+
     if failures == 0 {
         print("\(checks) checks, 0 failures")
         print("All checks passed")

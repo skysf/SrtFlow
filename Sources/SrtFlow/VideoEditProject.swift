@@ -1085,33 +1085,6 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 画面渐入/渐出（时间线秒）。文本提交和箭头点击走这条，一次一步撤销。
-    func setVideoFade(_ id: UUID, edge: FadeEdge, seconds: Double) {
-        perform(videoFadeMutation(id, edge: edge, seconds: seconds))
-    }
-
-    /// Inspector 数值框横向拖调用：同 `setVideoFade`，整次拖动结成一步。
-    func liveSetVideoFade(_ id: UUID, edge: FadeEdge, seconds: Double) {
-        liveApply(videoFadeMutation(id, edge: edge, seconds: seconds))
-    }
-
-    /// 夹紧只写在这一份里，discrete 和 live 永不分叉（Inspector 数值框合同）。
-    /// 与声音渐变逐字同构：这里只挡负数和 NaN，「不超过段长」由
-    /// `EditClip.videoFades` 在读侧统一收口。
-    private func videoFadeMutation(
-        _ id: UUID, edge: FadeEdge, seconds: Double
-    ) -> (inout TimelineState) -> Void {
-        let clamped = max(0, seconds.isFinite ? seconds : 0)
-        return { state in
-            state.update(id) { clip in
-                switch edge {
-                case .fadeIn: clip.videoFadeInDuration = clamped
-                case .fadeOut: clip.videoFadeOutDuration = clamped
-                }
-            }
-        }
-    }
-
     /// 把视频段的声音分离成音频轨上的一段，两边用链接组绑在一起。
     func detachAudio(from id: UUID) {
         guard let clip = state.clip(with: id), !clip.isAudioOnly, clip.hasAudio, !clip.isMuted else { return }

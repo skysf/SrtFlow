@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 14, "新版写盘一律用 v14")
+    checkEqual(raw?["formatVersion"] as? Int, 15, "新版写盘一律用 v15")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 14, "只有原文轨的工程也写 v14")
+    checkEqual(try savedVersion(), 15, "只有原文轨的工程也写 v15")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 14, "往返后仍是 v14")
+    checkEqual(try savedVersion(), 15, "往返后仍是 v15")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -448,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 14, "带译文轨的工程写 v14（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 15, "带译文轨的工程写 v15（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -521,7 +521,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 14, "新版 writer 一律写 v13")
+    checkEqual(try savedVersion(), 15, "新版 writer 一律写 latest")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -541,7 +541,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 14, "带字幕布局的工程必须写 latest（v14）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 15, "带字幕布局的工程必须写 latest（v15）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -675,7 +675,7 @@ do {
     try VideoEditProjectIO.save(textState, to: textFile)
     let textRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: textFile)) as? [String: Any]
-    checkEqual(textRaw?["formatVersion"] as? Int, 14, "带文字的工程必须写 latest（v14）")
+    checkEqual(textRaw?["formatVersion"] as? Int, 15, "带文字的工程必须写 latest（v15）")
 
     let textBack = try VideoEditProjectIO.load(from: textFile).timeline
     checkEqual(textBack.textOverlays.count, 1, "文字往返后还在")
@@ -720,7 +720,7 @@ do {
     try VideoEditProjectIO.save(animated, to: animFile)
     let animRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: animFile)) as? [String: Any]
-    checkEqual(animRaw?["formatVersion"] as? Int, 14, "带动画的工程必须写 latest（v14）")
+    checkEqual(animRaw?["formatVersion"] as? Int, 15, "带动画的工程必须写 latest（v15）")
 
     if let back = try VideoEditProjectIO.load(from: animFile).timeline.textOverlays.first {
         checkEqual(back.animation.entrance, .cascade, "入场效果往返不变")
@@ -766,7 +766,7 @@ do {
     try VideoEditProjectIO.save(numbered, to: numberFile)
     let numberRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: numberFile)) as? [String: Any]
-    checkEqual(numberRaw?["formatVersion"] as? Int, 14, "数字元件的工程必须写 latest（v14）")
+    checkEqual(numberRaw?["formatVersion"] as? Int, 15, "数字元件的工程必须写 latest（v15）")
 
     if let back = try VideoEditProjectIO.load(from: numberFile).timeline.textOverlays.first?.number {
         checkEqual(back.from, -12.5, "起始值往返不变")
@@ -806,7 +806,7 @@ do {
     try VideoEditProjectIO.save(focused, to: focusFile)
     let focusRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: focusFile)) as? [String: Any]
-    checkEqual(focusRaw?["formatVersion"] as? Int, 14, "用了对焦的工程必须写 latest（v14）")
+    checkEqual(focusRaw?["formatVersion"] as? Int, 15, "用了对焦的工程必须写 latest（v15）")
 
     if let back = try VideoEditProjectIO.load(from: focusFile).timeline.textOverlays.first?.animation {
         checkEqual(back.entrance, .focus, "对焦入场往返不变")
@@ -825,12 +825,12 @@ do {
     let nonFocusAnimation = nonFocusOverlays?.first?["animation"] as? [String: Any]
     check(nonFocusAnimation?["focusStartOpacity"] == nil, "没用对焦时不该写 focusStartOpacity 键")
 
-    // 闸门另一侧：比 reader 上限更高的 v15 必须拒开。
-    let v15 = dir.appendingPathComponent("v15.srtflowproj")
+    // 闸门另一侧：比 reader 上限更高的 v16 必须拒开。
+    let v16 = dir.appendingPathComponent("v16.srtflowproj")
     try Data("""
-    { "formatVersion": 15, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v15)
-    check((try? VideoEditProjectIO.load(from: v15)) == nil, "未来版本（v15）必须拒开")
+    { "formatVersion": 16, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v16)
+    check((try? VideoEditProjectIO.load(from: v16)) == nil, "未来版本（v16）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -840,7 +840,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 14, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 15, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -848,7 +848,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 14, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 15, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -1944,7 +1944,7 @@ do {
     let fadeRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 9**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。
-    checkEqual(fadeRaw?["formatVersion"] as? Int, 14, "带渐变的工程必须写 latest（v14）")
+    checkEqual(fadeRaw?["formatVersion"] as? Int, 15, "带渐变的工程必须写 latest（v15）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     checkEqual(reloaded.clip(with: clipID)?.fadeInDuration, 1.5, "渐入要存得住")
@@ -2066,6 +2066,127 @@ do {
     } else {
         check(false, "老工程（无 colorIndex）读不回来")
     }
+}
+
+// MARK: - 画面段的入场 / 出场动画：不变量、老工程迁移、存盘往返与 v15 登记
+//
+// 效果和时长是**同一个槽**：时长就是 v10 起的 `videoFade*`，所以这一节守的核心
+// 是那条不变量 —— `kind == .none` ⟺ 那一侧时长为 0。破了它，老工程的淡入淡出
+// 会在新版里当场失效，或者界面显示"无动画"而画面还在淡。
+// 长期约束见 docs/architecture/clip-animation.md。
+
+do {
+    let dir = root.appendingPathComponent("clip-animation")
+    let media = dir.appendingPathComponent("clip.mov")
+    makeFile(media)
+    let project = dir.appendingPathComponent("anim.srtflowproj")
+
+    // ---- 1. 老工程迁移：只有画面渐变时长、没有效果键 → 认作 In/Out = Fade ----
+    //
+    // v14 及更早的工程全长这样。认不回来的话，用户调好的淡入淡出一打开就没了。
+    let legacy = dir.appendingPathComponent("legacy.srtflowproj")
+    try Data("""
+    {
+      "formatVersion": 14,
+      "timeline": {
+        "mainClips": [{
+          "sourceURL": "\(media.absoluteString)",
+          "sourceStart": 0, "sourceDuration": 10, "speed": 1, "timelineStart": 0,
+          "videoFadeInDuration": 1.5
+        }]
+      },
+      "media": []
+    }
+    """.utf8).write(to: legacy)
+    if let old = try? VideoEditProjectIO.load(from: legacy) {
+        let clip = old.timeline.mainClips.first
+        checkEqual(clip?.presetAnimation.entrance, .fade, "老工程的画面渐入要认成 In=Fade")
+        checkEqual(clip?.presetAnimation.exit, ClipPresetKind.none, "没设渐出的那一侧仍是 None")
+        checkEqual(clip?.videoFadeInDuration, 1.5, "时长原样留在老字段上（零迁移）")
+        check(!(clip?.needsPerFrameAnimation ?? true), "纯淡变不走逐帧路径（导出仍用 ffmpeg 的 fade 快路径）")
+    } else {
+        check(false, "老工程（只有画面渐变）读不回来")
+    }
+
+    // ---- 2. 生效窗口：效果为 None 的那一侧不生效，夹紧与声音渐变同一份 ----
+    var clip = EditClip(sourceURL: media, sourceDuration: 10, timelineStart: 0)
+    clip.videoFadeInDuration = 2
+    clip.videoFadeOutDuration = 3
+    checkEqual(clip.presetWindow, .none, "没选效果时窗口是空的（哪怕时长还留着）")
+    clip.presetAnimation.entrance = .rise
+    checkEqual(clip.presetWindow.fadeIn, 2, "选了效果的那一侧才生效")
+    checkEqual(clip.presetWindow.fadeOut, 0, "另一侧没选效果，仍然不生效")
+    check(clip.needsPerFrameAnimation, "位移类效果要逐帧渲染（导出走预渲染）")
+    clip.presetAnimation.exit = .fade
+    checkEqual(clip.presetWindow.fadeOut, 3, "出场选了淡变也算生效")
+
+    // 两端之和超过段长：按比例同收，判据与声音/画面渐变共用 FadeWindow.clamped。
+    clip.videoFadeInDuration = 8
+    clip.videoFadeOutDuration = 8
+    checkEqual(clip.presetWindow.fadeIn, 5, "入场按比例收到段长的一半")
+    checkEqual(clip.presetWindow.fadeOut, 5, "出场同理")
+
+    // ---- 3. 转场仲裁：接缝那一侧整个让位（和画面渐变同一份口径）----
+    clip.videoFadeInDuration = 1
+    clip.videoFadeOutDuration = 1
+    let suppressed = ClipPreset.effective(clip: clip, hasTransitionBefore: true, hasTransitionAfter: false)
+    checkEqual(suppressed.entrance, ClipPresetKind.none, "有转场的那一边效果整个不生效")
+    checkEqual(suppressed.window.fadeIn, 0, "那一边的窗口也要归零")
+    checkEqual(suppressed.exit, .fade, "另一边照常")
+    checkEqual(suppressed.window.fadeOut, 1, "另一边的窗口照常")
+
+    // ---- 4. 存盘往返 + v15 登记（按需，且只认非 fade 的效果）----
+    var state = timeline(mainMedia: [media])
+    check(!state.requiresFormatVersion15, "没设动画的工程不是 v15 数据")
+    try VideoEditProjectIO.save(state, to: project)
+    check(!(try String(contentsOf: project, encoding: .utf8)).contains("presetAnimation"),
+          "没设效果的段不该写出 presetAnimation 键")
+
+    let clipID = state.mainClips[0].id
+    state.update(clipID) { c in
+        c.presetAnimation.entrance = .fade
+        c.videoFadeInDuration = 0.6
+    }
+    check(!state.requiresFormatVersion15,
+          "只用淡变**不抬版本**：落的还是 v10 就有的时长键，旧版渲出来一模一样")
+
+    state.update(clipID) { c in
+        c.presetAnimation.exit = .wipe
+        c.presetAnimation.intensity = 0.8
+        c.videoFadeOutDuration = 1.2
+    }
+    check(state.requiresFormatVersion15,
+          "用了非淡变的效果 → v15 判据为真（旧版打开会静默退回硬切/纯淡入）")
+
+    try VideoEditProjectIO.save(state, to: project)
+    let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
+    // 数字**写死 15**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言。
+    checkEqual(raw?["formatVersion"] as? Int, 15, "带动画的工程必须写 latest（v15）")
+
+    let reloaded = try VideoEditProjectIO.load(from: project).timeline
+    let back = reloaded.clip(with: clipID)
+    checkEqual(back?.presetAnimation.entrance, .fade, "入场效果要存得住")
+    checkEqual(back?.presetAnimation.exit, .wipe, "出场效果要存得住")
+    checkEqual(back?.presetAnimation.intensity, 0.8, "强度要存得住")
+    checkEqual(back?.videoFadeInDuration, 0.6, "入场时长仍存在老字段上")
+    checkEqual(back?.videoFadeOutDuration, 1.2, "出场时长同理")
+
+    // ---- 5. 分割 / 定格：效果和时长必须同生共死 ----
+    var splitState = reloaded
+    splitState.split(clipID: clipID, at: splitState.mainClips[0].timelineStart + 2)
+    checkEqual(splitState.mainClips.count, 2, "分割出两半")
+    let right = splitState.mainClips[1]
+    checkEqual(right.presetAnimation, .default, "右半不带效果（切口右边没有头尾可言）")
+    checkEqual(right.videoFadeInDuration, 0, "右半也不带时长 —— 半截状态是禁止的")
+    checkEqual(splitState.mainClips[0].presetAnimation.entrance, .fade, "左半留着自己那份")
+
+    let freeze = splitState.mainClips[0].makeFreezeClip(
+        image: media, still: media, info: nil,
+        at: splitState.mainClips[0].timelineStart + 1,
+        canvas: CGSize(width: 1920, height: 1080)
+    )
+    checkEqual(freeze.presetAnimation, splitState.mainClips[0].presetAnimation,
+               "定格段连效果一起抄（时长也抄了，两者不能只抄一半）")
 }
 
 try? manager.removeItem(at: root)

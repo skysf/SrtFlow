@@ -88,7 +88,7 @@ extension VideoEditInspectorView {
             if kind.wrappedValue != .none {
                 InspectorScrubbableNumberField(
                     // `value` 是**离散**通道（打字、步进箭头），横向拖动另走
-                    // 下面三个回调 —— 与 `videoFadeSection` 同一份合同。
+                    // 下面三个回调 —— 与 `clipAnimationSection` 同一份合同。
                     value: seconds,
                     range: TextAnimation.durationRange,
                     fractionDigits: 1,

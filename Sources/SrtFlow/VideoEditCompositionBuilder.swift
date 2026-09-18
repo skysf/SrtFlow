@@ -185,6 +185,13 @@ enum VideoEditCompositionBuilder {
         /// 擦除转场（只挂出场段）：结尾的可见画布窗口按方向线性缩小，
         /// 露出来的就是垫在下面的进场段。
         var wipeOut: (duration: Double, kind: ClipTransition)?
+        /// 预设的入/出场动画（已做过转场仲裁）。`.none` = 这一段不走逐帧那条路。
+        ///
+        /// **它和上面的 `fadeIn/fadeOut` 互斥**：效果是纯 `.fade` 时照旧走
+        /// 透明度斜坡（预览/导出都不必逐帧），只有要逐帧的效果才落到这里，
+        /// 那时用户的头尾渐变整个由它自己的曲线负责 —— 两条路同时开会把
+        /// 透明度乘两遍。挂在这儿的仲裁结果见 `ClipPreset.effective`。
+        var preset: ResolvedClipPreset = .none
     }
 
     /// - Parameter renderSizeOverride: 导出预渲染要用外层时间线的画布尺寸，
@@ -429,6 +436,19 @@ enum VideoEditCompositionBuilder {
             let hasTransitionAfter = mainIndex.map {
                 state.transitionOverlap(afterMainIndex: $0) > 0
             } ?? false
+            // 入/出场动画与画面渐变是同一个槽（时长共用 `videoFade*`）：
+            // 要逐帧的效果整条交给 `preset`（它自己的曲线里就含淡变），
+            // 纯 `.fade`/没设效果的照旧走这里的透明度斜坡 —— 两条路互斥，
+            // 同时开会把透明度乘两遍。
+            let preset = ClipPreset.effective(
+                clip: clip,
+                hasTransitionBefore: hasTransitionBefore,
+                hasTransitionAfter: hasTransitionAfter
+            )
+            if preset.needsPerFrameRender {
+                placed[index].preset = preset
+                continue
+            }
             let window = VideoFade.effective(
                 clip: clip,
                 hasTransitionBefore: hasTransitionBefore,
@@ -453,6 +473,9 @@ enum VideoEditCompositionBuilder {
         let needsOpaqueBase = placed.contains {
             $0.clip.minimumOpacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
                 || $0.pushIn != nil || $0.pushOut != nil || $0.wipeOut != nil
+                // 预设入/出场：头尾要么半透明、要么带裁切，两样都会把默认合成器
+                // 切到混合路径（未覆盖区变暗绿色），必须垫黑底。
+                || !$0.preset.isEmpty
         }
         if needsOpaqueBase, let baseURL = await BlackBaseVideoFactory.videoURL() {
             let baseAsset = asset(for: baseURL)
@@ -654,9 +677,11 @@ enum VideoEditCompositionBuilder {
         // 注意别用 clip.defaultPlacement —— 那个基于 probe 的 displaySize，
         // 和这里从源轨实测的尺寸可能差一两个像素，两边要用同一份。
         let target: CGRect
-        if clip.isAnimated || clip.placement != nil {
-            // 动画段（以及摆过的段）统一走归一化摆放：和预览里的交互框
-            // 完全同一套换算，动画哪个分量没打关键帧就用它的静态/默认值。
+        if clip.needsPerFrameRender || clip.placement != nil {
+            // 动画段（关键帧或预设入/出场，以及摆过的段）统一走归一化摆放：
+            // 和预览里的交互框完全同一套换算，动画哪个分量没打关键帧就用它的
+            // 静态/默认值。逐片重算的基准（`composedTransform`）读的也是这一份，
+            // 两处必须同源，否则动画结束的那一帧会跳一两个像素。
             target = clip.animatedPlacement(atTimeline: clip.timelineStart, canvas: renderSize)
                 .frame(in: renderSize)
         } else {
@@ -686,7 +711,7 @@ enum VideoEditCompositionBuilder {
                 .applying(preferredTransform.inverted())
                 .standardized
         }
-        return (transform, cropRect, clip.isAnimated ? geometry : nil)
+        return (transform, cropRect, clip.needsPerFrameRender ? geometry : nil)
     }
 
     /// 给定摆放框和旋转角，算完整变换（几何量固定，动画每片重算时只换这两个）。
@@ -724,24 +749,79 @@ enum VideoEditCompositionBuilder {
         return transform.concatenating(CGAffineTransform(translationX: target.minX, y: target.minY))
     }
 
-    /// 动画段在某时刻的完整变换（摆放框 + 旋转都按关键帧取值）。
-    private static func animatedTransform(
+    /// 某时刻这一段的完整变换：**关键帧摆放 ⊕ 预设动画 ⊕ 推移转场的平移**。
+    ///
+    /// 三者叠在一起而不是三选一：关键帧给基准摆放框，预设动画在这个框上叠位移和
+    /// 缩放（所以动画跑着也不改存下来的摆放值 —— 预览里的选中框不会跟着飞），
+    /// 推移转场是整幅画布的平移，最后乘上去。没有几何量（`geometry == nil`）的段
+    /// 就是静态段，直接用建表时算好的那一份。
+    private static func composedTransform(
         _ item: PlacedClip,
-        geometry: ClipGeometry,
         at timelineTime: Double,
         renderSize: CGSize
     ) -> CGAffineTransform {
-        let clamped = min(max(timelineTime, item.start), item.end)
-        let target = item.clip
-            .animatedPlacement(atTimeline: clamped, canvas: renderSize)
-            .frame(in: renderSize)
-        return placedTransform(
-            geometry: geometry,
-            target: target,
-            rotationDegrees: item.clip.animatedRotation(atTimeline: clamped),
-            flippedHorizontally: item.clip.flippedHorizontally,
-            flippedVertically: item.clip.flippedVertically
-        )
+        var base = item.transform
+        if let geometry = item.geometry {
+            let clamped = min(max(timelineTime, item.start), item.end)
+            var target = item.clip
+                .animatedPlacement(atTimeline: clamped, canvas: renderSize)
+                .frame(in: renderSize)
+            if !item.preset.isEmpty {
+                target = item.clip
+                    .presetState(resolved: item.preset, atTimeline: clamped, canvas: renderSize)
+                    .apply(to: target)
+            }
+            base = placedTransform(
+                geometry: geometry,
+                target: target,
+                rotationDegrees: item.clip.animatedRotation(atTimeline: clamped),
+                flippedHorizontally: item.clip.flippedHorizontally,
+                flippedVertically: item.clip.flippedVertically
+            )
+        }
+        // 推移转场的平移窗口边界都在切片表里，片内平移线性，端点求值 + 矩阵斜坡
+        // 就是精确重建（平移分量线性插值无误差）。
+        let push = pushTranslation(item, at: timelineTime)
+        guard push.dx != 0 || push.dy != 0 else { return base }
+        return base.concatenating(CGAffineTransform(translationX: push.dx, y: push.dy))
+    }
+
+    /// 某时刻这一段的裁切矩形（源轨自然坐标）：**擦除转场 ∩ 用户裁切 ∩ 预设擦除**。
+    ///
+    /// 擦除转场那条已经把用户裁切求过交（`wipeCropRect`）；预设擦除揭开的是
+    /// **素材自己的框**（`geometry.sourceRect` 本来就是裁后的区域），所以再求一次交
+    /// 就够。两个擦除在时间上永远不重叠 —— 接缝上有转场时那一侧的预设动画
+    /// 已经被 `ClipPreset.effective` 仲裁掉了。
+    private static func cropRectangle(
+        _ item: PlacedClip, at timelineTime: Double, renderSize: CGSize
+    ) -> CGRect? {
+        let base = wipeCropRect(item, at: timelineTime, renderSize: renderSize)
+        guard item.preset.usesWipe else { return base }
+        // 窗口外读不到 reveal，那就是**整幅**（1）—— 见 `usesWipe` 的注释：
+        // 这一片不给矩形的话整条裁切斜坡就断了。
+        let reveal = item.clip
+            .presetState(resolved: item.preset, atTimeline: timelineTime, canvas: renderSize)
+            .reveal ?? 1
+        guard let revealed = revealCropRect(item, reveal: reveal) else { return base }
+        return base.map { clampedIntersection($0, revealed) } ?? revealed
+    }
+
+    /// 预设擦除在某个进度下露出来的源矩形（自然坐标）。
+    ///
+    /// 只揭**横向**、从左往右：与文字的 `wipe` 同口径。左右是**显示方向**上的
+    /// 左右，所以换算路径和 `fittingTransform` 里算 `cropRect` 的那条一字不差：
+    /// 显示矩形挪回包围盒位置，再逆着源自带旋转变换。
+    private static func revealCropRect(_ item: PlacedClip, reveal: Double) -> CGRect? {
+        guard let geometry = item.geometry else { return nil }
+        let source = geometry.sourceRect
+        guard source.width > 0, source.height > 0 else { return nil }
+        // 揭到 0 时留 1px：零宽矩形喂给 setCropRectangle 属于退化输入，
+        // 而 1px 的竖条在任何分辨率下都看不见。
+        let width = max(1, source.width * min(max(reveal, 0), 1))
+        return CGRect(x: source.minX, y: source.minY, width: width, height: source.height)
+            .offsetBy(dx: geometry.boundsOrigin.x, dy: geometry.boundsOrigin.y)
+            .applying(geometry.preferredTransform.inverted())
+            .standardized
     }
 
     /// 剪辑范围内的恒定音量；两端按 `fades` 做线性斜坡。
@@ -844,6 +924,14 @@ enum VideoEditCompositionBuilder {
                 addWipeCropBoundaries(for: item, renderSize: renderSize, into: &boundaries)
             }
             addAnimationBoundaries(for: item, frameRate: frameRate, into: &boundaries)
+            // 预设入/出场：窗口端点必进，带缓动的效果还要在窗口内按帧加密
+            // （斜坡只会线性，曲线得靠密集折线逼近）。判据在 ClipAnimator 里。
+            for boundary in ClipAnimator.sliceTimes(
+                resolved: item.preset, clipStart: item.start,
+                span: item.clip.timelineDuration, frameRate: frameRate
+            ) where boundary > item.start + 0.0005 && boundary < item.end - 0.0005 {
+                boundaries.insert(boundary)
+            }
         }
         let times = boundaries.filter { $0 >= 0 && $0 <= totalDuration }.sorted()
 
@@ -870,55 +958,33 @@ enum VideoEditCompositionBuilder {
             var layers: [AVMutableVideoCompositionLayerInstruction] = []
             for item in active {
                 let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: item.track)
-                if let geometry = item.geometry, item.clip.isAnimated {
-                    let fromTransform = animatedTransform(item, geometry: geometry, at: sliceStart, renderSize: renderSize)
-                    let toTransform = animatedTransform(item, geometry: geometry, at: sliceEnd, renderSize: renderSize)
-                    if fromTransform == toTransform {
-                        layer.setTransform(fromTransform, at: time(sliceStart))
-                    } else {
-                        layer.setTransformRamp(
-                            fromStart: fromTransform,
-                            toEnd: toTransform,
-                            timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
-                        )
-                    }
+                // 变换和裁切都走「端点求值 + 斜坡」：切片表里已经含了所有折点
+                // （关键帧、预设窗口与其加密点、推移/擦除窗口、求交折点），
+                // 片内每条通道都是线性的，两端取值就是精确重建。
+                let fromTransform = composedTransform(item, at: sliceStart, renderSize: renderSize)
+                let toTransform = composedTransform(item, at: sliceEnd, renderSize: renderSize)
+                if fromTransform == toTransform {
+                    layer.setTransform(fromTransform, at: time(sliceStart))
                 } else {
-                    // 推移转场的平移窗口边界都在切片表里，片内平移线性，
-                    // 端点求值 + 矩阵斜坡就是精确重建（平移分量线性插值无误差）。
-                    let from = pushTranslation(item, at: sliceStart)
-                    let to = pushTranslation(item, at: sliceEnd)
-                    if abs(from.dx - to.dx) < 0.0005, abs(from.dy - to.dy) < 0.0005 {
-                        layer.setTransform(
-                            item.transform.concatenating(CGAffineTransform(translationX: from.dx, y: from.dy)),
-                            at: time(sliceStart)
-                        )
+                    layer.setTransformRamp(
+                        fromStart: fromTransform,
+                        toEnd: toTransform,
+                        timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+                    )
+                }
+                if let fromCrop = cropRectangle(item, at: sliceStart, renderSize: renderSize),
+                   let toCrop = cropRectangle(item, at: sliceEnd, renderSize: renderSize) {
+                    if fromCrop.equalTo(toCrop) {
+                        layer.setCropRectangle(fromCrop, at: time(sliceStart))
                     } else {
-                        layer.setTransformRamp(
-                            fromStart: item.transform.concatenating(CGAffineTransform(translationX: from.dx, y: from.dy)),
-                            toEnd: item.transform.concatenating(CGAffineTransform(translationX: to.dx, y: to.dy)),
+                        layer.setCropRectangleRamp(
+                            fromStartCropRectangle: fromCrop,
+                            toEndCropRectangle: toCrop,
                             timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
                         )
                     }
                 }
-                if item.wipeOut != nil {
-                    // 擦除窗口（∩ 用户裁切）：窗口边界和求交折点都在切片表里，
-                    // 片内每条边都线性，端点求值 + 裁切斜坡精确重建。
-                    if let from = wipeCropRect(item, at: sliceStart, renderSize: renderSize),
-                       let to = wipeCropRect(item, at: sliceEnd, renderSize: renderSize) {
-                        if from.equalTo(to) {
-                            layer.setCropRectangle(from, at: time(sliceStart))
-                        } else {
-                            layer.setCropRectangleRamp(
-                                fromStartCropRectangle: from,
-                                toEndCropRectangle: to,
-                                timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
-                            )
-                        }
-                    }
-                } else if let crop = item.cropRect {
-                    layer.setCropRectangle(crop, at: time(sliceStart))
-                }
-                applyOpacity(layer, item: item, sliceStart: sliceStart, sliceEnd: sliceEnd)
+                applyOpacity(layer, item: item, sliceStart: sliceStart, sliceEnd: sliceEnd, renderSize: renderSize)
                 layers.append(layer)
             }
             instruction.layerInstructions = layers
@@ -984,15 +1050,27 @@ enum VideoEditCompositionBuilder {
         _ layer: AVMutableVideoCompositionLayerInstruction,
         item: PlacedClip,
         sliceStart: Double,
-        sliceEnd: Double
+        sliceEnd: Double,
+        renderSize: CGSize
     ) {
         // 切片边界包含了所有折点（淡变起止/半程、关键帧、加密点），所以片内
         // 两个通道都是线性，端点求值就能精确重建整片；乘积的二次误差由
         // 0.1s 加密压到不可见。
-        let from = fadeFactor(item: item, at: sliceStart)
-            * Float(item.clip.animatedOpacity(atTimeline: min(max(sliceStart, item.start), item.end)))
-        let to = fadeFactor(item: item, at: sliceEnd)
-            * Float(item.clip.animatedOpacity(atTimeline: min(max(sliceEnd, item.start), item.end)))
+        func opacity(at timelineTime: Double) -> Float {
+            let clamped = min(max(timelineTime, item.start), item.end)
+            var value = fadeFactor(item: item, at: timelineTime)
+                * Float(item.clip.animatedOpacity(atTimeline: clamped))
+            if !item.preset.isEmpty {
+                // 预设动画的头尾淡变（`.fade` 是线性斜坡、位移/缩放类自带缓动）。
+                // 它和上面的 `fadeFactor` 互斥：要逐帧的效果不会再挂 fadeIn/fadeOut。
+                value *= Float(item.clip
+                    .presetState(resolved: item.preset, atTimeline: clamped, canvas: renderSize)
+                    .opacity)
+            }
+            return value
+        }
+        let from = opacity(at: sliceStart)
+        let to = opacity(at: sliceEnd)
         if abs(from - to) < 0.0005 {
             layer.setOpacity(from, at: time(sliceStart))
         } else {
@@ -1034,7 +1112,10 @@ enum VideoEditCompositionBuilder {
     /// 动画段（动画的「画布裁切」没法逐片跟着变换走）。半透明/盖不满都不用管：
     /// 黑底垫着，逐像素等于「压平到黑底再整幅滑动」。
     private static func pushSideExact(_ clip: EditClip, _ transform: CGAffineTransform) -> Bool {
-        !clip.isAnimated && isAxisAlignedInvertible(transform)
+        // 预设入/出场动画的段和关键帧段一样保守回退：推移的精确路径要先把这段
+        // 「压平到静止时的画布」再整幅滑动（`clampCropToCanvas`），而那份裁切是
+        // 按静态变换算的 —— 段里别处还在做位移/缩放的话，动起来就会被裁掉一块。
+        !clip.needsPerFrameRender && isAxisAlignedInvertible(transform)
     }
 
     /// 轴对齐且可逆：画布矩形经它逆映射后仍是矩形，`setCropRectangle` 才表达得了。

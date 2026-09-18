@@ -39,6 +39,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
   Sources/SrtFlow/VideoEditAudioFade.swift \
   Sources/SrtFlow/VideoEditVideoFade.swift \
+  Sources/SrtFlow/VideoEditClipAnimation.swift \
+  Sources/SrtFlow/VideoEditClipAnimator.swift \
   Sources/SrtFlow/VideoEditTrackPalette.swift \
   Sources/SrtFlow/VideoEditTextStyle.swift \
   Sources/SrtFlow/VideoEditTextEasing.swift \
@@ -248,6 +250,39 @@ forbid "coordinator 不许自己新建 configuration（会与上一次完全相�
   'TranslationSession\.Configuration\(source:'
 require "发布 pendingJob 之后必须装起跑看门狗（没人收尾就如实报错）" \
   Sources/SrtFlow/SubtitleGen/TranslationHost.swift 'armStartWatchdog\('
+
+# 入场/出场动画（2026-09-18）：纯值合同在上面断言过了，这里钉住生产接线。
+#
+# 效果和时长是同一个槽，**必须一起改**（不变量见 ClipPresetAnimation.isEmpty）：
+# 只改效果会让用户选完 Rise 画面纹丝不动；只清时长会让界面显示"无"而画面还在淡。
+require "选上效果时要顺手给时长（入场）" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'clip\.videoFadeInDuration = Self\.duration\('
+require "选上效果时要顺手给时长（出场）" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'clip\.videoFadeOutDuration = Self\.duration\('
+# 批量套用：写入路径收 [UUID]，界面把多选的段整批传进来。窄回单段就等于
+# 悄悄砍掉批量能力（一节课几十张图，一张张点不现实）。
+require "效果的写入必须收一组 id" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'func setClipPresetKind\(_ ids: \[UUID\]'
+require "强度的写入必须收一组 id" \
+  Sources/SrtFlow/VideoEditProject+ClipAnimation.swift \
+  'func liveSetClipPresetIntensity\(_ ids: \[UUID\]'
+require "多选时 Inspector 要给批量面板" \
+  Sources/SrtFlow/VideoEditInspector.swift 'multiClipAnimationSection\('
+# 逐帧效果的段导出前必须预渲染；判据只有 needsPerFrameRender 一个。
+require "导出路由必须问 needsPerFrameRender（主轨）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift \
+  'segment\.clip, clip\.needsPerFrameRender'
+require "导出路由必须问 needsPerFrameRender（上层轨）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift \
+  'where clip\.needsPerFrameRender'
+# 预渲染的临时时间线里没有邻居，转场仲裁只能由调用方算好传进去
+# （docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md）。
+require "预渲染必须接收仲裁过的渐变窗口" \
+  Sources/SrtFlow/VideoEditPrerender.swift \
+  'private static func normalized\(_ clip: EditClip, fades: FadeWindow\)'
 
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2

@@ -669,11 +669,8 @@
 "Fade" = "Fade";
 "Fade in" = "Fade in";
 "Fade out" = "Fade out";
-"Seconds for the picture to ramp up from fully transparent" = "Seconds for the picture to ramp up from fully transparent";
-"Seconds for the picture to ramp down to fully transparent" = "Seconds for the picture to ramp down to fully transparent";
 "On an upper track the clip fades to and from whatever is on the track below, not to black." = "On an upper track the clip fades to and from whatever is on the track below, not to black.";
 "On the bottom track the clip fades to and from black." = "On the bottom track the clip fades to and from black.";
-"A transition already cross-fades the picture at that seam, so the fade on that side is skipped." = "A transition already cross-fades the picture at that seam, so the fade on that side is skipped.";
 "Click again with Option held to select the clip underneath" = "Click again with Option held to select the clip underneath";
 
 /* 画面文字标注（2026-09-17） */
@@ -737,3 +734,19 @@
 "Start at" = "Start at";
 "Focus starts fully opaque — like a camera pulling into focus." = "Focus starts fully opaque — like a camera pulling into focus.";
 "Focus fades in from nothing, so the camera-focus feel is gone." = "Focus fades in from nothing, so the camera-focus feel is gone.";
+
+/* 画面段的入场 / 出场动画（2026-09-18，接管原「画面渐变」两行） */
+"Zoom" = "Zoom";
+"How this clip comes in" = "How this clip comes in";
+"How this clip goes out" = "How this clip goes out";
+"On an upper track the clip animates over whatever is on the track below." = "On an upper track the clip animates over whatever is on the track below.";
+"On the bottom track the clip animates over black." = "On the bottom track the clip animates over black.";
+"In and out are longer than this clip, so both were shortened to fit." = "In and out are longer than this clip, so both were shortened to fit.";
+"A transition already covers that seam, so the in or out on that side is skipped." = "A transition already covers that seam, so the in or out on that side is skipped.";
+"Animating a long clip makes exporting slower — the whole clip is re-rendered first." = "Animating a long clip makes exporting slower — the whole clip is re-rendered first.";
+
+/* 批量套用入场 / 出场动画（2026-09-18） */
+"Mixed" = "Mixed";
+"Applies to all %d picture clips selected" = "Applies to all %d picture clips selected";
+"How these clips come in" = "How these clips come in";
+"How these clips go out" = "How these clips go out";

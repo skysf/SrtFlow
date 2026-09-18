@@ -175,7 +175,7 @@ extension VideoEditInspectorView {
     //
     // 2026-09-17 的现场：入场选了 Fade（快照里还是 None），再点秒数的步进
     // 箭头，Fade 当场退回 None。同一个错误也让「勾了粗体再拖字号」掉粗体。
-    // 合同与 `videoFadeSection` 一致（那里的数值框 setter 走 `setVideoFade`
+    // 合同与 `clipAnimationSection` 一致（那里的数值框 setter 走 `setVideoFade`
     // = perform，只有 `onScrubChanged` 走 live）。
 
     /// 连续写入：滑块、横向拖动。调用方**必须**保证有结束信号

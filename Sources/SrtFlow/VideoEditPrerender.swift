@@ -76,8 +76,12 @@ enum AnimatedClipPrerenderer {
     }
 
     /// 主轨动画段 → 黑底 ProRes 422 中间片。
+    ///
+    /// - Parameter fades: **已经过转场仲裁**的头尾渐变窗口（`VideoFade.effective`）。
+    ///   临时时间线里只有这一段、没有邻居，仲裁在这儿做不了，必须由调用方传进来。
     static func renderMain(
         clip: EditClip,
+        fades: FadeWindow,
         renderSize: CGSize,
         frameRate: ProjectFrameRate,
         into workspace: URL,
@@ -87,7 +91,7 @@ enum AnimatedClipPrerenderer {
         // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
         // 帧率不一致接缝处就对不上（计划 §3.3 点名的坑）。
         state.frameRate = frameRate
-        state.mainClips = [normalized(clip)]
+        state.mainClips = [normalized(clip, fades: fades)]
         return try await render(
             state: state,
             renderSize: renderSize,
@@ -99,8 +103,10 @@ enum AnimatedClipPrerenderer {
     }
 
     /// 上层轨动画段 → (fill, matte) 两条黑底 ProRes 422 中间片。
+    /// - Parameter fades: 同 `renderMain` —— 仲裁过的头尾渐变窗口。
     static func renderOverlay(
         clip: EditClip,
+        fades: FadeWindow,
         renderSize: CGSize,
         frameRate: ProjectFrameRate,
         into workspace: URL,
@@ -110,7 +116,7 @@ enum AnimatedClipPrerenderer {
         //（matte 的白块素材尺寸和原素材不同，靠素材推默认布局会各说各话）。
         let basePlacement = clip.resolvedPlacement(canvas: renderSize)
 
-        var fill = normalized(clip)
+        var fill = normalized(clip, fades: fades)
         fill.placement = basePlacement
         // fill 要保留完整不透明度（静态 + 动画），跟 matte 是同一份权重：
         // fill = 真实色×coverage×opacity，matte = coverage×opacity。ffmpeg
@@ -140,7 +146,7 @@ enum AnimatedClipPrerenderer {
                 message: String(format: L10n("Could not prepare the animated clip %@ for export."), clip.name)
             )
         }
-        let source = normalized(clip)
+        let source = normalized(clip, fades: fades)
         var matte = source
         matte.sourceURL = whiteURL
         matte.stillImageURL = nil
@@ -176,11 +182,19 @@ enum AnimatedClipPrerenderer {
     // MARK: - 内部
 
     /// 规范化到 0 起点。动画锚在源时间上，平移时间线起点不影响取值。
-    private static func normalized(_ clip: EditClip) -> EditClip {
+    ///
+    /// 顺带把**仲裁过的**头尾渐变写回去：临时时间线里没有邻居，
+    /// `VideoFade.effective` / `ClipPreset.effective` 在这里只会看到「两边都没
+    /// 转场」，于是本该让位给 xfade 的渐变会被烤进中间片（预览让位、成片还在
+    /// 淡黑）。预设入/出场动画的时长就是这两个字段，所以这一手顺带也把动画那侧
+    /// 仲裁了。见 docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md。
+    private static func normalized(_ clip: EditClip, fades: FadeWindow) -> EditClip {
         var normalized = clip
         normalized.timelineStart = 0
         normalized.transitionAfter = .none
         normalized.isMuted = true
+        normalized.videoFadeInDuration = fades.fadeIn
+        normalized.videoFadeOutDuration = fades.fadeOut
         return normalized
     }
 

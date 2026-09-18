@@ -39,6 +39,12 @@ struct VideoEditInspectorView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+        // 批量套用入场/出场动画：选中里有画面段就给（见 +ClipAnimation.swift）。
+        let pictures = selectedPictureClipIDs
+        if !pictures.isEmpty {
+            multiClipAnimationSection(pictures)
+            Divider()
+        }
         HStack {
             Button("Export…", systemImage: "square.and.arrow.up", action: onExport)
                 .instantHelp("Render just the selected clips to a video file")
@@ -199,10 +205,11 @@ struct VideoEditInspectorView: View {
             }
         }
 
-        // 画面变换 + 画面渐变（音频段没有画面，两块都不给）。
+        // 画面变换 + 入/出场动画（音频段没有画面，两块都不给）。
+        // 动画那一块接管了原来的「画面渐变」两行，见 VideoEditInspector+ClipAnimation.swift。
         if !clip.isAudioOnly {
             transformSection(clip)
-            videoFadeSection(clip, location: location)
+            clipAnimationSection(clip, location: location)
         }
 
         Divider()
@@ -350,10 +357,15 @@ struct VideoEditInspectorView: View {
     }
 
     /// 扩展文件（VideoEditInspector+Text*.swift）也用它，所以不是 private。
+    /// - Parameter rebuildsPreview: 松手时要不要重建预览合成。默认 false ——
+    ///   形状/文字这些叠层自己会跟着状态重画，重建只会让画面闪一下。
+    ///   **画面段的属性要传 true**：它们的效果长在 AVFoundation 合成里，
+    ///   不重建就永远看不到改动。
     func labelledSlider(
         _ title: LocalizedStringKey,
         value: Binding<Double>,
         range: ClosedRange<Double>,
+        rebuildsPreview: Bool = false,
         format: @escaping (Double) -> String
     ) -> some View {
         HStack(spacing: 8) {
@@ -362,7 +374,7 @@ struct VideoEditInspectorView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 68, alignment: .leading)
             Slider(value: value, in: range, onEditingChanged: { editing in
-                if !editing { project.endLiveEdit(rebuildsPreview: false) }
+                if !editing { project.endLiveEdit(rebuildsPreview: rebuildsPreview) }
             })
             Text(format(value.wrappedValue))
                 .font(.caption)
