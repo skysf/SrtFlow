@@ -177,6 +177,11 @@ final class VideoEditProject: ObservableObject {
         get { selection.shapeIDs }
         set { selection.selectShapes(newValue) }
     }
+    /// 选中的文字们。语义与形状同构。
+    var selectedTextIDs: Set<UUID> {
+        get { selection.textIDs }
+        set { selection.selectTexts(newValue) }
+    }
     /// 轨道上选中的字幕 cue（点选出预览拖框用）。不持久化。
     var selectedSubtitleCueIDs: Set<UUID> {
         get { selection.subtitleCueIDs }
@@ -188,9 +193,15 @@ final class VideoEditProject: ObservableObject {
         set { selection.selectMarker(newValue) }
     }
 
-    /// 四类选择一起清：点预览空白、切工程。
+    /// 五类选择一起清：点预览空白、切工程。
     func clearSelection() {
         selection.clear()
+    }
+
+    /// 删掉一段文字之后摘掉它的选中。
+    /// `selection` 是 `private(set)`，`VideoEditProject+Text.swift` 从这里进。
+    func pruneTextSelection(removing id: UUID) {
+        selection.pruneTexts { $0 != id }
     }
 
     /// 点选：普通点是单选，⌘/⇧点是加选或取消。
@@ -215,14 +226,33 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 鼠标框选落地：三类一次写完，**整轮框选只写这一次**。
+    /// 点选文字：普通点是单选，⌘/⇧点是加选或取消。
+    func selectText(_ id: UUID, additive: Bool) {
+        if additive {
+            var ids = selectedTextIDs
+            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+            selectedTextIDs = ids
+        } else {
+            selectedTextIDs = [id]
+        }
+    }
+
+    /// 鼠标框选落地：四类一次写完，**整轮框选只写这一次**。
     ///
     /// 拖框过程中的高亮全在视图层的 `@State` 里（见
     /// `VideoEditTimelineView.marquee`）—— 每一拍写这里会连带整个编辑器视图树
     /// 重建、重挂一次自动保存，框就会跟不上光标，和拖块那条约束是同一个理由。
-    func applyBoxSelection(clips: Set<UUID>, shapes: Set<UUID>, cues: Set<UUID>) {
-        selection.selectBox(clips: clips, shapes: shapes, cues: cues)
+    func applyBoxSelection(clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>) {
+        selection.selectBox(clips: clips, shapes: shapes, texts: texts, cues: cues)
     }
+
+    /// 请求对这一段文字进入就地编辑（画面上直接打字）。
+    ///
+    /// 做成"请求"而不是"当前正在编辑谁"：真正的编辑状态归预览叠层的
+    /// `@State` 管（它才知道输入框活没活着），这里只负责把"刚 Add 出来的这条
+    /// 该开始打字了"这个一次性事件递过去，视图消费完就置回 nil。
+    /// **是界面状态，不进工程文件。**
+    @Published var textEditingRequest: UUID?
 
     /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
     /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
@@ -263,11 +293,12 @@ final class VideoEditProject: ObservableObject {
     }
 
     // 各类轨道的行高。有时块太小看不清，在轨道头上下拖就能调，记住上次的值。
-    @Published var mainRowHeight: Double {
-        didSet { UserDefaults.standard.set(mainRowHeight, forKey: "editMainRowHeight") }
-    }
-    @Published var overlayRowHeight: Double {
-        didSet { UserDefaults.standard.set(overlayRowHeight, forKey: "editOverlayRowHeight") }
+    /// 视频轨行高（主轨和上层轨**共用一个**）。两条轨是对等的，没有理由各有
+    /// 各的高度 —— 分成两个之后，拖其中一条只动一半的行，看起来像坏了。
+    /// 换了新键名（`editVideoRowHeight`）：老键存的是画中画时代 38 的矮行，
+    /// 继承过来会让上层轨开箱就比主轨矮一截，正是这次要消掉的差别。
+    @Published var videoRowHeight: Double {
+        didSet { UserDefaults.standard.set(videoRowHeight, forKey: "editVideoRowHeight") }
     }
     @Published var audioRowHeight: Double {
         didSet { UserDefaults.standard.set(audioRowHeight, forKey: "editAudioRowHeight") }
@@ -313,8 +344,7 @@ final class VideoEditProject: ObservableObject {
             let value = defaults.double(forKey: key)
             return value > 0 ? value : fallback
         }
-        mainRowHeight = stored("editMainRowHeight", 54)
-        overlayRowHeight = stored("editOverlayRowHeight", 38)
+        videoRowHeight = stored("editVideoRowHeight", 54)
         audioRowHeight = stored("editAudioRowHeight", 34)
 
         // 素材在工程开着的时候也可能被改名/挪走，而去访达动文件必然让 App
@@ -340,6 +370,10 @@ final class VideoEditProject: ObservableObject {
         selection.soleShapeID.flatMap { id in state.shapes.first { $0.id == id } }
     }
 
+    var selectedTextOverlay: TextOverlay? {
+        selection.soleTextID.flatMap { id in state.textOverlays.first { $0.id == id } }
+    }
+
     /// 预览上那个字幕布局拖框的归属。同样只在跨三类唯一选中时才有。
     var selectedSubtitleCueID: UUID? { selection.soleSubtitleCueID }
 
@@ -356,6 +390,7 @@ final class VideoEditProject: ObservableObject {
         var next = state
         mutate(&next)
         if magnetEnabled { next.packMain() }
+        next.assignMissingTrackColors()
         guard next != before else { return }
         let audioOnly = next.differsOnlyInAudioMix(from: before)
         registerUndo(before)
@@ -386,6 +421,7 @@ final class VideoEditProject: ObservableObject {
         guard var next = liveEditSnapshot else { return }
         mutate(&next)
         if magnetEnabled { next.packMain() }
+        next.assignMissingTrackColors()
         state = next
     }
 
@@ -443,7 +479,7 @@ final class VideoEditProject: ObservableObject {
             movingIDs: movingIDs,
             candidates: snapCandidates(moving: movingIDs.union(companions.ids)),
             magnetMain: slot.isMain && magnetEnabled
-        )?.adding(shapes: companions.shapes, cues: companions.cues)
+        )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
     }
 
     /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
@@ -472,7 +508,30 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, cues: companions.cues)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+    }
+
+    /// 文字块的拖动会话。与形状那条**逐字同构** —— 文字行允许重叠（重叠了就
+    /// 自动多分一层，见 `TextOverlayStacking`），所以自己没有障碍；跟着走的
+    /// 剪辑各自带上本轨的障碍。
+    func textDragPlan(textID id: UUID) -> ClipDragPlan? {
+        guard let overlay = state.textOverlays.first(where: { $0.id == id }) else { return nil }
+        let span = TimelineSpan(start: overlay.timelineStart, end: overlay.timelineEnd)
+        let clipIDs = state.draggingClipIDs(
+            seed: selectedTextIDs.contains(id) ? selectedClipIDs : [],
+            linkage: linkageEnabled,
+            magnetPinsMainTrack: magnetEnabled
+        )
+        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
+        let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .text)]
+            + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
+        return ClipDragPlan(
+            draggedID: id,
+            draggedSpan: span,
+            members: members,
+            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
+            magnet: nil
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
     }
 
     /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
@@ -501,7 +560,7 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, cues: companions.cues)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
     }
 
     /// 跟着一起动的非剪辑伙伴：框选一起选中的形状和字幕 cue。
@@ -511,31 +570,41 @@ final class VideoEditProject: ObservableObject {
     private func movingCompanions(
         draggedID: UUID,
         movingClipIDs: Set<UUID>
-    ) -> (shapes: [(id: UUID, span: TimelineSpan)], cues: [(id: UUID, span: TimelineSpan)], ids: Set<UUID>) {
+    ) -> (
+        shapes: [(id: UUID, span: TimelineSpan)],
+        texts: [(id: UUID, span: TimelineSpan)],
+        cues: [(id: UUID, span: TimelineSpan)],
+        ids: Set<UUID>
+    ) {
         let engaged = movingClipIDs.contains(draggedID)
             || selectedShapeIDs.contains(draggedID)
+            || selectedTextIDs.contains(draggedID)
             || selectedSubtitleCueIDs.contains(draggedID)
-        guard engaged else { return ([], [], []) }
+        guard engaged else { return ([], [], [], []) }
         let shapes = state.shapes
             .filter { selectedShapeIDs.contains($0.id) }
+            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
+        let texts = state.textOverlays
+            .filter { selectedTextIDs.contains($0.id) }
             .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
         let cues = (state.subtitle?.cues ?? [])
             .filter { selectedSubtitleCueIDs.contains($0.id) }
             .map { (id: $0.id, span: TimelineSpan(start: $0.start, end: $0.end)) }
-        return (shapes, cues, Set(shapes.map(\.id)).union(cues.map(\.id)))
+        let ids = Set(shapes.map(\.id)).union(texts.map(\.id)).union(cues.map(\.id))
+        return (shapes, texts, cues, ids)
     }
 
-    /// 形状 / 字幕 cue 起手的拖动落地：一步撤销。
+    /// 形状 / 文字 / 字幕 cue 起手的拖动落地：一步撤销。
     ///
     /// 走的是和剪辑**同一个** `TimelineState.applyDrag` —— 框选之后这一组里可能
-    /// 混着剪辑、形状和字幕 cue，各写各的迟早分叉。这两类自己永远是自由落点
+    /// 混着剪辑、形状、文字和字幕 cue，各写各的迟早分叉。这三类自己永远是自由落点
     /// （没有跨轨、没有磁吸插空），所以 `crossTrack` 钉死成 nil。
     ///
     /// `magnet` 仍要如实传全局开关：这一组里可能挂着剪辑，而 `perform` 之后
     /// 无论如何都会重排主轨，`applyDrag` 里同步排一次，产物才等于最终状态。
     func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
-        // 形状和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里没有剪辑
-        // 就别白重建一次预览 —— 那会让画面黑一下。
+        // 形状、文字和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里
+        // 没有剪辑就别白重建一次预览 —— 那会让画面黑一下。
         let hasClip = plan.members.contains { $0.kind == .clip }
         let magnet = magnetEnabled
         perform(rebuildsPreview: hasClip) { state in
@@ -609,6 +678,7 @@ final class VideoEditProject: ObservableObject {
         // 撤销/重做可能把选中的剪辑或形状整个撤没（cue 那一侧由 state 的 didSet 收）。
         selection.pruneClips { state.clip(with: $0) != nil }
         selection.pruneShapes { id in state.shapes.contains { $0.id == id } }
+        selection.pruneTexts { id in state.textOverlays.contains { $0.id == id } }
         // 撤销可能把「还在转静帧」的占位块带回来，转换要是早就完成了，当场补上。
         repairPendingStills()
         // 撤销一次音量/渐变的改动同样只动 audioMix —— 别为它闪一下画面。
@@ -642,7 +712,7 @@ final class VideoEditProject: ObservableObject {
     // MARK: - 添加素材
 
     /// 按类型分流：字幕进字幕轨，音频进音频轨，图片先转成静帧视频，
-    /// 视频上主轨（或画中画轨）。
+    /// 视频上主轨（或上层视频轨）。
     func addMedia(urls: [URL], videosToOverlay: Bool = false) {
         let subtitles = urls.filter(MediaFileTypes.isSubtitle)
         let videos = urls.filter(MediaFileTypes.isVideo)
@@ -696,7 +766,7 @@ final class VideoEditProject: ObservableObject {
             perform { state in
                 var clip = EditClip(sourceURL: url, sourceDuration: info.duration, info: info)
                 if toOverlay {
-                    // 画中画：落在播放头上，直觉就是「现在看到的地方叠一个」。
+                    // 上层视频轨：落在播放头上，直觉就是「现在看到的地方叠一层」。
                     clip.timelineStart = playhead
                     _ = state.place(clip, intoAudio: false)
                 } else {
@@ -735,7 +805,7 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 图片：**立即**上轨（占位块马上能拖能剪），ffmpeg 在后台把它转成静帧
-    /// 循环视频，转完无感替换 —— 之后转场、变速、画中画全都不用特判。
+    /// 循环视频，转完无感替换 —— 之后转场、变速、上层轨全都不用特判。
     func addImages(_ urls: [URL], toOverlay: Bool, generation: Int? = nil) async {
         guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
             notice = L10n("The video engine is not ready yet.")
@@ -896,8 +966,8 @@ final class VideoEditProject: ObservableObject {
     /// 「现在选中的是什么」给出不同答案。它仍然独占一条早退分支：标记和别的
     /// 选择在 `EditSelection` 里就不可能共存，所以这条 return 不会吃掉别人。
     ///
-    /// 其余三类**一起删**：框选能一次选中剪辑 + 形状 + 字幕 cue，按分支顺序只
-    /// 删一类的话，用户框了一片按 ⌫，会看到"删了一半"。三类收在**同一次**
+    /// 其余四类**一起删**：框选能一次选中剪辑 + 形状 + 文字 + 字幕 cue，按分支
+    /// 顺序只删一类的话，用户框了一片按 ⌫，会看到"删了一半"。四类收在**同一次**
     /// perform 里，所以是一步撤销。
     func deleteSelected() {
         if let ref = selectedMarkerRef {
@@ -909,13 +979,15 @@ final class VideoEditProject: ObservableObject {
             for id in selectedClipIDs { clipIDs.formUnion(state.linkedClipIDs(of: id)) }
         }
         let shapeIDs = selectedShapeIDs
+        let textIDs = selectedTextIDs
         let cueIDs = selectedSubtitleCueIDs
-        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !cueIDs.isEmpty else { return }
-        // 只删形状/字幕时不重建预览：两者都不参与 AV 合成（叠层是 SwiftUI 画的），
-        // 白重建一次会让画面黑一下。
+        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty else { return }
+        // 只删形状/文字/字幕时不重建预览：三者都不参与 AV 合成（叠层是 SwiftUI
+        // 画的），白重建一次会让画面黑一下。
         perform(rebuildsPreview: !clipIDs.isEmpty) { state in
             for member in clipIDs { state.remove(member) }
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
+            if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) } }
             if !cueIDs.isEmpty, var original = state.subtitle {
                 // 两轨 + meta 同删，走和字幕面板一样的那份合同。
                 var companion = state.subtitleCompanion ?? SubtitleCompanion()
@@ -1013,13 +1085,29 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    func setOverlayLayout(_ id: UUID, fraction: Double? = nil, anchor: OverlayAnchor? = nil) {
-        perform { state in
+    /// 画面渐入/渐出（时间线秒）。文本提交和箭头点击走这条，一次一步撤销。
+    func setVideoFade(_ id: UUID, edge: FadeEdge, seconds: Double) {
+        perform(videoFadeMutation(id, edge: edge, seconds: seconds))
+    }
+
+    /// Inspector 数值框横向拖调用：同 `setVideoFade`，整次拖动结成一步。
+    func liveSetVideoFade(_ id: UUID, edge: FadeEdge, seconds: Double) {
+        liveApply(videoFadeMutation(id, edge: edge, seconds: seconds))
+    }
+
+    /// 夹紧只写在这一份里，discrete 和 live 永不分叉（Inspector 数值框合同）。
+    /// 与声音渐变逐字同构：这里只挡负数和 NaN，「不超过段长」由
+    /// `EditClip.videoFades` 在读侧统一收口。
+    private func videoFadeMutation(
+        _ id: UUID, edge: FadeEdge, seconds: Double
+    ) -> (inout TimelineState) -> Void {
+        let clamped = max(0, seconds.isFinite ? seconds : 0)
+        return { state in
             state.update(id) { clip in
-                if let fraction { clip.overlayFraction = min(max(fraction, 0.1), 1) }
-                if let anchor { clip.overlayAnchor = anchor }
-                // 九宫格和自由摆放是两套模型：点了停靠位就回到九宫格。
-                clip.placement = nil
+                switch edge {
+                case .fadeIn: clip.videoFadeInDuration = clamped
+                case .fadeOut: clip.videoFadeOutDuration = clamped
+                }
             }
         }
     }
@@ -1143,7 +1231,7 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 主轨 ↔ 画中画轨。
+    /// 主轨 ↔ 上层视频轨。
     func toggleOverlay(_ id: UUID) {
         guard let location = state.location(of: id), let clip = state.clip(with: id), !clip.isAudioOnly else { return }
         perform { state in

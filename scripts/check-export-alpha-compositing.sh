@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# 画中画关键帧动画的 fill+matte 合成自检：真的跑一遍 ffmpeg，量输出像素。
+# 上层视频轨关键帧动画的 fill+matte 合成自检：真的跑一遍 ffmpeg，量输出像素。
 #
 # 背景（详见 docs/bugfixes/2026-08-05-export-prerender-review.md）：
-# VideoEditExportGraph.plan() 里，动画画中画的 fill 是压在黑底上合成出来的，
+# VideoEditExportGraph.plan() 里，上层视频轨动画段的 fill 是压在黑底上合成出来的，
 # 边缘抗锯齿处的 RGB 已经是「真实色 x coverage x opacity」（预乘）；直接
 # alphamerge 接 matte 的 alpha 再喂给 overlay 默认的 straight 混合，边缘
 # alpha 会被多乘一次（50% 覆盖处只有该有亮度的一半）。修法是先按 matte 把

@@ -89,7 +89,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
 | 时间线捏合、滚动、移动、裁切、吸附、框选 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
-| 预览变换、叠化、画中画、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
+| 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
+| 轨道模型、时间线行结构、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md) |
+| 画面渐入渐出、alpha 斜坡、转场仲裁 | [画面渐入渐出](docs/architecture/video-fades.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
+| 画面文字、字体、Core Text 渲染、文字动画、逐帧导出 | [画面文字](docs/architecture/text-overlays.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、音频滤镜链、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
 | Inspector 数值框、拖调、Transform 写入 | [Inspector 数值框合同](docs/architecture/inspector-scrub-number-field.md) |
@@ -114,7 +117,13 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 播放头与悬停 peek 状态机：`scripts/check-player-clock.sh`。
 - 预览合成真取帧：`scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
-- 画中画 fill + matte：`scripts/check-export-alpha-compositing.sh`。
+- 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
+- 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧）：
+  `scripts/check-video-fade.sh`。
+- 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
+  下一次改动抹掉）：`checks/inspector-live-binding-wiring.sh`。
+- 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
+  以及动画的「模型给多少、成片就是多少」：`scripts/check-text-render.sh`。
 - 声音渐入渐出的真实包络（预览 + 导出两条管线）：`scripts/check-audio-fade.sh`。
 - 生产导出帧率：`scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
@@ -156,6 +165,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
 - [声音：音量与渐入渐出](docs/architecture/audio-fades.md) — 唯一夹紧点、转场仲裁、dB 换算、只换 audioMix 的快路径。
+- [画面渐入渐出](docs/architecture/video-fades.md) — 渐变露出的是下一层、alpha 斜坡两条管线同账、与声音共用的夹紧规则。
+- [视频轨对等化](docs/architecture/video-tracks.md) — 取消画中画、一轨一色、⌥ 点击穿透，以及尚未对齐的两项。
+- [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
 - [定格](docs/architecture/freeze-frame.md) — 一次性提交、PNG 归属、波纹范围与静帧管线。

@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 9, "新版写盘一律用 v9")
+    checkEqual(raw?["formatVersion"] as? Int, 14, "新版写盘一律用 v14")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 9, "只有原文轨的工程也写 v9")
+    checkEqual(try savedVersion(), 14, "只有原文轨的工程也写 v14")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 9, "往返后仍是 v9")
+    checkEqual(try savedVersion(), 14, "往返后仍是 v14")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -448,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 9, "带译文轨的工程写 v9（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 14, "带译文轨的工程写 v14（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -521,7 +521,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 9, "新版 writer 一律写 v9")
+    checkEqual(try savedVersion(), 14, "新版 writer 一律写 v13")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -541,7 +541,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 9, "带字幕布局的工程必须写 latest（v9）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 14, "带字幕布局的工程必须写 latest（v14）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -636,12 +636,201 @@ do {
     checkEqual(try VideoEditProjectIO.load(from: v7Explicit).timeline.translationHidden, false,
                "v7 工程不迁移：显式打开的译文轨要保住")
 
-    // 闸门另一侧：比 reader 上限更高的 v10 必须拒开。
-    let v10 = dir.appendingPathComponent("v10.srtflowproj")
+    // ---- 文字标注（v11，按需）----
+    //
+    // 判据是「旧版拿到新文件会不会毁数据」：只认 v10 的旧版不认识
+    // `textOverlays` 这个键，打开带文字的工程，画面上的字**当场消失**，
+    // 随手一编辑触发自动保存就永久没了。所以带文字 = 必须抬到 v11。
+    //
+    // 但**没有文字的工程不该被抬**：`TimelineState.encode` 里空数组不落盘，
+    // `requiresFormatVersion11` 也只在非空时为真，两处必须一致 ——
+    // 不一致的话，一份从没用过文字的工程会莫名其妙地打不开于旧版。
+    let textClip = EditClip(
+        sourceURL: dir.appendingPathComponent("text-clip.mp4"), sourceDuration: 8
+    )
+    var textState = TimelineState()
+    textState.mainClips = [textClip]
+    check(!textState.requiresFormatVersion11, "没有文字的工程不该要求 v11")
+
+    var style = TextStyle.default
+    style.fill = .gradient(from: .yellow, to: .white, angleDegrees: 30)
+    style.stroke = TextStroke(color: .black, width: 5)
+    style.shadow = nil                       // 显式关掉，往返后不许自己长回来
+    style.background = TextBackground(color: .translucentBlack, cornerRadius: 8, paddingX: 20, paddingY: 10)
+    style.alignment = .trailing
+    style.letterSpacing = 4
+    textState.textOverlays = [TextOverlay(
+        text: "标题\n第二行",
+        timelineStart: 2,
+        duration: 4.5,
+        centerX: 0.25,
+        centerY: 0.75,
+        boxWidth: 0.6,
+        rotationDegrees: -12,
+        style: style
+    )]
+    check(textState.requiresFormatVersion11, "带文字的工程必须要求 v11")
+
+    let textFile = dir.appendingPathComponent("text.srtflowproj")
+    try VideoEditProjectIO.save(textState, to: textFile)
+    let textRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: textFile)) as? [String: Any]
+    checkEqual(textRaw?["formatVersion"] as? Int, 14, "带文字的工程必须写 latest（v14）")
+
+    let textBack = try VideoEditProjectIO.load(from: textFile).timeline
+    checkEqual(textBack.textOverlays.count, 1, "文字往返后还在")
+    if let back = textBack.textOverlays.first {
+        checkEqual(back.text, "标题\n第二行", "文字内容（含换行）往返不变")
+        checkEqual(back.timelineStart, 2, "起点往返不变")
+        checkEqual(back.duration, 4.5, "时长往返不变")
+        checkEqual(back.centerX, 0.25, "位置 X 往返不变")
+        checkEqual(back.centerY, 0.75, "位置 Y 往返不变")
+        checkEqual(back.boxWidth, 0.6, "框宽往返不变")
+        checkEqual(back.rotationDegrees, -12, "角度往返不变")
+        checkEqual(back.style.alignment, .trailing, "对齐往返不变")
+        checkEqual(back.style.letterSpacing, 4, "字距往返不变")
+        check(back.style.fill.isGradient, "渐变填充往返后仍是渐变")
+        checkEqual(back.style.stroke?.width, 5, "描边往返不变")
+        checkEqual(back.style.background?.cornerRadius, 8, "底板圆角往返不变")
+        // 关掉的装饰**不许**在读盘时长回默认值 —— 「我明明关了投影」是
+        // 最容易被 `?? .default` 写错的一类回归。
+        check(back.style.shadow == nil, "关掉的投影往返后必须还是关着")
+    }
+
+    // ---- 文字动画（v12，按需）----
+    //
+    // 判据同上一层：只认 v11 的旧版不认识 `animation` 这个键，打开之后文字
+    // 变成硬切出现 —— 入场那一下正是标题最显眼的地方，成片当场就不一样。
+    //
+    // 但**只有静态文字的工程不该被抬到 v12**：`TextOverlay.encode` 里
+    // `animation.isEmpty` 时跳过这个键，`requiresFormatVersion12` 也只在
+    // 有非空动画时为真，两处必须一致。
+    check(textState.requiresFormatVersion11, "带文字的工程要求 v11")
+    check(!textState.requiresFormatVersion12, "只有静态文字的工程不该要求 v12")
+
+    var animated = textState
+    animated.textOverlays[0].animation = TextAnimation(
+        entrance: .cascade, exit: .wipe,
+        entranceDuration: 0.8, exitDuration: 0.4,
+        emphasis: .breathe, intensity: 0.3
+    )
+    check(animated.requiresFormatVersion12, "带动画的文字必须要求 v12")
+
+    let animFile = dir.appendingPathComponent("text-animated.srtflowproj")
+    try VideoEditProjectIO.save(animated, to: animFile)
+    let animRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: animFile)) as? [String: Any]
+    checkEqual(animRaw?["formatVersion"] as? Int, 14, "带动画的工程必须写 latest（v14）")
+
+    if let back = try VideoEditProjectIO.load(from: animFile).timeline.textOverlays.first {
+        checkEqual(back.animation.entrance, .cascade, "入场效果往返不变")
+        checkEqual(back.animation.exit, .wipe, "出场效果往返不变")
+        checkEqual(back.animation.entranceDuration, 0.8, "入场时长往返不变")
+        checkEqual(back.animation.exitDuration, 0.4, "出场时长往返不变")
+        checkEqual(back.animation.emphasis, .breathe, "强调效果往返不变")
+        checkEqual(back.animation.intensity, 0.3, "强度往返不变")
+    }
+
+    // 静态文字存盘时**不写** animation 键（同上：按需抬版本才成立）。
+    let staticTextRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: textFile)) as? [String: Any]
+    let staticTimeline = staticTextRaw?["timeline"] as? [String: Any]
+    let staticOverlays = staticTimeline?["textOverlays"] as? [[String: Any]]
+    check(staticOverlays?.first?["animation"] == nil, "没设动画时不该写 animation 键")
+
+    // 没有文字的工程存盘时**不写** textOverlays 键：空数组也落盘的话，
+    // 「按需抬版本」这条就名存实亡了。
+    let plainFile = dir.appendingPathComponent("plain-text.srtflowproj")
+    var plain = TimelineState()
+    plain.mainClips = [textClip]
+    try VideoEditProjectIO.save(plain, to: plainFile)
+    let plainRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: plainFile)) as? [String: Any]
+    let plainTimeline = plainRaw?["timeline"] as? [String: Any]
+    check(plainTimeline?["textOverlays"] == nil, "没有文字时不该写 textOverlays 键")
+
+    // ---- 数字元件（v13，按需）----
+    //
+    // 只认 v12 的旧版不认识 `number` 键，那一段会退回显示 `text` ——
+    // 而数字元件的 `text` 是空的，于是画面上**整段消失**。
+    check(!animated.requiresFormatVersion13, "普通文字（含动画）不该要求 v13")
+
+    var numbered = textState
+    numbered.textOverlays[0].number = NumberRoll(
+        from: -12.5, to: 98765.25, fractionDigits: 2, groupsThousands: true,
+        prefix: "$", suffix: " k", style: .odometer, duration: 2.5
+    )
+    check(numbered.requiresFormatVersion13, "数字元件必须要求 v13")
+
+    let numberFile = dir.appendingPathComponent("number.srtflowproj")
+    try VideoEditProjectIO.save(numbered, to: numberFile)
+    let numberRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: numberFile)) as? [String: Any]
+    checkEqual(numberRaw?["formatVersion"] as? Int, 14, "数字元件的工程必须写 latest（v14）")
+
+    if let back = try VideoEditProjectIO.load(from: numberFile).timeline.textOverlays.first?.number {
+        checkEqual(back.from, -12.5, "起始值往返不变")
+        checkEqual(back.to, 98765.25, "终值往返不变")
+        checkEqual(back.fractionDigits, 2, "小数位往返不变")
+        checkEqual(back.groupsThousands, true, "千分位开关往返不变")
+        checkEqual(back.prefix, "$", "前缀往返不变")
+        checkEqual(back.suffix, " k", "后缀往返不变")
+        checkEqual(back.style, .odometer, "形态往返不变")
+        checkEqual(back.duration, 2.5, "滚动时长往返不变")
+    } else {
+        check(false, "数字往返后没了")
+    }
+
+    // 普通文字存盘时**不写** number 键（按需抬版本才成立）。
+    let plainTextRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: animFile)) as? [String: Any]
+    let plainTextOverlays = (plainTextRaw?["timeline"] as? [String: Any])?["textOverlays"] as? [[String: Any]]
+    check(plainTextOverlays?.first?["number"] == nil, "不是数字元件时不该写 number 键")
+
+    // ---- 对焦动画（v14，按需）----
+    //
+    // **新增的枚举值也算持久数据。** `TextAnimationKind` 是宽容解码的，
+    // 只认 v13 的旧版遇到 `focus` 会退回 `.none` —— 那一段的入场/出场
+    // 静默消失，标题最显眼的那一下当场没了。
+    check(!animated.requiresFormatVersion14, "没用对焦的工程不该要求 v14")
+
+    var focused = textState
+    focused.textOverlays[0].animation = TextAnimation(
+        entrance: .focus, exit: .focus,
+        entranceDuration: 1.2, exitDuration: 0.9,
+        emphasis: .none, intensity: 0.75, focusStartOpacity: 0.2
+    )
+    check(focused.requiresFormatVersion14, "用了对焦的工程必须要求 v14")
+
+    let focusFile = dir.appendingPathComponent("focus.srtflowproj")
+    try VideoEditProjectIO.save(focused, to: focusFile)
+    let focusRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: focusFile)) as? [String: Any]
+    checkEqual(focusRaw?["formatVersion"] as? Int, 14, "用了对焦的工程必须写 latest（v14）")
+
+    if let back = try VideoEditProjectIO.load(from: focusFile).timeline.textOverlays.first?.animation {
+        checkEqual(back.entrance, .focus, "对焦入场往返不变")
+        checkEqual(back.exit, .focus, "对焦出场往返不变")
+        checkEqual(back.focusStartOpacity, 0.2, "起手不透明度往返不变")
+        check(back.usesFocus, "往返后仍认得出用了对焦")
+    } else {
+        check(false, "对焦动画往返后没了")
+    }
+
+    // 没用对焦时**不写** focusStartOpacity 键：写了就等于让一份普通动画
+    // 也带上 v14-only 数据，"按需抬版本"那条判据当场说不清。
+    let nonFocusRaw = try JSONSerialization.jsonObject(
+        with: Data(contentsOf: animFile)) as? [String: Any]
+    let nonFocusOverlays = (nonFocusRaw?["timeline"] as? [String: Any])?["textOverlays"] as? [[String: Any]]
+    let nonFocusAnimation = nonFocusOverlays?.first?["animation"] as? [String: Any]
+    check(nonFocusAnimation?["focusStartOpacity"] == nil, "没用对焦时不该写 focusStartOpacity 键")
+
+    // 闸门另一侧：比 reader 上限更高的 v15 必须拒开。
+    let v15 = dir.appendingPathComponent("v15.srtflowproj")
     try Data("""
-    { "formatVersion": 10, "timeline": { "mainClips": [] }, "media": [] }
-    """.utf8).write(to: v10)
-    check((try? VideoEditProjectIO.load(from: v10)) == nil, "未来版本（v10）必须拒开")
+    { "formatVersion": 15, "timeline": { "mainClips": [] }, "media": [] }
+    """.utf8).write(to: v15)
+    check((try? VideoEditProjectIO.load(from: v15)) == nil, "未来版本（v15）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -651,7 +840,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 9, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 14, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -659,7 +848,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 9, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 14, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -1334,6 +1523,7 @@ do {
 
 do {
     let clipA = UUID(), clipB = UUID(), shape = UUID(), otherShape = UUID()
+    let textID = UUID(), otherTextID = UUID()
     let cue = UUID(), otherCue = UUID()
     let marker = ClipMarkerRef(clipID: clipA, markerID: UUID())
     let otherMarker = ClipMarkerRef(clipID: clipA, markerID: UUID())
@@ -1453,38 +1643,58 @@ do {
     // 点选那几个方法的互斥一条都没松（上面已经逐条守过），所以「哪里会产生
     // 混选」永远只有这一处答案。
     s = EditSelection()
-    s.selectBox(clips: [clipA, clipB], shapes: [shape], cues: [cue, otherCue])
+    s.selectBox(clips: [clipA, clipB], shapes: [shape], texts: [textID], cues: [cue, otherCue])
     checkEqual(s.clipIDs, [clipA, clipB], "框选要能同时选中剪辑")
     checkEqual(s.shapeIDs, [shape], "框选要能同时选中形状")
+    checkEqual(s.textIDs, [textID], "框选要能同时选中文字")
     checkEqual(s.subtitleCueIDs, [cue, otherCue], "框选要能同时选中字幕 cue")
-    checkEqual(s.count, 5, "count 是三类之和（预览画不画框的判据）")
+    checkEqual(s.count, 6, "count 是四类之和（预览画不画框的判据）")
 
     // 混选时预览上一套框都不画：三个 sole 全是 nil。两套框同时挂上去的话，
     // 用户既不知道拖谁，把手还会互相压住 —— 这是老的四类互斥在守的东西，
     // 框选放开之后由 sole* 接着守。
-    check(s.soleClipID == nil && s.soleShapeID == nil && s.soleSubtitleCueID == nil,
+    check(s.soleClipID == nil && s.soleShapeID == nil && s.soleTextID == nil
+            && s.soleSubtitleCueID == nil,
           "混选时预览不许画任何框（sole* 必须全是 nil）")
+
+    // 文字是第五类选择，互斥规则必须和其余四类同构 ——
+    // `EditSelection` 把「非空就清掉其余各类」收在唯一的 `clearAll()` 里，
+    // 这几条就是那条收口的回归。
+    s = EditSelection()
+    s.selectClips([clipA])
+    s.selectTexts([textID])
+    check(s.clipIDs.isEmpty, "选文字要清掉剪辑选择")
+    checkEqual(s.soleTextID, textID, "只选中一段文字时它是主角")
+    s.selectShapes([shape])
+    check(s.textIDs.isEmpty, "选形状要清掉文字选择")
+    s.selectTexts([textID])
+    s.selectMarker(marker)
+    check(s.textIDs.isEmpty, "选标记要清掉文字选择")
+    s = EditSelection()
+    s.selectTexts([textID, otherTextID])
+    s.pruneTexts { $0 == textID }
+    checkEqual(s.textIDs, [textID], "撤销后不存在的文字要从选择里摘掉")
 
     // 跨三类只剩一个时才有主角 —— 不是「这一类里只有一个」。
     s = EditSelection()
-    s.selectBox(clips: [clipA], shapes: [shape], cues: [])
+    s.selectBox(clips: [clipA], shapes: [shape], texts: [], cues: [])
     checkEqual(s.soleClipID, nil, "还选着形状时，剪辑不算唯一主角")
-    s.selectBox(clips: [clipA], shapes: [], cues: [])
+    s.selectBox(clips: [clipA], shapes: [], texts: [], cues: [])
     checkEqual(s.soleClipID, clipA, "跨三类只剩一个才是主角")
 
     // 框选无条件清标记，哪怕框是空的：留着的话 ⌫ 会走进标记分支，
     // 删掉一枚用户早就不看着的标记。
     s = EditSelection()
     s.selectMarker(marker)
-    s.selectBox(clips: [], shapes: [], cues: [])
+    s.selectBox(clips: [], shapes: [], texts: [], cues: [])
     checkEqual(s.markerRef, nil, "框选必须清标记（空框也要清）")
     check(s.isEmpty, "空框 = 什么都没选中")
 
     // 框选是「重新指定」，不是加选：加选由调用方先并好集合再交给它，
     // 这里不许自己记住上一轮（否则减选永远做不到）。
     s = EditSelection()
-    s.selectBox(clips: [clipA, clipB], shapes: [], cues: [])
-    s.selectBox(clips: [clipA], shapes: [], cues: [])
+    s.selectBox(clips: [clipA, clipB], shapes: [], texts: [], cues: [])
+    s.selectBox(clips: [clipA], shapes: [], texts: [], cues: [])
     checkEqual(s.clipIDs, [clipA], "框选覆盖上一轮结果，不是累加")
 }
 
@@ -1734,7 +1944,7 @@ do {
     let fadeRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 9**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。
-    checkEqual(fadeRaw?["formatVersion"] as? Int, 9, "带渐变的工程必须写 latest（v9）")
+    checkEqual(fadeRaw?["formatVersion"] as? Int, 14, "带渐变的工程必须写 latest（v14）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     checkEqual(reloaded.clip(with: clipID)?.fadeInDuration, 1.5, "渐入要存得住")
@@ -1785,6 +1995,77 @@ do {
     checkEqual(legacyLoaded.mainClips.first?.fadeInDuration, 0, "v8 老文件缺键按 0 读（= 没有渐变）")
     checkEqual(legacyLoaded.mainClips.first?.audioFades, AudioFadeWindow.none,
                "老工程的成片不该因为升级而多出渐变")
+}
+
+// MARK: - 轨道颜色：色号绑轨道身份、最小未占用、存盘往返
+
+do {
+    let clip = EditClip(sourceURL: URL(fileURLWithPath: "/tmp/a.mov"), sourceDuration: 1)
+
+    // 1. 补号规则：同类里取最小未占用号；上层视频轨要把主轨占的 0 让出来。
+    var state = TimelineState()
+    state.overlayTracks = [EditLane(clips: [clip]), EditLane(clips: [clip])]
+    state.audioTracks = [EditLane(clips: [clip]), EditLane(clips: [clip])]
+    state.assignMissingTrackColors()
+    checkEqual(state.overlayTracks.map(\.colorIndex), [1, 2],
+               "上层视频轨从 1 起补号（0 留给主轨，同一张色相表不能撞）")
+    checkEqual(state.audioTracks.map(\.colorIndex), [0, 1],
+               "音频轨自己一张色相表，从 0 起补号")
+    checkEqual(state.trackColorIndex(for: .main), 0, "主轨恒定是视频色号 0")
+
+    // 2. 幂等：已经有号的轨一个都不许动（它挂在每次状态提交后面反复跑）。
+    var again = state
+    again.assignMissingTrackColors()
+    checkEqual(again.overlayTracks.map(\.colorIndex), [1, 2], "补号必须幂等")
+
+    // 3. 删掉中间一条轨，剩下的**不改色**；新开的那条捡回空出来的号。
+    //    这正是「绑轨道身份、不绑行号」要保的性质 —— 绑行号的话，删一条轨
+    //    会让下面所有轨的颜色整体平移一格。
+    var removed = state
+    removed.overlayTracks.remove(at: 0)
+    removed.assignMissingTrackColors()
+    checkEqual(removed.overlayTracks.map(\.colorIndex), [2], "删轨之后活着的轨不许换色")
+    removed.overlayTracks.append(EditLane(clips: [clip]))
+    removed.assignMissingTrackColors()
+    checkEqual(removed.overlayTracks.map(\.colorIndex), [2, 1],
+               "新开的轨捡回空出来的最小号，而不是一路往后漂")
+
+    // 4. 存盘往返：色号要活下来（不然每次开工程颜色都换一套）。
+    let dir = root.appendingPathComponent("trackcolor", isDirectory: true)
+    try? manager.createDirectory(at: dir, withIntermediateDirectories: true)
+    let file = dir.appendingPathComponent("colors.srtflowproj")
+    _ = try? VideoEditProjectIO.save(state, to: file)
+    if let reloaded = try? VideoEditProjectIO.load(from: file) {
+        checkEqual(reloaded.timeline.overlayTracks.map(\.colorIndex), [1, 2],
+                   "上层轨色号要存得住")
+        checkEqual(reloaded.timeline.audioTracks.map(\.colorIndex), [0, 1],
+                   "音频轨色号要存得住")
+    } else {
+        check(false, "带色号的工程读不回来")
+    }
+
+    // 5. 老工程（v9 及更早没有 colorIndex 键）：读盘那一步就该补齐，
+    //    不能等第一次编辑 —— 那样补号会混进用户那一步撤销里，撤一下颜色就没了。
+    let legacy = dir.appendingPathComponent("legacy.srtflowproj")
+    try? Data("""
+    {
+      "formatVersion": 9,
+      "timeline": {
+        "mainClips": [],
+        "overlayTracks": [
+          { "clips": [], "isHidden": false },
+          { "clips": [], "isHidden": false }
+        ]
+      },
+      "media": []
+    }
+    """.utf8).write(to: legacy)
+    if let old = try? VideoEditProjectIO.load(from: legacy) {
+        checkEqual(old.timeline.overlayTracks.map(\.colorIndex), [1, 2],
+                   "老工程读盘时就要补好色号")
+    } else {
+        check(false, "老工程（无 colorIndex）读不回来")
+    }
 }
 
 try? manager.removeItem(at: root)

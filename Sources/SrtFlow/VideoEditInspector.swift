@@ -1,8 +1,8 @@
 import SwiftUI
 import SrtFlowCore
 
-/// 右侧检查器：选中什么就调什么 —— 剪辑给变速/音量/转场/画中画，
-/// 形状给颜色/线宽/大小，什么都没选给项目总览。
+/// 右侧检查器：选中什么就调什么 —— 剪辑给变速/音量/转场/变换/渐变，
+/// 形状给颜色/线宽/大小，文字给内容/字体/外观，什么都没选给项目总览。
 struct VideoEditInspectorView: View {
     @ObservedObject var project: VideoEditProject
     /// 必须直接订阅时钟：关键帧的 ◇ 实心态和数值都跟着播放头走。
@@ -14,6 +14,8 @@ struct VideoEditInspectorView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let shape = project.selectedShape {
                     shapeSection(shape)
+                } else if let overlay = project.selectedTextOverlay {
+                    textSection(overlay)
                 } else if let clip = project.selectedClip {
                     clipSection(clip)
                 } else if project.selectedClipIDs.count > 1 {
@@ -78,7 +80,7 @@ struct VideoEditInspectorView: View {
             Text("Speed").font(.callout).fontWeight(.medium)
             HStack(spacing: 8) {
                 Slider(
-                    value: speedBinding(clip),
+                    value: liveSpeedBinding(clip),
                     in: 0.1...8,
                     onEditingChanged: { editing in
                         if !editing { project.endLiveEdit() }
@@ -117,7 +119,7 @@ struct VideoEditInspectorView: View {
                     // 滑杆走 dB 刻度：线性幅度对听感太不均匀，−20dB 在 0…2 的
                     // 线性滑杆上只占 5%，根本没法调。
                     Slider(
-                        value: volumeDecibelBinding(clip),
+                        value: liveVolumeDecibelBinding(clip),
                         in: AudioGain.minimumDB...AudioGain.maximumDB,
                         onEditingChanged: { editing in
                             if !editing { project.endLiveEdit() }
@@ -167,7 +169,7 @@ struct VideoEditInspectorView: View {
                 if clip.transitionAfter != .none {
                     HStack {
                         Slider(
-                            value: transitionDurationBinding(clip),
+                            value: liveTransitionDurationBinding(clip),
                             in: 0.1...2,
                             onEditingChanged: { editing in
                                 if !editing { project.endLiveEdit() }
@@ -197,32 +199,10 @@ struct VideoEditInspectorView: View {
             }
         }
 
-        // 画面变换（音频段没有画面，不给）。
+        // 画面变换 + 画面渐变（音频段没有画面，两块都不给）。
         if !clip.isAudioOnly {
             transformSection(clip)
-        }
-
-        // 画中画：大小 + 九宫格停靠位。
-        if let location, case .overlay = location.track {
-            Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Picture-in-picture").font(.callout).fontWeight(.medium)
-                HStack {
-                    Text("Size").font(.caption).foregroundStyle(.secondary)
-                    Slider(
-                        value: overlaySizeBinding(clip),
-                        in: 0.1...1,
-                        onEditingChanged: { editing in
-                            if !editing { project.endLiveEdit() }
-                        }
-                    )
-                    Text(String(format: "%.0f%%", clip.overlayFraction * 100))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .frame(width: 36, alignment: .trailing)
-                }
-                anchorGrid(clip)
-            }
+            videoFadeSection(clip, location: location)
         }
 
         Divider()
@@ -290,27 +270,6 @@ struct VideoEditInspectorView: View {
         return "A transition already cross-fades the sound at that seam, so the fade on that side is skipped."
     }
 
-    private func anchorGrid(_ clip: EditClip) -> some View {
-        Grid(horizontalSpacing: 4, verticalSpacing: 4) {
-            ForEach(0..<3, id: \.self) { row in
-                GridRow {
-                    ForEach(0..<3, id: \.self) { column in
-                        let anchor = OverlayAnchor.allCases.first { $0.row == row && $0.column == column }!
-                        Button {
-                            project.setOverlayLayout(clip.id, anchor: anchor)
-                        } label: {
-                            RoundedRectangle(cornerRadius: 3)
-                                .fill(clip.overlayAnchor == anchor ? Color.teal : Color.secondary.opacity(0.25))
-                                .frame(width: 22, height: 15)
-                        }
-                        .buttonStyle(.plain)
-                        .instantHelp("Dock the picture-in-picture here")
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - 形状
 
     @ViewBuilder
@@ -328,34 +287,34 @@ struct VideoEditInspectorView: View {
         VStack(alignment: .leading, spacing: 8) {
             labelledSlider(
                 "Line width",
-                value: shapeBinding(shape, \.lineWidth),
+                value: liveShapeBinding(shape, \.lineWidth),
                 range: 1...24,
                 format: { String(format: "%.0f", $0) }
             )
             if shape.kind == .line {
                 labelledSlider(
                     "Length",
-                    value: shapeBinding(shape, \.width),
+                    value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
                     format: { String(format: "%.0f%%", $0 * 100) }
                 )
                 labelledSlider(
                     "Angle",
-                    value: shapeBinding(shape, \.rotationDegrees),
+                    value: liveShapeBinding(shape, \.rotationDegrees),
                     range: -90...90,
                     format: { String(format: "%.0f°", $0) }
                 )
             } else {
                 labelledSlider(
                     shape.kind == .square ? "Side length" : "Width",
-                    value: shapeBinding(shape, \.width),
+                    value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
                     format: { String(format: "%.0f%%", $0 * 100) }
                 )
                 if shape.kind == .rectangle {
                     labelledSlider(
                         "Height",
-                        value: shapeBinding(shape, \.height),
+                        value: liveShapeBinding(shape, \.height),
                         range: 0.02...1,
                         format: { String(format: "%.0f%%", $0 * 100) }
                     )
@@ -390,7 +349,8 @@ struct VideoEditInspectorView: View {
         .instantHelp("Remove this shape from the timeline", shortcut: .plain("⌫"))
     }
 
-    private func labelledSlider(
+    /// 扩展文件（VideoEditInspector+Text*.swift）也用它，所以不是 private。
+    func labelledSlider(
         _ title: LocalizedStringKey,
         value: Binding<Double>,
         range: ClosedRange<Double>,
@@ -422,7 +382,7 @@ struct VideoEditInspectorView: View {
             summaryRow("Main track clips", "\(project.state.mainClips.count)")
             let overlayCount = project.state.overlayTracks.reduce(0) { $0 + $1.clips.count }
             if overlayCount > 0 {
-                summaryRow("Picture-in-picture", "\(overlayCount)")
+                summaryRow("Upper track clips", "\(overlayCount)")
             }
             let audioCount = project.state.audioTracks.reduce(0) { $0 + $1.clips.count }
             if audioCount > 0 {
@@ -430,6 +390,9 @@ struct VideoEditInspectorView: View {
             }
             if !project.state.shapes.isEmpty {
                 summaryRow("Shapes", "\(project.state.shapes.count)")
+            }
+            if !project.state.textOverlays.isEmpty {
+                summaryRow("Text", "\(project.state.textOverlays.count)")
             }
             summaryRow("Output size", "\(Int(project.renderSize.width))×\(Int(project.renderSize.height))")
         }
@@ -490,7 +453,7 @@ struct VideoEditInspectorView: View {
     // MARK: - 绑定
 
     /// 滑块类的绑定都走 liveApply：拖动过程不炸撤销栈，松手记一步。
-    private func speedBinding(_ clip: EditClip) -> Binding<Double> {
+    private func liveSpeedBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
             get: { project.state.clip(with: clip.id)?.speed ?? clip.speed },
             set: { newValue in
@@ -513,7 +476,7 @@ struct VideoEditInspectorView: View {
     }
 
     /// 滑杆读写的是 dB，落盘的仍是线性幅度 —— 换算只有 `AudioGain` 一份。
-    private func volumeDecibelBinding(_ clip: EditClip) -> Binding<Double> {
+    private func liveVolumeDecibelBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
             get: {
                 let live = project.state.clip(with: clip.id)?.volume ?? clip.volume
@@ -554,27 +517,12 @@ struct VideoEditInspectorView: View {
         )
     }
 
-    private func transitionDurationBinding(_ clip: EditClip) -> Binding<Double> {
+    private func liveTransitionDurationBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
             get: { project.state.clip(with: clip.id)?.transitionDuration ?? clip.transitionDuration },
             set: { newValue in
                 project.liveApply { state in
                     state.update(clip.id) { $0.transitionDuration = min(max(newValue, 0.1), 3) }
-                }
-            }
-        )
-    }
-
-    private func overlaySizeBinding(_ clip: EditClip) -> Binding<Double> {
-        Binding(
-            get: { project.state.clip(with: clip.id)?.overlayFraction ?? clip.overlayFraction },
-            set: { newValue in
-                project.liveApply { state in
-                    state.update(clip.id) { inner in
-                        inner.overlayFraction = min(max(newValue, 0.1), 1)
-                        // 滑块属于九宫格模型：一动就退出自由摆放，否则看不到效果。
-                        inner.placement = nil
-                    }
                 }
             }
         )
@@ -601,7 +549,7 @@ struct VideoEditInspectorView: View {
         )
     }
 
-    private func shapeBinding(_ shape: ShapeAnnotation, _ keyPath: WritableKeyPath<ShapeAnnotation, Double>) -> Binding<Double> {
+    private func liveShapeBinding(_ shape: ShapeAnnotation, _ keyPath: WritableKeyPath<ShapeAnnotation, Double>) -> Binding<Double> {
         Binding(
             get: {
                 project.state.shapes.first { $0.id == shape.id }?[keyPath: keyPath]

@@ -46,7 +46,7 @@ func mainTimeline() -> TimelineState {
 }
 
 func freeze(of clip: EditClip, at time: Double) -> EditClip {
-    clip.makeFreezeClip(image: png, still: still, info: nil, at: time, canvas: canvas, isOverlay: false)
+    clip.makeFreezeClip(image: png, still: still, info: nil, at: time, canvas: canvas)
 }
 
 // MARK: - 1. 主轨定格（磁吸开着）

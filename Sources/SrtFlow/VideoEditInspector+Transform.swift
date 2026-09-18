@@ -15,9 +15,8 @@ extension VideoEditInspectorView {
     @ViewBuilder
     func transformSection(_ clip: EditClip) -> some View {
         let live = project.state.clip(with: clip.id) ?? clip
-        let isOverlay = project.isOverlayClip(clip.id)
-        let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
-        let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+        let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize)
+        let fallback = live.defaultPlacement(canvas: project.renderSize)
 
         Divider()
         VStack(alignment: .leading, spacing: 7) {
@@ -350,9 +349,7 @@ extension VideoEditInspectorView {
                 guard let live = project.state.clip(with: clip.id) else { return 0 }
                 let resolved = live.animatedPlacement(
                     atTimeline: clock.time,
-                    canvas: project.renderSize,
-                    isOverlay: project.isOverlayClip(clip.id)
-                )
+                    canvas: project.renderSize)
                 return x
                     ? (resolved.centerX - 0.5) * project.renderSize.width
                     : (resolved.centerY - 0.5) * project.renderSize.height
@@ -361,9 +358,7 @@ extension VideoEditInspectorView {
                 guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
                 var resolved = live.animatedPlacement(
                     atTimeline: clock.time,
-                    canvas: project.renderSize,
-                    isOverlay: project.isOverlayClip(clip.id)
-                )
+                    canvas: project.renderSize)
                 if x {
                     resolved.centerX = 0.5 + newValue / max(project.renderSize.width, 1)
                 } else {
@@ -379,16 +374,14 @@ extension VideoEditInspectorView {
         Binding(
             get: {
                 guard let live = project.state.clip(with: clip.id) else { return 100 }
-                let isOverlay = project.isOverlayClip(clip.id)
-                let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
-                let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                let resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize)
+                let fallback = live.defaultPlacement(canvas: project.renderSize)
                 return resolved.width / max(fallback.width, 0.0001) * 100
             },
             set: { newValue in
                 guard let live = project.state.clip(with: clip.id), newValue.isFinite else { return }
-                let isOverlay = project.isOverlayClip(clip.id)
-                var resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
-                let fallback = live.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+                var resolved = live.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize)
+                let fallback = live.defaultPlacement(canvas: project.renderSize)
                 let clamped = min(max(newValue, 1), 400)
                 let ratio = fallback.width * clamped / 100 / max(resolved.width, 0.0001)
                 resolved.width *= ratio
@@ -434,9 +427,7 @@ extension VideoEditInspectorView {
         guard let origin = project.liveEditOrigin?.clip(with: clip.id), newValue.isFinite else { return }
         var resolved = origin.animatedPlacement(
             atTimeline: clock.time,
-            canvas: project.renderSize,
-            isOverlay: project.isOverlayClip(clip.id)
-        )
+            canvas: project.renderSize)
         if x {
             resolved.centerX = 0.5 + newValue / max(project.renderSize.width, 1)
         } else {
@@ -447,9 +438,8 @@ extension VideoEditInspectorView {
 
     private func liveSetScale(_ clip: EditClip, _ newValue: Double) {
         guard let origin = project.liveEditOrigin?.clip(with: clip.id), newValue.isFinite else { return }
-        let isOverlay = project.isOverlayClip(clip.id)
-        var resolved = origin.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize, isOverlay: isOverlay)
-        let fallback = origin.defaultPlacement(canvas: project.renderSize, isOverlay: isOverlay)
+        var resolved = origin.animatedPlacement(atTimeline: clock.time, canvas: project.renderSize)
+        let fallback = origin.defaultPlacement(canvas: project.renderSize)
         let clamped = min(max(newValue, 1), 400)
         let ratio = fallback.width * clamped / 100 / max(resolved.width, 0.0001)
         resolved.width *= ratio

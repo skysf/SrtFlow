@@ -114,6 +114,11 @@ enum TimelineSnap {
             result.append(shape.timelineEnd)
             end = max(end, shape.timelineEnd)
         }
+        for text in state.textOverlays where !movingIDs.contains(text.id) {
+            result.append(text.timelineStart)
+            result.append(text.timelineEnd)
+            end = max(end, text.timelineEnd)
+        }
         result.append(end)
         return result
     }
@@ -194,6 +199,7 @@ struct ClipDragPlan: Equatable {
         enum Kind: Equatable {
             case clip
             case shape
+            case text
             case subtitleCue
         }
 
@@ -213,7 +219,7 @@ struct ClipDragPlan: Equatable {
     /// 吸附候选（冻结，理由见 `TimelineSnap.candidates`）。
     var candidates: [Double]
     /// 主轨磁吸插空模式：主轨上不动的块 + 跟着动且在主轨上的块。
-    /// nil = 自由落点模式（画中画/音频/磁吸关掉的主轨/形状）。
+    /// nil = 自由落点模式（上层轨/音频/磁吸关掉的主轨/形状）。
     var magnet: Magnet?
 
     struct Magnet: Equatable {
@@ -279,11 +285,18 @@ struct ClipDragPlan: Equatable {
     /// 当场压扁。
     ///
     /// 纯值函数，自检直接调。
-    func adding(shapes: [(id: UUID, span: TimelineSpan)], cues: [(id: UUID, span: TimelineSpan)]) -> ClipDragPlan {
+    func adding(
+        shapes: [(id: UUID, span: TimelineSpan)],
+        texts: [(id: UUID, span: TimelineSpan)],
+        cues: [(id: UUID, span: TimelineSpan)]
+    ) -> ClipDragPlan {
         var plan = self
         let existing = Set(plan.members.map(\.id))
         for shape in shapes where !existing.contains(shape.id) {
             plan.members.append(Member(id: shape.id, span: shape.span, obstacles: [], kind: .shape))
+        }
+        for text in texts where !existing.contains(text.id) {
+            plan.members.append(Member(id: text.id, span: text.span, obstacles: [], kind: .text))
         }
         for cue in cues where !existing.contains(cue.id) {
             plan.members.append(Member(id: cue.id, span: cue.span, obstacles: [], kind: .subtitleCue))
@@ -401,7 +414,7 @@ struct ClipDragPlan: Equatable {
 
         // 指针中心悬在一个**装不下**的真间隙上：落点 = 间隙起点，右侧让位
         // 腾出（素材时长 − 间隙宽度）。这就是「把 6 秒的素材塞进 5 秒的缝」——
-        // 以前只能借道画中画、还会落成重叠，现在同轨一步到位（2026-08-23）。
+        // 以前只能借道上层轨、还会落成重叠，现在同轨一步到位（2026-08-23）。
         let center = draggedSpan.start + desiredDelta + draggedSpan.duration / 2
         if let hole = undersizedHole(centeredAt: center) {
             let delta = hole.start - draggedSpan.start

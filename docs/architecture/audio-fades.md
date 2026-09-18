@@ -12,7 +12,13 @@
 
 2. **生效值只有一个夹紧点：`EditClip.audioFades`。** 预览
    （`AVMutableAudioMixInputParameters.setVolumeRamp`）和导出（ffmpeg `afade`）
-   都必须从它取，任何一侧都不许再自己夹一遍。三重收口缺一不可：
+   都必须从它取，任何一侧都不许再自己夹一遍。
+
+   夹紧的实现自 2026-09-17 起和**画面渐变共用一份**：`FadeWindow.clamped`
+   （`VideoEditFadeWindow.swift`）。`AudioFadeWindow` 是 `FadeWindow` 的
+   typealias，声音专属的只剩 `previewMainTrack` / `exportMainTrack` /
+   `afadeSegments`。两边的产品语义逐字相同（「这一段的开头/结尾渐变多久」），
+   抄第二份一定会在下面这三条边界上分叉。三重收口缺一不可：
 
    - 非有限值和负数归零（数值框和工程文件都可能喂进 NaN）；
    - 各自不超过段长；
@@ -37,7 +43,9 @@
      声音断了一下」。
    - 不取较长者：那会静默改写用户设的值，而转场时长本来就是他另外调过的。
 
-   仲裁写在 `AudioFadeWindow.previewMainTrack` / `exportMainTrack` 两个函数里，
+   仲裁写在 `AudioFadeWindow.previewMainTrack` / `exportMainTrack` 两个函数里
+   （画面那边只需要「抑制」一个口径，原因见
+   [video-fades](video-fades.md)），
    **两者的差别是这块最容易写错的地方**：
 
    | | 转场那条边 | 为什么 |

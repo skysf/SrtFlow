@@ -12,12 +12,9 @@ import Foundation
 ///
 /// 长期约束见 docs/architecture/audio-fades.md。
 
-/// 渐变的哪一头。Inspector 的两个数值框和 Project 的写入方法共用它，
-/// 省得为「进」「出」各抄一份夹紧逻辑。
-enum AudioFadeEdge: Hashable, Sendable {
-    case fadeIn
-    case fadeOut
-}
+/// 渐变的哪一头。声音和画面同一份（`FadeEdge`，见 VideoEditFadeWindow.swift）——
+/// 「进」「出」的夹紧逻辑没有任何领域差别，抄第二份只会分叉。
+typealias AudioFadeEdge = FadeEdge
 
 /// 音量的 dB 表示。
 ///
@@ -58,28 +55,12 @@ enum AudioGain {
     }
 }
 
-struct AudioFadeWindow: Equatable, Sendable {
-    /// 时间线秒；0 表示这一边不做渐变。
-    var fadeIn: Double
-    var fadeOut: Double
+/// 声音的渐变窗口就是共用的 `FadeWindow`（字段、`none`、`isEmpty`、转场仲裁的
+/// `suppressing` 和三重夹紧都在 VideoEditFadeWindow.swift）。下面只放声音专属的
+/// 两个口径和 `afade` 段。
+typealias AudioFadeWindow = FadeWindow
 
-    static let none = AudioFadeWindow(fadeIn: 0, fadeOut: 0)
-
-    var isEmpty: Bool { fadeIn <= 0 && fadeOut <= 0 }
-
-    /// 转场仲裁：主轨接缝上转场自己就在做交叉淡变（预览的双轨斜坡 /
-    /// 导出的 `acrossfade`），那条边整个归转场管，用户设的渐变在这一边不生效。
-    ///
-    /// 为什么不叠加：两段衰减相乘会在接缝处把音量压出一个明显的坑，
-    /// 听感上就是「转场的地方声音断了一下」。为什么不取较长者：那样用户
-    /// 设的值会被静默改写，而转场时长本来就是用户另外调过的。
-    func suppressing(fadeIn suppressIn: Bool, fadeOut suppressOut: Bool) -> AudioFadeWindow {
-        AudioFadeWindow(
-            fadeIn: suppressIn ? 0 : fadeIn,
-            fadeOut: suppressOut ? 0 : fadeOut
-        )
-    }
-
+extension FadeWindow {
     /// 主轨某一段在**预览**里最终生效的音量斜坡。
     ///
     /// 预览没有 `acrossfade` 这种东西，转场的交叉淡变**就是**靠这里的斜坡实现的，
@@ -136,33 +117,10 @@ struct AudioFadeWindow: Equatable, Sendable {
 }
 
 extension EditClip {
-    /// 这一段实际生效的渐入/渐出（时间线秒）。
-    ///
-    /// 三重收口，缺一不可：
-    /// 1. 非有限值和负数归零 —— 数值框和工程文件都可能喂进 NaN。
-    /// 2. 各自不超过段长。
-    /// 3. 两者之和超过段长时**按比例同时收**到正好铺满，不留恒定音量的中段。
-    ///    只夹单边的话，「渐入 3s + 渐出 3s」放在 4s 的段上会算出负长度的
-    ///    中段：`setVolumeRamp` 收到反向 timeRange 直接不生效（整段变成原音量），
-    ///    ffmpeg 那边则是两条 `afade` 重叠、尾部被提前拉到 0。
+    /// 这一段实际生效的渐入/渐出（时间线秒）。夹紧规则见 `FadeWindow.clamped`
+    /// —— 与画面渐变**同一份**，两边不许各夹各的。
     var audioFades: AudioFadeWindow {
-        let span = timelineDuration
-        guard span > 0 else { return .none }
-        var fadeIn = fadeInDuration.isFinite ? max(0, fadeInDuration) : 0
-        var fadeOut = fadeOutDuration.isFinite ? max(0, fadeOutDuration) : 0
-        fadeIn = min(fadeIn, span)
-        fadeOut = min(fadeOut, span)
-        let total = fadeIn + fadeOut
-        if total > span {
-            let scale = span / total
-            fadeIn *= scale
-            fadeOut *= scale
-        }
-        // 毫秒以下的渐变听不出来，却会在导出滤镜里留下 d=0.000 这种参数。
-        return AudioFadeWindow(
-            fadeIn: fadeIn < 0.001 ? 0 : fadeIn,
-            fadeOut: fadeOut < 0.001 ? 0 : fadeOut
-        )
+        FadeWindow.clamped(fadeIn: fadeInDuration, fadeOut: fadeOutDuration, span: timelineDuration)
     }
 }
 
@@ -215,14 +173,14 @@ extension TimelineState {
 ///
 /// 只对「合成结构不变」的改动有效 —— 判据是
 /// `TimelineState.differsOnlyInAudioMix`。静音（Mute）**不在**其中：主轨和
-/// 画中画的静音段压根不会被插进合成音轨，改它会改结构。
+/// 上层视频轨的静音段压根不会被插进合成音轨，改它会改结构。
 struct AudioMixPlan: Equatable, Sendable {
     /// 一条合成音轨上按插入顺序排下来的段。
     struct Lane: Equatable, Sendable {
         /// `CMPersistentTrackID`（就是 Int32），用它重建 input parameters。
         var trackID: Int32
         var clipIDs: [UUID]
-        /// 主轨的声音要按转场仲裁算斜坡，画中画/音频轨不用。
+        /// 主轨的声音要按转场仲裁算斜坡，上层视频轨/音频轨不用。
         var isMainTrack: Bool
     }
 

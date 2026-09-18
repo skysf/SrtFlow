@@ -24,8 +24,7 @@ extension EditClip {
         info: MediaInfo?,
         at time: Double,
         duration: Double = FreezeFrame.defaultDuration,
-        canvas: CGSize,
-        isOverlay: Bool
+        canvas: CGSize
     ) -> EditClip {
         var freeze = EditClip(
             sourceURL: still,
@@ -36,8 +35,8 @@ extension EditClip {
             isMuted: true,
             // 切口两边都是硬切。原段自己的转场在 split 里已经跟着右半走了。
             transitionAfter: .none,
-            overlayFraction: overlayFraction,
-            overlayAnchor: overlayAnchor,
+            videoFadeInDuration: videoFadeInDuration,
+            videoFadeOutDuration: videoFadeOutDuration,
             flippedHorizontally: flippedHorizontally,
             flippedVertically: flippedVertically,
             crop: crop,
@@ -45,7 +44,7 @@ extension EditClip {
             stillImageURL: image
         )
         if isAnimated {
-            freeze.placement = animatedPlacement(atTimeline: time, canvas: canvas, isOverlay: isOverlay)
+            freeze.placement = animatedPlacement(atTimeline: time, canvas: canvas)
             freeze.rotationDegrees = animatedRotation(atTimeline: time)
             freeze.opacity = animatedOpacity(atTimeline: time)
         } else {
@@ -108,8 +107,6 @@ extension TimelineState {
             linkGroup: left.linkGroup,
             transitionAfter: left.transitionAfter,
             transitionDuration: left.transitionDuration,
-            overlayFraction: left.overlayFraction,
-            overlayAnchor: left.overlayAnchor,
             placement: left.placement,
             rotationDegrees: left.rotationDegrees,
             opacity: left.opacity,
@@ -545,6 +542,8 @@ extension TimelineState {
                 update(member.id) { $0.timelineStart = start }
             case .shape:
                 updateShape(member.id) { $0.timelineStart = start }
+            case .text:
+                updateTextOverlay(member.id) { $0.timelineStart = start }
             case .subtitleCue:
                 cueStarts[member.id] = start
             }

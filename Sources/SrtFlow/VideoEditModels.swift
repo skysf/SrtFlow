@@ -104,71 +104,12 @@ enum ClipTransition: String, CaseIterable, Identifiable, Hashable, Sendable {
     }
 }
 
-// MARK: - 画中画位置
-
-/// 画中画的九宫格停靠位。
-enum OverlayAnchor: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case topLeading, top, topTrailing
-    case leading, center, trailing
-    case bottomLeading, bottom, bottomTrailing
-
-    var id: String { rawValue }
-
-    /// 列 0/1/2、行 0/1/2（行 0 在上）。
-    var column: Int {
-        switch self {
-        case .topLeading, .leading, .bottomLeading: return 0
-        case .top, .center, .bottom: return 1
-        case .topTrailing, .trailing, .bottomTrailing: return 2
-        }
-    }
-
-    var row: Int {
-        switch self {
-        case .topLeading, .top, .topTrailing: return 0
-        case .leading, .center, .trailing: return 1
-        case .bottomLeading, .bottom, .bottomTrailing: return 2
-        }
-    }
-
-    /// 画中画默认框的尺寸：按画布宽的 `fraction` 等比；高度会爆出画布的
-    /// （竖版图片/视频，40% 宽时高度能超过 16:9 画布一截）整体等比收到
-    /// 画布内（上下各留 inset）。预览默认布局、合成变换、导出九宫格
-    /// 三处必须都用同一份账 —— 见 docs/architecture/preview-free-transform.md。
-    static func defaultSize(display: CGSize, canvas: CGSize, fraction: Double, inset: Double) -> CGSize {
-        guard display.width > 0, display.height > 0 else { return .zero }
-        var scale = canvas.width * fraction / display.width
-        let maxHeight = max(canvas.height - inset * 2, 1)
-        if display.height * scale > maxHeight {
-            scale = maxHeight / display.height
-        }
-        return CGSize(width: display.width * scale, height: display.height * scale)
-    }
-
-    /// 画中画左上角的位置。`inset` 是到边缘的留白，都按输出画面的像素来。
-    func origin(canvas: CGSize, overlay: CGSize, inset: Double) -> CGPoint {
-        let x: Double
-        switch column {
-        case 0: x = inset
-        case 1: x = (canvas.width - overlay.width) / 2
-        default: x = canvas.width - overlay.width - inset
-        }
-        let y: Double
-        switch row {
-        case 0: y = inset
-        case 1: y = (canvas.height - overlay.height) / 2
-        default: y = canvas.height - overlay.height - inset
-        }
-        return CGPoint(x: x, y: y)
-    }
-}
-
 // MARK: - 自由变换
 
 /// 画面段在输出画布上的自由摆放：中心和宽高都是相对画布的 0…1 归一化值。
 ///
-/// `nil`（不设）表示默认布局 —— 主轨等比铺满居中、画中画走
-/// `overlayFraction`/`overlayAnchor` 的九宫格。一旦用户在预览里拖过缩放框，
+/// `nil`（不设）表示默认布局 —— 等比铺满居中（所有视频轨同一份账）。
+/// 一旦用户在预览里拖过缩放框，
 /// 就换成这份显式的摆放；预览（AVFoundation 变换）和导出（ffmpeg scale+overlay）
 /// 都按同一份归一化值换算，所见即所得。宽高各自独立 —— 拉边把手允许变形。
 struct ClipPlacement: Hashable, Sendable {
@@ -442,11 +383,12 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var transitionAfter: ClipTransition
     var transitionDuration: Double
 
-    /// 画中画：相对主画面宽度的比例，以及停靠位。
-    var overlayFraction: Double
-    var overlayAnchor: OverlayAnchor
+    /// 画面的渐入/渐出时长，单位是**时间线秒**（变速之后）。0 = 关。
+    /// 生效值要走 `videoFades` 夹紧，规则见 VideoEditVideoFade.swift。
+    var videoFadeInDuration: Double
+    var videoFadeOutDuration: Double
 
-    /// 用户在预览里摆过的自由位置/尺寸；nil = 默认布局（主轨铺满、画中画九宫格）。
+    /// 用户在预览里摆过的自由位置/尺寸；nil = 默认布局（等比铺满居中）。
     var placement: ClipPlacement?
 
     // Inspector Transform 区的四项静态变换。都有「无操作」默认值，
@@ -491,8 +433,8 @@ struct EditClip: Identifiable, Hashable, Sendable {
         linkGroup: UUID? = nil,
         transitionAfter: ClipTransition = .none,
         transitionDuration: Double = 0.5,
-        overlayFraction: Double = 0.4,
-        overlayAnchor: OverlayAnchor = .topTrailing,
+        videoFadeInDuration: Double = 0,
+        videoFadeOutDuration: Double = 0,
         placement: ClipPlacement? = nil,
         rotationDegrees: Double = 0,
         opacity: Double = 1,
@@ -518,8 +460,8 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.linkGroup = linkGroup
         self.transitionAfter = transitionAfter
         self.transitionDuration = transitionDuration
-        self.overlayFraction = overlayFraction
-        self.overlayAnchor = overlayAnchor
+        self.videoFadeInDuration = videoFadeInDuration
+        self.videoFadeOutDuration = videoFadeOutDuration
         self.placement = placement
         self.rotationDegrees = rotationDegrees
         self.opacity = opacity
@@ -551,10 +493,13 @@ struct EditClip: Identifiable, Hashable, Sendable {
     }
 
     /// 画面上有任何非默认的变换吗（导出走覆盖分支、检查器显示复原用）。
+    ///
+    /// 画面渐变也算：它要在 rgba 上做 alpha 斜坡，只有变换链那条路会先
+    /// `format=rgba`，轻量路径挂不上 `fade`（见 VideoEditVideoFade.swift）。
     var hasVisualTransform: Bool {
         placement != nil || abs(rotationDegrees) > 0.01 || opacity < 0.999
             || flippedHorizontally || flippedVertically || !(crop?.isEmpty ?? true)
-            || isAnimated
+            || isAnimated || hasVideoFade
     }
 
     /// 这段的画面把整个画布**盖满且完全不透明**吗。
@@ -564,9 +509,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 凑数：仅翻转（甚至放大出画布的摆放）照样满幅不透明，走近似路径纯属
     /// 误伤（白闪变暗）。旋转保守地一律当不满幅；带关键帧动画的段同样保守
     /// 走近似路径（逐时刻判定不值得）。
-    func coversCanvasOpaquely(canvas: CGSize, isOverlay: Bool) -> Bool {
-        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01, !isAnimated else { return false }
-        let frame = resolvedPlacement(canvas: canvas, isOverlay: isOverlay).frame(in: canvas)
+    func coversCanvasOpaquely(canvas: CGSize) -> Bool {
+        guard opacity >= 0.999, abs(rotationDegrees) <= 0.01, !isAnimated,
+              !hasVideoFade else { return false }
+        let frame = resolvedPlacement(canvas: canvas).frame(in: canvas)
         return frame.minX <= 0.5 && frame.minY <= 0.5
             && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
     }
@@ -580,25 +526,24 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
     /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算。
     /// 预览里的选中框和拖动起点都从这里取，跟合成/导出的默认摆法一致。
-    func resolvedPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
-        placement ?? defaultPlacement(canvas: canvas, isOverlay: isOverlay)
+    func resolvedPlacement(canvas: CGSize) -> ClipPlacement {
+        placement ?? defaultPlacement(canvas: canvas)
     }
 
-    /// 默认布局：主轨等比铺满居中，画中画按 `overlayFraction` 宽度停靠九宫格。
+    /// 默认布局：等比铺满画布、居中，**不分轨道**。
+    ///
+    /// 上层视频轨和主轨走完全同一份账（2026-09-17 起）—— 上层轨不再是「画中画」，
+    /// 它就是另一条对等的视频轨，内容一样铺满画面。等比是 contain：比例对不上
+    /// 的素材两侧留空，**留空处不画黑**，露出的是下面那一层（主轨的下面是画布
+    /// 黑底，上层轨的下面是主轨画面）—— 这来自 overlay 合成本身，不要额外补
+    /// `pad`，补了就会把下层遮死。
+    ///
     /// 裁切过的段按**裁后的宽高比**摆（裁成 1:1 就显示成正方形）。
     /// Inspector 的 Scale/Position 以它为 100%/原点基准。
-    func defaultPlacement(canvas: CGSize, isOverlay: Bool) -> ClipPlacement {
+    func defaultPlacement(canvas: CGSize) -> ClipPlacement {
         guard let display = croppedDisplaySize,
               canvas.width > 0, canvas.height > 0 else {
             return ClipPlacement(centerX: 0.5, centerY: 0.5, width: 1, height: 1)
-        }
-        if isOverlay {
-            let inset = canvas.width * 0.02
-            let size = OverlayAnchor.defaultSize(
-                display: display, canvas: canvas, fraction: overlayFraction, inset: inset
-            )
-            let origin = overlayAnchor.origin(canvas: canvas, overlay: size, inset: inset)
-            return ClipPlacement(frame: CGRect(origin: origin, size: size), in: canvas)
         }
         let scale = min(canvas.width / display.width, canvas.height / display.height)
         return ClipPlacement(
@@ -612,17 +557,24 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
 // MARK: - 时间线整体状态
 
-/// 一条画中画轨或音频轨：有身份（行的增删不串号）、可整轨隐藏。
+/// 一条上层视频轨或音频轨：有身份（行的增删不串号）、可整轨隐藏、有自己的颜色。
 struct EditLane: Identifiable, Hashable, Sendable {
     let id: UUID
     var clips: [EditClip]
     /// 隐藏的轨：灰显不可编辑，预览和导出都当它不存在。
     var isHidden: Bool
+    /// 这条轨在时间线上的颜色号（见 TrackPalette）。
+    ///
+    /// nil = 还没补号：新 append 出来的轨、以及 2026-09-17 之前存的老工程。
+    /// `assignMissingTrackColors()` 会在读盘和每次状态提交后补上，补过就不再动
+    /// —— 颜色必须绑轨道身份，绑行号的话删掉中间一条轨会让下面所有轨换色。
+    var colorIndex: Int?
 
-    init(id: UUID = UUID(), clips: [EditClip] = [], isHidden: Bool = false) {
+    init(id: UUID = UUID(), clips: [EditClip] = [], isHidden: Bool = false, colorIndex: Int? = nil) {
         self.id = id
         self.clips = clips
         self.isHidden = isHidden
+        self.colorIndex = colorIndex
     }
 }
 
@@ -632,7 +584,8 @@ struct TimelineState: Hashable, Sendable {
     var mainClips: [EditClip] = []
     /// 主轨的整轨隐藏（预览成黑场，导出跳过）。
     var mainHidden = false
-    /// 画中画轨（可以有多条，叠放顺序：靠后的画在上面）。
+    /// 上层视频轨（可以有多条，叠放顺序：靠后的画在上面）。
+    /// 与主轨**对等** —— 内容一样铺满画面，只有叠放次序的差别。
     var overlayTracks: [EditLane] = []
     /// 音频轨（背景音乐、分离出的人声等）。
     var audioTracks: [EditLane] = []
@@ -659,6 +612,9 @@ struct TimelineState: Hashable, Sendable {
     var subtitleCompanion: SubtitleCompanion?
     /// 画面上的形状标注。
     var shapes: [ShapeAnnotation] = []
+    /// 画面上的文字标注。数组顺序就是叠放次序（靠后的画在上面）。
+    /// 整体压在形状之上、字幕之下，见 docs/architecture/text-overlays.md。
+    var textOverlays: [TextOverlay] = []
     /// 输出画面比例（预览和导出共用）。
     var canvasRatio: CanvasRatio = .auto
     /// 工程帧率：预览合成、两条导出管线、预渲染、关键帧容差的唯一事实来源。
@@ -668,6 +624,7 @@ struct TimelineState: Hashable, Sendable {
     var isEmpty: Bool {
         mainClips.isEmpty && overlayTracks.allSatisfy(\.clips.isEmpty)
             && audioTracks.allSatisfy(\.clips.isEmpty) && subtitle == nil && shapes.isEmpty
+            && textOverlays.isEmpty
     }
 
     /// 整条时间线的长度：所有轨里最晚结束的那一刻。
@@ -676,6 +633,7 @@ struct TimelineState: Hashable, Sendable {
         for lane in overlayTracks { end = max(end, lane.clips.map(\.timelineEnd).max() ?? 0) }
         for lane in audioTracks { end = max(end, lane.clips.map(\.timelineEnd).max() ?? 0) }
         for shape in shapes { end = max(end, shape.timelineEnd) }
+        for text in textOverlays { end = max(end, text.timelineEnd) }
         return end
     }
 
@@ -684,6 +642,14 @@ struct TimelineState: Hashable, Sendable {
         change(&shapes[index])
         // 正方形永远保持正方形。
         if shapes[index].kind == .square { shapes[index].height = shapes[index].width }
+    }
+
+    mutating func updateTextOverlay(_ id: UUID, _ change: (inout TextOverlay) -> Void) {
+        guard let index = textOverlays.firstIndex(where: { $0.id == id }) else { return }
+        change(&textOverlays[index])
+        // 收口放在这里而不是各个调用点：画面拖拽、检查器、就地编辑三条路
+        // 都要落到同一份夹紧上，分开写迟早分叉。
+        textOverlays[index].clampToValidRange()
     }
 
     // MARK: 主轨排列
@@ -813,7 +779,7 @@ struct TimelineState: Hashable, Sendable {
         pruneEmptyTracks()
     }
 
-    /// 清掉空出来的画中画/音频轨，别让界面上留一排空槽。
+    /// 清掉空出来的上层视频轨/音频轨，别让界面上留一排空槽。
     mutating func pruneEmptyTracks() {
         overlayTracks.removeAll { $0.clips.isEmpty }
         audioTracks.removeAll { $0.clips.isEmpty }
@@ -844,10 +810,10 @@ struct TimelineState: Hashable, Sendable {
 extension TimelineState {
     /// 只含 `ids` 的时间线（平移到 0 起点），「Selected only」导出用。
     ///
-    /// 只选了画中画不选主轨时，把最下面那条画中画升为主轨 —— 「导出单个视频」
+    /// 只选了上层轨不选主轨时，把最下面那条上层轨升为主轨 —— 「导出单个视频」
     /// 拿到的就是完整画面而不是黑底小窗。所以**升轨的段必须丢掉自由摆放
     /// （placement）**：那是相对完整画面摆的，画面本身都不在这次导出里。
-    /// 没升轨的画中画保持原样（含摆放），所见即所得。
+    /// 没升轨的上层轨保持原样（含摆放），所见即所得。
     func selectionForExport(ids: Set<UUID>) -> TimelineState {
         let picked = allClips.filter { ids.contains($0.id) }
         guard let earliest = picked.map(\.timelineStart).min() else { return self }
@@ -884,7 +850,7 @@ extension TimelineState {
         sub.canvasRatio = canvasRatio
         // 帧率必须跟着走：漏了这一行，选段导出会退回默认 24，与工程规格不符。
         sub.frameRate = frameRate
-        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着画中画/音频时保持相对位置。
+        // 只挑了主轨内容时拼紧凑（多选导出＝顺序拼接）；带着上层轨/音频时保持相对位置。
         if sub.overlayTracks.isEmpty, sub.audioTracks.isEmpty {
             sub.packMain()
         }
@@ -917,10 +883,6 @@ extension LenientCodableEnum {
 
 extension ClipTransition: LenientCodableEnum {
     static var decodingFallback: ClipTransition { .none }
-}
-
-extension OverlayAnchor: LenientCodableEnum {
-    static var decodingFallback: OverlayAnchor { .topTrailing }
 }
 
 extension CanvasRatio: LenientCodableEnum {
@@ -1022,7 +984,8 @@ extension EditClip: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
-        case overlayFraction, overlayAnchor, placement, info, audioAssetDuration, stillImageURL
+        case placement, info, audioAssetDuration, stillImageURL
+        case videoFadeInDuration, videoFadeOutDuration
         case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
         case markers
         case fadeInDuration, fadeOutDuration
@@ -1046,8 +1009,8 @@ extension EditClip: Codable {
             linkGroup: try c.decodeIfPresent(UUID.self, forKey: .linkGroup),
             transitionAfter: try c.decodeIfPresent(ClipTransition.self, forKey: .transitionAfter) ?? .none,
             transitionDuration: try c.decodeIfPresent(Double.self, forKey: .transitionDuration) ?? 0.5,
-            overlayFraction: try c.decodeIfPresent(Double.self, forKey: .overlayFraction) ?? 0.4,
-            overlayAnchor: try c.decodeIfPresent(OverlayAnchor.self, forKey: .overlayAnchor) ?? .topTrailing,
+            videoFadeInDuration: try c.decodeIfPresent(Double.self, forKey: .videoFadeInDuration) ?? 0,
+            videoFadeOutDuration: try c.decodeIfPresent(Double.self, forKey: .videoFadeOutDuration) ?? 0,
             placement: try c.decodeIfPresent(ClipPlacement.self, forKey: .placement),
             rotationDegrees: try c.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0,
             opacity: try c.decodeIfPresent(Double.self, forKey: .opacity) ?? 1,
@@ -1082,8 +1045,9 @@ extension EditClip: Codable {
         try c.encodeIfPresent(linkGroup, forKey: .linkGroup)
         try c.encode(transitionAfter, forKey: .transitionAfter)
         try c.encode(transitionDuration, forKey: .transitionDuration)
-        try c.encode(overlayFraction, forKey: .overlayFraction)
-        try c.encode(overlayAnchor, forKey: .overlayAnchor)
+        // 同声音渐变：没设的段不写键，缺键按 0 解码，与「关」完全同义。
+        if videoFadeInDuration > 0 { try c.encode(videoFadeInDuration, forKey: .videoFadeInDuration) }
+        if videoFadeOutDuration > 0 { try c.encode(videoFadeOutDuration, forKey: .videoFadeOutDuration) }
         try c.encodeIfPresent(placement, forKey: .placement)
         try c.encode(rotationDegrees, forKey: .rotationDegrees)
         try c.encode(opacity, forKey: .opacity)
@@ -1131,7 +1095,7 @@ extension MarkerColor: LenientCodableEnum {
 
 extension EditLane: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, clips, isHidden
+        case id, clips, isHidden, colorIndex
     }
 
     init(from decoder: Decoder) throws {
@@ -1139,7 +1103,8 @@ extension EditLane: Codable {
         self.init(
             id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
             clips: try c.decodeIfPresent([EditClip].self, forKey: .clips) ?? [],
-            isHidden: try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+            isHidden: try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false,
+            colorIndex: try c.decodeIfPresent(Int.self, forKey: .colorIndex)
         )
     }
 
@@ -1148,6 +1113,7 @@ extension EditLane: Codable {
         try c.encode(id, forKey: .id)
         try c.encode(clips, forKey: .clips)
         try c.encode(isHidden, forKey: .isHidden)
+        try c.encodeIfPresent(colorIndex, forKey: .colorIndex)
     }
 }
 
@@ -1155,7 +1121,7 @@ extension TimelineState: Codable {
     private enum CodingKeys: String, CodingKey {
         case mainClips, mainHidden, overlayTracks, audioTracks
         case subtitle, subtitleHidden, translationHidden
-        case subtitleLayout, subtitleURL, subtitleCompanion, shapes, canvasRatio
+        case subtitleLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
         case frameRate
     }
 
@@ -1173,6 +1139,8 @@ extension TimelineState: Codable {
         subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
         subtitleCompanion = try c.decodeIfPresent(SubtitleCompanion.self, forKey: .subtitleCompanion)
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
+        // v11 起才有。缺键 = 这个工程没有文字，不是出错。
+        textOverlays = try c.decodeIfPresent([TextOverlay].self, forKey: .textOverlays) ?? []
         canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
         // v1–v4 没有这个字段，缺失即回退 24（与 ProjectFrameRate.fallback 一致）。
         frameRate = try c.decodeIfPresent(ProjectFrameRate.self, forKey: .frameRate) ?? .fallback
@@ -1194,6 +1162,9 @@ extension TimelineState: Codable {
             try c.encodeIfPresent(subtitleCompanion, forKey: .subtitleCompanion)
         }
         try c.encode(shapes, forKey: .shapes)
+        // 空数组不落盘：一个从没用过文字的工程不该因此被抬进 v11
+        //（判据见 VideoEditFormatVersion.swift 的登记清单）。
+        if !textOverlays.isEmpty { try c.encode(textOverlays, forKey: .textOverlays) }
         try c.encode(canvasRatio, forKey: .canvasRatio)
         // **无条件**写帧率：旧版把帧率硬编码成 30，省略这个键会让默认 24 的
         // 工程在旧版里按 30 渲染（见 VideoEditFormatVersion 的说明）。
@@ -1243,7 +1214,7 @@ extension TimelineState {
     }
 }
 
-/// 轨道的身份：主轨、第几条画中画轨、第几条音频轨。
+/// 轨道的身份：主轨、第几条上层视频轨、第几条音频轨。
 enum TrackSlot: Hashable, Sendable {
     case main
     case overlay(Int)

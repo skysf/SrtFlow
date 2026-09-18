@@ -52,6 +52,7 @@ run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-buil
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
+run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
 # 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口
@@ -65,8 +66,10 @@ run_check "preview-composition（预览合成真取帧）" scripts/check-preview
 # 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链）" scripts/check-export-frame-rate.sh
-run_check "export-alpha-compositing（画中画 fill+matte）" scripts/check-export-alpha-compositing.sh
+run_check "export-alpha-compositing（上层轨动画段 fill+matte）" scripts/check-export-alpha-compositing.sh
 run_check "audio-fade（渐入渐出真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
+run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
+run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
 
 echo ""

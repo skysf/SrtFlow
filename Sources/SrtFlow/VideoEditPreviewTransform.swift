@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - 预览区的点选 + 自由变换
 
-/// 铺在预览画面上的交互层：点击画面上的任何轨道内容（主轨、画中画、图片）
+/// 铺在预览画面上的交互层：点击画面上的任何轨道内容（主轨、上层视频轨、图片）
 /// 就选中它并出现变换框 —— 四角等比缩放、四边自由拉伸、框内拖动移动。
 ///
 /// 形状不归这里管（`ShapeOverlayCanvas` 叠在更上层，自己处理点选和把手）。
@@ -20,23 +20,18 @@ struct ClipTransformCanvas: View {
     /// 中心参考线的亮灭（竖线, 横线），拖动/缩放中由变换框回报。
     @State private var centerGuides = (vertical: false, horizontal: false)
 
-    /// 此刻画面上可见的段，最上层的排最前（画中画行号大的在上，主轨垫底）。
-    private struct VisibleClip {
-        var clip: EditClip
-        var isOverlay: Bool
-    }
-
-    private var visibleClips: [VisibleClip] {
+    /// 此刻画面上可见的段，**最上层的排最前**（上层视频轨行号大的在上，主轨垫底）。
+    private var visibleClips: [EditClip] {
         let time = clock.displayTime
-        var result: [VisibleClip] = []
+        var result: [EditClip] = []
         for lane in project.state.overlayTracks.reversed() where !lane.isHidden {
             for clip in lane.clips where isOnScreen(clip, at: time) {
-                result.append(VisibleClip(clip: clip, isOverlay: true))
+                result.append(clip)
             }
         }
         if !project.state.mainHidden,
            let main = project.state.mainClips.first(where: { isOnScreen($0, at: time) }) {
-            result.append(VisibleClip(clip: main, isOverlay: false))
+            result.append(main)
         }
         return result
     }
@@ -56,26 +51,35 @@ struct ClipTransformCanvas: View {
                 }
 
             if let selection = selectedVisibleClip() {
-                let rect = selection.clip
-                    .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize, isOverlay: selection.isOverlay)
-                    .frame(in: boxSize)
-                ResizableFrameBox(
-                    rect: rect,
+                let box = ResizableFrameBox(
+                    rect: selection
+                        .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize)
+                        .frame(in: boxSize),
                     bounds: boxSize,
                     handles: FrameHandle.all,
                     keepAspectOnCorners: true,
                     movable: true,
-                    rotationDegrees: selection.clip.animatedRotation(atTimeline: clock.displayTime),
+                    rotationDegrees: selection.animatedRotation(atTimeline: clock.displayTime),
                     onTap: { location in selectClip(at: location) },
                     onCenterGuides: { centerGuides = (vertical: $0, horizontal: $1) },
                     onChange: { newRect in
                         project.livePlace(
-                            selection.clip.id,
+                            selection.id,
                             placement: ClipPlacement(frame: newRect, in: boxSize)
                         )
                     },
                     onEnd: { project.endLiveEdit() }
                 )
+                // 提示只在**真有东西叠着**时挂：平时在预览里拖框的人不需要每次
+                // 悬停都弹一条，而需要它的那一刻恰好就是「点不到底下那层」。
+                if visibleClips.count > 1 {
+                    box.instantHelp(
+                        "Click again with Option held to select the clip underneath",
+                        shortcut: .plain("⌥Click")
+                    )
+                } else {
+                    box
+                }
             }
 
             CenterGuideLines(
@@ -89,34 +93,51 @@ struct ClipTransformCanvas: View {
     }
 
     /// 选中的那一段现在就在画面上吗（在才画框）。
-    private func selectedVisibleClip() -> VisibleClip? {
+    private func selectedVisibleClip() -> EditClip? {
         guard let selected = project.selectedClip else { return nil }
-        return visibleClips.first { $0.clip.id == selected.id }
+        return visibleClips.first { $0.id == selected.id }
     }
 
+    /// 点选：默认选最上面那一段；**⌥ 点击**在命中的这一摞里往下挑一层，
+    /// 挑到底再绕回最上面。
+    ///
+    /// 这条路不是锦上添花 —— 上层视频轨默认铺满画面（2026-09-17 起不再是
+    /// 右上角那个画中画小框），点画面任何位置都会先命中最上面那一段，被盖住
+    /// 的主轨在预览里就**再也选不中**了。做成轮换而不是「只往下一层」：三层
+    /// 以上照样够得着，也不用记「按了几次」。
     private func selectClip(at location: CGPoint) {
-        let hit = visibleClips.first { visible in
-            let rect = visible.clip
-                .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize, isOverlay: visible.isOverlay)
-                .frame(in: boxSize)
-            // 旋转过的段：把点反着转回未旋转坐标系再判定。
-            let degrees = visible.clip.animatedRotation(atTimeline: clock.displayTime)
-            guard abs(degrees) > 0.01 else { return rect.contains(location) }
-            let angle = -degrees * .pi / 180
-            let dx = location.x - rect.midX
-            let dy = location.y - rect.midY
-            let unrotated = CGPoint(
-                x: rect.midX + dx * cos(angle) - dy * sin(angle),
-                y: rect.midY + dx * sin(angle) + dy * cos(angle)
-            )
-            return rect.contains(unrotated)
-        }
-        if let hit {
-            project.select(hit.clip.id, additive: false)
-        } else {
+        let hits = visibleClips.filter { hitTest($0, at: location) }
+        guard let top = hits.first else {
             // 点空白 = 三类选择一起退（点中剪辑时互斥由 EditSelection 负责）。
             project.clearSelection()
+            return
         }
+        // `NSEvent.modifierFlags` 读的是**此刻**的按键状态；点选回调就在这一下
+        // 点击的事件处理里同步跑，读到的就是它带的修饰键。
+        var pick = top
+        if NSEvent.modifierFlags.contains(.option),
+           let selected = project.selectedClip,
+           let current = hits.firstIndex(where: { $0.id == selected.id }) {
+            pick = hits[(current + 1) % hits.count]
+        }
+        project.select(pick.id, additive: false)
+    }
+
+    /// 这一点落在这段的画面框里吗。旋转过的段：把点反着转回未旋转坐标系再判定。
+    private func hitTest(_ clip: EditClip, at location: CGPoint) -> Bool {
+        let rect = clip
+            .animatedPlacement(atTimeline: clock.displayTime, canvas: boxSize)
+            .frame(in: boxSize)
+        let degrees = clip.animatedRotation(atTimeline: clock.displayTime)
+        guard abs(degrees) > 0.01 else { return rect.contains(location) }
+        let angle = -degrees * .pi / 180
+        let dx = location.x - rect.midX
+        let dy = location.y - rect.midY
+        let unrotated = CGPoint(
+            x: rect.midX + dx * cos(angle) - dy * sin(angle),
+            y: rect.midY + dx * sin(angle) + dy * cos(angle)
+        )
+        return rect.contains(unrotated)
     }
 }
 

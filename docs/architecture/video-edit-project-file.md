@@ -74,6 +74,11 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v7 | `translationHidden` | 烧录跟着眼睛走之后，它决定成片里有没有译文；旧版丢掉它，「只烧中文」会变回默认 |
 | v8 | `EditClip.markers`（**按需写入**） | 纯手工输入的标记连同备注文字被抹掉，只能重标一遍 |
 | v9 | `EditClip.fadeInDuration` / `fadeOutDuration`（**按需写入**） | 调好的声音渐入渐出被删光，**成片的声音跟着变**（开头结尾从渐变变回硬切）。合同见 [audio-fades](audio-fades.md) |
+| v10 | 上层视频轨的**默认摆放语义**（不是某个键）、`EditClip.videoFade*`、`EditLane.colorIndex`（**无条件**） | 这是一次语义换代：`placement == nil` 从「画中画角落小框」改成「等比铺满居中」，而 `overlayFraction`/`overlayAnchor` 已删。旧版打开会把每一段上层轨画回 40% 宽的小窗，**成片当场就不一样**；随手编辑触发自动保存，画面渐变和轨道颜色再一起被抹掉。合同见 [video-tracks](video-tracks.md)、[video-fades](video-fades.md) |
+| v11 | `TimelineState.textOverlays`（**按需写入**） | 画面上的文字连同整套样式被静默丢掉 ——旧版不认识这个键，打开就看不见字，随手编辑触发自动保存即永久丢失。空数组不落盘，所以没用过文字的工程不会被抬版本。合同见 [画面文字](text-overlays.md) |
+| v12 | `TextOverlay.animation`（**按需写入**） | 调好的入场/出场/强调动画被静默丢掉，文字变成**硬切出现** —— 入场那一下正是标题最显眼的地方，成片当场不一样；随手编辑触发自动保存即永久丢失。没设动画的文字不落这个键。合同见 [画面文字](text-overlays.md) |
+| v13 | `TextOverlay.number`（**按需写入**） | 数字元件退回显示 `text` —— 而它的 `text` 是空的，于是画面上**整段消失**；随手编辑触发自动保存即永久丢失。合同见 [画面文字](text-overlays.md) |
+| v14 | `TextAnimationKind.focus`、`TextAnimation.focusStartOpacity`（**按需写入**） | **新增的枚举值也算持久数据**：`TextAnimationKind` 宽容解码，旧版遇到 `focus` 会退回 `.none` —— 那一段的入场/出场静默消失，标题最显眼的那一下当场没了；随手编辑触发自动保存即永久丢失。合同见 [画面文字](text-overlays.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

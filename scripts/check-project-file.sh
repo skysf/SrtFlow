@@ -36,7 +36,21 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditFadeWindow.swift \
   Sources/SrtFlow/VideoEditAudioFade.swift \
+  Sources/SrtFlow/VideoEditVideoFade.swift \
+  Sources/SrtFlow/VideoEditTrackPalette.swift \
+  Sources/SrtFlow/VideoEditTextStyle.swift \
+  Sources/SrtFlow/VideoEditTextEasing.swift \
+  Sources/SrtFlow/VideoEditTextAnimation.swift \
+  Sources/SrtFlow/VideoEditTextAnimator.swift \
+  Sources/SrtFlow/VideoEditTextNumber.swift \
+  Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
+  Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextLayout.swift \
+  Sources/SrtFlow/VideoEditTextRenderer.swift \
+  Sources/SrtFlow/VideoEditTextDrawing.swift \
+  Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \

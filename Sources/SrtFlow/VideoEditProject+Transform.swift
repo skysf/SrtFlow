@@ -52,7 +52,7 @@ extension VideoEditProject {
         }
     }
 
-    /// 回到默认布局（主轨铺满 / 画中画九宫格）。
+    /// 回到默认布局（等比铺满居中）。
     func resetPlacement(_ id: UUID) {
         perform { state in
             state.update(id) { $0.placement = nil }
@@ -60,12 +60,6 @@ extension VideoEditProject {
     }
 
     // MARK: Transform 面板（离散一步撤销；live 版拖调）
-
-    /// 这段在不在画中画轨上（Position/Scale 的默认基准随轨道不同）。
-    func isOverlayClip(_ id: UUID) -> Bool {
-        if case .overlay = state.location(of: id)?.track { return true }
-        return false
-    }
 
     /// 写入摆放并归一：约等于默认布局就存回 nil，检查器和预览都当「没摆过」。
     /// 位置/缩放行有关键帧时改为在播放头处落帧。discrete/live 共用，见
@@ -97,7 +91,7 @@ extension VideoEditProject {
         if let write = keyframedPlacementWriter(id, clamped) {
             return { state in state.update(id) { write(&$0) } }
         }
-        let fallback = clip.defaultPlacement(canvas: renderSize, isOverlay: isOverlayClip(id))
+        let fallback = clip.defaultPlacement(canvas: renderSize)
         let toleranceX = 0.5 / max(renderSize.width, 1)
         let toleranceY = 0.5 / max(renderSize.height, 1)
         let isDefault = abs(clamped.centerX - fallback.centerX) < toleranceX

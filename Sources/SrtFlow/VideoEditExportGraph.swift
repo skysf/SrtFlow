@@ -11,7 +11,7 @@ import SrtFlowCore
 // 真跑一遍、数输出帧 —— 这是计划 §17.3 要求的「真实生产滤镜回归」，
 // alpha fixture 替代不了它。
 
-/// 纯函数地把时间线翻译成 ffmpeg 参数。工作目录里放 ASS、字体和形状 PNG。
+/// 纯函数地把时间线翻译成 ffmpeg 参数。工作目录里放 ASS、字体、形状和文字 PNG。
 enum VideoEditExportGraph {
 
     struct Plan {
@@ -141,7 +141,7 @@ enum VideoEditExportGraph {
             .appendingPathExtension(output.pathExtension)
 
         // 关键帧动画的段：先用预览同一套合成渲成中间片（AnimatedClipPrerenderer），
-        // ffmpeg 图里当普通素材吃。主轨一条黑底 422；画中画 fill+matte 两条
+        // ffmpeg 图里当普通素材吃。主轨一条黑底 422；上层轨 fill+matte 两条
         //（alphamerge 合回带 alpha 的流），细节见 AnimatedClipPrerenderer。
         enum Prerendered {
             case main(URL)
@@ -173,6 +173,13 @@ enum VideoEditExportGraph {
             shapeFiles.append((shape, filename))
         }
 
+        // 文字 → 包络大小的透明 PNG（**不是**整幅画布，理由见 TextOverlayExport）。
+        // 画面由 `TextRenderer.render` 出，和预览是同一个函数。
+        let textFiles = try TextOverlayExport.renderFiles(
+            state.textOverlays, canvas: renderSize,
+            frameRate: state.frameRate, into: workspace
+        )
+
         // 输入表：素材文件 + 形状 PNG。
         var inputs: [String] = []
         var inputArguments: [String] = []
@@ -203,7 +210,7 @@ enum VideoEditExportGraph {
         }
 
         /// 一段音频剪辑的滤镜链（裁剪、变速、音量、渐入渐出、落到时间线位置）。
-        /// 画中画和音频轨都走这里 —— 两者都没有转场，用户设的渐变直接生效。
+        /// 上层视频轨和音频轨都走这里 —— 两者都没有轨内转场，用户设的渐变直接生效。
         func audioChain(for clip: EditClip, source: Int, label: String) -> String {
             let end = clip.sourceStart + clip.sourceDuration
             let delay = Int((clip.timelineStart * 1000).rounded())
@@ -294,7 +301,16 @@ enum VideoEditExportGraph {
                     // 摆放/旋转/裁切/翻转/透明度任一非默认的主轨段：
                     // 变换链处理后叠到黑底画布上。用 overlay 而不是 pad ——
                     // 框可以比画布大、可以探出边界，旋转还会撑大输出框。
-                    let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: false)
+                    // 画面渐变与声音同一套仲裁：接缝上有转场就让位给 xfade。
+                    let transformed = transformSteps(
+                        clip: clip, renderSize: renderSize,
+                        fades: VideoFade.effective(
+                            clip: clip,
+                            hasTransitionBefore: segmentIndex > 0
+                                && segments[segmentIndex - 1].transition != .none,
+                            hasTransitionAfter: segment.transition != .none
+                        )
+                    )
                     let fg = nextLabel("fg")
                     let bg = nextLabel("bg")
                     filters.append(
@@ -390,7 +406,7 @@ enum VideoEditExportGraph {
             audio = outA
         }
 
-        // MARK: 画中画
+        // MARK: 上层视频轨
 
         var mixInputs: [String] = []
         for lane in overlayLanes {
@@ -400,7 +416,7 @@ enum VideoEditExportGraph {
                 let x: String
                 let y: String
                 if case .overlay(let fill, let matte) = prerendered[clip.id] {
-                    // 关键帧动画的画中画：fill（内容压黑底）+ matte（白块蒙版）
+                    // 关键帧动画的上层轨段：fill（内容压黑底）+ matte（白块蒙版）
                     // alphamerge 合回带 alpha 的整幅画布，原位叠放。
                     // 位置/缩放/旋转/不透明度全在两条中间片里烘焙好了。
                     //
@@ -440,25 +456,26 @@ enum VideoEditExportGraph {
                     x = "0"
                     y = "0"
                 } else {
-                    // 有任何变换的画中画走完整变换链（中心定位）；否则九宫格表达式。
+                    // 上层视频轨的每一段都走完整变换链（中心定位）。
+                    //
+                    // 这里**只有一条路**：默认摆放已经和主轨同账（等比铺满居中），
+                    // `transformSteps` 从 `resolvedPlacement` 算框，摆没摆过都对。
+                    // 原来那条「没变换就走九宫格表达式」的分支跟着画中画一起删了
+                    // —— 留着它就是给同一件事留两份账，迟早分叉。
+                    //
+                    // 比例对不上时两侧留空，**不补 pad**：这里是 overlay 到已经
+                    // 累积好的画面上，补黑就把主轨遮死了。
                     let end = clip.sourceStart + clip.sourceDuration
-                    let chain: String
-                    if clip.hasVisualTransform {
-                        let transformed = transformSteps(clip: clip, renderSize: renderSize, isOverlay: true)
-                        chain = transformed.chain
-                        x = transformed.overlayX
-                        y = transformed.overlayY
-                    } else {
-                        let overlayWidth = Int((renderSize.width * clip.overlayFraction / 2).rounded() * 2)
-                        let inset = Int(renderSize.width * 0.02)
-                        // 高度上限与预览同账（OverlayAnchor.defaultSize）：竖版素材
-                        // 不许爆出画布，decrease 只缩不放，横版素材产物不变。
-                        let maxHeight = max(Int(((renderSize.height - Double(inset) * 2) / 2).rounded() * 2), 2)
-                        chain = "scale=w=\(overlayWidth):h=\(maxHeight):" +
-                            "force_original_aspect_ratio=decrease:force_divisible_by=2,setsar=1"
-                        x = xExpression(for: clip.overlayAnchor, inset: inset)
-                        y = yExpression(for: clip.overlayAnchor, inset: inset)
-                    }
+                    // 上层轨还没有轨内转场，两条边都归用户设的渐变管。
+                    let transformed = transformSteps(
+                        clip: clip, renderSize: renderSize,
+                        fades: VideoFade.effective(
+                            clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
+                        )
+                    )
+                    let chain = transformed.chain
+                    x = transformed.overlayX
+                    y = transformed.overlayY
                     filters.append(
                         "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                         "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=\(fps)," +
@@ -510,6 +527,58 @@ enum VideoEditExportGraph {
             filters.append(
                 "[\(video)][\(shapeInput):v]overlay=x=0:y=0:eof_action=pass:" +
                 "enable='between(t,\(fmt(shape.timelineStart)),\(fmt(shape.timelineEnd)))'[\(outV)]"
+            )
+            video = outV
+        }
+
+        // MARK: 文字（压在形状之上、字幕之下）
+        //
+        // 次序是产品口径，不是实现顺手：文字要能放在"半透明色块当底板"的形状
+        // 上面，所以文字必须后贴。见 docs/architecture/text-overlays.md。
+
+        // 一段文字可能切成三段（入场序列 / 中间静止图 / 出场序列），各有各的
+        // 接法。切法和理由见 TextOverlayExport；三种接法的实测依据：
+        //   · 静止段：`-loop 1` 拉成持续流，与形状同款。
+        //   · 一次性序列：`-itsoffset` 把序列推到落点，帧与时间线精确对齐。
+        //   · 循环段：只有一个周期的帧，`loop` 滤镜铺满，`setpts` 补回时间轴。
+        let textFps = Double(max(1, state.frameRate.fps))
+        for file in textFiles {
+            let stream: String
+            switch file.source {
+            case .still:
+                inputArguments += ["-loop", "1", "-t", fmt(total), "-i", file.pattern]
+                let index = inputs.count
+                inputs.append(file.pattern)
+                stream = "\(index):v"
+
+            case .sequence:
+                inputArguments += [
+                    "-itsoffset", fmt(file.timelineStart),
+                    "-framerate", fmt(textFps), "-start_number", "0", "-i", file.pattern
+                ]
+                let index = inputs.count
+                inputs.append(file.pattern)
+                stream = "\(index):v"
+
+            case .looping(let frames):
+                inputArguments += [
+                    "-framerate", fmt(textFps), "-start_number", "0", "-i", file.pattern
+                ]
+                let index = inputs.count
+                inputs.append(file.pattern)
+                let looped = nextLabel("tl")
+                // `loop` 之后 PTS 要自己重建（N 是帧序号），再整体推到落点。
+                filters.append(
+                    "[\(index):v]loop=loop=-1:size=\(frames):start=0," +
+                    "setpts=N/\(fmt(textFps))/TB+\(fmt(file.timelineStart))/TB[\(looped)]"
+                )
+                stream = looped
+            }
+
+            let outV = nextLabel("v")
+            filters.append(
+                "[\(video)][\(stream)]overlay=x=\(fmt(file.origin.x)):y=\(fmt(file.origin.y))" +
+                ":eof_action=pass:enable='between(t,\(fmt(file.timelineStart)),\(fmt(file.timelineEnd)))'[\(outV)]"
             )
             video = outV
         }
@@ -566,15 +635,18 @@ enum VideoEditExportGraph {
     }
 
     /// Transform 面板的完整滤镜链（接在 fps=<工程帧率> 之后）：
-    /// 裁切 → 翻转 → 缩放进摆放框 → 旋转（rgba 透明角）→ 不透明度。
+    /// 裁切 → 翻转 → 缩放进摆放框 → 旋转（rgba 透明角）→ 不透明度 → 画面渐变。
     /// 定位用中心表达式 —— 旋转会把输出框撑大（rotw/roth），
     /// 只有中心是不变量。时间账与预览的 fittingTransform 完全同构。
+    ///
+    /// - Parameter fades: **已经过转场仲裁**的画面渐变窗口（`VideoFade.effective`）。
+    ///   渐变挂在链的最末尾，`st` 才对得上时间线秒（见 VideoEditVideoFade.swift）。
     private static func transformSteps(
         clip: EditClip,
         renderSize: CGSize,
-        isOverlay: Bool
+        fades: FadeWindow
     ) -> (chain: String, overlayX: String, overlayY: String) {
-        let target = clip.resolvedPlacement(canvas: renderSize, isOverlay: isOverlay)
+        let target = clip.resolvedPlacement(canvas: renderSize)
             .frame(in: renderSize)
         var steps: [String] = []
         if let crop = clip.crop, !crop.isEmpty, let display = clip.info?.displaySize {
@@ -590,14 +662,16 @@ enum VideoEditExportGraph {
         steps.append("setsar=1")
         let rotated = abs(clip.rotationDegrees) > 0.01
         let translucent = clip.opacity < 0.999
-        if rotated || translucent { steps.append("format=rgba") }
+        // 渐变是在 alpha 上做的，没有 alpha 通道 `fade=…:alpha=1` 就是空转。
+        if rotated || translucent || !fades.isEmpty { steps.append("format=rgba") }
         if rotated {
             let radians = fmt(clip.rotationDegrees * .pi / 180)
             steps.append("rotate=\(radians):ow=rotw(\(radians)):oh=roth(\(radians)):c=black@0")
         }
         if translucent { steps.append("colorchannelmixer=aa=\(fmt(clip.opacity))") }
         return (
-            steps.joined(separator: ","),
+            steps.joined(separator: ",")
+                + VideoFade.filterSteps(fades, timelineDuration: clip.timelineDuration),
             "\(Int(target.midX.rounded()))-w/2",
             "\(Int(target.midY.rounded()))-h/2"
         )
@@ -629,21 +703,6 @@ enum VideoEditExportGraph {
         return factors.map { "atempo=\(fmt($0))" }.joined(separator: ",") + ","
     }
 
-    private static func xExpression(for anchor: OverlayAnchor, inset: Int) -> String {
-        switch anchor.column {
-        case 0: return "\(inset)"
-        case 1: return "(W-w)/2"
-        default: return "W-w-\(inset)"
-        }
-    }
-
-    private static func yExpression(for anchor: OverlayAnchor, inset: Int) -> String {
-        switch anchor.row {
-        case 0: return "\(inset)"
-        case 1: return "(H-h)/2"
-        default: return "H-h-\(inset)"
-        }
-    }
 }
 
 // MARK: - 形状 PNG

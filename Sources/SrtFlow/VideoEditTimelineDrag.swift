@@ -17,6 +17,7 @@ struct ClipDragSession {
     enum Subject: Equatable {
         case clip(slot: TrackSlot)
         case shape
+        case text
         case subtitleCue
     }
 
