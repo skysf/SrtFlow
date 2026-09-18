@@ -268,12 +268,17 @@ final class VideoEditProject: ObservableObject {
     /// 草稿留在视图里就会被漏掉。同样不进工程文件。
     @Published var subtitleDraft: SubtitleTextDraft?
 
-    // 三个开关，对应截图里的磁吸、吸附、链接。
-    @Published var magnetEnabled = true {
+    // 三个开关，对应工具栏里的磁吸、吸附、链接。
+    //
+    // **默认只开吸附**（2026-09-18 用户拍板）：磁吸会自动合拢主轨的空档，而这个
+    // 用户的剪法就是留着间隙；链接会把分离出来的音频一起拖走，也不是他要的默认。
+    // 吸附只是拖到边缘附近时帮忙对齐，不改变任何自动行为，所以留着。
+    // 三个都不进工程文件、也不写 UserDefaults —— 每次启动回到这里的默认值。
+    @Published var magnetEnabled = false {
         didSet { if magnetEnabled { perform { $0.packMain() } } }
     }
     @Published var snappingEnabled = true
-    @Published var linkageEnabled = true
+    @Published var linkageEnabled = false
 
     /// 时间线缩放：一秒画多少点。
     ///

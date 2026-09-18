@@ -358,6 +358,7 @@ struct VideoEditTimelineView: View {
                 pps: pps,
                 duration: project.duration,
                 rowSpacing: rowSpacing,
+                playheadX: clock.time * pps,
                 geometry: scrollGeometry,
                 onSeek: { time, precise in
                     clock.seek(to: min(max(0, time), project.duration), precise: precise)
@@ -426,22 +427,19 @@ struct VideoEditTimelineView: View {
         }
     }
 
+    /// 播放头的**竖线**。它贯穿所有轨道，所以跟着内容一起纵向滚。
+    ///
+    /// 标尺上那枚把手不在这儿 —— 它画在 `TimelinePinnedRuler` 里，跟着标尺一起
+    /// 钉在视口顶上。画在这里的话，纵向滚下去之后把手会藏到标尺后面（标尺是不
+    /// 透明的），用户就看不见播放头的抓手了。
     private var playhead: some View {
-        let x = clock.time * pps
-        return VStack(spacing: 0) {
-            // 标尺上的把手。
-            RoundedRectangle(cornerRadius: 2)
-                .fill(.white)
-                .frame(width: 9, height: 14)
-                .shadow(radius: 1)
-            Rectangle()
-                .fill(.white)
-                .frame(width: 1.5)
-                .shadow(radius: 0.5)
-        }
-        .frame(maxHeight: .infinity, alignment: .top)
-        .offset(x: x - 4.5)
-        .allowsHitTesting(false)
+        Rectangle()
+            .fill(.white)
+            .frame(width: 1.5)
+            .shadow(radius: 0.5)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .offset(x: clock.time * pps - 0.75)
+            .allowsHitTesting(false)
     }
 
     /// 播放时让播放头留在视野里：只有它快滚出去了才动一下，

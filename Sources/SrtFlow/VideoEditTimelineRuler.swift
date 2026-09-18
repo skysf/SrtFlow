@@ -20,11 +20,24 @@ struct TimelinePinnedRuler: View {
     let duration: Double
     /// 行距：标尺的不透明底要盖住它，不然滚上来的块会从缝里露出来。
     let rowSpacing: Double
+    /// 播放头此刻在内容坐标里的 x。把手画在这儿而不是跟着竖线走：标尺是不透明
+    /// 的，纵向滚下去之后画在滚动内容顶部的把手会被它盖住。
+    let playheadX: Double
     @ObservedObject var geometry: TimelineScrollGeometry
     let onSeek: (Double, Bool) -> Void
 
     var body: some View {
         TimelineRuler(pps: pps, duration: duration, onSeek: onSeek)
+            // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
+            // 底下，挡住了就点不动播放头了。
+            .overlay(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(.white)
+                    .frame(width: 9, height: 14)
+                    .shadow(radius: 1)
+                    .offset(x: playheadX - 4.5)
+                    .allowsHitTesting(false)
+            }
             // 自带不透明底：它盖在滚上去的轨道行上面，透明的话会看见块从刻度
             // 底下穿过去。上面 2pt 是内容的 padding，下面一格是行距。
             .background(alignment: .top) {

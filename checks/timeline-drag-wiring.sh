@@ -418,7 +418,28 @@ if BODY="$(require_func 'func verticalTarget(' "$DRAG_WIRING")"; then
     || fail "verticalTarget 没补纵向滚动量：纵向自动滚出来的轨道永远选不中"
 fi
 
+# ── 11. 三个开关的默认值（产品口径，2026-09-18 用户拍板）──────────────
+# 默认**只开吸附**：磁吸会自动合拢主轨空档，而这个用户就是要留着间隙剪；链接会
+# 把分离出来的音频一起拖走。三个都不持久化，所以这里的字面量就是每次启动的状态
+# —— 顺手「改回 true」会静默改掉整个剪辑手感。
+grep_code '@Published var magnetEnabled = false' "$PROJECT" \
+  || fail "磁吸的默认值不是关：用户的剪法要留间隙，默认合拢会把间隙吃掉"
+grep_code '@Published var snappingEnabled = true' "$PROJECT" \
+  || fail "吸附的默认值不是开：三个开关里只有它该默认开着"
+grep_code '@Published var linkageEnabled = false' "$PROJECT" \
+  || fail "链接的默认值不是关：默认会把分离出来的音频一起拖走"
+
+# ── 12. 播放头的把手跟标尺一起钉住 ─────────────────────────────────────
+# 标尺是不透明的（要盖住滚上来的轨道行）。把手画在滚动内容顶部的话，纵向滚下去
+# 之后它就藏到标尺后面了 —— 竖线还在，抓手没了。
+grep_code 'offset(x: playheadX' "$RULER" \
+  || fail "标尺没画播放头把手：纵向滚下去之后把手会被标尺盖住"
+if BODY="$(require_func 'private var playhead' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'frame(width: 9, height: 14)' \
+    && fail "播放头把手又画回滚动内容里了：纵向滚下去会被钉住的标尺盖住"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：文件分工与体积 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
