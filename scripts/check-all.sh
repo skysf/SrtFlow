@@ -52,6 +52,7 @@ run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-buil
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
+run_check "transition-handles-wiring（扫描守卫）" checks/transition-handles-wiring.sh
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh

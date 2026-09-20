@@ -64,6 +64,9 @@ enum VideoEditExportGraph {
         // 黑场/错位的转场。与预览合成同款防御（见 CompositionBuilder.build）。
         var state = state
         state.sortMainClipsByStart()
+        // 与预览合成同一个位置、同一个函数：转场向两边借余料，展开后两段真的
+        // 相叠，下面的分节和 xfade 链原样成立（VideoEditTransitionHandles.swift）。
+        state = state.expandingTransitionHandles()
         // 图片段还没转成静帧视频时是进不了成片的。以前这里直接把它们滤掉，
         // 导出会「成功」，但用户的图片凭空消失且毫无提示 —— 宁可拦下来说清楚。
         // 只看真正会进成片的段：藏起来的轨本来就不导出，别拿它拦人。

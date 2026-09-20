@@ -759,3 +759,8 @@
 "Show or hide the transition library" = "Show or hide the transition library";
 "Add a second clip to the main track to put a transition between them." = "Add a second clip to the main track to put a transition between them.";
 "Select just one clip — a transition goes on one seam at a time." = "Select just one clip — a transition goes on one seam at a time.";
+
+/* 转场借余料（2026-09-20） */
+"No continuous footage here — a transition needs two clips that touch." = "No continuous footage here — a transition needs two clips that touch.";
+"These clips have no spare footage left for a transition. Trim one of them back a little." = "These clips have no spare footage left for a transition. Trim one of them back a little.";
+"The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change.";

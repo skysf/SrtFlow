@@ -68,6 +68,8 @@ struct TransitionLibraryPanel: View {
         case .seam: return nil
         case .noSeam: return "Add a second clip to the main track to put a transition between them."
         case .multipleSelection: return "Select just one clip — a transition goes on one seam at a time."
+        case .notAdjacent: return "No continuous footage here — a transition needs two clips that touch."
+        case .noHandles: return "These clips have no spare footage left for a transition. Trim one of them back a little."
         }
     }
 }

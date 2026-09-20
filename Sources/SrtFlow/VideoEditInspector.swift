@@ -167,29 +167,48 @@ struct VideoEditInspectorView: View {
                 Text("Transition to next clip").font(.callout).fontWeight(.medium)
                 // 网格弹窗而不是 menu/segmented：12 种转场按族分组成卡片，
                 // 悬停卡片能看动画小样（见 VideoEditTransitionPicker.swift）。
-                TransitionPickerButton(
-                    selection: transitionBinding(clip),
-                    outgoingClip: clip,
-                    incomingClip: project.state.mainClips[location.clipIndex + 1]
-                )
-                if clip.transitionAfter != .none {
-                    HStack {
-                        Slider(
-                            value: liveTransitionDurationBinding(clip),
-                            in: 0.1...2,
-                            onEditingChanged: { editing in
-                                if !editing { project.endLiveEdit() }
-                            }
-                        )
-                        Text(String(format: "%.1fs", clip.transitionDuration))
-                            .font(.caption)
-                            .monospacedDigit()
-                            .frame(width: 34, alignment: .trailing)
-                    }
-                    Text("Transitions overlap the two clips, so the total length gets shorter by the transition time.")
+                // 这条缝到底放不放得下转场，和两条渲染管线**同一个判据**
+                //（VideoEditTransitionHandles.swift）—— 不能出现「这里让设、
+                // 成片里没有」。
+                let capacity = project.state.transitionCapacity(afterMainIndex: location.clipIndex)
+                switch capacity {
+                case .notAdjacent:
+                    Text("No continuous footage here — a transition needs two clips that touch.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
+                case .noHandles:
+                    Text("These clips have no spare footage left for a transition. Trim one of them back a little.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .available(let maxDuration):
+                    TransitionPickerButton(
+                        selection: transitionBinding(clip),
+                        outgoingClip: clip,
+                        incomingClip: project.state.mainClips[location.clipIndex + 1]
+                    )
+                    if clip.transitionAfter != .none {
+                        HStack {
+                            Slider(
+                                // 上限吃余料：能借到多少就最多多长。钉死 2s 的话
+                                // 滑块能拖到一个渲染管线根本做不出来的值。
+                                value: liveTransitionDurationBinding(clip),
+                                in: 0.1...max(0.2, maxDuration),
+                                onEditingChanged: { editing in
+                                    if !editing { project.endLiveEdit() }
+                                }
+                            )
+                            Text(String(format: "%.1fs", clip.transitionDuration))
+                                .font(.caption)
+                                .monospacedDigit()
+                                .frame(width: 34, alignment: .trailing)
+                        }
+                        Text("The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 // 批量：把这一段的转场铺到主轨所有接缝，或一键全清。
                 HStack {
