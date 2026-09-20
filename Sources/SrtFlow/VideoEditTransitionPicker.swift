@@ -234,6 +234,13 @@ private struct TransitionCard: View {
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.35)
         .onHover { hovering = $0 }
+        // 拖到主轨的接缝上 = 在那条缝上套这个转场。库面板和检查器弹窗共用这个
+        // 网格，所以两处都能拖，代价为零。
+        //
+        // **压暗的卡照样可以拖**：`isEnabled` 说的是「当前对着的那条缝」做不做得
+        // 出来，而拖是冲着另一条缝去的 —— 不让拖只会让用户觉得这张卡坏了。
+        // 能不能落由落点自己按**拖的这一种**重新判（见 transitionDropTarget）。
+        .onDrag { TransitionDrag.itemProvider(for: kind) }
     }
 }
 

@@ -53,6 +53,9 @@ struct VideoEditTimelineView: View {
     @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
     /// 轨道头上下拖调行高的基准。
     @State private var headerResizeBase: Double?
+    /// 从转场库拖卡片进来时的落点框。**只是视图状态** —— 拖动过程中一个字都不
+    /// 写 `TimelineState`（§0），模型只在松手那一下改一次。
+    @State private var transitionDrop: TransitionDropPreview?
     /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
     ///
     /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
@@ -439,8 +442,22 @@ struct VideoEditTimelineView: View {
                         pps: pps
                     )
                 }
+                // 从库里拖卡片进来时的落点框。和遮罩同一套几何，所以松手之后
+                // 框在哪儿遮罩就在哪儿。
+                if let preview = transitionDrop {
+                    TransitionDropIndicator(preview: preview, rowHeight: height)
+                }
             }
         }
+        // 落点**只挂主轨那一行**：纵向合法性因此天然判掉 —— 拖到字幕轨、形状轨
+        // 上根本不会触发，不用再写一遍「这一行能不能接」。隐藏的轨同理。
+        // 空类型数组 = 这一行不认这种拖放，代理一次都不会被调到。
+        .onDrop(
+            of: slot.isMain && !hidden ? [TransitionDrag.type] : [],
+            delegate: TransitionDropDelegate(
+                project: project, pps: pps, preview: $transitionDrop
+            )
+        )
     }
 
     /// 主轨上有转场遮罩可画的那几条缝。

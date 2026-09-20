@@ -93,6 +93,22 @@ extension VideoEditProject {
     /// `EditClip.transitionDuration` 的默认 0.5s。想改秒数仍然去检查器的滑块。
     func applyTransitionFromLibrary(_ transition: ClipTransition) {
         guard case .seam(let seam) = transitionLibraryTarget else { return }
-        setTransition(after: seam.outgoing.id, transition)
+        applyTransition(toSeamAfter: seam.outgoing.id, transition)
+    }
+
+    /// 把一张卡落到某条缝上。**点一张卡和拖一张卡走的是这同一条路** ——
+    /// 各写一遍的话，同一个动作在两个入口会给出不同结果。
+    ///
+    /// 时长规则见 `TimelineState.transitionDropDuration(existing:)`：空缝给默认
+    /// 的 0.5s，已有转场的缝只换种类、不改时长。
+    ///
+    /// （改动记号：这条路以前不传 duration，于是「设过 1.2s 的转场 → 移除 → 再套
+    /// 一张新卡」会悄悄沿用片段上残留的 1.2s。现在空缝一律回到 0.5s。）
+    func applyTransition(toSeamAfter outgoingID: UUID, _ transition: ClipTransition) {
+        guard let clip = state.clip(with: outgoingID) else { return }
+        setTransition(
+            after: outgoingID, transition,
+            duration: TimelineState.transitionDropDuration(existing: clip)
+        )
     }
 }

@@ -34,6 +34,19 @@
 	<string>NSApplication</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
+		<!-- 应用内拖放用：从转场库把一张卡片拖到主轨接缝上。没有文件形态，
+		     所以不带 UTTypeTagSpecification。不声明也能跑（同进程按标识符字符串
+		     匹配），声明只是更规范，也让外部工具看得懂剪贴板上那一项是什么。 -->
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.srtflow.transition</string>
+			<key>UTTypeDescription</key>
+			<string>SrtFlow Transition</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.srtflow.project</string>
