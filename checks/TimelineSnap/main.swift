@@ -1437,6 +1437,21 @@ do {
     checkClose(preview?.duration ?? -1, 0.5, "空缝落地取默认的 0.5s")
     checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 48, "空缝 + 叠化")
     checkPreviewMatchesMask(clips, seam: 0, kind: .blackFade, atX: 48, "空缝 + 压黑")
+
+    // **残留时长必须被忽略。** `EditClip.transitionDuration` 的默认值正好是 0.5，
+    // 所以上面那条样本里「取默认」和「沿用片段上残留的值」长得一模一样 ——
+    // 真正能分开两者的是这一种：设过 1.2s 的转场被移除，片段上那 1.2 还留着。
+    var stale = seamClip(start: 0, duration: 2)
+    stale.transitionAfter = .none
+    stale.transitionDuration = 1.2
+    let staleClips = [stale, seamClip(start: 2, duration: 3)]
+    checkEqual(TimelineState.transitionDropDuration(existing: stale), 0.5,
+               "空缝一律回到 0.5s，不沿用移除前残留的秒数")
+    let stalePreview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: staleClips, kind: .crossFade
+    )
+    checkClose(stalePreview?.duration ?? -1, 0.5, "残留 1.2s 的空缝，落地仍然是 0.5s")
+    checkPreviewMatchesMask(staleClips, seam: 0, kind: .crossFade, atX: 48, "空缝 + 残留时长")
 }
 
 // 30b. 已有转场的缝：**只换种类、不改时长**
