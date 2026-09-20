@@ -3,7 +3,7 @@
 #
 # 由来：原先六处把手手写 `.onHover { if $0 { c.push() } else { NSCursor.pop() } }`，
 # 共用系统**同一个**光标栈，漏押/错弹一次就全局卡住。第一版修法是「自己记账 +
-# onDisappear 兜底」，实测（探针 docs/bugfixes/2026-09-20-hover-cursor-stack.md）
+# onDisappear 兜底」，实测见 docs/bugfixes/2026-09-20-hover-cursor-stack.md
 # 仍然不对：**拖动一开始 SwiftUI 就发 onHover(false)**，光标在拖到一半时就弹回箭头，
 # 而真正该保持的恰恰是拖动全程。记账再精细也救不了——push/pop 这套本来就在跟
 # SwiftUI 自己的指针管理抢方向盘。
