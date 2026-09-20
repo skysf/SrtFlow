@@ -139,6 +139,31 @@ extension TimelineState {
         return min(mainClips[index].transitionDuration, maxDuration)
     }
 
+    /// 这条缝上的转场在**时间线上**占的那一段 —— 时间线的转场遮罩就画在这儿。
+    /// 没有转场、或者这条缝做不出转场，返回 nil。
+    ///
+    /// 两种几何两种算法：
+    /// - **已相叠**（磁吸排的）：转场就发生在两段重叠的那一段上，窗口即重叠区。
+    /// - **首尾相接**：转场跨在缝上，两边各一半 —— 借余料那条路是各借 d/2，
+    ///   压黑那条路是各做 d/2 的渐变，两者的窗口一模一样。
+    func transitionWindow(afterMainIndex index: Int) -> (start: Double, duration: Double)? {
+        guard index >= 0, index + 1 < mainClips.count else { return nil }
+        let outgoing = mainClips[index]
+        let incoming = mainClips[index + 1]
+        guard outgoing.transitionAfter != .none else { return nil }
+        guard case .available(let maxDuration) = transitionCapacity(afterMainIndex: index) else {
+            return nil
+        }
+        if Self.needsHandles(outgoing: outgoing, incoming: incoming) {
+            let d = min(outgoing.transitionDuration, maxDuration)
+            guard d > 0.01 else { return nil }
+            return (outgoing.timelineEnd - d / 2, d)
+        }
+        let overlap = outgoing.timelineEnd - incoming.timelineStart
+        guard overlap > 0.01 else { return nil }
+        return (incoming.timelineStart, overlap)
+    }
+
     /// 把接缝两侧的片段各向外借 d/2 的余料，让它们**真的相叠 d**。
     ///
     /// 两条渲染管线（预览合成、导出图）都在入口处调这一份，之后它们看到的就是

@@ -27,9 +27,10 @@ ZOOM="Sources/SrtFlow/VideoEditTimelinePinchZoom.swift"
 GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
 # 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
+MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
-  "$HEADER_COLUMN")
+  "$HEADER_COLUMN" "$MASK")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -480,7 +481,29 @@ if BODY="$(require_func 'private func eyeButton(' "$HEADER_COLUMN")"; then
     || fail "眼睛不是 Button 了：点眼睛会连带把整条轨的素材选中"
 fi
 
+
+# ── 接缝上的转场遮罩 ──────────────────────────────────────────────────
+# 遮罩是改转场时长的**第二条路**（第一条是检查器的滑块）。三件事必须接住：
+# 行首锚点不能省：不带锚点时 `XXTransitionMaskView(` 也会命中，改名照样假绿
+# （反向验证第一版就是这么漏过去的）。
+grep_code '^ *TransitionMaskView(' "$VIEW" \
+  || fail "主轨那一行没有挂 TransitionMaskView：接缝上的转场遮罩根本不会出现"
+
+# 拖动开始时把时长定死。改时长会让磁吸重排片段、窗口跟着挪，每一拍拿**实时**
+# 窗口去算增量就是自己追自己（手越拖越飘）——和剪辑块 dragOrigin 同一条纪律。
+if MASK_EDGE="$(require_func 'private func edge(' "$MASK")"; then
+  printf '%s\n' "$MASK_EDGE" | grep -q 'dragStartDuration == nil' \
+    || fail "转场遮罩的拖动没有在开始时定死时长（dragStartDuration）：磁吸重排会让它自己追自己"
+fi
+
+# 落值必须被容量夹住。拖得出一个渲染管线做不出来的时长，就又回到了
+# 「设了但成片里没有」——那正是 2026-09-20 那次事故的形状。
+if MASK_APPLY="$(require_func 'private func apply(duration:' "$MASK")"; then
+  printf '%s\n' "$MASK_APPLY" | grep -q 'maxDuration' \
+    || fail "转场遮罩落值时没有按容量夹紧：能拖出渲染管线做不出来的时长"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩"

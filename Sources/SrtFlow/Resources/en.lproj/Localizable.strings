@@ -768,3 +768,7 @@
 /* 压黑走原地斜坡（2026-09-20） */
 "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others." = "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others.";
 "The transition leaves the clips where they are — the total length does not change." = "The transition leaves the clips where they are — the total length does not change.";
+
+/* 时间线转场遮罩（2026-09-20） */
+"Remove Transition" = "Remove Transition";
+"%@ · %.1fs — drag either edge to change the length" = "%@ · %.1fs — drag either edge to change the length";
