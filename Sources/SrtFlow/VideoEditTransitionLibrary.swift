@@ -38,10 +38,9 @@ struct TransitionLibraryPanel: View {
                 selection: seam.map { $0.outgoing.transitionAfter },
                 outgoingClip: seam?.outgoing,
                 incomingClip: seam?.incoming,
-                onPick: { project.applyTransitionFromLibrary($0) }
+                onPick: { project.applyTransitionFromLibrary($0) },
+                isEnabled: { isEnabled($0) }
             )
-            .disabled(seam == nil)
-            .opacity(seam == nil ? 0.45 : 1)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
@@ -63,13 +62,24 @@ struct TransitionLibraryPanel: View {
         return nil
     }
 
+    /// 这一种在当前这条缝上做不做得出来。没有缝时全都不能点。
+    private func isEnabled(_ kind: ClipTransition) -> Bool {
+        guard let seam else { return false }
+        if case .available = TimelineState.transitionCapacity(
+            outgoing: seam.outgoing, incoming: seam.incoming, kind: kind
+        ) { return true }
+        return false
+    }
+
     private var unavailableNote: LocalizedStringKey? {
         switch target {
-        case .seam: return nil
         case .noSeam: return "Add a second clip to the main track to put a transition between them."
         case .multipleSelection: return "Select just one clip — a transition goes on one seam at a time."
         case .notAdjacent: return "No continuous footage here — a transition needs two clips that touch."
-        case .noHandles: return "These clips have no spare footage left for a transition. Trim one of them back a little."
+        case .seam where !isEnabled(.crossFade):
+            // 缝是成立的，只是借不到料 —— 压黑不需要料，所以它是亮的。
+            return "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others."
+        case .seam: return nil
         }
     }
 }
