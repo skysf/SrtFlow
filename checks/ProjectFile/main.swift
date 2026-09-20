@@ -1698,6 +1698,86 @@ do {
     s.selectBox(clips: [clipA, clipB], shapes: [], texts: [], cues: [])
     s.selectBox(clips: [clipA], shapes: [], texts: [], cues: [])
     checkEqual(s.clipIDs, [clipA], "框选覆盖上一轮结果，不是累加")
+
+    // ── 转场是第六类选择。互斥的理由和标记一模一样：⌫ 只有一个入口 ──────
+    //
+    // 遮罩就压在缝两侧那两段之上，点它之前多半刚点过其中一段。两个都留着的话，
+    // 按 ⌫ 删掉的会是整段素材而不是那条转场。
+    let seamOutgoing = UUID(), otherSeamOutgoing = UUID()
+
+    s = EditSelection()
+    s.selectClips([clipA, clipB])
+    s.selectTransitionSeam(seamOutgoing)
+    checkEqual(s.transitionSeamID, seamOutgoing, "选转场要生效")
+    checkEqual(s.clipIDs, [], "选转场必须清剪辑（否则 ⌫ 删掉的是整段素材）")
+    s = EditSelection()
+    s.selectShape(shape)
+    s.selectTexts([textID])
+    s.selectSubtitleCue(cue)
+    s.selectMarker(marker)
+    s.selectTransitionSeam(seamOutgoing)
+    check(s.soleShapeID == nil && s.soleTextID == nil && s.soleSubtitleCueID == nil && s.markerRef == nil,
+          "选转场要清掉形状 / 文字 / cue / 标记")
+
+    // 反向五条边：选别的类别都要把转场清掉，否则 ⌫ 会去清一条没高亮的缝。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectClips([clipA])
+    checkEqual(s.transitionSeamID, nil, "选剪辑必须清转场（transition→clip 方向）")
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectShape(shape)
+    checkEqual(s.transitionSeamID, nil, "选形状必须清转场（transition→shape 方向）")
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectTexts([textID])
+    checkEqual(s.transitionSeamID, nil, "选文字必须清转场（transition→text 方向）")
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectSubtitleCue(cue)
+    checkEqual(s.transitionSeamID, nil, "选 cue 必须清转场（transition→cue 方向）")
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectMarker(marker)
+    checkEqual(s.transitionSeamID, nil, "选标记必须清转场（transition→marker 方向）")
+
+    // 取消不算改选，转场这一类同样适用。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectClips([])
+    checkEqual(s.transitionSeamID, seamOutgoing, "把剪辑选择清空不等于改选，别动转场")
+    s.selectTransitionSeam(nil)
+    checkEqual(s.clipIDs, [], "把转场选择清空同样不该动别的类别")
+
+    // 框选无条件清转场，空框也清 —— 同标记。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.selectBox(clips: [], shapes: [], texts: [], cues: [])
+    checkEqual(s.transitionSeamID, nil, "框选必须清转场（空框也要清）")
+    check(s.isEmpty, "空框 = 什么都没选中（转场也要算进 isEmpty）")
+
+    // clear()：六类一起清。互斥全收在这一个方法里，这条守的就是那道收口。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.clear()
+    checkEqual(s.transitionSeamID, nil, "clear() 必须把转场也清掉")
+
+    // 转场没了（出场段被删、撤销、拖出间隙、余料被裁没）就摘掉选择：留着的话
+    // 时间线上没有任何高亮，⌫ 却还会去清一条看不见的缝。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    s.pruneTransitionSeam { $0 == otherSeamOutgoing }
+    checkEqual(s.transitionSeamID, nil, "转场失效后要摘掉选择")
+    s.selectTransitionSeam(seamOutgoing)
+    s.pruneTransitionSeam { $0 == seamOutgoing }
+    checkEqual(s.transitionSeamID, seamOutgoing, "转场还在就别乱摘")
+
+    // 转场不进 count —— 它从不和别人共存，预览那套框的归属与它无关。
+    s = EditSelection()
+    s.selectTransitionSeam(seamOutgoing)
+    checkEqual(s.count, 0, "转场不算进 count（预览画框的判据只看前四类）")
+    check(!s.isEmpty, "但选着转场就不算空")
+
 }
 
 // MARK: - 22. 轨道块标记：源时间锚定、分割、去重、存盘

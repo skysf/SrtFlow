@@ -215,6 +215,17 @@ extension TimelineState {
         return (incoming.timelineStart, overlap)
     }
 
+    /// 这一段后面那条缝上的转场，此刻在时间线上**画得出来**吗 —— 也就是遮罩在不在。
+    ///
+    /// 和 `TransitionMaskView` 的绘制条件是**同一个**判据（它画不画就看
+    /// `transitionWindow` 是不是 nil）。转场选中态的存活判据必须钉在这上面：
+    /// 遮罩不画了，选中就该摘掉，否则时间线上没有任何东西高亮，⌫ 却还会去清
+    /// 一条看不见的缝。
+    func hasVisibleTransition(afterOutgoing id: UUID) -> Bool {
+        guard let index = mainClips.firstIndex(where: { $0.id == id }) else { return false }
+        return transitionWindow(afterMainIndex: index) != nil
+    }
+
     /// 遮罩在时间线上画出来的矩形（`x` 是左边界，单位 pt）。
     ///
     /// **宽度有下限，位置就必须跟着补偿**：窄到贴下限时如果还把左边界钉在

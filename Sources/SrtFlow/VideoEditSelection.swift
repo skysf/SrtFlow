@@ -1,6 +1,7 @@
 import Foundation
 
-// 编辑器里的五类选择：剪辑、形状标注、文字标注、字幕 cue、轨道块上的标记。
+// 编辑器里的六类选择：剪辑、形状标注、文字标注、字幕 cue、轨道块上的标记、
+// 接缝上的转场。
 //
 // **点选**（单击）四者互斥，**框选**（鼠标拉框）可以一次选中前三类。这条分界
 // 是刻意的，理由见下面两段。
@@ -11,14 +12,15 @@ import Foundation
 // `sole*` —— 三类加起来只选中一个时才有主角，多选或混选一律不画框（和以前
 // 「多选剪辑时不画框」的行为一致）。所以「同时挂两套框」在类型层面仍然不可能。
 //
-// 二、标记为什么仍然对所有人互斥：它的互斥不是为了画框，是为了**删除键**。
+// 二、标记**和转场**为什么仍然对所有人互斥：它们的互斥不是为了画框，是为了**删除键**。
 // ⌫ 只有一个统一入口（`VideoEditProject.deleteSelected`），"选中的是标记" 和
 // "选中的是整段" 必须互斥，否则点了段上的标记再按 ⌫，删掉的会是整段素材。
-// 框选也一样：`selectBox` 无论框到什么都把标记选择清掉。
+// 转场同理 —— 遮罩就压在两段片段之上，点它之前多半刚点过其中一段。
+// 框选也一样：`selectBox` 无论框到什么都把标记和转场的选择清掉。
 //
 // 字段一律 `private(set)`，唯一的改法是下面几个 mutating 方法；而「非空就清掉
 // 其余各类」只在 `clearAll()` 里写一次。于是「加一类选择忘了清另一类」不靠人肉
-// 复制粘贴 —— 再加第六类时只改 `clearAll()` 一处。
+// 复制粘贴 —— 2026-09-20 加第六类（转场）时，互斥那部分真的只改了 `clearAll()`。
 //
 // 长期约束见 docs/architecture/subtitle-track-visibility-and-layout.md
 // 与 docs/architecture/timeline-drag-gestures.md（框选那一节）。
@@ -30,11 +32,16 @@ struct EditSelection: Equatable {
     private(set) var textIDs: Set<UUID> = []
     private(set) var subtitleCueIDs: Set<UUID> = []
     private(set) var markerRef: ClipMarkerRef?
+    /// 选中的转场，存**出场段的 UUID**（转场写在它身上）。
+    ///
+    /// **不存缝下标**：拖动中磁吸会重排片段，下标当场就失效 —— 和
+    /// `TransitionMaskView` 里「存下标不存片段」是同一条纪律的另一面。
+    private(set) var transitionSeamID: UUID?
 
-    /// 前四类选中项的总数。标记不算 —— 它从不和别人共存。
+    /// 前四类选中项的总数。标记和转场不算 —— 它们从不和别人共存。
     var count: Int { clipIDs.count + shapeIDs.count + textIDs.count + subtitleCueIDs.count }
 
-    var isEmpty: Bool { count == 0 && markerRef == nil }
+    var isEmpty: Bool { count == 0 && markerRef == nil && transitionSeamID == nil }
 
     // MARK: - 预览上那套框的归属
     //
@@ -55,6 +62,7 @@ struct EditSelection: Equatable {
         textIDs = []
         subtitleCueIDs = []
         markerRef = nil
+        transitionSeamID = nil
     }
 
     /// 选剪辑：非空就清掉其余各类。
@@ -111,22 +119,35 @@ struct EditSelection: Equatable {
         markerRef = ref
     }
 
+    /// 选中一条缝上的转场：非 nil 就清掉其余各类。
+    ///
+    /// 和标记同一个理由 —— ⌫ 只有 `deleteSelected` 一个入口。尤其要清掉**缝两侧
+    /// 那两段**的剪辑选择：遮罩就压在它们之上，点遮罩之前多半刚点过其中一段，
+    /// 两个都留着的话按 ⌫ 删掉的是整段素材，而不是那条转场。
+    mutating func selectTransitionSeam(_ id: UUID?) {
+        guard let id else { transitionSeamID = nil; return }
+        clearAll()
+        transitionSeamID = id
+    }
+
     // MARK: - 框选：四类一次落定
 
     /// 鼠标拉框选出来的结果。**混选只能从这一个入口进来** —— 点选那几个方法
     /// 的互斥一条都没松，所以「哪里会产生混选」永远只有这一处答案。
     ///
-    /// 标记无条件清掉，哪怕框是空的：框选是一次明确的「重新指定选中项」，
-    /// 留着标记的话 ⌫ 会走进标记分支，删掉一枚用户早就不看着的标记。
+    /// 标记和转场无条件清掉，哪怕框是空的：框选是一次明确的「重新指定选中项」，
+    /// 留着的话 ⌫ 会走进它们的分支，删掉一枚用户早就不看着的标记、或者清掉一条
+    /// 没高亮的缝上的转场。
     mutating func selectBox(clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>) {
         clipIDs = clips
         shapeIDs = shapes
         textIDs = texts
         subtitleCueIDs = cues
         markerRef = nil
+        transitionSeamID = nil
     }
 
-    /// 五类一起清（点预览空白、切工程）。
+    /// 六类一起清（点预览空白、切工程）。
     mutating func clear() {
         clearAll()
     }
@@ -165,5 +186,14 @@ struct EditSelection: Equatable {
     mutating func pruneMarker(isValid: (ClipMarkerRef) -> Bool) {
         guard let ref = markerRef, !isValid(ref) else { return }
         markerRef = nil
+    }
+
+    /// 选中的转场已经不在了就摘掉。触发面和标记一样宽：出场段被删、撤销掉
+    /// 「设转场」那一步、缝被拖出间隙、余料被裁没了 —— 遮罩当场就不画了。
+    /// 留着的话时间线上没有任何东西是高亮的，⌫ 却还会去清一条看不见的缝，
+    /// 用户只会看到「按了删除键，什么都没发生」（`pruneMarker` 同一个坑）。
+    mutating func pruneTransitionSeam(isValid: (UUID) -> Bool) {
+        guard let id = transitionSeamID, !isValid(id) else { return }
+        transitionSeamID = nil
     }
 }

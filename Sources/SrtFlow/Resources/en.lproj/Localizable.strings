@@ -771,4 +771,6 @@
 
 /* 时间线转场遮罩（2026-09-20） */
 "Remove Transition" = "Remove Transition";
+"Between %@ and %@" = "Between %@ and %@";
+"Remove this transition" = "Remove this transition";
 "%@ · %.1fs — drag either edge to change the length" = "%@ · %.1fs — drag either edge to change the length";

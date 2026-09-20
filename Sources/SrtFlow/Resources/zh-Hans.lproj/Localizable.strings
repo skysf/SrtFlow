@@ -771,4 +771,6 @@
 
 /* 时间线转场遮罩（2026-09-20） */
 "Remove Transition" = "移除转场";
+"Between %@ and %@" = "%@ 与 %@ 之间";
+"Remove this transition" = "移除这条转场";
 "%@ · %.1fs — drag either edge to change the length" = "%@ · %.1f秒 —— 拖两边可以改长度";

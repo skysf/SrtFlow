@@ -59,12 +59,17 @@ struct TransitionMaskView: View {
             let rect = TimelineState.transitionMaskRect(window: window, pps: pps, minWidth: 18)
             let width = rect.width
             let height = max(14, rowHeight - 10)
+            // 选中态和转场卡片同一套视觉，不另发明一种。
+            let isSelected = project.selectedTransitionSeamID == outgoing.id
             ZStack {
                 RoundedRectangle(cornerRadius: 4)
                     .fill(.black.opacity(0.35))
                     .overlay(
                         RoundedRectangle(cornerRadius: 4)
-                            .strokeBorder(.white.opacity(0.75), lineWidth: 1)
+                            .strokeBorder(
+                                isSelected ? Color.accentColor : .white.opacity(0.75),
+                                lineWidth: isSelected ? 2 : 1
+                            )
                     )
                 if width > 22 {
                     Image(systemName: "square.filled.and.line.vertical.and.square")
@@ -77,8 +82,12 @@ struct TransitionMaskView: View {
             .overlay(alignment: .trailing) { edge(trailing: true) }
             .contentShape(Rectangle())
             .onTapGesture {
-                // 选中出场段：检查器的转场那一区就是挂在它身上的。
-                project.select(outgoing.id, additive: false)
+                // 选中**这条转场本身**：检查器的转场那一区跟着它走，⌫ 直接清掉它。
+                //
+                // 不再顺手选中出场段 —— 两个同时选着的话，按 ⌫ 删掉的会是整段
+                // 素材而不是这条转场。互斥由 `EditSelection` 强制（见那个文件的
+                // 文件头「二、标记和转场为什么仍然对所有人互斥」）。
+                project.selectedTransitionSeamID = outgoing.id
             }
             .contextMenu {
                 Button("Remove Transition") {
