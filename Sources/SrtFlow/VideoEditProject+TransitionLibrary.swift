@@ -18,6 +18,12 @@ enum TransitionLibraryTarget: Equatable {
     /// 这时**不回退到播放头**：用户明明选了三段，转场却落在别处的接缝上，
     /// 比整块灰掉更难解释。
     case multipleSelection
+    /// 候选的那条缝两边不相接 —— 中间有空隙，那不是一条缝。
+    /// 空隙是用户有意留的（「留间隙剪辑」是拍过板的口径），不替他合拢。
+    case notAdjacent
+    /// 相接了，但至少一边没有多余素材可借。转场要两段同时在画面上，而我们
+    /// 不挪片段 —— 只能向两边借裁掉的部分（VideoEditTransitionHandles.swift）。
+    case noHandles
 }
 
 @MainActor
@@ -37,7 +43,14 @@ extension VideoEditProject {
         guard clips.count >= 2 else { return .noSeam }
         if selectedClipIDs.count > 1 { return .multipleSelection }
         let index = selectedMainSeamIndex(in: clips) ?? nearestSeamIndex(to: clock.time, in: clips)
-        return .seam(TransitionSeam(outgoing: clips[index], incoming: clips[index + 1]))
+        // 缝找着了还不算数：两边得相接、而且借得到余料，转场才做得出来。
+        // 这道闸和两条渲染管线**同一个判据**，不会出现「面板让点、成片没有」。
+        switch state.transitionCapacity(afterMainIndex: index) {
+        case .notAdjacent: return .notAdjacent
+        case .noHandles: return .noHandles
+        case .available:
+            return .seam(TransitionSeam(outgoing: clips[index], incoming: clips[index + 1]))
+        }
     }
 
     /// 选中的那一段在主轨上的下标；它是最后一段（后面没有接缝）时返回 nil，

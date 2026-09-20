@@ -209,6 +209,10 @@ enum VideoEditCompositionBuilder {
         // 改动入口已维持有序，这里再守一道 —— 上层视频轨（下面）同款 sorted。
         var state = state
         state.sortMainClipsByStart()
+        // 转场靠向两边借余料做出来，展开之后两段真的相叠 —— 下面那套按「相叠」
+        // 写的淡变逻辑才成立。**导出图在同一个位置调同一个函数**，两条管线看到
+        // 的是同一份时间线（VideoEditTransitionHandles.swift）。
+        state = state.expandingTransitionHandles()
         guard !state.isEmpty else { return nil }
 
         let composition = AVMutableComposition()

@@ -759,3 +759,8 @@
 "Show or hide the transition library" = "显示或隐藏转场库";
 "Add a second clip to the main track to put a transition between them." = "主轨再加一段，才有接缝可以放转场。";
 "Select just one clip — a transition goes on one seam at a time." = "只选一段 —— 转场一次落在一个接缝上。";
+
+/* 转场借余料（2026-09-20） */
+"No continuous footage here — a transition needs two clips that touch." = "当前位置无连续内容，无法添加转场。";
+"These clips have no spare footage left for a transition. Trim one of them back a little." = "这两段没有多余素材可用于转场，把其中一段往回裁一点再试。";
+"The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "转场向两边借裁掉的素材，片段位置和总时长都不变。";

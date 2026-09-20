@@ -353,6 +353,75 @@ func main() async {
         }
     }
 
+    // MARK: 4b. 磁吸**关着**（两段首尾相接、并不相叠）时的转场
+    //
+    // 回归守卫，事故是 2026-09-20 查出来的：这条缝上两条管线以前不同解 ——
+    // 导出要求两段**真的相叠**才发 xfade（上面 4. 那种几何是磁吸 packMain 排
+    // 出来的），预览侧没有这个判据、照挂淡变。于是磁吸关着（**默认配置**）
+    // 设转场：预览看得见效果，成片是硬切。
+    //
+    // 现在两条管线在入口共用 `expandingTransitionHandles()`：向两边借裁掉的
+    // 素材，展开后两段真相叠，而片段位置和总时长都不动。
+    do {
+        // 两段各留 0.25s 余料：素材 2s，只取中间 1.5s。
+        func trimmed(_ url: URL, at start: Double) -> EditClip {
+            var clip = EditClip(
+                sourceURL: url, sourceDuration: 1.5, timelineStart: start, info: info(canvas, seconds: 2)
+            )
+            clip.sourceStart = 0.25
+            return clip
+        }
+        var first = trimmed(white, at: 0)
+        first.transitionAfter = .crossFade
+        first.transitionDuration = 0.4
+        let second = trimmed(black, at: 1.5)   // 首尾相接，gap = 0
+        var state = TimelineState()
+        state.mainClips = [first, second]
+
+        check(
+            state.transitionCapacity(afterMainIndex: 0) == .available(maxDuration: 0.5),
+            "两边各 0.25s 余料 → 这条缝的容量是 0.5s"
+        )
+        // 「不挪用户在轨道上的片段」是拍过板的口径：展开只改素材取值范围。
+        check(
+            abs(state.expandingTransitionHandles().duration - state.duration) < 0.001,
+            "借余料不许改变时间线总长"
+        )
+        if let graph = await filterGraph(state, name: "handles-graph") {
+            check(graph.contains("xfade=transition=fade"), "首尾相接 + 有余料 → 导出必须真的发 xfade")
+        }
+    }
+
+    // 4c. 缝不成立的两种情形：两条管线必须**都**当它没有转场
+    do {
+        var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
+        first.transitionAfter = .crossFade
+        first.transitionDuration = 0.4
+        let touching = EditClip(sourceURL: black, sourceDuration: 2, timelineStart: 2, info: info(canvas, seconds: 2))
+        var state = TimelineState()
+        state.mainClips = [first, touching]
+
+        check(state.transitionCapacity(afterMainIndex: 0) == .noHandles, "两段都用满了素材，借不到余料")
+        check(
+            state.expandingTransitionHandles().transitionOverlap(afterMainIndex: 0) == 0,
+            "借不到余料时，预览侧也不许挂淡变（以前就是这里和导出分了叉）"
+        )
+        if let graph = await filterGraph(state, name: "no-handles-graph") {
+            check(!graph.contains("xfade="), "借不到余料 → 导出不许发 xfade")
+        }
+
+        var gapped = state
+        gapped.mainClips[1].timelineStart = 2.5
+        check(gapped.transitionCapacity(afterMainIndex: 0) == .notAdjacent, "中间有空隙的不算一条缝")
+        check(
+            gapped.expandingTransitionHandles().transitionOverlap(afterMainIndex: 0) == 0,
+            "有空隙时预览侧也不许挂淡变"
+        )
+        if let graph = await filterGraph(gapped, name: "gap-graph") {
+            check(!graph.contains("xfade="), "有空隙 → 导出不许发 xfade")
+        }
+    }
+
     // MARK: 5. 预渲染的中间片**不许**把该让位的渐变烤进画面
     //
     // 回归守卫，事故见 docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md：
