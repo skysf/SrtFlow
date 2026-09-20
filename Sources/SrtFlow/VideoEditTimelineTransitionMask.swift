@@ -99,9 +99,7 @@ struct TransitionMaskView: View {
             .padding(.vertical, 3)
             // 3pt 的线太细抓不住，把命中面往外放宽。
             .contentShape(Rectangle().inset(by: -5))
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
+            .hoverCursor(.resizeLeftRight)
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in

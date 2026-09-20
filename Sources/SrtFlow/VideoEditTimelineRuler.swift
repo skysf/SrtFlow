@@ -78,9 +78,7 @@ struct RowHeightDragModifier: ViewModifier {
                         }
                         .onEnded { _ in base = nil }
                 )
-                .onHover { inside in
-                    if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-                }
+                .hoverCursor(.resizeUpDown)
                 .instantHelp("Drag up or down to resize this kind of track")
         }
     }

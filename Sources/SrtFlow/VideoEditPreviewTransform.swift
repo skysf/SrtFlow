@@ -286,9 +286,7 @@ struct ResizableFrameBox: View {
             .frame(width: handleSize, height: handleSize)
             .shadow(color: .black.opacity(0.6), radius: 1)
             .contentShape(Rectangle().inset(by: -5))
-            .onHover { inside in
-                if inside { handle.cursor.push() } else { NSCursor.pop() }
-            }
+            .hoverCursor(handle.cursor)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in

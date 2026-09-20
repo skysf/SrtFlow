@@ -142,9 +142,7 @@ private struct ShapeBlockView: View {
                             onTrimEnd()
                         }
                 )
-                .onHover { inside in
-                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                }
+                .hoverCursor(.resizeLeftRight)
         }
     }
 }
