@@ -545,9 +545,13 @@ drag_hits() { grep -vE '^[[:space:]]*(//|\*)' "$1" | grep -cE "$2" || true; }
 #    而且两边都「看起来是对的」。
 [ "$(drag_hits "$DRAG" 'static let typeIdentifier = "com\.srtflow\.transition"')" -ne 0 ] \
   || fail "$DRAG 里没有那个类型标识符常量"
-OTHER_ID="$(grep -rn 'com\.srtflow\.transition' Sources/SrtFlow --include='*.swift' \
-  | grep -v 'VideoEditTransitionDrag.swift' || true)"
-[ -z "$OTHER_ID" ] || fail "类型标识符被第二处写死了，必须只有 TransitionDrag.typeIdentifier 一份：$OTHER_ID"
+#    **别整文件豁免**：只把 VideoEditTransitionDrag.swift 排除掉的话，在**那个
+#    文件里**再写一处字面量照样绿（初版就是这么假绿的，反向探针当场抓到）。
+#    改成数全仓非注释行里的字面量，必须正好一次 —— 就是那条 typeIdentifier。
+ID_LITERALS="$(grep -rhE 'com\.srtflow\.transition' Sources/SrtFlow --include='*.swift' \
+  | grep -vE '^[[:space:]]*(//|\*)' | wc -l | tr -d ' ')"
+[ "$ID_LITERALS" -eq 1 ] \
+  || fail "类型标识符的字面量出现了 $ID_LITERALS 次（应为 1）：只许 TransitionDrag.typeIdentifier 那一处，别处一律引用它"
 
 # 4) 载荷**不许**用 .fileURL：VideoEditView 整个挂着 .onDropOfFiles，
 #    同一个类型两边都认领会打架。
