@@ -162,14 +162,60 @@ do {
     check(!state.isInsideMainTransition(time: 20), "没有转场的接缝应判定为 false")
 }
 
-// MARK: - 5b. 牵扯转场的主轨段不给定格（判据）
+// MARK: - 5a. 判据必须跟着**容量**走，不能只看 transitionAfter 设没设
 //
-// 禁用最初是因为当年音频会联动顺推固定 2 秒，而转场时长有「不超过两边任一段
+// 2026-09-20：转场改成「向两边借余料」之后，一条缝做不做得出转场由容量说了算
+// （中间有间隙、或者两边都借不到料，成片里就没有转场）。定格的判据当时没跟着
+// 改，还在用只看 `transitionAfter` 的 `transitionOverlap` —— 于是成片里明明没
+// 转场，定格却照样被挡。
+
+do {
+    var state = mainTimeline()
+    state.mainClips[0].transitionAfter = .crossFade
+    state.mainClips[0].transitionDuration = 1
+    // 把后一段拖开 2 秒：中间有间隙 = 不是一条缝，成片里不会有转场。
+    // **不 packMain** —— 磁吸关着才留得住间隙，那也是默认配置。
+    state.mainClips[1].timelineStart = 12
+
+    check(!state.participatesInMainTransition(clipID: state.mainClips[0].id),
+          "中间有间隙时成片里没有转场，不该再挡住定格")
+    check(!state.isInsideMainTransition(time: 10), "有间隙时不存在叠化区")
+}
+
+// 5a-2. 首尾相接时叠化区**跨在缝上**，不是全落在缝左边
+//
+// 借余料那条路上，转场以接缝为中心各向外吃一半，窗口是 [缝−d/2, 缝+d/2]。
+// 老写法按 [缝−d, 缝] 算，那是「已相叠」（磁吸排的）几何的假设 —— 磁吸关着
+// 时整体偏左半个转场。
+do {
+    var a = videoClip(start: 0, duration: 10)
+    a.transitionAfter = .crossFade
+    a.transitionDuration = 1
+    var b = videoClip(start: 10, duration: 10)
+    // 进场段留 1 秒头料。（`videoClip` 不带 info，assetDuration 会回退成
+    // sourceDuration，所以余料只能从 sourceStart 这一头造。）
+    b.sourceStart = 1
+    var state = TimelineState()
+    state.mainClips = [a, b]
+
+    check(state.participatesInMainTransition(clipID: a.id),
+          "首尾相接且借得到余料 → 确实牵扯转场")
+    check(state.isInsideMainTransition(time: 9.75), "缝左边半个转场之内算叠化区")
+    check(state.isInsideMainTransition(time: 10.25),
+          "缝**右边**半个转场之内也算 —— 老写法只认缝左边，这一条是分水岭")
+    check(!state.isInsideMainTransition(time: 9.25),
+          "超出半个转场就不算了 —— 老写法在这儿会误判成 true")
+}
+
+// MARK: - 5b. 牵扯转场的段**可以**定格，只是叠化区里不行（2026-09-20 放开）
+//
+// 禁整段最初是因为当年音频会联动顺推固定 2 秒，而转场时长有「不超过两边任一段
 // 45%」的上限：定格切短目标后上限跟着缩，画面位移 2.325s ≠ 音频位移 2.0s，
-// 声画永久错开。2026-08-23 起定格不再联动音频，错位的前提没了；禁用先保留
-// （切短后转场被重新限长，画面位移不等于定格时长，落点不好预期），要放开是
-// 另一个产品决定 —— 见 docs/architecture/freeze-frame.md §4a。
-// 下面同时钉住：即便真放行，转场场景里音频也一样不动。
+// 声画永久错开。2026-08-23 起定格不再联动音频，那个前提就没了；2026-09-20 用户
+// 拍板对齐剪映 —— **只禁转场那一段，不禁整个片段**。
+//
+// `participatesInMainTransition` 本身留着（它仍然是个有意义的查询），只是不再
+// 是定格的准入条件了。下面同时钉住：转场场景里音频一样不动。
 
 do {
     var state = mainTimeline()
@@ -183,6 +229,10 @@ do {
           "被前一段叠上来的段也算牵扯转场")
     check(!state.participatesInMainTransition(clipID: state.mainClips[2].id),
           "离转场远的段不算")
+    // 放开之后真正的准入条件只剩叠化区这一条：牵扯转场的段，只要播放头离缝够
+    // 远就该放行。
+    check(!state.isInsideMainTransition(time: 5),
+          "牵扯转场的段，远离缝的地方必须允许定格")
 
     // 钉住转场场景下的实际行为：画面位移由转场重新限长决定，音频纹丝不动。
     var drifting = TimelineState()
