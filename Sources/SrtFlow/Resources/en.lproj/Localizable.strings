@@ -752,3 +752,10 @@
 "Applies to all %d picture clips selected" = "Applies to all %d picture clips selected";
 "How these clips come in" = "How these clips come in";
 "How these clips go out" = "How these clips go out";
+
+/* 侧边栏转场库（2026-09-20） */
+"Transitions" = "Transitions";
+"Click a card to put that transition on the current seam" = "Click a card to put that transition on the current seam";
+"Show or hide the transition library" = "Show or hide the transition library";
+"Add a second clip to the main track to put a transition between them." = "Add a second clip to the main track to put a transition between them.";
+"Select just one clip — a transition goes on one seam at a time." = "Select just one clip — a transition goes on one seam at a time.";

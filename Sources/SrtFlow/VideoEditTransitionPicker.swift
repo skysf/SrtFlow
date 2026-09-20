@@ -28,58 +28,107 @@ struct TransitionPickerButton: View {
         }
         .instantHelp("Pick a transition — hover a card to preview it")
         .popover(isPresented: $showsPicker, arrowEdge: .bottom) {
+            // 尺寸钉在这里而不是网格里：同一个网格还要长在侧边栏的转场库上，
+            // 那边宽度由分栏器给（见 VideoEditTransitionLibrary.swift）。
             TransitionPickerGrid(
-                selection: $selection,
+                selection: selection,
                 outgoingClip: outgoingClip,
-                incomingClip: incomingClip
+                incomingClip: incomingClip,
+                onPick: { selection = $0 }
             )
+            .frame(width: 340, height: 420)
         }
     }
 }
 
-/// 弹窗里的卡片网格。
+/// 卡片网格。两个宿主：检查器的弹窗，和侧边栏常驻的转场库。
+///
+/// 宿主定宽高，网格本身自适应 —— 侧边栏只有 196…340pt，钉死 340 的话
+/// 卡片会被裁掉右边一列。
 struct TransitionPickerGrid: View {
-    @Binding var selection: ClipTransition
-    var outgoingClip: EditClip
-    var incomingClip: EditClip
+    /// 当前高亮的那一种。库面板里是目标接缝上已有的转场；没有接缝就是 nil。
+    var selection: ClipTransition?
+    /// 接缝两侧的段，演示帧从这里取。**库面板里可能一个接缝都没有**
+    /// （主轨不足两段），那时两边都是 nil，小样退回内置的双色渐变占位。
+    var outgoingClip: EditClip?
+    var incomingClip: EditClip?
+    /// 点了一张卡片。
+    var onPick: (ClipTransition) -> Void
+    /// 自带滚动条。弹窗要（高度钉死 420，装不下 12 张卡）；侧边栏那个宿主
+    /// **不要** —— 它长在 List 的一节里，外面那层 List 已经在滚了，再套一层
+    /// 就是嵌套滚动区，滚轮会卡在里层。
+    var scrolls = true
 
     /// 接缝两侧的演示帧：出场段的尾帧、进场段的首帧。取不到（音频段、
     /// 素材失链）就用内置的双色渐变占位。
     @State private var tailFrame: CGImage?
     @State private var headFrame: CGImage?
 
-    private let columns = [GridItem(.adaptive(minimum: 92, maximum: 120), spacing: 8)]
+    // 92 → 76：侧边栏默认 214pt 宽，扣掉 padding 只剩 190，按 92 起步只排得下
+    // 一列。76 起步刚好两列，拖宽到 340 回到三列；弹窗那边 316 的可用宽在两个
+    // 值下都是三列，所以检查器的观感不变。
+    private let columns = [GridItem(.adaptive(minimum: 76, maximum: 120), spacing: 8)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                ForEach(TransitionGroup.allCases) { group in
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(group.title)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.secondary)
-                        LazyVGrid(columns: columns, spacing: 8) {
-                            ForEach(group.members) { kind in
-                                TransitionCard(
-                                    kind: kind,
-                                    isSelected: kind == selection,
-                                    tail: tailFrame,
-                                    head: headFrame
-                                ) {
-                                    selection = kind
-                                }
+        Group {
+            if scrolls {
+                ScrollView { cards }
+            } else {
+                cards
+            }
+        }
+        // 按接缝取帧，接缝换了就重取。弹窗是用完就关的，`.task` 取一次够用；
+        // 库面板常驻，选中和播放头一动接缝就变 —— 不带 id 的话小样会一直停在
+        // 第一次打开时的那个接缝上。
+        .task(id: seamKey) { await loadSeamFrames() }
+    }
+
+    private var cards: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(TransitionGroup.allCases) { group in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(group.title)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                    LazyVGrid(columns: columns, spacing: 8) {
+                        ForEach(group.members) { kind in
+                            TransitionCard(
+                                kind: kind,
+                                isSelected: kind == selection,
+                                tail: tailFrame,
+                                head: headFrame
+                            ) {
+                                onPick(kind)
                             }
                         }
                     }
                 }
             }
-            .padding(12)
         }
-        .frame(width: 340, height: 420)
-        .task {
+        .padding(12)
+        // 必须撑满：这个网格会长在侧边栏 List 的一行里，而 List row 给的是
+        // **理想宽度**而不是可用宽度 —— 不撑满的话 LazyVGrid 拿到一个不受限的
+        // 提案，会按 `maximum` 排成孤零零的一列（实测 214pt 宽的侧边栏里只剩
+        // 一列 120pt 的大卡片）。
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 接缝的身份。两侧的段都可能没有（主轨不足两段）。
+    private var seamKey: String {
+        "\(outgoingClip?.id.uuidString ?? "-")|\(incomingClip?.id.uuidString ?? "-")"
+    }
+
+    private func loadSeamFrames() async {
+        if let outgoingClip {
             tailFrame = await Self.seamFrame(for: outgoingClip, atTail: true)
+        } else {
+            tailFrame = nil
+        }
+        if let incomingClip {
             headFrame = await Self.seamFrame(for: incomingClip, atTail: false)
+        } else {
+            headFrame = nil
         }
     }
 
