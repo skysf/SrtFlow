@@ -57,6 +57,23 @@ struct VideoEditInspectorView: View {
         .controlSize(.small)
     }
 
+    // MARK: - 接缝容量
+
+    /// 这条缝上这一**种**转场做不做得出来、最多多长。和两条渲染管线同一个判据
+    ///（VideoEditTransitionHandles.swift）。
+    private func seamCapacity(
+        _ outgoing: EditClip, _ incoming: EditClip, _ kind: ClipTransition
+    ) -> TransitionCapacity {
+        TimelineState.transitionCapacity(outgoing: outgoing, incoming: incoming, kind: kind)
+    }
+
+    private func canSeamDo(
+        _ outgoing: EditClip, _ incoming: EditClip, _ kind: ClipTransition
+    ) -> Bool {
+        if case .available = seamCapacity(outgoing, incoming, kind) { return true }
+        return false
+    }
+
     // MARK: - 剪辑
 
     @ViewBuilder
@@ -167,32 +184,35 @@ struct VideoEditInspectorView: View {
                 Text("Transition to next clip").font(.callout).fontWeight(.medium)
                 // 网格弹窗而不是 menu/segmented：12 种转场按族分组成卡片，
                 // 悬停卡片能看动画小样（见 VideoEditTransitionPicker.swift）。
-                // 这条缝到底放不放得下转场，和两条渲染管线**同一个判据**
+                // 这条缝放不放得下转场，和两条渲染管线**同一个判据**
                 //（VideoEditTransitionHandles.swift）—— 不能出现「这里让设、
-                // 成片里没有」。
-                let capacity = project.state.transitionCapacity(afterMainIndex: location.clipIndex)
-                switch capacity {
-                case .notAdjacent:
+                // 成片里没有」。容量**与种类有关**：压黑不需要两段同时在画面
+                // 上，零余料的缝上它能用、叠化不能用，所以逐张卡片判。
+                let next = project.state.mainClips[location.clipIndex + 1]
+                if case .notAdjacent = seamCapacity(clip, next, .crossFade) {
                     Text("No continuous footage here — a transition needs two clips that touch.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
-                case .noHandles:
-                    Text("These clips have no spare footage left for a transition. Trim one of them back a little.")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                case .available(let maxDuration):
+                } else {
                     TransitionPickerButton(
                         selection: transitionBinding(clip),
                         outgoingClip: clip,
-                        incomingClip: project.state.mainClips[location.clipIndex + 1]
+                        incomingClip: next,
+                        isEnabled: { canSeamDo(clip, next, $0) }
                     )
-                    if clip.transitionAfter != .none {
+                    if !canSeamDo(clip, next, .crossFade) {
+                        Text("These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if clip.transitionAfter != .none,
+                       case .available(let maxDuration) = seamCapacity(clip, next, clip.transitionAfter) {
                         HStack {
                             Slider(
-                                // 上限吃余料：能借到多少就最多多长。钉死 2s 的话
-                                // 滑块能拖到一个渲染管线根本做不出来的值。
+                                // 上限跟着这一**种**转场的容量走：钉死 2s 的话能
+                                // 拖到一个渲染管线根本做不出来的值。
                                 value: liveTransitionDurationBinding(clip),
                                 in: 0.1...max(0.2, maxDuration),
                                 onEditingChanged: { editing in
@@ -204,10 +224,19 @@ struct VideoEditInspectorView: View {
                                 .monospacedDigit()
                                 .frame(width: 34, alignment: .trailing)
                         }
-                        Text("The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
+                        // 两种几何两种账：磁吸把片段排成相叠，转场吃的是片段自己
+                        // 的时间，总长会变短；首尾相接时片段不动，总长不变。
+                        if TimelineState.needsHandles(outgoing: clip, incoming: next) {
+                            Text("The transition leaves the clips where they are — the total length does not change.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } else {
+                            Text("Transitions overlap the two clips, so the total length gets shorter by the transition time.")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                 }
                 // 批量：把这一段的转场铺到主轨所有接缝，或一键全清。

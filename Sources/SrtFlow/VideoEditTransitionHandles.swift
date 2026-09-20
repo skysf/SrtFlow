@@ -40,9 +40,29 @@ extension TimelineState {
     static let seamTolerance = 0.02
 
     /// 第 index 段和下一段之间这条缝的容量。
-    func transitionCapacity(afterMainIndex index: Int) -> TransitionCapacity {
+    ///
+    /// `kind` 不传就按这条缝**当前**设的那种算。容量**与种类有关** —— 压黑不
+    /// 需要两段同时在画面上（见 `rendersAsDipInPlace`），所以零余料的缝上它
+    /// 能用、叠化不能用。库面板据此逐张卡片判定可用，不是整块灰。
+    func transitionCapacity(afterMainIndex index: Int, kind: ClipTransition? = nil) -> TransitionCapacity {
         guard index >= 0, index + 1 < mainClips.count else { return .notAdjacent }
-        return Self.transitionCapacity(outgoing: mainClips[index], incoming: mainClips[index + 1])
+        return Self.transitionCapacity(
+            outgoing: mainClips[index],
+            incoming: mainClips[index + 1],
+            kind: kind ?? mainClips[index].transitionAfter
+        )
+    }
+
+    /// 这种转场能不能**只靠两段自己现有的内容**做出来（不需要同时在画面上）。
+    ///
+    /// 压黑就是「A 灭到黑、B 从黑亮起」，两段各自做一道 alpha 斜坡就够了 ——
+    /// 主轨片段底下垫的正是黑底，`VideoFade` 那条斜坡出来的**就是**压黑。
+    /// 不借料、不丢内容、长度天然不变。
+    ///
+    /// 闪白不行：现有机制垫的是黑底，淡向白色要另铺一层白的。
+    /// 叠化、推移、擦除都要两段同时出现在画面上，更不行。
+    static func rendersAsDipInPlace(_ kind: ClipTransition) -> Bool {
+        kind == .blackFade
     }
 
     /// 两种几何都要认，判据就是当下这两段的相对位置：
@@ -54,15 +74,23 @@ extension TimelineState {
     ///   向两边借裁掉的素材，容量就是余料说了算。
     ///
     /// 中间有空隙的不是缝 —— 空隙是用户有意留的，不替他合拢。
-    static func transitionCapacity(outgoing: EditClip, incoming: EditClip) -> TransitionCapacity {
+    static func transitionCapacity(
+        outgoing: EditClip, incoming: EditClip, kind: ClipTransition
+    ) -> TransitionCapacity {
         let gap = incoming.timelineStart - outgoing.timelineEnd
         if gap > seamTolerance { return .notAdjacent }
         let byLength = min(outgoing.timelineDuration, incoming.timelineDuration)
+        // 「取消转场」在哪条缝上都得能做。
+        if kind == .none { return .available(maxDuration: transitionMaxDuration) }
         if gap < -seamTolerance {
             // 已相叠：老规矩，和 `transitionOverlap` 那条 45% 护栏同一个数。
             return .available(maxDuration: min(byLength * 0.45, transitionMaxDuration))
         }
-        // 相接：借余料。
+        // 相接 + 压黑：走原地斜坡，一点余料都不用（见 rendersAsDipInPlace）。
+        if rendersAsDipInPlace(kind) {
+            return .available(maxDuration: min(byLength * 0.4, transitionMaxDuration))
+        }
+        // 相接 + 其余种类：借余料。
         //
         // **窗口不必对称**。只有出场段有尾料时，把窗口整个放在接缝**之后**照样
         // 成立：进场段在那段时间本来就在播它自己的开头，出场段拿尾料叠在上面
@@ -131,14 +159,40 @@ extension TimelineState {
         let durations = (0..<(mainClips.count - 1)).map { index -> Double in
             guard Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1])
             else { return 0 }
+            // 压黑不走借料这条路（下面单独改写），这里当它不需要展开。
+            guard !Self.rendersAsDipInPlace(mainClips[index].transitionAfter) else { return 0 }
             return effectiveTransitionDuration(afterMainIndex: index)
         }
+        // 压黑走的是另一条路：不借料、不相叠，改写成两段各自的头尾渐变。
+        // 主轨片段底下垫的就是黑底，一道 alpha 斜坡出来**就是**压黑
+        //（VideoEditVideoFade.swift 开头讲了为什么不能写成显式淡向黑色）。
+        // 只对「首尾相接」的缝这么办；已相叠的（磁吸排的）照旧走 xfade。
+        for index in 0..<(mainClips.count - 1) {
+            guard Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1]),
+                  Self.rendersAsDipInPlace(mainClips[index].transitionAfter),
+                  case .available(let maxDuration) = transitionCapacity(afterMainIndex: index)
+            else { continue }
+            let d = min(mainClips[index].transitionDuration, maxDuration)
+            guard d > 0.01 else { continue }
+            // 转场从渲染副本里摘掉：接缝上不再有 xfade，长度因此一点不变。
+            expanded.mainClips[index].transitionAfter = .none
+            // 画面：前一段灭掉后半程、后一段亮起前半程。
+            expanded.mainClips[index].videoFadeOutDuration = d / 2
+            expanded.mainClips[index + 1].videoFadeInDuration = d / 2
+            // 声音跟着走同样的斜坡。今天一条有转场的边本来就会把用户设的音频
+            // 渐变换成转场时长（AudioFade.effective），这里保持同一口径。
+            expanded.mainClips[index].fadeOutDuration = d / 2
+            expanded.mainClips[index + 1].fadeInDuration = d / 2
+        }
+
         for index in mainClips.indices {
             let after = index < durations.count ? durations[index] : 0
             let before = index > 0 ? durations[index - 1] : 0
             // 缝根本不成立（有空隙 / 余料不够）的，把转场从**渲染用的副本**里
             // 摘掉，别让下游各自再判一次。已相叠的缝 after 是 0 但缝是成立的，
             // 不能连它一起摘 —— 用 capacity 判，不是用 after 判。
+            // 压黑那条路上面已经把 transitionAfter 清掉了，别再按容量判一次把
+            // 刚写好的渐变当成"不成立"——用 mainClips（原件）问，不是 expanded。
             if case .available = transitionCapacity(afterMainIndex: index) {} else {
                 expanded.mainClips[index].transitionAfter = .none
             }

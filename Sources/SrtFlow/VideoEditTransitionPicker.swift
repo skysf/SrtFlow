@@ -11,6 +11,8 @@ struct TransitionPickerButton: View {
     /// 接缝两侧的段：出场（选中段）和进场（下一段），缩略帧从这里取。
     var outgoingClip: EditClip
     var incomingClip: EditClip
+    /// 透传给网格：哪几种在这条缝上做得出来。
+    var isEnabled: (ClipTransition) -> Bool = { _ in true }
 
     @State private var showsPicker = false
 
@@ -34,7 +36,8 @@ struct TransitionPickerButton: View {
                 selection: selection,
                 outgoingClip: outgoingClip,
                 incomingClip: incomingClip,
-                onPick: { selection = $0 }
+                onPick: { selection = $0 },
+                isEnabled: isEnabled
             )
             .frame(width: 340, height: 420)
         }
@@ -54,6 +57,10 @@ struct TransitionPickerGrid: View {
     var incomingClip: EditClip?
     /// 点了一张卡片。
     var onPick: (ClipTransition) -> Void
+    /// 这一种在当前这条缝上做不做得出来。**逐张判，不是整块灰** —— 压黑不需要
+    /// 两段同时在画面上，所以零余料的缝上它能用、叠化不能用
+    ///（TimelineState.rendersAsDipInPlace）。
+    var isEnabled: (ClipTransition) -> Bool = { _ in true }
     /// 自带滚动条。弹窗要（高度钉死 420，装不下 12 张卡）；侧边栏那个宿主
     /// **不要** —— 它长在 List 的一节里，外面那层 List 已经在滚了，再套一层
     /// 就是嵌套滚动区，滚轮会卡在里层。
@@ -96,6 +103,7 @@ struct TransitionPickerGrid: View {
                             TransitionCard(
                                 kind: kind,
                                 isSelected: kind == selection,
+                                isEnabled: isEnabled(kind),
                                 tail: tailFrame,
                                 head: headFrame
                             ) {
@@ -175,6 +183,9 @@ private enum TransitionGroup: CaseIterable, Identifiable {
 private struct TransitionCard: View {
     let kind: ClipTransition
     let isSelected: Bool
+    /// 这条缝上做不出来的种类压暗并拦掉点击。小样照画 —— 卡片的第一用途是
+    /// 「看看这个转场长什么样」，那件事不需要这条缝做得出来。
+    let isEnabled: Bool
     let tail: CGImage?
     let head: CGImage?
     let action: () -> Void
@@ -217,6 +228,8 @@ private struct TransitionCard: View {
             }
         }
         .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.35)
         .onHover { hovering = $0 }
     }
 }

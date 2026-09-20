@@ -424,6 +424,38 @@ func main() async {
         }
     }
 
+    // 4b-3. 零余料 + 压黑：走原地斜坡，一点料都不借
+    //
+    // 压黑就是「A 灭到黑、B 从黑亮起」，两段各做一道 alpha 斜坡就够了 —— 主轨
+    // 片段底下垫的正是黑底。所以它在**完全没有余料**的缝上照样成立，而叠化、
+    // 推移、擦除要两段同时在画面上，仍然得借料。容量因此**与种类有关**。
+    do {
+        var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
+        first.transitionAfter = .blackFade
+        first.transitionDuration = 0.5
+        let second = EditClip(sourceURL: black, sourceDuration: 2, timelineStart: 2, info: info(canvas, seconds: 2))
+        var state = TimelineState()
+        state.mainClips = [first, second]
+
+        check(first.trailingHandle == 0 && second.leadingHandle == 0, "这一版里两边确实都没有余料")
+        check(state.transitionCapacity(afterMainIndex: 0, kind: .blackFade) != .noHandles,
+              "零余料的缝上压黑必须可用")
+        check(state.transitionCapacity(afterMainIndex: 0, kind: .crossFade) == .noHandles,
+              "同一条缝上叠化仍然不可用 —— 压黑那条路不该顺手把别的种类也放行")
+
+        let expanded = state.expandingTransitionHandles()
+        check(expanded.mainClips[0].transitionAfter == .none, "压黑从渲染副本里摘掉，接缝上不发 xfade")
+        check(abs(expanded.mainClips[0].videoFadeOutDuration - 0.25) < 0.001, "出场段灭掉后半程")
+        check(abs(expanded.mainClips[1].videoFadeInDuration - 0.25) < 0.001, "进场段亮起前半程")
+        check(abs(expanded.duration - state.duration) < 0.001, "原地斜坡同样不许改变总时长")
+
+        if let graph = await filterGraph(state, name: "dip-graph") {
+            check(!graph.contains("xfade="), "压黑走原地斜坡 → 不该发 xfade")
+            check(graph.contains("fade=t=out"), "出场段要有渐出")
+            check(graph.contains("fade=t=in"), "进场段要有渐入")
+        }
+    }
+
     // 4c. 缝不成立的两种情形：两条管线必须**都**当它没有转场
     do {
         var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))

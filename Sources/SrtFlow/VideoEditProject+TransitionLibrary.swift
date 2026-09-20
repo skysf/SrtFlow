@@ -21,9 +21,6 @@ enum TransitionLibraryTarget: Equatable {
     /// 候选的那条缝两边不相接 —— 中间有空隙，那不是一条缝。
     /// 空隙是用户有意留的（「留间隙剪辑」是拍过板的口径），不替他合拢。
     case notAdjacent
-    /// 相接了，但至少一边没有多余素材可借。转场要两段同时在画面上，而我们
-    /// 不挪片段 —— 只能向两边借裁掉的部分（VideoEditTransitionHandles.swift）。
-    case noHandles
 }
 
 @MainActor
@@ -45,12 +42,12 @@ extension VideoEditProject {
         let index = selectedMainSeamIndex(in: clips) ?? nearestSeamIndex(to: clock.time, in: clips)
         // 缝找着了还不算数：两边得相接、而且借得到余料，转场才做得出来。
         // 这道闸和两条渲染管线**同一个判据**，不会出现「面板让点、成片没有」。
-        switch state.transitionCapacity(afterMainIndex: index) {
-        case .notAdjacent: return .notAdjacent
-        case .noHandles: return .noHandles
-        case .available:
-            return .seam(TransitionSeam(outgoing: clips[index], incoming: clips[index + 1]))
-        }
+        // 只有「中间有空隙」是整条缝不成立。余料够不够是**逐种类**的事
+        //（压黑不需要余料），交给面板逐张卡片判。
+        if case .notAdjacent = TimelineState.transitionCapacity(
+            outgoing: clips[index], incoming: clips[index + 1], kind: .crossFade
+        ) { return .notAdjacent }
+        return .seam(TransitionSeam(outgoing: clips[index], incoming: clips[index + 1]))
     }
 
     /// 选中的那一段在主轨上的下标；它是最后一段（后面没有接缝）时返回 nil，

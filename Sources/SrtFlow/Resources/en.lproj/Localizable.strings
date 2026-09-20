@@ -764,3 +764,7 @@
 "No continuous footage here — a transition needs two clips that touch." = "No continuous footage here — a transition needs two clips that touch.";
 "These clips have no spare footage left for a transition. Trim one of them back a little." = "These clips have no spare footage left for a transition. Trim one of them back a little.";
 "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change.";
+
+/* 压黑走原地斜坡（2026-09-20） */
+"These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others." = "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others.";
+"The transition leaves the clips where they are — the total length does not change." = "The transition leaves the clips where they are — the total length does not change.";

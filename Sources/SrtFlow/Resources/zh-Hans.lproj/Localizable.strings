@@ -764,3 +764,7 @@
 "No continuous footage here — a transition needs two clips that touch." = "当前位置无连续内容，无法添加转场。";
 "These clips have no spare footage left for a transition. Trim one of them back a little." = "这两段没有多余素材可用于转场，把其中一段往回裁一点再试。";
 "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "转场向两边借裁掉的素材，片段位置和总时长都不变。";
+
+/* 压黑走原地斜坡（2026-09-20） */
+"These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others." = "这两段没有多余素材，所以这里只有「压黑」可用。把其中一段往回裁一点就能用其他转场。";
+"The transition leaves the clips where they are — the total length does not change." = "转场不会挪动片段，总时长也不变。";
