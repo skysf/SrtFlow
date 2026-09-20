@@ -99,7 +99,7 @@ struct TransitionMaskView: View {
             .padding(.vertical, 3)
             // 3pt 的线太细抓不住，把命中面往外放宽。
             .contentShape(Rectangle().inset(by: -5))
-            .hoverCursor(.resizeLeftRight)
+            .pointerStyle(.columnResize)
             .gesture(
                 DragGesture(minimumDistance: 1)
                     .onChanged { value in

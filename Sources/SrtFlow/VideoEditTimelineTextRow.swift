@@ -93,7 +93,7 @@ struct TextBlockView: View {
                         .onChanged { value in onTrim(leading, value.translation.width / pps) }
                         .onEnded { _ in onTrimEnd() }
                 )
-                .hoverCursor(.resizeLeftRight)
+                .pointerStyle(.columnResize)
         }
     }
 }

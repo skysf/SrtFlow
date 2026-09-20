@@ -142,7 +142,7 @@ private struct ShapeBlockView: View {
                             onTrimEnd()
                         }
                 )
-                .hoverCursor(.resizeLeftRight)
+                .pointerStyle(.columnResize)
         }
     }
 }

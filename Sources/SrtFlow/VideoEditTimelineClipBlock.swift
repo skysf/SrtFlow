@@ -83,7 +83,8 @@ struct ClipBlockView: View {
         .overlay(alignment: .bottomLeading) { keyframeMarkers }
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
         // 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
-        .hoverCursor(.crosshair, active: project.activeTool == .split)
+        // nil = 这一处不接管指针，交回外层。
+        .pointerStyle(project.activeTool == .split ? .rectSelection : nil)
         // 标记要压在扫帧之上（它自己接管 peek），但必须排在裁切把手**之前** ——
         // 排在后面的话，贴着块两端的标记会盖住把手，那一端就再也裁不动了。
         // 刀片模式下整条让路：点在标记上也该落下那一刀。
@@ -304,7 +305,7 @@ struct ClipBlockView: View {
                             onTrimEnd()
                         }
                 )
-                .hoverCursor(.resizeLeftRight)
+                .pointerStyle(.columnResize)
         }
     }
 

@@ -78,7 +78,7 @@ struct RowHeightDragModifier: ViewModifier {
                         }
                         .onEnded { _ in base = nil }
                 )
-                .hoverCursor(.resizeUpDown)
+                .pointerStyle(.rowResize)
                 .instantHelp("Drag up or down to resize this kind of track")
         }
     }
