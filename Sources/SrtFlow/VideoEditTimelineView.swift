@@ -420,6 +420,28 @@ struct VideoEditTimelineView: View {
             .opacity(hidden ? 0.35 : 1)
             .saturation(hidden ? 0 : 1)
             .allowsHitTesting(!hidden)
+
+            // 接缝上的转场遮罩。只有主轨有 —— 转场只对主轨有语义。
+            // 轨藏起来时不画：那条轨本来就不渲染，遮罩摆在那儿只会挡住点击。
+            if slot.isMain, !hidden {
+                ForEach(seamIndicesWithTransition, id: \.self) { index in
+                    TransitionMaskView(
+                        project: project,
+                        seamIndex: index,
+                        rowHeight: height,
+                        pps: pps
+                    )
+                }
+            }
+        }
+    }
+
+    /// 主轨上有转场遮罩可画的那几条缝。
+    private var seamIndicesWithTransition: [Int] {
+        let clips = project.state.mainClips
+        guard clips.count >= 2 else { return [] }
+        return (0..<(clips.count - 1)).filter {
+            project.state.transitionWindow(afterMainIndex: $0) != nil
         }
     }
 

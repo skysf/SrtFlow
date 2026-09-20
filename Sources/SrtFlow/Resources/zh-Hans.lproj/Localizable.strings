@@ -768,3 +768,7 @@
 /* 压黑走原地斜坡（2026-09-20） */
 "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others." = "这两段没有多余素材，所以这里只有「压黑」可用。把其中一段往回裁一点就能用其他转场。";
 "The transition leaves the clips where they are — the total length does not change." = "转场不会挪动片段，总时长也不变。";
+
+/* 时间线转场遮罩（2026-09-20） */
+"Remove Transition" = "移除转场";
+"%@ · %.1fs — drag either edge to change the length" = "%@ · %.1f秒 —— 拖两边可以改长度";

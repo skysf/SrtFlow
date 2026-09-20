@@ -449,10 +449,34 @@ func main() async {
         check(abs(expanded.mainClips[1].videoFadeInDuration - 0.25) < 0.001, "进场段亮起前半程")
         check(abs(expanded.duration - state.duration) < 0.001, "原地斜坡同样不许改变总时长")
 
+        // 时间线遮罩画在哪：跨在缝上、两边各一半（压黑那条路也是 d/2 + d/2）。
+        if let window = state.transitionWindow(afterMainIndex: 0) {
+            check(abs(window.start - (2.0 - 0.25)) < 0.001, "遮罩左边界 = 缝 - d/2")
+            check(abs(window.duration - 0.5) < 0.001, "遮罩宽度 = d")
+        } else {
+            check(false, "压黑的缝上应该有遮罩窗口")
+        }
+
         if let graph = await filterGraph(state, name: "dip-graph") {
             check(!graph.contains("xfade="), "压黑走原地斜坡 → 不该发 xfade")
             check(graph.contains("fade=t=out"), "出场段要有渐出")
             check(graph.contains("fade=t=in"), "进场段要有渐入")
+        }
+    }
+
+    // 4b-4. 已相叠（磁吸排的）几何：遮罩窗口就是重叠区本身，不是「缝 ± d/2」
+    do {
+        var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
+        first.transitionAfter = .crossFade
+        first.transitionDuration = 0.5
+        let second = EditClip(sourceURL: black, sourceDuration: 2, timelineStart: 1.5, info: info(canvas, seconds: 2))
+        var state = TimelineState()
+        state.mainClips = [first, second]
+        if let window = state.transitionWindow(afterMainIndex: 0) {
+            check(abs(window.start - 1.5) < 0.001, "相叠时遮罩从进场段的起点开始")
+            check(abs(window.duration - 0.5) < 0.001, "相叠时遮罩宽度 = 实际重叠量")
+        } else {
+            check(false, "相叠的缝上应该有遮罩窗口")
         }
     }
 
