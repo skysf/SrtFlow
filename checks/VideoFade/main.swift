@@ -392,6 +392,38 @@ func main() async {
         }
     }
 
+    // 4b-2. 余料**只在一边**：窗口整个落在接缝的一侧，照样是完整的交叉淡变。
+    //
+    // 进场段在那段时间本来就在播它自己的开头，出场段拿尾料叠上去淡出 —— 两边
+    // 的可见内容一帧都没少。按 2×min(尾料, 头料) 算容量会把这种缝白白判死，
+    // 那是 2026-09-20 第一版的毛病。
+    do {
+        var first = EditClip(
+            sourceURL: white, sourceDuration: 1.5, timelineStart: 0, info: info(canvas, seconds: 2)
+        )
+        first.transitionAfter = .crossFade
+        first.transitionDuration = 0.4
+        // 进场段从素材第 0 帧开始 —— **没有头料**，全部得从出场段的尾巴借。
+        let second = EditClip(
+            sourceURL: black, sourceDuration: 2, timelineStart: 1.5, info: info(canvas, seconds: 2)
+        )
+        var state = TimelineState()
+        state.mainClips = [first, second]
+
+        check(second.leadingHandle == 0, "这一版里进场段确实没有头料")
+        check(
+            state.transitionCapacity(afterMainIndex: 0) == .available(maxDuration: 0.5),
+            "只有出场段有 0.5s 尾料 → 容量就是这 0.5s，不该被判成 noHandles"
+        )
+        check(
+            abs(state.expandingTransitionHandles().duration - state.duration) < 0.001,
+            "单边借料同样不许改变时间线总长"
+        )
+        if let graph = await filterGraph(state, name: "one-sided-graph") {
+            check(graph.contains("xfade=transition=fade"), "单边有余料 → 导出必须真的发 xfade")
+        }
+    }
+
     // 4c. 缝不成立的两种情形：两条管线必须**都**当它没有转场
     do {
         var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))

@@ -62,18 +62,38 @@ extension TimelineState {
             // 已相叠：老规矩，和 `transitionOverlap` 那条 45% 护栏同一个数。
             return .available(maxDuration: min(byLength * 0.45, transitionMaxDuration))
         }
-        // 相接：借余料。两边各要 d/2。
-        let halfByHandles = min(outgoing.trailingHandle, incoming.leadingHandle)
+        // 相接：借余料。
+        //
+        // **窗口不必对称**。只有出场段有尾料时，把窗口整个放在接缝**之后**照样
+        // 成立：进场段在那段时间本来就在播它自己的开头，出场段拿尾料叠在上面
+        // 淡出 —— 一个完完整整的交叉淡变，两边的可见内容一帧都没少。反过来
+        // 只有进场段有头料时同理，窗口整个落在接缝之前。
+        // 所以容量是**两边余料之和**，不是 2×min（按 min 算会把单边有料的缝
+        // 白白判死，那正是 2026-09-20 第一版的毛病）。
+        let borrowable = outgoing.trailingHandle + incoming.leadingHandle
         // 半秒的一成：比这还少借不出一帧像样的转场，当没有余料。
-        guard halfByHandles > 0.05 else { return .noHandles }
-        // 「最多吃掉较短那段的一半」。这个上限不是随手定的：展开之后两段各长
-        // d/2，而 `transitionOverlap` 那条 45% 的护栏是按**展开后**的长度算的，
-        // d ≤ 0.5·min(a,b) 正好让它不咬人（0.45·(a+d/2) ≥ 0.5625a > 0.5a）。
-        // 松过这个数，护栏就会把实际叠掉的量压到 d 以下，展开时按 d/2 让出去的
-        // 长度收不回来，成片会比时间线长出一截。
-        let half = min(halfByHandles, byLength * 0.25, transitionMaxDuration / 2)
-        guard half > 0.05 else { return .noHandles }
-        return .available(maxDuration: half * 2)
+        guard borrowable > 0.05 else { return .noHandles }
+        // 长度上限：展开之后 `transitionOverlap` 那条 45% 的护栏会按**展开后**
+        // 的长度再夹一次 d，夹到了就说明实际叠掉的量 < d，而展开时已经按 d 让
+        // 出去了长度 —— 收不回来，成片会比时间线长出一截。
+        //
+        // 要让护栏夹不动，得 d ≤ 0.45·a' 且 d ≤ 0.45·b'（a'、b' 是展开后的长度）。
+        // 最坏情况是 d 全从一边借：全借尾料时 a' = a + d、b' = b，b 那边没长，
+        // 于是 d ≤ 0.45·b 是紧的那道；全借头料时对称地变成 d ≤ 0.45·a。
+        // 两种都要满足 ⇒ d ≤ 0.45·min(a, b)。取 0.4 留一点余量。
+        let capped = min(borrowable, byLength * 0.4, transitionMaxDuration)
+        guard capped > 0.05 else { return .noHandles }
+        return .available(maxDuration: capped)
+    }
+
+    /// 这条缝上 d 秒的转场，各从哪一边借多少。先吃出场段的尾料，不够再找进场
+    /// 段借头料 —— 窗口因此可能整个落在接缝一侧，那是成立的（见上面的说明）。
+    static func borrowSplit(
+        outgoing: EditClip, incoming: EditClip, duration: Double
+    ) -> (fromTail: Double, fromHead: Double) {
+        let tail = min(outgoing.trailingHandle, duration)
+        let head = min(incoming.leadingHandle, duration - tail)
+        return (tail, head)
     }
 
     /// 这条缝当下是不是**首尾相接**（需要借余料），而不是已经相叠。
@@ -124,15 +144,23 @@ extension TimelineState {
             }
             if after > 0 {
                 expanded.mainClips[index].transitionDuration = after
-                // 尾巴借 after/2：素材秒 = 时间线秒 × 变速。
-                expanded.mainClips[index].sourceDuration += after / 2 * expanded.mainClips[index].speed
+                // 这条缝向**我的尾巴**借多少：素材秒 = 时间线秒 × 变速。
+                let tail = Self.borrowSplit(
+                    outgoing: mainClips[index], incoming: mainClips[index + 1], duration: after
+                ).fromTail
+                expanded.mainClips[index].sourceDuration += tail * expanded.mainClips[index].speed
             }
             if before > 0 {
-                // 头部前移 before/2，起点跟着往前挪同样多 —— 片段在时间线上的
-                // **可见**位置没变，变的是它多带了一段用来做转场的引子。
-                expanded.mainClips[index].sourceStart -= before / 2 * expanded.mainClips[index].speed
-                expanded.mainClips[index].sourceDuration += before / 2 * expanded.mainClips[index].speed
-                expanded.mainClips[index].timelineStart -= before / 2
+                // 上一条缝向**我的头**借多少。头部前移这么多，起点跟着往前挪同
+                // 样多 —— 片段在时间线上的**可见**位置没变，变的是它多带了一段
+                // 用来做转场的引子。借不到（头料为 0）就是 0，那条缝的窗口整个
+                // 落在接缝之后，照样成立。
+                let head = Self.borrowSplit(
+                    outgoing: mainClips[index - 1], incoming: mainClips[index], duration: before
+                ).fromHead
+                expanded.mainClips[index].sourceStart -= head * expanded.mainClips[index].speed
+                expanded.mainClips[index].sourceDuration += head * expanded.mainClips[index].speed
+                expanded.mainClips[index].timelineStart -= head
             }
         }
         return expanded
