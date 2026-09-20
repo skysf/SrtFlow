@@ -85,7 +85,16 @@ need "$MASK" "isSelected \? Color\.accentColor" "遮罩的选中态描边"
 
 # 2) ⌫ 要有转场这一支，而且 prune 挂在 state 的唯一写入点上。
 need "$PROJECT" "if let seamID = selection\.transitionSeamID" "deleteSelected 里的转场分支"
-need "$PROJECT" "pruneTransitionSeamSelection\(\)" "state didSet 里的转场 prune"
+# **别只钉函数名**：定义那一行 `private func pruneTransitionSeamSelection()` 也会
+# 命中，于是把 didSet 里的调用删掉照样绿（初版就是这么假绿的，反向探针当场抓到）。
+# 钉的是**调用**那一行 —— 行首只有缩进、没有 `func`，而且必须紧跟在
+# `pruneMarkerSelection()` 后面：那里是 state 唯一的写入点。
+PRUNE_CALL="$(grep -A1 -E "^[[:space:]]+pruneMarkerSelection\(\)$" "$PROJECT" \
+    | grep -cE "^[[:space:]]+pruneTransitionSeamSelection\(\)$" || true)"
+if [ "$PRUNE_CALL" -eq 0 ]; then
+    echo "  ✗ $(basename "$PROJECT") 的 state didSet 里没有紧跟着调 pruneTransitionSeamSelection()" >&2
+    FAILED=1
+fi
 need "$PROJECT" "selection\.pruneTransitionSeam \{ state\.hasVisibleTransition" "prune 的判据钉在「遮罩画不画得出来」上"
 
 # 3) 检查器：选中转场时要有东西可看，否则点了遮罩检查器反而空了。
