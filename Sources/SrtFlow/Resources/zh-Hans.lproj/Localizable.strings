@@ -752,3 +752,10 @@
 "Applies to all %d picture clips selected" = "会套用到选中的 %d 段画面";
 "How these clips come in" = "这些段怎么进来";
 "How these clips go out" = "这些段怎么出去";
+
+/* 侧边栏转场库（2026-09-20） */
+"Transitions" = "转场";
+"Click a card to put that transition on the current seam" = "点一张卡片，把那个转场套到当前接缝上";
+"Show or hide the transition library" = "显示或隐藏转场库";
+"Add a second clip to the main track to put a transition between them." = "主轨再加一段，才有接缝可以放转场。";
+"Select just one clip — a transition goes on one seam at a time." = "只选一段 —— 转场一次落在一个接缝上。";

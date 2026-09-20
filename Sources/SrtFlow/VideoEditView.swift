@@ -15,6 +15,8 @@ struct VideoEditView: View {
     @Environment(\.undoManager) private var undoManager
     @State private var showsExportSheet = false
     @State private var showsSubtitlePanel = false
+    /// 预览左边那栏转场库的显隐。记住上次的选择 —— 它是布局偏好，不是工程数据。
+    @AppStorage("transitionLibraryVisible") private var showsTransitionLibrary = true
     @ObservedObject private var recordingCoordinator = ScreenRecordingCoordinator.shared
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
@@ -31,6 +33,13 @@ struct VideoEditView: View {
     var body: some View {
         VSplitView {
             HSplitView {
+                // 转场库：预览左边的一栏，只占上半区 —— 时间线仍然通栏。
+                // 宽度预算：库 196 + 预览 430 + 检查器 252 = 878，没超过下面那
+                // 条 minWidth 900，所以加这一栏不用抬窗口的最小宽度。
+                if showsTransitionLibrary {
+                    TransitionLibraryPanel(project: project, clock: clock)
+                        .frame(minWidth: 196, idealWidth: 220, maxWidth: 340)
+                }
                 previewPane
                     .frame(minWidth: 430, idealWidth: 700, maxWidth: .infinity)
                     .layoutPriority(1)
@@ -130,6 +139,19 @@ struct VideoEditView: View {
             // 工程名下拉放最左边，它就是这个编辑器的文件菜单。
             ToolbarItem(placement: .navigation) {
                 VideoEditProjectMenu(project: project)
+            }
+            // 转场库的开关挨着工程名放最左边，和系统那个侧边栏开关呼应 ——
+            // 都是「把左边那一栏收起来」。
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showsTransitionLibrary.toggle()
+                } label: {
+                    Label(
+                        "Transitions",
+                        systemImage: "square.filled.and.line.vertical.and.square"
+                    )
+                }
+                .instantHelp("Show or hide the transition library")
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if exporter.isExporting {
