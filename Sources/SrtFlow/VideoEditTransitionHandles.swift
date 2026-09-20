@@ -164,6 +164,20 @@ extension TimelineState {
         return (incoming.timelineStart, overlap)
     }
 
+    /// 遮罩在时间线上画出来的矩形（`x` 是左边界，单位 pt）。
+    ///
+    /// **宽度有下限，位置就必须跟着补偿**：窄到贴下限时如果还把左边界钉在
+    /// `window.start`，下限多出来的那几个 pt 全长在右边 —— 转场越短偏得越厉害，
+    /// 用户拖短它的时候看见的就是「遮罩整个往右挪」（2026-09-20 用户报的正是
+    /// 这个）。所以按**窗口中心**摆，宽度怎么被夹都不影响它对准缝。
+    static func transitionMaskRect(
+        window: (start: Double, duration: Double), pps: Double, minWidth: Double
+    ) -> (x: Double, width: Double) {
+        let width = max(minWidth, window.duration * pps)
+        let center = (window.start + window.duration / 2) * pps
+        return (center - width / 2, width)
+    }
+
     /// 把接缝两侧的片段各向外借 d/2 的余料，让它们**真的相叠 d**。
     ///
     /// 两条渲染管线（预览合成、导出图）都在入口处调这一份，之后它们看到的就是

@@ -449,6 +449,24 @@ func main() async {
         check(abs(expanded.mainClips[1].videoFadeInDuration - 0.25) < 0.001, "进场段亮起前半程")
         check(abs(expanded.duration - state.duration) < 0.001, "原地斜坡同样不许改变总时长")
 
+        // 遮罩的**画法**：宽度有下限，位置必须按窗口中心补偿。
+        //
+        // 回归守卫，用户 2026-09-20 报的：「调时长的时候遮罩移动了」。当时左边界
+        // 钉在 window.start、宽度另外夹下限，下限多出来的宽度全长在右边 —— 转场
+        // 越短偏得越厉害，看起来就是遮罩整个往右挪。
+        do {
+            let window = (start: 1.75, duration: 0.5)
+            // 时间线放得够大：宽度不碰下限，左边界就该正好是 window.start。
+            let wide = TimelineState.transitionMaskRect(window: window, pps: 200, minWidth: 18)
+            check(abs(wide.width - 100) < 0.001, "不碰下限时宽度 = d × pps")
+            check(abs(wide.x - 350) < 0.001, "不碰下限时左边界 = window.start × pps")
+            // 缩得很小：宽度贴下限，但**中心仍然压在缝上**。
+            let narrow = TimelineState.transitionMaskRect(window: window, pps: 6, minWidth: 18)
+            check(abs(narrow.width - 18) < 0.001, "很窄时宽度取下限")
+            let seam = (window.start + window.duration / 2) * 6
+            check(abs((narrow.x + narrow.width / 2) - seam) < 0.001, "贴下限时中心仍然对准缝，不许整块右移")
+        }
+
         // 时间线遮罩画在哪：跨在缝上、两边各一半（压黑那条路也是 d/2 + d/2）。
         if let window = state.transitionWindow(afterMainIndex: 0) {
             check(abs(window.start - (2.0 - 0.25)) < 0.001, "遮罩左边界 = 缝 - d/2")

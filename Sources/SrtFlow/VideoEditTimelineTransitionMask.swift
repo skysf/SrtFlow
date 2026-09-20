@@ -52,9 +52,12 @@ struct TransitionMaskView: View {
 
     var body: some View {
         if let window, let outgoing {
-            // 下限 18：再窄两条把手就贴到一起，哪条都抓不准。窄到贴底之后
-            // 画出来的宽度不再代表真实时长 —— 想精调就放大时间线。
-            let width = max(18, window.duration * pps)
+            // 下限 18：再窄两条把手就贴到一起，哪条都抓不准。窄到贴底之后画出来
+            // 的宽度不再代表真实时长 —— 想精调就放大时间线。
+            // 位置由 `transitionMaskRect` 按**窗口中心**算，不是钉左边界：下限
+            // 多出来的宽度必须两边均摊，否则拖短转场时遮罩会整个往右挪。
+            let rect = TimelineState.transitionMaskRect(window: window, pps: pps, minWidth: 18)
+            let width = rect.width
             let height = max(14, rowHeight - 10)
             ZStack {
                 RoundedRectangle(cornerRadius: 4)
@@ -83,7 +86,7 @@ struct TransitionMaskView: View {
                 }
             }
             .instantHelp(verbatim: transitionHelp(outgoing, window.duration))
-            .offset(x: window.start * pps, y: (rowHeight - height) / 2)
+            .offset(x: rect.x, y: (rowHeight - height) / 2)
             // 压在片段块之上，但让被拖动的块（zIndex 10）盖过它。
             .zIndex(6)
         }
