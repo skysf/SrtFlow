@@ -50,12 +50,21 @@ if [ ! -f "$HELPER" ]; then
     echo "  没有它，下面的豁免会让这条守卫扫了个寂寞。"
     exit 1
 fi
-for sym in 'func hoverCursor' 'private var pushed' 'onDisappear'; do
-    if ! grep -q "$sym" "$HELPER"; then
-        echo "✗ $HELPER 里找不到 \`$sym\` —— 自记账/兜底被拆了，光标还是会卡"
+# 记账处的关键构造还在不在。**先滤掉注释行再匹配**：文件头那段说明里就写着
+# `onDisappear`，直接 grep 会被自己的注释喂绿（初版就是这么假绿的）。
+# 模式也要钉完整写法：`private var pushed` 会把改名后的 `pushedFlag` 当子串吃掉。
+helper_code() { grep -v '^[[:space:]]*//' "$HELPER"; }
+
+need() {   # need <正则> <人话>
+    if ! helper_code | grep -qE "$1"; then
+        echo "✗ $HELPER 里没了 $2（模式 /$1/）"
         fail=1
     fi
-done
+}
+need 'func hoverCursor\('      '.hoverCursor 入口'
+need '\.onDisappear'           'onDisappear 兜底（悬停中被重建就靠它）'
+need 'var pushed = false'      '自记账的 pushed'
+need 'guard wanted != pushed'  '「只弹自己押的那次」那道闸'
 
 echo "==> 扫描裸的光标 push/pop（记账处 $HELPER 豁免）"
 scan '\.push()'      "手写了光标 push（应改用 .hoverCursor(_:)）"
