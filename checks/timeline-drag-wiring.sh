@@ -503,7 +503,22 @@ if MASK_APPLY="$(require_func 'private func apply(duration:' "$MASK")"; then
     || fail "转场遮罩落值时没有按容量夹紧：能拖出渲染管线做不出来的时长"
 fi
 
+
+# ── 滚动内容必须填满视口、顶对齐 ──────────────────────────────────────
+# 轨道少的时候（常态）内容比视口矮，不撑满的话 SwiftUI 会把它**纵向居中**，
+# 连出两个 bug（2026-09-20 用户报的）：
+#   1. 播放头那条线只画在居中后那一段，上面接不到标尺 —— 「指针是断的」；
+#   2. 标尺靠 `.offset(y: geometry.offset.y)` 被拉回视口顶上，但它的**命中区
+#      没跟过去**，点可见的标尺 seek 不了 —— 「播放头没法移动」。
+# 两个症状同一个根。修法就是这一行 minHeight。
+if SCROLL_BLOCK="$(grep -A 12 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" || true)"; then
+  # 两个条件写在**同一行**上匹配：分开写的话 `alignment: .top` 会被上一行的
+  # `.topLeading` 顺手匹配掉，顶对齐那条就成了永远为真的假绿。
+  printf '%s\n' "$SCROLL_BLOCK" | grep -q 'minHeight: viewportHeight, alignment: \.top)' \
+    || fail "时间线滚动内容没有 .frame(minHeight: viewportHeight, alignment: .top)：内容比视口矮时会被纵向居中，播放头的线会断、标尺点不动"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 滚动内容填满视口"
