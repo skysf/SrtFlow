@@ -51,6 +51,7 @@ final class VideoEditProject: ObservableObject {
             // 操作各自记得清一次（PR#22 复审 P2）。
             pruneSubtitleCueSelection()
             pruneMarkerSelection()
+            pruneTransitionSeamSelection()
             documentDidChange()
         }
     }
@@ -69,6 +70,13 @@ final class VideoEditProject: ObservableObject {
     private func pruneMarkerSelection() {
         guard selection.markerRef != nil else { return }
         selection.pruneMarker { state.isMarkerSelectable($0) }
+    }
+
+    /// 选中的转场还在不在（出场段被删、撤销掉「设转场」、缝被拖出间隙、余料被
+    /// 裁没了）。判据就是**遮罩画不画得出来**，和时间线上看到的一致。
+    private func pruneTransitionSeamSelection() {
+        guard selection.transitionSeamID != nil else { return }
+        selection.pruneTransitionSeam { state.hasVisibleTransition(afterOutgoing: $0) }
     }
 
     // MARK: - 工程文档（.srtflowproj）
@@ -191,6 +199,21 @@ final class VideoEditProject: ObservableObject {
     var selectedMarkerRef: ClipMarkerRef? {
         get { selection.markerRef }
         set { selection.selectMarker(newValue) }
+    }
+    /// 接缝上选中的转场，存**出场段的 UUID**（高亮遮罩、⌫ 清掉这条缝的转场）。
+    /// 不持久化。不支持多选 —— 一次处理一条缝，没有「整排一起删」的场景。
+    var selectedTransitionSeamID: UUID? {
+        get { selection.transitionSeamID }
+        set { selection.selectTransitionSeam(newValue) }
+    }
+
+    /// 选中的那条缝的两段。缝已经不成立时是 nil。检查器和库面板都读它。
+    var selectedTransitionSeam: TransitionSeam? {
+        guard let id = selection.transitionSeamID,
+              let index = state.mainClips.firstIndex(where: { $0.id == id }),
+              index + 1 < state.mainClips.count
+        else { return nil }
+        return TransitionSeam(outgoing: state.mainClips[index], incoming: state.mainClips[index + 1])
     }
 
     /// 五类选择一起清：点预览空白、切工程。
@@ -977,6 +1000,15 @@ final class VideoEditProject: ObservableObject {
     func deleteSelected() {
         if let ref = selectedMarkerRef {
             deleteMarker(ref)
+            return
+        }
+        // 选中的是一条缝上的转场：⌫ 清掉它，别去碰两侧的片段。互斥由
+        // `EditSelection` 保证（选转场时剪辑选择已经清了），所以走到这里不会
+        // 出现「本来想删转场、结果整段素材没了」。
+        // 选中态不用在这儿手动清：转场一没，遮罩当场就不画了，
+        // `pruneTransitionSeamSelection` 会顺着 state 的写入把它摘掉。
+        if let seamID = selection.transitionSeamID {
+            setTransition(after: seamID, .none)
             return
         }
         var clipIDs = selectedClipIDs

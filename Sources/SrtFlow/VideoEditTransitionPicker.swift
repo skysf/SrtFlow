@@ -171,7 +171,10 @@ private enum TransitionGroup: CaseIterable, Identifiable {
 
     var members: [ClipTransition] {
         switch self {
-        case .basic: return [.none, .crossFade, .blackFade, .whiteFade]
+        // 「无」**不在这里**：它不是一种转场，混在网格里既拖不了、点了又是删除，
+        // 语义是脏的（2026-09-20 用户拍板删掉）。取消一条缝的转场走三条路：
+        // 点中遮罩按 ⌫、检查器里的「移除转场」、遮罩右键。
+        case .basic: return [.crossFade, .blackFade, .whiteFade]
         case .push: return [.pushLeft, .pushRight, .pushUp, .pushDown]
         case .wipe: return [.wipeLeft, .wipeRight, .wipeUp, .wipeDown]
         }

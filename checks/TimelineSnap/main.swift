@@ -1341,6 +1341,52 @@ do {
     checkEqual(dropTarget(48, clips, ClipTransition.none), nil, "「无」不是一种转场，拖它没有语义")
 }
 
+// MARK: - 29. 遮罩画不画得出来 —— 转场选中态的存活判据
+//
+// `hasVisibleTransition(afterOutgoing:)` 和 `TransitionMaskView` 的绘制条件是
+// **同一个** `transitionWindow`。转场选中态钉在它上面：遮罩不画了，选中就该
+// 摘掉，否则时间线上没有任何东西高亮，⌫ 却还会去清一条看不见的缝 ——
+// 用户只会看到「按了删除键，什么都没发生」（`pruneMarker` 踩过同一个坑）。
+
+do {
+    var first = seamClip(start: 0, duration: 2)
+    first.transitionAfter = .crossFade
+    first.transitionDuration = 0.4
+    let second = seamClip(start: 2, duration: 3)
+    var state = TimelineState()
+    state.mainClips = [first, second]
+
+    check(state.hasVisibleTransition(afterOutgoing: first.id), "设了转场、缝也成立 → 遮罩在")
+    check(!state.hasVisibleTransition(afterOutgoing: second.id), "最后一段后面没有缝")
+    check(!state.hasVisibleTransition(afterOutgoing: UUID()), "不存在的段没有遮罩")
+
+    // ⌫ 或撤销把转场清掉：遮罩当场就不画了
+    var cleared = state
+    cleared.mainClips[0].transitionAfter = .none
+    check(!cleared.hasVisibleTransition(afterOutgoing: first.id), "转场清成 .none → 遮罩没了")
+
+    // 出场段被删
+    var removed = state
+    removed.mainClips.removeFirst()
+    check(!removed.hasVisibleTransition(afterOutgoing: first.id), "出场段被删 → 遮罩没了")
+
+    // 缝被拖出间隙 —— 那不是一条缝了
+    var gapped = state
+    gapped.mainClips[1].timelineStart = 2.5
+    check(!gapped.hasVisibleTransition(afterOutgoing: first.id), "拖出间隙 → 遮罩没了")
+
+    // 余料被裁没了：叠化做不出来，容量判死，遮罩也就不画
+    var noSpare = TimelineState()
+    var bare = clip(start: 0, duration: 2)
+    bare.transitionAfter = .crossFade
+    bare.transitionDuration = 0.4
+    noSpare.mainClips = [bare, clip(start: 2, duration: 3)]
+    check(!noSpare.hasVisibleTransition(afterOutgoing: bare.id), "余料裁没了 → 叠化做不出来，遮罩没了")
+    // 同一条缝换成压黑就画得出来 —— 判据跟着种类走，和容量模型同一份
+    noSpare.mainClips[0].transitionAfter = .blackFade
+    check(noSpare.hasVisibleTransition(afterOutgoing: bare.id), "零余料的缝上压黑照样有遮罩")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

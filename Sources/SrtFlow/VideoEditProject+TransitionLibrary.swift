@@ -25,12 +25,13 @@ enum TransitionLibraryTarget: Equatable {
 
 @MainActor
 extension VideoEditProject {
-    /// 库面板点一下卡片时作用的接缝。两级回退：
+    /// 库面板点一下卡片时作用的接缝。三级回退：
     ///
-    /// ① **选中的那一段主轨片段**（且后面还有一段）—— 意图最明确，而且和检查
-    ///    器里那个入口指向同一个接缝，两处不会给出不同答案；
-    /// ② 没选中就取**播放头最近的接缝** —— 常驻面板在没有选中时也得能用，这
-    ///    正是它和检查器入口的差别（那个必须先选中片段才出现）。
+    /// ① **时间线上直接点中的那条转场** —— 意图最明确，没有比这更清楚的指认；
+    /// ② **选中的那一段主轨片段**（且后面还有一段）—— 和检查器里那个入口指向
+    ///    同一个接缝，两处不会给出不同答案；
+    /// ③ 都没有就取**播放头最近的接缝** —— 常驻面板在没有选中时也得能用，这
+    ///    正是它和检查器入口的差别（那个必须先选中才出现）。
     ///
     /// 只从主轨里找：转场只有主轨有语义，上层视频轨和音频轨根本不读
     /// `transitionAfter`（见 `VideoEditCompositionBuilder` 与 `VideoEditExportGraph`
@@ -39,7 +40,9 @@ extension VideoEditProject {
         let clips = state.mainClips
         guard clips.count >= 2 else { return .noSeam }
         if selectedClipIDs.count > 1 { return .multipleSelection }
-        let index = selectedMainSeamIndex(in: clips) ?? nearestSeamIndex(to: clock.time, in: clips)
+        let index = selectedTransitionSeamIndex(in: clips)
+            ?? selectedMainSeamIndex(in: clips)
+            ?? nearestSeamIndex(to: clock.time, in: clips)
         // 缝找着了还不算数：两边得相接、而且借得到余料，转场才做得出来。
         // 这道闸和两条渲染管线**同一个判据**，不会出现「面板让点、成片没有」。
         // 只有「中间有空隙」是整条缝不成立。余料够不够是**逐种类**的事
@@ -48,6 +51,16 @@ extension VideoEditProject {
             outgoing: clips[index], incoming: clips[index + 1], kind: .crossFade
         ) { return .notAdjacent }
         return .seam(TransitionSeam(outgoing: clips[index], incoming: clips[index + 1]))
+    }
+
+    /// 时间线上**直接点中的那条转场**所在的缝。排在回退链最前面：用户明明点着
+    /// 这条缝，面板却对着另一条，是最难解释的一种错。
+    private func selectedTransitionSeamIndex(in clips: [EditClip]) -> Int? {
+        guard let id = selection.transitionSeamID,
+              let index = clips.firstIndex(where: { $0.id == id }),
+              index + 1 < clips.count
+        else { return nil }
+        return index
     }
 
     /// 选中的那一段在主轨上的下标；它是最后一段（后面没有接缝）时返回 nil，
