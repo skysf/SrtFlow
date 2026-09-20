@@ -48,11 +48,15 @@ extension VideoEditProject {
         // 藏起来的轨在预览和导出里都当不存在，没有「这一帧」可言。
         guard !state.isLaneHidden(location.track) else { return false }
         guard location.track.isMain else { return true }
-        // 主轨：牵扯转场的段一律不给定格（切短后转场被重新限长、画面位移不可
-        // 预期，理由见 `participatesInMainTransition`），叠化区里也不给（画面
-        // 是合成的）。
-        return !state.participatesInMainTransition(clipID: clip.id)
-            && !state.isInsideMainTransition(time: time)
+        // 主轨：**只禁转场那一段**，不禁整个片段（2026-09-20 用户拍板，对齐剪映）。
+        //
+        // 叠化区里那一帧画面是两段合成出来的，从单个源素材抽帧必然和眼睛看到的
+        // 对不上 —— 这条必须留着。但「这一段牵扯到转场」不是禁整段的理由：定格
+        // 切短目标之后转场会被重新限长，而**存的时长不丢**（容量只夹生效值，
+        // 见 VideoEditTransitionHandles.swift），片段再变长它自己就回来了。
+        // 整段禁用最初的硬理由是声画永久错开，而 2026-08-23 定格不再联动音频
+        // 之后那个前提就没了（docs/architecture/freeze-frame.md §4a）。
+        return !state.isInsideMainTransition(time: time)
     }
 
     /// 工具栏 / ⇧⌘F 的入口。

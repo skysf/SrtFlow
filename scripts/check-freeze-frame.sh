@@ -17,6 +17,28 @@ cd "$(dirname "$0")/.."
 ARCH_FLAG="--arch arm64"
 TRIPLE="arm64-apple-macosx15.0"
 
+# ── 准入条件的扫描守卫（2026-09-20）─────────────────────────────────────
+# 定格的主轨准入条件是**一条**：播放头不在叠化区里。两件事要钉住：
+#   1. 叠化区那条必须留着 —— 那一帧是两段合成的，从单个源素材抽帧必然对不上；
+#   2. 「牵扯转场的段一律禁用」已经放开（用户拍板，对齐剪映：只禁转场那一段，
+#      不禁整个片段），别无意中加回来。
+# 只看真代码行：注释里提到函数名不算接上了。
+ELIGIBLE_BODY="$(awk '/func isFreezeEligible/{inside=1} inside{print} inside&&/^    \}$/{exit}' \
+  Sources/SrtFlow/VideoEditFreezeFrame.swift | grep -vE '^[[:space:]]*//')"
+if [ -z "${ELIGIBLE_BODY}" ]; then
+    echo "✗ 找不到 isFreezeEligible，准入条件的守卫失去目标 —— 改名了就同步改这里" >&2
+    exit 1
+fi
+printf '%s\n' "${ELIGIBLE_BODY}" | grep -q 'isInsideMainTransition' || {
+    echo "✗ isFreezeEligible 不再检查 isInsideMainTransition：叠化区里那一帧是两段合成的，必须禁定格" >&2
+    exit 1
+}
+printf '%s\n' "${ELIGIBLE_BODY}" | grep -q 'participatesInMainTransition' && {
+    echo "✗ isFreezeEligible 又开始用 participatesInMainTransition 了：整段禁用已于 2026-09-20 放开（只禁转场那一段），见 docs/architecture/freeze-frame.md §4a" >&2
+    exit 1
+}
+echo "✓ 定格准入条件：只禁叠化区，不禁整段"
+
 echo "==> swift build ${ARCH_FLAG}（拿 SrtFlowCore 的模块和目标文件）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出
 #（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
