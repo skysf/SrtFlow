@@ -176,11 +176,14 @@ enum FrameHandle: CaseIterable {
         }
     }
 
-    var cursor: NSCursor {
+    /// 悬停时的指针样式。三种和以前的 NSCursor **像素级同图**（实测对照过）：
+    /// `.columnResize` = resizeLeftRight，`.rowResize` = resizeUpDown，
+    /// `.rectSelection` = crosshair。外观不变，换的是谁来管。
+    var pointerStyle: PointerStyle {
         switch self {
-        case .leading, .trailing: return .resizeLeftRight
-        case .top, .bottom: return .resizeUpDown
-        default: return .crosshair
+        case .leading, .trailing: return .columnResize
+        case .top, .bottom: return .rowResize
+        default: return .rectSelection
         }
     }
 }
@@ -286,9 +289,7 @@ struct ResizableFrameBox: View {
             .frame(width: handleSize, height: handleSize)
             .shadow(color: .black.opacity(0.6), radius: 1)
             .contentShape(Rectangle().inset(by: -5))
-            .onHover { inside in
-                if inside { handle.cursor.push() } else { NSCursor.pop() }
-            }
+            .pointerStyle(handle.pointerStyle)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .global)
                     .onChanged { value in

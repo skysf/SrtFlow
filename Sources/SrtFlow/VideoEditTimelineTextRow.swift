@@ -93,9 +93,7 @@ struct TextBlockView: View {
                         .onChanged { value in onTrim(leading, value.translation.width / pps) }
                         .onEnded { _ in onTrimEnd() }
                 )
-                .onHover { inside in
-                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                }
+                .pointerStyle(.columnResize)
         }
     }
 }

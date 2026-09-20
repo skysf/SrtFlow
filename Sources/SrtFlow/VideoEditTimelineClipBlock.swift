@@ -35,8 +35,6 @@ struct ClipBlockView: View {
     @State private var isMoving = false
     /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
     @State private var isTrimming = false
-    /// 刀片工具的十字光标压没压进光标栈（离开时要弹回来）。
-    @State private var pushedSplitCursor = false
     /// 指针正悬在某枚标记上时，那枚标记所在的时间线时刻；nil = 没悬着。
     /// 扫帧 peek 归属的仲裁位，见 `markerHover`。
     @State private var markerHoverTime: Double?
@@ -84,7 +82,9 @@ struct ClipBlockView: View {
         .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
         .overlay(alignment: .bottomLeading) { keyframeMarkers }
         .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
-        .onHover(perform: updateSplitCursor)
+        // 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
+        // nil = 这一处不接管指针，交回外层。
+        .pointerStyle(project.activeTool == .split ? .rectSelection : nil)
         // 标记要压在扫帧之上（它自己接管 peek），但必须排在裁切把手**之前** ——
         // 排在后面的话，贴着块两端的标记会盖住把手，那一端就再也裁不动了。
         // 刀片模式下整条让路：点在标记上也该落下那一刀。
@@ -260,17 +260,6 @@ struct ClipBlockView: View {
         }
     }
 
-    /// 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
-    private func updateSplitCursor(_ inside: Bool) {
-        if inside, project.activeTool == .split, !pushedSplitCursor {
-            NSCursor.crosshair.push()
-            pushedSplitCursor = true
-        } else if !inside, pushedSplitCursor {
-            NSCursor.pop()
-            pushedSplitCursor = false
-        }
-    }
-
     /// 鼠标扫过视频块时，画面滚到指的那一帧**看一眼**（peek）：真播放头原地
     /// 不动，时间线上另画一根影子指针，鼠标离开就把画面滚回播放头。
     /// 以前这里直接 seek —— 用户点好的播放头位置会被悬停悄悄拖走。
@@ -316,9 +305,7 @@ struct ClipBlockView: View {
                             onTrimEnd()
                         }
                 )
-                .onHover { inside in
-                    if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-                }
+                .pointerStyle(.columnResize)
         }
     }
 
