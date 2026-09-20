@@ -114,6 +114,57 @@ extension TimelineState {
         return .available(maxDuration: capped)
     }
 
+    /// 从转场库拖一张卡片到主轨上时，指针落在哪条缝上 —— 返回**出场段在
+    /// `mainClips` 里的下标**（= 缝的编号）；没有可落的缝返回 nil。
+    ///
+    /// 判据只问 `transitionCapacity`：`.notAdjacent`（中间有空隙）和 `.noHandles`
+    /// （余料不够）它一并盖住了，而且和两条渲染管线、库面板逐张卡片的可用判定
+    /// 是**同一份** —— 不会出现「拖得上去、成片里没有」。
+    ///
+    /// **不能改问 `transitionWindow`**：它要求 `transitionAfter != .none`，空缝上
+    /// 一定返回 nil，拿它当判据会把所有还没设转场的缝判死 —— 而那恰恰是这个手势
+    /// 最主要的落点。
+    ///
+    /// 近处那条缝做不出来、40pt 内还有一条做得出来时，**落在做得出来的那条**上：
+    /// 落点框画在哪儿是明说的，不存在歧义，而「明明有条缝能接却什么都不给」更难
+    /// 解释。做不出来的缝一律不接（口径：不高亮、不接受、回弹）。
+    ///
+    /// - Parameters:
+    ///   - x: 指针在**时间线内容坐标**里的横坐标（pt）。行随内容一起滚，所以
+    ///     `DropInfo.location.x` 拿到的就是它，不用再补滚动量。
+    ///   - kind: **正在拖的那张卡**，不是缝上当前设的那种。容量与种类有关（零余料
+    ///     的缝上压黑能用、叠化不能用），拿旧种类算会放行一个做不出来的落点。
+    ///   - maxDistance: 接受半径，单位是**屏幕 pt**，不换算成秒。于是放大时间线时
+    ///     同样的 40pt 覆盖更少的秒数 —— 越放大落点越精确，和手感直觉一致。
+    static func transitionDropTarget(
+        atX x: Double,
+        pps: Double,
+        mainClips: [EditClip],
+        kind: ClipTransition,
+        maxDistance: Double = 40
+    ) -> Int? {
+        // 「无」不是一种转场，拖它没有语义（库里已经不出这张卡）。这里再挡一道：
+        // 将来谁把它加回去，也拖不上去。
+        guard kind != .none else { return nil }
+        guard mainClips.count >= 2 else { return nil }
+        var best: Int?
+        var bestDistance = Double.infinity
+        for index in mainClips.indices.dropLast() {
+            let distance = abs(x - mainClips[index].timelineEnd * pps)
+            // 闭区间：「40pt 以内」字面就是闭的。
+            guard distance <= maxDistance else { continue }
+            // 严格小于 = 等距时先到的赢，也就是**下标小的那条**（左边那条）。
+            // 必须定死：否则同一个像素位置给出哪条缝要看遍历顺序，是运气。
+            guard distance < bestDistance else { continue }
+            guard case .available = transitionCapacity(
+                outgoing: mainClips[index], incoming: mainClips[index + 1], kind: kind
+            ) else { continue }
+            best = index
+            bestDistance = distance
+        }
+        return best
+    }
+
     /// 这条缝上 d 秒的转场，各从哪一边借多少。先吃出场段的尾料，不够再找进场
     /// 段借头料 —— 窗口因此可能整个落在接缝一侧，那是成立的（见上面的说明）。
     static func borrowSplit(

@@ -1203,6 +1203,144 @@ do {
     checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 16, "右边的音频让位 2 秒")
 }
 
+// MARK: - 28. 从转场库拖卡片到接缝：落点算法
+//
+// 口径（2026-09-20 用户拍板）：
+//   · 只认主轨；距最近接缝 **40pt 以内**才接，闭区间。
+//   · 40pt 是**屏幕 pt**，不换算成秒 —— 放大时间线时同样的 40pt 覆盖更少的秒数，
+//     越放大落点越精确。
+//   · 做不出来的缝（有间隙 / 余料不够）不接，判据复用 `transitionCapacity`，
+//     和两条渲染管线、库面板逐张卡片的可用判定**同一份**。
+//   · 容量与种类有关，所以必须按**正在拖的那张卡**算，不是缝上当前那种。
+
+/// 两头各留 `spare` 秒余料的主轨片段（`assetDuration` 比取用的范围长出两头）。
+/// 不带 `info` 的 `clip(start:duration:)` 则是**零余料**的那一版。
+func seamClip(start: Double, duration: Double, spare: Double = 0.5) -> EditClip {
+    EditClip(
+        sourceURL: media,
+        sourceStart: spare,
+        sourceDuration: duration,
+        timelineStart: start,
+        info: MediaInfo(
+            duration: spare + duration + spare,
+            displaySize: CGSize(width: 1920, height: 1080), frameRate: 30,
+            videoCodec: "h264", audioCodec: nil, hasAudio: false,
+            audioCanCopyToMP4: false, fileBytes: 1
+        )
+    )
+}
+
+func dropTarget(
+    _ x: Double, _ clips: [EditClip], _ kind: ClipTransition,
+    pps zoom: Double = pps, maxDistance: Double = 40
+) -> Int? {
+    TimelineState.transitionDropTarget(
+        atX: x, pps: zoom, mainClips: clips, kind: kind, maxDistance: maxDistance
+    )
+}
+
+// 28a. 正对缝心 + 40pt 边界的闭合性
+do {
+    // 缝在 t=2 → x = 2 × 24 = 48pt
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    checkEqual(dropTarget(48, clips, .crossFade), 0, "正对缝心落在这条缝上")
+    checkEqual(dropTarget(87.9, clips, .crossFade), 0, "右边 39.9pt 收")
+    checkEqual(dropTarget(88, clips, .crossFade), 0, "边界闭区间：正好 40pt 也收")
+    checkEqual(dropTarget(88.1, clips, .crossFade), nil, "右边 40.1pt 不收")
+    checkEqual(dropTarget(8.1, clips, .crossFade), 0, "左边 39.9pt 收")
+    checkEqual(dropTarget(7.9, clips, .crossFade), nil, "左边 40.1pt 不收")
+    checkEqual(dropTarget(108, clips, .crossFade, maxDistance: 80), 0, "半径由参数说了算")
+}
+
+// 28b. 两条缝等距时取哪条 —— 必须定死，不然同一个像素位置看遍历顺序
+do {
+    // 缝 0 在 48pt、缝 1 在 120pt，正中间 84pt 两边各 36pt
+    let clips = [
+        seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3), seamClip(start: 5, duration: 2),
+    ]
+    checkEqual(dropTarget(84, clips, .crossFade), 0, "等距取下标小的那条（左边）")
+    checkEqual(dropTarget(85, clips, .crossFade), 1, "偏右一点就该换成右边那条")
+}
+
+// 28c. 中间有空隙的不是一条缝 —— 空隙是用户有意留的，不替他合拢
+do {
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2.5, duration: 3)]
+    checkEqual(dropTarget(48, clips, .crossFade), nil, "有空隙 → 不接")
+    checkEqual(dropTarget(48, clips, .blackFade), nil, "有空隙时压黑也不接 —— 那不是种类的问题")
+}
+
+// 28d. 零余料：压黑落得下、叠化落不下（容量**与种类有关**，#41 那一刀的成果）
+do {
+    let clips = [clip(start: 0, duration: 2), clip(start: 2, duration: 2)]
+    check(clips[0].trailingHandle == 0 && clips[1].leadingHandle == 0, "这一版里两边确实都没有余料")
+    checkEqual(dropTarget(48, clips, .crossFade), nil, "零余料的缝上叠化落不下去")
+    checkEqual(dropTarget(48, clips, .pushLeft), nil, "推移同样要两段同时在画面上")
+    checkEqual(dropTarget(48, clips, .blackFade), 0, "压黑走原地斜坡，零余料照样能落")
+}
+
+// 28e. 按**正在拖的那张卡**算容量，不是缝上当前设的那种
+do {
+    var first = clip(start: 0, duration: 2)
+    // 缝上现在设着压黑 —— 零余料的缝上它是成立的。拿它去判叠化就会放行一个
+    // 渲染管线做不出来的落点。
+    first.transitionAfter = .blackFade
+    let clips = [first, clip(start: 2, duration: 2)]
+    checkEqual(dropTarget(48, clips, .crossFade), nil, "拖叠化就按叠化算，不因为缝上是压黑而放行")
+    checkEqual(dropTarget(48, clips, .blackFade), 0, "拖压黑上去仍然成立")
+}
+
+// 28f. 已相叠的缝（磁吸排的）走 45% 那条路，不需要余料
+do {
+    let clips = [clip(start: 0, duration: 2), clip(start: 1.5, duration: 2)]
+    checkEqual(dropTarget(48, clips, .crossFade), 0, "已相叠的缝照样接")
+}
+
+// 28g. 近处那条做不出来、40pt 内还有一条做得出来 → 落在做得出来的那条
+do {
+    // 缝 0（a|b）两边都没有余料；缝 1（b|c）借得到。两条缝只隔 24pt。
+    let a = clip(start: 0, duration: 2)
+    let b = EditClip(
+        sourceURL: media, sourceStart: 0, sourceDuration: 1, timelineStart: 2,
+        info: MediaInfo(
+            duration: 1.5, displaySize: CGSize(width: 1920, height: 1080), frameRate: 30,
+            videoCodec: "h264", audioCodec: nil, hasAudio: false, audioCanCopyToMP4: false, fileBytes: 1
+        )
+    )
+    let c = seamClip(start: 3, duration: 2)
+    let clips = [a, b, c]
+    check(a.trailingHandle == 0 && b.leadingHandle == 0, "缝 0 两边确实都没有余料")
+    check(b.trailingHandle > 0 && c.leadingHandle > 0, "缝 1 两边确实借得到")
+    // 指针在 55pt：离缝 0 只有 7pt、离缝 1 有 17pt，但缝 0 做不出叠化。
+    checkEqual(dropTarget(55, clips, .crossFade), 1, "近处做不出来时落到做得出来的那条")
+    checkEqual(dropTarget(55, clips, .blackFade), 0, "换压黑：近处那条本来就做得出来，落它")
+}
+
+// 28h. 越界与主轨不足两段
+do {
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    checkEqual(dropTarget(500, clips, .crossFade), nil, "离任何缝都超过 40pt")
+    checkEqual(dropTarget(-100, clips, .crossFade), nil, "左边界外同样不接")
+    checkEqual(dropTarget(48, [seamClip(start: 0, duration: 2)], .crossFade), nil, "只有一段就没有缝")
+    checkEqual(dropTarget(48, [], .crossFade), nil, "空主轨没有缝")
+}
+
+// 28i. 半径是**屏幕 pt**，不是秒 —— 放大之后同样的秒数就出界了
+do {
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    // 指针停在缝右边 1.6 秒处，只改缩放：
+    checkEqual(dropTarget(48 + 1.6 * 24, clips, .crossFade), 0, "pps=24 时 1.6s = 38.4pt，在半径内")
+    checkEqual(
+        dropTarget(2 * 48 + 1.6 * 48, clips, .crossFade, pps: 48), nil,
+        "放大一倍后同样的 1.6s = 76.8pt，出了半径 —— 越放大落点越精确"
+    )
+}
+
+// 28j. 「无」拖不上去。库里已经不出这张卡，这条钉的是「将来加回去也拖不上」
+do {
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    checkEqual(dropTarget(48, clips, ClipTransition.none), nil, "「无」不是一种转场，拖它没有语义")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")
