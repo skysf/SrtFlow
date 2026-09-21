@@ -360,11 +360,11 @@ for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
       || fail "${entry} 没有现读滚动量（scrollGeometry.offsetX）：框会偏出一个滚动量"
   fi
 done
-# 9c. 四个拖动入口冻结的「起手滚动量」同样现读 —— 那个值和自动滚动中的现读值
+# 9c. 五个拖动入口冻结的「起手滚动量」同样现读 —— 那个值和自动滚动中的现读值
 # 相减，差一点点就是块在自动滚动开始那一瞬间猛跳一段。
 COUNT="$(grep -c 'originScrollOffset: scrollGeometry\.offsetX' "$DRAG_WIRING" || true)"
-[ "$COUNT" -eq 4 ] \
-  || fail "拖动入口只有 ${COUNT} 处现读起手滚动量，应当 4 处（剪辑/形状/文字/字幕）"
+[ "$COUNT" -eq 5 ] \
+  || fail "拖动入口只有 ${COUNT} 处现读起手滚动量，应当 5 处（剪辑/形状/文字/字幕/滤镜）"
 # 9d. 除了几何入口，谁都不许自己去摸滚动位置。捏合那条是按坐标 hitTest 现找的
 # 独立路径（事件监视器里拿不到视图树），暂时豁免。
 OTHER_SCROLLER="$(grep -rn 'contentView\.bounds\.origin\|clipView\.scroll(to:' Sources/SrtFlow --include='*.swift' \

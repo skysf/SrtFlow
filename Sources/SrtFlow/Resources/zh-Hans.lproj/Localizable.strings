@@ -775,3 +775,11 @@
 "Between %@ and %@" = "%@ 与 %@ 之间";
 "Remove this transition" = "移除这条转场";
 "%@ · %.1fs — drag either edge to change the length" = "%@ · %.1f秒 —— 拖两边可以改长度";
+
+/* 时间轴上的滤镜（调色，2026-09-21） */
+"Filter" = "滤镜";
+"Name" = "名称";
+"Strength" = "强度";
+"Cold Iron" = "冷铁";
+"This filter grades every picture under it — text, shapes and subtitles stay untouched." = "这段滤镜会给它下面的所有画面调色，文字、形状和字幕不受影响。";
+"Remove this filter from the timeline" = "把这段滤镜从时间线上移除";

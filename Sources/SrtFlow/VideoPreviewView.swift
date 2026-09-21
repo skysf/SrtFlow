@@ -163,26 +163,3 @@ final class PlayerClock: ObservableObject {
 
     func pause() { player.pause() }
 }
-
-/// 用 AppKit 原生 AVPlayerView 代替 SwiftUI 的 VideoPlayer：
-/// VideoPlayer 走私有框架 _AVKit_SwiftUI，在某些系统版本上实例化即崩溃。
-struct PlayerViewRepresentable: NSViewRepresentable {
-    let player: AVPlayer
-    /// 烧字幕预览给 `.none`：自带的控件浮在画面底部，正好压住字幕，
-    /// 那一块恰恰是要看的地方，所以那边自己画播放条。
-    var controlsStyle: AVPlayerViewControlsStyle = .inline
-
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
-        view.player = player
-        view.controlsStyle = controlsStyle
-        view.showsFullScreenToggleButton = controlsStyle != .none
-        return view
-    }
-
-    func updateNSView(_ nsView: AVPlayerView, context: Context) {
-        if nsView.player !== player { nsView.player = player }
-        if nsView.controlsStyle != controlsStyle { nsView.controlsStyle = controlsStyle }
-    }
-}
-

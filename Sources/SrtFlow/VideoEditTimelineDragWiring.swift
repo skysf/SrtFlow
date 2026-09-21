@@ -74,6 +74,23 @@ extension VideoEditTimelineView {
         )
     }
 
+    /// 滤镜段起手的拖动。与形状/文字同构 —— 差别只在它的障碍是**同一层上**的
+    /// 其他滤镜段（见 `filterDragPlan`）：叠加靠分层，同一行里叠在一起只会
+    /// 互相盖住。
+    func beginFilterDrag(_ filter: FilterClip) {
+        project.clock.endPeek()
+        if project.selectedFilterID != filter.id {
+            project.selectFilter(filter.id)
+        }
+        guard let plan = project.filterDragPlan(filterID: filter.id) else { return }
+        clipDrag = ClipDragSession(
+            subject: .filter,
+            plan: plan,
+            originScrollOffset: scrollGeometry.offsetX,
+            originScrollOffsetY: scrollGeometry.offsetY
+        )
+    }
+
     /// 字幕 cue 起手的拖动。与剪辑/形状三处严格对称，包括「拖一个没选中的
     /// = 单选它再拖」这条语义。
     func beginCueDrag(_ cue: SubtitleCue) {
@@ -120,9 +137,10 @@ extension VideoEditTimelineView {
         }
         guard let drag = clipDrag else { return }
         switch drag.subject {
-        case .shape, .text, .subtitleCue:
-            // 这三类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
+        case .shape, .text, .subtitleCue, .filter:
+            // 这四类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
             // 和剪辑同一个 applyDrag（`commitFreeDrag`），位移只有一份。
+            // （滤镜段从不带伙伴：它进不了框选，所以成员表里只有它自己。）
             project.commitFreeDrag(drag.plan, resolution: drag.resolution)
         case .clip:
             // 水平平移、跨轨搬运、磁吸插空都在 commitDrag 的**同一次 perform**

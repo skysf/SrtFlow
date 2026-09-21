@@ -119,6 +119,13 @@ enum TimelineSnap {
             result.append(text.timelineEnd)
             end = max(end, text.timelineEnd)
         }
+        // 滤镜段的两端也是候选（拖它吸别人、拖别人也吸它）。但**不进 `end`**：
+        // 滤镜不算时间线总长（TimelineState.duration 不看它），那条「轨道末尾」
+        // 的候选不该被一段拖到片尾之外的滤镜拽长。
+        for filter in state.filters where !movingIDs.contains(filter.id) {
+            result.append(filter.timelineStart)
+            result.append(filter.timelineEnd)
+        }
         result.append(end)
         return result
     }
@@ -201,6 +208,7 @@ struct ClipDragPlan: Equatable {
             case shape
             case text
             case subtitleCue
+            case filter
         }
 
         var id: UUID

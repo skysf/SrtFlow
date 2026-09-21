@@ -19,6 +19,7 @@ struct ClipDragSession {
         case shape
         case text
         case subtitleCue
+        case filter
     }
 
     let subject: Subject

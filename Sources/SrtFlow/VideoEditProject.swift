@@ -52,6 +52,7 @@ final class VideoEditProject: ObservableObject {
             pruneSubtitleCueSelection()
             pruneMarkerSelection()
             pruneTransitionSeamSelection()
+            pruneFilterSelection()
             documentDidChange()
         }
     }
@@ -77,6 +78,13 @@ final class VideoEditProject: ObservableObject {
     private func pruneTransitionSeamSelection() {
         guard selection.transitionSeamID != nil else { return }
         selection.pruneTransitionSeam { state.hasVisibleTransition(afterOutgoing: $0) }
+    }
+
+    /// 选中的滤镜段还在不在（被删、撤销掉「加滤镜」那一步）。同样收在这个唯一
+    /// 入口 —— 留着的话时间线上没有任何东西高亮，⌫ 却还会去删一段看不见的滤镜。
+    private func pruneFilterSelection() {
+        guard selection.filterID != nil else { return }
+        selection.pruneFilter { id in state.filters.contains { $0.id == id } }
     }
 
     // MARK: - 工程文档（.srtflowproj）
@@ -258,6 +266,13 @@ final class VideoEditProject: ObservableObject {
         } else {
             selectedTextIDs = [id]
         }
+    }
+
+    /// 点选一段滤镜。没有加选 —— 滤镜段和标记、转场同族，只点选、不进框选
+    ///（理由见 `EditSelection.filterID`）。选中态的 `@Published` 写在这个文件里，
+    /// 因为 `selection` 是 `private(set)`。
+    func selectFilter(_ id: UUID?) {
+        selection.selectFilter(id)
     }
 
     /// 鼠标框选落地：四类一次写完，**整轮框选只写这一次**。
@@ -1009,6 +1024,12 @@ final class VideoEditProject: ObservableObject {
         // `pruneTransitionSeamSelection` 会顺着 state 的写入把它摘掉。
         if let seamID = selection.transitionSeamID {
             setTransition(after: seamID, .none)
+            return
+        }
+        // 选中的是一段滤镜：⌫ 删它，别去碰它下面那条轨上的素材。互斥由
+        // `EditSelection` 保证（选滤镜时剪辑选择已经清了）。
+        if let filterID = selection.filterID {
+            deleteFilter(filterID)
             return
         }
         var clipIDs = selectedClipIDs

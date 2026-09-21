@@ -640,6 +640,11 @@ struct TimelineState: Hashable, Sendable {
     /// 画面上的文字标注。数组顺序就是叠放次序（靠后的画在上面）。
     /// 整体压在形状之上、字幕之下，见 docs/architecture/text-overlays.md。
     var textOverlays: [TextOverlay] = []
+    /// 时间轴上的调色段。作用于自己那段时间里的**全部画面**（主轨 + 上层轨），
+    /// 不染形状/文字/字幕。叠加顺序由 `FilterClip.layer` 决定，
+    /// 见 docs/architecture/filters.md。
+    /// 这是 v17-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
+    var filters: [FilterClip] = []
     /// 输出画面比例（预览和导出共用）。
     var canvasRatio: CanvasRatio = .auto
     /// 工程帧率：预览合成、两条导出管线、预渲染、关键帧容差的唯一事实来源。
@@ -649,7 +654,7 @@ struct TimelineState: Hashable, Sendable {
     var isEmpty: Bool {
         mainClips.isEmpty && overlayTracks.allSatisfy(\.clips.isEmpty)
             && audioTracks.allSatisfy(\.clips.isEmpty) && subtitle == nil && shapes.isEmpty
-            && textOverlays.isEmpty
+            && textOverlays.isEmpty && filters.isEmpty
     }
 
     /// 整条时间线的长度：所有轨里最晚结束的那一刻。
@@ -659,6 +664,9 @@ struct TimelineState: Hashable, Sendable {
         for lane in audioTracks { end = max(end, lane.clips.map(\.timelineEnd).max() ?? 0) }
         for shape in shapes { end = max(end, shape.timelineEnd) }
         for text in textOverlays { end = max(end, text.timelineEnd) }
+        // **滤镜段不算**（产品口径，2026-09-21 拍板）：形状和文字自己就是画面，
+        // 拖到末尾之后理应把成片拉长；滤镜只是调色，染一段空白没有意义，
+        // 把工程撑长反而会凭空多出一截黑场。
         return end
     }
 
@@ -885,6 +893,26 @@ extension TimelineState {
                 return promoted
             }
         }
+        // 滤镜按**导出区间求交后平移**，不要求用户额外选中它：滤镜挂在时间范围
+        // 上，不是挂在某个片段上，「只导出选中的」当然该带着这段画面的调色走。
+        //
+        // 已知的边界：下面主轨独占时会 `packMain()` 拼紧凑，而滤镜是按时间平移
+        // 的。选的是连续几段时两者一致；选的是**不连续**的几段时，画面被拼拢了、
+        // 滤镜还按原来的时刻站着，会错位。宁可错位也不丢 —— 静默丢掉调色是
+        // 「导出成功但成片不是他要的」，那更难发现。
+        let windowStart = earliest
+        let windowEnd = picked.map(\.timelineEnd).max() ?? earliest
+        sub.filters = filters.compactMap { filter in
+            let start = max(filter.timelineStart, windowStart)
+            let end = min(filter.timelineEnd, windowEnd)
+            guard end - start > 0.0005 else { return nil }
+            var copy = filter
+            copy.timelineStart = start - earliest
+            copy.duration = end - start
+            return copy
+        }
+        // 整层都被切没了就把层号收拢，别在子时间线里留空层。
+        sub.compactFilterLayers()
         sub.canvasRatio = canvasRatio
         // 帧率必须跟着走：漏了这一行，选段导出会退回默认 24，与工程规格不符。
         sub.frameRate = frameRate
@@ -1185,7 +1213,7 @@ extension TimelineState: Codable {
         case mainClips, mainHidden, overlayTracks, audioTracks
         case subtitle, subtitleHidden, translationHidden
         case subtitleLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
-        case frameRate
+        case frameRate, filters
     }
 
     init(from decoder: Decoder) throws {
@@ -1204,6 +1232,8 @@ extension TimelineState: Codable {
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
         // v11 起才有。缺键 = 这个工程没有文字，不是出错。
         textOverlays = try c.decodeIfPresent([TextOverlay].self, forKey: .textOverlays) ?? []
+        // v17 起才有。缺键 = 这个工程没有调色段，不是出错。
+        filters = try c.decodeIfPresent([FilterClip].self, forKey: .filters) ?? []
         canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
         // v1–v4 没有这个字段，缺失即回退 24（与 ProjectFrameRate.fallback 一致）。
         frameRate = try c.decodeIfPresent(ProjectFrameRate.self, forKey: .frameRate) ?? .fallback
@@ -1228,6 +1258,8 @@ extension TimelineState: Codable {
         // 空数组不落盘：一个从没用过文字的工程不该因此被抬进 v11
         //（判据见 VideoEditFormatVersion.swift 的登记清单）。
         if !textOverlays.isEmpty { try c.encode(textOverlays, forKey: .textOverlays) }
+        // 同上：没用过滤镜的工程不该被抬进 v17，旧版照样能开。
+        if !filters.isEmpty { try c.encode(filters, forKey: .filters) }
         try c.encode(canvasRatio, forKey: .canvasRatio)
         // **无条件**写帧率：旧版把帧率硬编码成 30，省略这个键会让默认 24 的
         // 工程在旧版里按 30 渲染（见 VideoEditFormatVersion 的说明）。

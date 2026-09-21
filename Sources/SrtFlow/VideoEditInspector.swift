@@ -14,6 +14,8 @@ struct VideoEditInspectorView: View {
             VStack(alignment: .leading, spacing: 16) {
                 if let seam = project.selectedTransitionSeam {
                     transitionSelectionSection(seam)
+                } else if let filter = project.selectedFilter {
+                    filterSection(filter)
                 } else if let shape = project.selectedShape {
                     shapeSection(shape)
                 } else if let overlay = project.selectedTextOverlay {
@@ -465,6 +467,75 @@ struct VideoEditInspectorView: View {
                 .monospacedDigit()
                 .frame(width: 40, alignment: .trailing)
         }
+    }
+
+    // MARK: - 滤镜
+
+    /// 选中时间线上一段滤镜时的参数区：名称 + 强度。
+    ///
+    /// 强度模型里是 0…1，这里显示成 0–100 —— 和「不透明度」那些百分比参数
+    /// 同一个观感。0 = 原片（导出直接跳过这条 lut3d），但**不自动删段**。
+    @ViewBuilder
+    private func filterSection(_ filter: FilterClip) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "camera.filters").foregroundStyle(.secondary)
+            Text("Filter").fontWeight(.semibold)
+            Spacer()
+        }
+
+        Divider()
+
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text("Name")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 68, alignment: .leading)
+                Text(LocalizedStringKey(filter.preset.title))
+                    .font(.caption)
+                Spacer(minLength: 0)
+            }
+            // 滤镜不参与 AV 合成（调色挂在播放器视图上），松手不用重建预览。
+            labelledSlider(
+                "Strength",
+                value: liveFilterStrengthBinding(filter),
+                range: 0...1,
+                format: { String(format: "%.0f", $0 * 100) }
+            )
+        }
+
+        Divider()
+
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text("Shows for").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text(String(format: "%.1fs", filter.duration))
+                    .font(.caption)
+                    .monospacedDigit()
+            }
+            Text("This filter grades every picture under it — text, shapes and subtitles stay untouched.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Delete", systemImage: "trash", role: .destructive) {
+                    project.deleteFilter(filter.id)
+                }
+                .instantHelp("Remove this filter from the timeline", shortcut: .plain("⌫"))
+            }
+            .controlSize(.small)
+        }
+    }
+
+    private func liveFilterStrengthBinding(_ filter: FilterClip) -> Binding<Double> {
+        Binding(
+            get: {
+                project.state.filters.first { $0.id == filter.id }?.strength ?? filter.strength
+            },
+            set: { project.liveSetFilterStrength(filter.id, $0) }
+        )
     }
 
     // MARK: - 什么都没选：项目总览

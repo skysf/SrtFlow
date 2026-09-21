@@ -140,6 +140,10 @@ struct VideoEditTimelineView: View {
         var textLevel: Int?
         /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
         var subtitleKind: SubtitleRowKind?
+        /// 滤镜行的层号（nil = 不是滤镜行）。**和文字行不同，层号进模型**
+        ///（`FilterClip.layer`）—— LUT 不可交换，现算的层号会在拖动别的段时
+        /// 重排，画面跟着变。
+        var filterLayer: Int?
         /// 整轨隐藏中（灰显，不可编辑）。
         var isHidden = false
 
@@ -148,6 +152,9 @@ struct VideoEditTimelineView: View {
         /// 一条规则都不许在这儿写（空轨、隐藏轨那些边界都归它判）。
         var selectionRow: TimelineRowSelection.Row? {
             if isRuler { return nil }
+            // 滤镜行的轨道头点不出选择：滤镜是单选的（`EditSelection.filterID`），
+            // 「整行一起选」没地方放。点行头什么都不做，好过选中一批 ⌫ 删不掉的东西。
+            if filterLayer != nil { return nil }
             if let slot { return .track(slot) }
             if let subtitleKind { return .subtitle(subtitleKind) }
             if let textLevel { return .textLevel(textLevel) }
@@ -158,6 +165,15 @@ struct VideoEditTimelineView: View {
 
     private var rows: [RowSpec] {
         var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
+        // 滤镜行在**最顶上**：它作用于下面全部画面，不参与「行的上下顺序就是
+        // 叠放次序」那套视频轨语义，混进去只会让人以为它是一条能放素材的轨。
+        // 层号大的画在上面 —— 上面的后作用（docs/architecture/filters.md）。
+        for layer in (0..<project.state.filterLayerCount).reversed() {
+            result.append(RowSpec(
+                id: "filter-\(layer)", icon: "camera.filters", height: 26, slot: nil,
+                filterLayer: layer
+            ))
+        }
         // 上层视频轨：编号大的画在上面，行也放上面 —— 行的上下顺序就是叠放顺序。
         // 图标与主轨**同一个**：它们是对等的视频轨，区别只有叠放次序（行的位置
         // 已经表达了）和颜色。用 pip 图标会把「这是个小窗」的旧心智带回来。
@@ -386,6 +402,8 @@ struct VideoEditTimelineView: View {
                     clock.seek(to: min(max(0, time), project.duration), precise: precise)
                 }
             )
+        } else if let layer = row.filterLayer {
+            filterRow(layer: layer)
         } else if row.isShapes {
             shapesRow
         } else if let level = row.textLevel {

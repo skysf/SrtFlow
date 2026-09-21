@@ -775,3 +775,11 @@
 "Between %@ and %@" = "Between %@ and %@";
 "Remove this transition" = "Remove this transition";
 "%@ · %.1fs — drag either edge to change the length" = "%@ · %.1fs — drag either edge to change the length";
+
+/* 时间轴上的滤镜（调色，2026-09-21） */
+"Filter" = "Filter";
+"Name" = "Name";
+"Strength" = "Strength";
+"Cold Iron" = "Cold Iron";
+"This filter grades every picture under it — text, shapes and subtitles stay untouched." = "This filter grades every picture under it — text, shapes and subtitles stay untouched.";
+"Remove this filter from the timeline" = "Remove this filter from the timeline";
