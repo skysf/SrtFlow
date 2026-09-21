@@ -40,29 +40,113 @@ struct FilterRecipe: Hashable, Sendable {
 
 /// 内置的电影感预设。
 ///
-/// **第一刀只接「冷铁」一款**，其余九款在第二刀按同一份配方补齐 —— 那一刀是
-/// 纯数据，不动管线。
+/// **十款全是配方，没有一个外部 LUT 文件** —— 加一款只是在下面多一行数据，
+/// 不动任何管线代码，App 体积也不涨。`allCases` 的顺序就是滤镜库里卡片的顺序，
+/// 按「从最常用到最风格化」排。
 enum FilterPreset: String, CaseIterable, Identifiable, Hashable, Sendable {
+    case tealOrange
     case coldIron
+    case warmSun
+    case flatGrey
+    case nightGold
+    case fadedFilm
+    case coldWhite
+    case mistBlue
+    case inkShadow
+    case neon
 
     var id: String { rawValue }
 
     /// 界面上的名字。英文原文进字符串表，中文名在 zh-Hans 表里。
     var title: String {
         switch self {
+        case .tealOrange: return "Teal & Orange"
         case .coldIron: return "Cold Iron"
+        case .warmSun: return "Warm Sun"
+        case .flatGrey: return "Flat Grey"
+        case .nightGold: return "Night Gold"
+        case .fadedFilm: return "Faded Film"
+        case .coldWhite: return "Cold White"
+        case .mistBlue: return "Mist Blue"
+        case .inkShadow: return "Ink & Shadow"
+        case .neon: return "Neon"
         }
     }
 
     var recipe: FilterRecipe {
         switch self {
+        // 青橙：最典型的那一路大片调 —— 暗部压青、高光留暖，肤色因此跳出来。
+        case .tealOrange:
+            return FilterRecipe(
+                liftR: -0.02, liftG: 0.0, liftB: 0.03,
+                gainR: 1.06, gainG: 1.0, gainB: 0.92,
+                saturation: 1.12, contrast: 1.10
+            )
         // 冷铁：高对比、去饱和、往青绿偏、压死黑。就是「工业废土」那一路。
         case .coldIron:
             return FilterRecipe(
                 liftR: -0.015, liftG: 0.0, liftB: 0.012,
                 gainR: 0.94, gainG: 1.0, gainB: 1.06,
-                gammaR: 1.0, gammaG: 1.0, gammaB: 1.0,
                 saturation: 0.72, contrast: 1.18
+            )
+        // 暖阳：柯达味的暖黄，暗部微微抬起，对比压一点点 —— 生活感。
+        case .warmSun:
+            return FilterRecipe(
+                liftR: 0.02, liftG: 0.012, liftB: 0.0,
+                gainR: 1.05, gainG: 1.0, gainB: 0.93,
+                gammaG: 1.02,
+                saturation: 1.06, contrast: 0.96
+            )
+        // 灰纪：纪录片那种平调 —— 黑不死、白不爆、饱和压下来，信息优先。
+        case .flatGrey:
+            return FilterRecipe(
+                liftR: 0.03, liftG: 0.03, liftB: 0.03,
+                gainR: 0.95, gainG: 0.95, gainB: 0.95,
+                saturation: 0.78, contrast: 0.90
+            )
+        // 夜金：夜戏。黑压得更死，高光留琥珀色 —— 路灯和霓虹照样是暖的。
+        case .nightGold:
+            return FilterRecipe(
+                liftR: -0.01, liftG: -0.02, liftB: -0.025,
+                gainR: 1.04, gainG: 0.98, gainB: 0.88,
+                gammaR: 0.95, gammaG: 0.93, gammaB: 0.92,
+                saturation: 0.95, contrast: 1.20
+            )
+        // 褪色：老胶片。暗部整个抬起来（黑变灰）、对比压低、微微偏品红。
+        case .fadedFilm:
+            return FilterRecipe(
+                liftR: 0.055, liftG: 0.04, liftB: 0.05,
+                gainR: 0.97, gainG: 0.95, gainB: 0.96,
+                saturation: 0.85, contrast: 0.85
+            )
+        // 冷白：通透高调。中间调提亮、往冷白偏 —— 产品和室内那一路。
+        case .coldWhite:
+            return FilterRecipe(
+                liftG: 0.005, liftB: 0.015,
+                gainG: 1.02, gainB: 1.06,
+                gammaR: 1.08, gammaG: 1.08, gammaB: 1.08,
+                saturation: 0.92, contrast: 1.02
+            )
+        // 雾蓝：清晨薄雾。低对比、整体偏蓝、饱和压下来。
+        case .mistBlue:
+            return FilterRecipe(
+                liftR: 0.02, liftG: 0.03, liftB: 0.05,
+                gainR: 0.95, gainG: 0.98, gainB: 1.02,
+                gammaR: 1.03, gammaG: 1.03, gammaB: 1.03,
+                saturation: 0.80, contrast: 0.88
+            )
+        // 墨影：黑白 + 硬对比。饱和归零之后三个通道都等于亮度。
+        case .inkShadow:
+            return FilterRecipe(
+                gammaR: 0.98, gammaG: 0.98, gammaB: 0.98,
+                saturation: 0.0, contrast: 1.30
+            )
+        // 霓虹：赛博那一路。品红与青推到底，饱和拉满。
+        case .neon:
+            return FilterRecipe(
+                liftR: 0.02, liftG: -0.01, liftB: 0.04,
+                gainR: 1.05, gainG: 0.95, gainB: 1.12,
+                saturation: 1.45, contrast: 1.12
             )
         }
     }
@@ -194,6 +278,24 @@ extension TimelineState {
             if !occupied { return layer }
             layer += 1
         }
+    }
+
+    /// 从 `layer` 往上找第一个在 `[start, end)` 上空着的层；都满了就开新的一层。
+    ///
+    /// 拖卡片落地用它（指针指着哪一层就从哪一层起找），按 `+` 用上面那个
+    /// `lowestFreeFilterLayer`。「往上找」是产品口径：叠加合法之后落点不再有
+    /// 「撞车」，只有「摞上去」。
+    func freeFilterLayer(from layer: Int, start: Double, end: Double) -> Int {
+        var candidate = max(0, layer)
+        let ceiling = filterLayerCount
+        while candidate <= ceiling {
+            let occupied = filters.contains {
+                $0.layer == candidate && $0.overlaps(start: start, end: end)
+            }
+            if !occupied { return candidate }
+            candidate += 1
+        }
+        return ceiling
     }
 
     mutating func updateFilter(_ id: UUID, _ change: (inout FilterClip) -> Void) {

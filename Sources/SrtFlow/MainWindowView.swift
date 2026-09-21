@@ -91,10 +91,13 @@ struct MainWindowView: View {
         } detail: {
             detail
         }
-        .navigationTitle("SrtFlow")
-        // 标题栏的副标题要自己查表：它是桥到 AppKit 窗口上的，不走 SwiftUI 的
-        // 环境 locale，交给 LocalizedStringKey 的话中文界面下会漏成英文。
-        .navigationSubtitle(L10n(state.section.title))
+        // **标题栏不放应用名和栏目名**（2026-09-21 用户拍板：「SrtFlow / 视频剪辑
+        // 这几个字很多余」）。空标题是有意的：应用名 Dock 和菜单栏已经说了一遍，
+        // 栏目名左边的侧栏正高亮着，写在这儿只是把工具栏挤窄。
+        //
+        // 给空串而不是整个不写：不写的话 AppKit 会拿 CFBundleName 兜底，应用名
+        // 又回来了。
+        .navigationTitle("")
         // Translation Host：常驻零尺寸视图，字幕翻译的 session 只能活在它的
         // translationTask 闭包里（SubtitleGen/TranslationHost.swift）。
         .background {

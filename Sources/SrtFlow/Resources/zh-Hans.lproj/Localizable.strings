@@ -783,3 +783,20 @@
 "Cold Iron" = "冷铁";
 "This filter grades every picture under it — text, shapes and subtitles stay untouched." = "这段滤镜会给它下面的所有画面调色，文字、形状和字幕不受影响。";
 "Remove this filter from the timeline" = "把这段滤镜从时间线上移除";
+
+/* 滤镜库与十款预设（2026-09-21，刀 2） */
+"Library" = "素材库";
+"Filters" = "滤镜";
+"Show or hide the transition and filter library" = "显示或隐藏转场与滤镜库";
+"Add this filter at the playhead" = "在播放头处添加这款滤镜";
+"Add a clip to the main track to see each filter on your own footage." = "往主轨加一段素材，就能看到每款滤镜用在你自己画面上的样子。";
+"Move the playhead over a clip to see each filter on your own footage." = "把播放头移到有画面的地方，就能看到每款滤镜用在你自己画面上的样子。";
+"Teal & Orange" = "青橙";
+"Warm Sun" = "暖阳";
+"Flat Grey" = "灰纪";
+"Night Gold" = "夜金";
+"Faded Film" = "褪色";
+"Cold White" = "冷白";
+"Mist Blue" = "雾蓝";
+"Ink & Shadow" = "墨影";
+"Neon" = "霓虹";

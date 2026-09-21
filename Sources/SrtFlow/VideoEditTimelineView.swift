@@ -56,6 +56,9 @@ struct VideoEditTimelineView: View {
     /// 从转场库拖卡片进来时的落点框。**只是视图状态** —— 拖动过程中一个字都不
     /// 写 `TimelineState`（§0），模型只在松手那一下改一次。
     @State private var transitionDrop: TransitionDropPreview?
+    /// 从滤镜库拖卡片进来时的落点。落点挂在**整块滚动内容**上而不是某一行 ——
+    /// 滤镜落在哪一层由指针的纵向位置决定，得拿得到 y（见 VideoEditFilterDrag.swift）。
+    @State private var filterDrop: FilterDropPlan?
     /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
     ///
     /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
@@ -319,7 +322,9 @@ struct VideoEditTimelineView: View {
 
             // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
             // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
-            TimelineAlignmentGuides(times: clipDrag?.guides ?? [], pixelsPerSecond: pps)
+            TimelineAlignmentGuides(
+                times: clipDrag?.guides ?? filterDrop?.guides ?? [], pixelsPerSecond: pps
+            )
 
             // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
             // 一眼看出这 6 秒会占到哪里（时刻和宽度由 TimelineSnap.mainInsertion
@@ -333,6 +338,17 @@ struct VideoEditTimelineView: View {
             // relocateClip 共用同一份挤开算法 —— 框不说谎）。
             if let ghost = crossTrackGhost {
                 dropPlaceholder(span: ghost.span, y: ghost.y, height: ghost.height)
+            }
+
+            // 拖滤镜卡片进来时的落点框。和滤镜块同一套几何（同一份
+            // FilterBlockMetrics），所以松手之后块在哪儿、框就在哪儿。
+            if let filterDrop {
+                FilterDropIndicator(
+                    plan: filterDrop,
+                    pps: pps,
+                    // 这一层还没有行：新行会长在标尺底下那一条的位置。
+                    fallbackY: rowLayouts().first { !$0.spec.isRuler }?.minY ?? 2
+                )
             }
 
             // 滚动量的现读与自动滚动都要直接摸 NSScrollView，放个零尺寸参照物
@@ -378,6 +394,22 @@ struct VideoEditTimelineView: View {
             playhead
         }
         .contentShape(Rectangle())
+        // 从滤镜库拖卡片进来。**挂在整块内容上**而不是某一行：滤镜落在哪一层
+        // 由指针的纵向位置决定，挂一行就拿不到 y 了（转场只能落主轨那一条缝，
+        // 所以那边挂在行上）。载荷类型是自定义的，和 `.onDropOfFiles`、
+        // 转场卡片三者各认各的，不会打架。
+        .onDrop(
+            of: [FilterDrag.type],
+            delegate: FilterDropDelegate(
+                project: project,
+                pps: pps,
+                rowLayouts: rowLayouts(),
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: CGSize(width: viewportWidth, height: viewportHeight),
+                preview: $filterDrop
+            )
+        )
         // 点空白处：三类选择一起取消（含字幕 cue —— 漏了它，拖框会在没有任何
         // 选中项的界面上继续挂着）。
         .onTapGesture { project.clearSelection() }

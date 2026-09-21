@@ -33,11 +33,12 @@ struct VideoEditView: View {
     var body: some View {
         VSplitView {
             HSplitView {
-                // 转场库：预览左边的一栏，只占上半区 —— 时间线仍然通栏。
+                // 素材库（转场 / 滤镜两页）：预览左边的一栏，只占上半区 ——
+                // 时间线仍然通栏。
                 // 宽度预算：库 196 + 预览 430 + 检查器 252 = 878，没超过下面那
                 // 条 minWidth 900，所以加这一栏不用抬窗口的最小宽度。
                 if showsTransitionLibrary {
-                    TransitionLibraryPanel(project: project, clock: clock)
+                    LibraryColumn(project: project, clock: clock)
                         .frame(minWidth: 196, idealWidth: 220, maxWidth: 340)
                 }
                 previewPane
@@ -147,11 +148,11 @@ struct VideoEditView: View {
                     showsTransitionLibrary.toggle()
                 } label: {
                     Label(
-                        "Transitions",
+                        "Library",
                         systemImage: "square.filled.and.line.vertical.and.square"
                     )
                 }
-                .instantHelp("Show or hide the transition library")
+                .instantHelp("Show or hide the transition and filter library")
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if exporter.isExporting {

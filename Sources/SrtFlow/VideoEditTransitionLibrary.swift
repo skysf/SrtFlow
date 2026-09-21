@@ -8,6 +8,9 @@ import SwiftUI
 ///
 /// 只长在「视频剪辑」这一栏的上半区（与预览、检查器同高），时间线仍然通栏
 /// —— 和参照的剪映布局一致。
+///
+/// **自己不画标题行**：这一栏顶上那个「转场 / 滤镜」分段切换就是标题
+///（见 `VideoEditLibraryColumn.swift`），再画一行就是一栏里两行标题。
 struct TransitionLibraryPanel: View {
     @ObservedObject var project: VideoEditProject
     /// 必须直接订阅时钟：没有选中片段时目标接缝是「播放头最近的那条」，
@@ -21,8 +24,6 @@ struct TransitionLibraryPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            header
-            Divider()
             if let note = unavailableNote {
                 Text(note)
                     .font(.caption2)
@@ -43,18 +44,6 @@ struct TransitionLibraryPanel: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-    }
-
-    private var header: some View {
-        HStack(spacing: 5) {
-            Label("Transitions", systemImage: "square.filled.and.line.vertical.and.square")
-                .font(.callout)
-                .fontWeight(.medium)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .instantHelp("Click a card to put that transition on the current seam")
     }
 
     private var seam: TransitionSeam? {

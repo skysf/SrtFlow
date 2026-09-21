@@ -783,3 +783,20 @@
 "Cold Iron" = "Cold Iron";
 "This filter grades every picture under it — text, shapes and subtitles stay untouched." = "This filter grades every picture under it — text, shapes and subtitles stay untouched.";
 "Remove this filter from the timeline" = "Remove this filter from the timeline";
+
+/* 滤镜库与十款预设（2026-09-21，刀 2） */
+"Library" = "Library";
+"Filters" = "Filters";
+"Show or hide the transition and filter library" = "Show or hide the transition and filter library";
+"Add this filter at the playhead" = "Add this filter at the playhead";
+"Add a clip to the main track to see each filter on your own footage." = "Add a clip to the main track to see each filter on your own footage.";
+"Move the playhead over a clip to see each filter on your own footage." = "Move the playhead over a clip to see each filter on your own footage.";
+"Teal & Orange" = "Teal & Orange";
+"Warm Sun" = "Warm Sun";
+"Flat Grey" = "Flat Grey";
+"Night Gold" = "Night Gold";
+"Faded Film" = "Faded Film";
+"Cold White" = "Cold White";
+"Mist Blue" = "Mist Blue";
+"Ink & Shadow" = "Ink & Shadow";
+"Neon" = "Neon";

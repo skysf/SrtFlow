@@ -182,6 +182,42 @@ func lutMath() {
         }
     }
     check(textMatches, ".cube 的每一行都对上表里同一个格点（顺序：r 变最快）")
+
+    // 表是不是真的按配方算的：抽几个格点，和 `apply` 的结果逐一对上。
+    // 这一条把「表」钉死在「配方」上，下面的像素比对才有意义。
+    var tableMatchesRecipe = true
+    let step = 1.0 / Double(n - 1)
+    for preset in FilterPreset.allCases {
+        let table = FilterLUT.fullTable(for: preset)
+        for (ri, gi, bi) in [(0, 0, 0), (n - 1, n - 1, n - 1), (7, 19, 3), (n - 1, 0, 11)] {
+            let index = ((bi * n + gi) * n + ri) * 4
+            let expected = FilterLUT.apply(
+                preset.recipe, (Double(ri) * step, Double(gi) * step, Double(bi) * step)
+            )
+            if abs(Double(table[index]) - expected.r) > 1e-5
+                || abs(Double(table[index + 1]) - expected.g) > 1e-5
+                || abs(Double(table[index + 2]) - expected.b) > 1e-5 {
+                tableMatchesRecipe = false
+            }
+        }
+    }
+    check(tableMatchesRecipe, "每款滤镜的表都是它自己配方在格点上的取值")
+
+    // 十款各不相同，而且都真的动了画面。
+    // 反例守卫：配方写成全默认（复制粘贴漏改）时，那一款等于什么都没做，
+    // 用户点了看不出变化，却完全没有报错。
+    check(FilterPreset.allCases.count == 10, "十款预设都在")
+    var allDistinct = true
+    var allDoSomething = true
+    var seen: [[Float]] = []
+    for preset in FilterPreset.allCases {
+        let table = FilterLUT.fullTable(for: preset)
+        if table == identity { allDoSomething = false }
+        if seen.contains(table) { allDistinct = false }
+        seen.append(table)
+    }
+    check(allDoSomething, "没有哪一款的配方等于恒等（那是复制粘贴漏改）")
+    check(allDistinct, "十款的表两两不同")
 }
 
 // MARK: - 二、模型
@@ -228,6 +264,20 @@ func model() {
     let baseDuration = withClip.duration
     withClip.filters = [FilterClip(preset: .coldIron, timelineStart: 30, duration: 3, layer: 0)]
     checkClose(withClip.duration, baseDuration, 1e-9, "拖到片尾之外的滤镜不该把工程撑长")
+
+    // 拖卡片落层：从指针所在的那一层**往上**找空层，都满了就开新的一层。
+    var drop = TimelineState()
+    drop.filters = [
+        FilterClip(preset: .coldIron, timelineStart: 0, duration: 4, layer: 0),
+        FilterClip(preset: .neon, timelineStart: 0, duration: 4, layer: 1),
+    ]
+    check(drop.freeFilterLayer(from: 0, start: 1, end: 3) == 2,
+          "指着第 0 层但它和第 1 层都被占了 → 开第 2 层")
+    check(drop.freeFilterLayer(from: 1, start: 1, end: 3) == 2, "指着第 1 层同理")
+    check(drop.freeFilterLayer(from: 0, start: 10, end: 13) == 0,
+          "错开的时间段上第 0 层是空的 → 就落第 0 层")
+    check(drop.freeFilterLayer(from: 5, start: 1, end: 3) == 2,
+          "指到比现有层数还高的地方，夹回「新的一层」")
 
     // 存盘、v17 登记与往返保真在 checks/ProjectFile/main.swift 第 25 节。
 
@@ -324,14 +374,31 @@ func parity() async {
         UInt8((decoded.2 * 255).rounded())
     )
 
-    let preset = FilterPreset.coldIron
+    // 预览那条路单独对十款都过一遍（不用跑 ffmpeg，很便宜）：一款配方写错
+    // 只会让那一款不对，靠一款代表验不出来。
+    for preset in FilterPreset.allCases {
+        let expected = lookup(FilterLUT.fullTable(for: preset), (
+            Double(decoded8.0) / 255, Double(decoded8.1) / 255, Double(decoded8.2) / 255
+        ))
+        guard let rendered = previewPixel(decoded8, preset: preset, strength: 1) else {
+            check(false, "\(preset.rawValue)：CoreImage 渲不出来"); continue
+        }
+        checkClose(rendered.0, expected.0, 1.5 / 255, "\(preset.rawValue) 预览 R 对得上查表结果")
+        checkClose(rendered.1, expected.1, 1.5 / 255, "\(preset.rawValue) 预览 G 对得上查表结果")
+        checkClose(rendered.2, expected.2, 1.5 / 255, "\(preset.rawValue) 预览 B 对得上查表结果")
+    }
+
     let info = MediaInfo(
         duration: 3, displaySize: CGSize(width: 320, height: 180), frameRate: 30,
         videoCodec: "h264", audioCodec: nil, hasAudio: false,
         audioCanCopyToMP4: false, fileBytes: 1
     )
 
-    for strength in [1.0, 0.6] {
+    // 真跑 ffmpeg 的三组。`inkShadow` 特意选进来：它带 gamma（非线性）且饱和
+    // 归零，和线性的 `coldIron` 是两种形状，能把「表逼近配方」那一段也走到。
+    for (preset, strength) in [
+        (FilterPreset.coldIron, 1.0), (FilterPreset.coldIron, 0.6), (FilterPreset.inkShadow, 1.0),
+    ] {
         var state = TimelineState()
         state.frameRate = .fallback
         state.canvasRatio = .wide16x9
@@ -346,7 +413,7 @@ func parity() async {
             )
         ]
 
-        let output = root.appendingPathComponent("graded-\(strength).mp4")
+        let output = root.appendingPathComponent("graded-\(preset.rawValue)-\(strength).mp4")
         let plan: VideoEditExportGraph.Plan
         do {
             plan = try await VideoEditExportGraph.plan(
@@ -363,7 +430,7 @@ func parity() async {
         defer { try? FileManager.default.removeItem(at: plan.workspace) }
 
         let joined = plan.arguments.joined(separator: " ")
-        check(joined.contains("lut3d=file=filter0.cube"), "滤镜链真的用上了 lut3d（强度 \(strength)）")
+        check(joined.contains("lut3d=file=filter0.cube"), "滤镜链真的用上了 lut3d（\(preset.rawValue) 强度 \(strength)）")
         check(joined.contains("interp=trilinear"), "必须显式写 interp=trilinear（默认是 tetrahedral）")
         check(joined.contains("format=gbrp"), "lut3d 之前要把像素格式钉成 RGB")
         check(joined.contains("enable='between(t,1,2.5)'"), "enable 区间就是滤镜段的起止")
@@ -384,46 +451,45 @@ func parity() async {
         }
         try? FileManager.default.moveItem(at: plan.tempOutput, to: output)
 
-        // ① 配方算出来的值（三方里的「应该是多少」）。
+        // ① 「应该是多少」= 拿**这一份表**三线性查一次。
+        //
+        // 注意不能拿 `FilterLUT.apply(recipe, …)` 当期望值：带 gamma 的配方是
+        // 非线性的，33³ 的表只是它的逼近，两条管线实现的都是**查表**而不是配方
+        // 本身。表和配方的关系由上面那条「格点对得上」守（lutMath）。
         let normalized = (
             Double(decoded8.0) / 255, Double(decoded8.1) / 255, Double(decoded8.2) / 255
         )
-        let graded = FilterLUT.apply(preset.recipe, normalized)
-        let expected = (
-            normalized.0 + (graded.r - normalized.0) * strength,
-            normalized.1 + (graded.g - normalized.1) * strength,
-            normalized.2 + (graded.b - normalized.2) * strength
-        )
+        let expected = lookup(FilterLUT.table(for: preset, strength: strength), normalized)
 
         // ② 预览那条路。
         guard let preview = previewPixel(decoded8, preset: preset, strength: strength) else {
             check(false, "CoreImage 渲不出来"); continue
         }
         // CoreImage 只有 8bit 量化误差，容差给 1.5/255。
-        checkClose(preview.0, expected.0, 1.5 / 255, "预览 R 对得上配方（强度 \(strength)）")
-        checkClose(preview.1, expected.1, 1.5 / 255, "预览 G 对得上配方（强度 \(strength)）")
-        checkClose(preview.2, expected.2, 1.5 / 255, "预览 B 对得上配方（强度 \(strength)）")
+        checkClose(preview.0, expected.0, 1.5 / 255, "预览 R 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(preview.1, expected.1, 1.5 / 255, "预览 G 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(preview.2, expected.2, 1.5 / 255, "预览 B 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
 
         // ③ 导出那条路。多一趟 yuv 往返 + 一次有损编码，容差给 4/255。
         guard let exported = exportedPixel(output, at: 1.6) else {
             check(false, "成片像素取不到"); continue
         }
-        checkClose(exported.0, expected.0, 4 / 255, "成片 R 对得上配方（强度 \(strength)）")
-        checkClose(exported.1, expected.1, 4 / 255, "成片 G 对得上配方（强度 \(strength)）")
-        checkClose(exported.2, expected.2, 4 / 255, "成片 B 对得上配方（强度 \(strength)）")
+        checkClose(exported.0, expected.0, 4 / 255, "成片 R 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(exported.1, expected.1, 4 / 255, "成片 G 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(exported.2, expected.2, 4 / 255, "成片 B 对得上查表结果（\(preset.rawValue) 强度 \(strength)）")
 
         // ④ 预览和导出互相对得上（这一刀的验收项本身）。
-        checkClose(exported.0, preview.0, 4 / 255, "预览 R == 成片 R（强度 \(strength)）")
-        checkClose(exported.1, preview.1, 4 / 255, "预览 G == 成片 G（强度 \(strength)）")
-        checkClose(exported.2, preview.2, 4 / 255, "预览 B == 成片 B（强度 \(strength)）")
+        checkClose(exported.0, preview.0, 4 / 255, "预览 R == 成片 R（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(exported.1, preview.1, 4 / 255, "预览 G == 成片 G（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(exported.2, preview.2, 4 / 255, "预览 B == 成片 B（\(preset.rawValue) 强度 \(strength)）")
 
         // ⑤ `enable` 区间之外必须是原片。
         guard let before = exportedPixel(output, at: 0.4) else {
             check(false, "区间外像素取不到"); continue
         }
-        checkClose(before.0, normalized.0, 4 / 255, "滤镜段之前是原色 R（强度 \(strength)）")
-        checkClose(before.1, normalized.1, 4 / 255, "滤镜段之前是原色 G（强度 \(strength)）")
-        checkClose(before.2, normalized.2, 4 / 255, "滤镜段之前是原色 B（强度 \(strength)）")
+        checkClose(before.0, normalized.0, 4 / 255, "滤镜段之前是原色 R（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(before.1, normalized.1, 4 / 255, "滤镜段之前是原色 G（\(preset.rawValue) 强度 \(strength)）")
+        checkClose(before.2, normalized.2, 4 / 255, "滤镜段之前是原色 B（\(preset.rawValue) 强度 \(strength)）")
     }
 
     // 强度 0 整条跳过：成片应当和原片一样，滤镜图里连 lut3d 都不该有。
@@ -434,7 +500,7 @@ func parity() async {
         EditClip(sourceURL: source, sourceDuration: 3, timelineStart: 0, info: info)
     ]
     zero.filters = [
-        FilterClip(preset: preset, strength: 0, timelineStart: 0, duration: 3, layer: 0)
+        FilterClip(preset: .coldIron, strength: 0, timelineStart: 0, duration: 3, layer: 0)
     ]
     do {
         let plan = try await VideoEditExportGraph.plan(
