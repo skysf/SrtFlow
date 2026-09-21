@@ -38,7 +38,27 @@ extension VideoEditProject {
         return filter.id
     }
 
-    /// 滤镜库里点一张卡片（第二刀接界面，规则先落在这里）。
+    /// 落一段滤镜到指定的位置和层（拖卡片落地走这条）。
+    ///
+    /// 和 `addFilter(_:)` 的分工：那个是「在播放头加一段」，落点规则自己算；
+    /// 这个是「就落在这儿」，落点已经由拖动中的落点框定好了 —— 两者必须是
+    /// 同一次 `perform`、同一种选中行为，不然撤销栈和选中态会各说各的。
+    @discardableResult
+    func addFilter(
+        _ preset: FilterPreset, at start: Double, duration: Double, layer: Int
+    ) -> UUID {
+        let filter = FilterClip(
+            preset: preset,
+            timelineStart: max(0, start),
+            duration: max(FilterClip.minimumDuration, duration),
+            layer: max(0, layer)
+        )
+        perform(rebuildsPreview: false) { $0.filters.append(filter) }
+        selectFilter(filter.id)
+        return filter.id
+    }
+
+    /// 滤镜库里点一张卡片。
     ///
     /// **选中了某一段就替换它的种类**（时长、强度、层号都不动 —— 「换个滤镜
     /// 试试」是最常见的意图，和转场库「点卡片只换种类不改时长」同一口径）；
