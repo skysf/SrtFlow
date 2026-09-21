@@ -40,7 +40,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 4. 案例中形成的长期约束（“这里只能这样做”）必须另写或更新
    `docs/architecture/` 文档，再由案例链接过去，不能只留在一次性事故记录里。
 5. 其他新文档归入 `docs/` 对应分类，并在本文件补索引；能更新既有文档时不要另造
-   一份相互竞争的说明。
+   一份相互竞争的说明。**补索引不是礼节，是必需**：别的代理只读本文件，索引里
+   没有的文档它们永远不会打开 —— 由 `checks/docs-index-drift.sh` 钉住（漏一份
+   或留一条死链就红）。
 
 ### 语言
 
@@ -153,6 +155,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
 - 翻译配对预检与接线：`scripts/check-translation-preflight.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
+- 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
+  `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
+  所以漏一行等于那份文档不存在。
 
 ## 规划与实施报告索引
 
@@ -239,7 +244,12 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-18 框选的框不跟鼠标](docs/bugfixes/2026-09-18-marquee-anchored-at-stale-scroll-offset.md) — 手势要用的量必须现读 NSScrollView，preference/@State 这类异步观察值在起手那一拍还是旧的；全时间线只有框选用绝对坐标，所以只有它会露馅。
 - [2026-09-18 预渲染烤进了该让位的渐变](docs/bugfixes/2026-09-18-prerender-fade-ignores-transition.md) — 临时时间线没有邻居，任何依赖邻居的仲裁都必须由调用方算好传进去；仲裁只能有一处。
 - [2026-09-18 自检脚本的源文件清单漏掉新依赖](docs/bugfixes/2026-09-18-check-script-source-list-drift.md) — 手抄的清单会漂，八项检查齐红在同一条编译错误上。
+- [2026-09-20 磁吸关着时转场预览有、成片没有](docs/bugfixes/2026-09-20-transition-preview-export-divergence.md) — 「两段是否真相叠」导出和预览各用一套判据；回归断言只造了相叠的几何，所以一直假绿。
+- [2026-09-20 拖短转场时遮罩整块往右挪](docs/bugfixes/2026-09-20-transition-mask-drifts-when-shortened.md) — 宽度有下限、位置没跟着补偿，撑出来的几个 pt 全长在右边。
+- [2026-09-20 悬停光标卡住](docs/bugfixes/2026-09-20-hover-cursor-stack.md) — 全 App 共用一个 `NSCursor` 栈，漏押/错弹一次就全局卡住；第一版「自己记账」没修对，靠探针 + 两进程对读 `NSCursor.current` 才定的性。
+- [2026-09-20 播放头断线、点标尺没反应](docs/bugfixes/2026-09-20-playhead-line-broken-and-ruler-dead.md) — 内容比视口矮时被 SwiftUI 纵向居中：线只画中间一段、标尺的命中区没跟着 `.offset` 走。
 - [2026-09-21 源文件清单守卫只盯着枢纽文件](docs/bugfixes/2026-09-21-source-list-guard-only-watched-the-hub.md) — 上面那条守卫只算一个文件的同伴，另外两类漏项看不见；本地全绿、CI 六项编不过。守卫已扩到清单里的每一个文件，并写明「别开只有 extension 的文件」这条盲区。
+- [2026-09-21 刚加进轨道的素材没贴左边](docs/bugfixes/2026-09-21-timeline-content-centered-horizontally.md) — 上一条的**横向孪生**：只修了纵向、守卫也只钉了纵向，于是「工程短 + 窗口宽」下整条时间线飘到视口中间，还把框选的 `内容 x = 视口 x + offsetX` 打破了。两轴一起钉。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

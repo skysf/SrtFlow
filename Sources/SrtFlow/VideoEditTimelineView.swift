@@ -268,13 +268,20 @@ struct VideoEditTimelineView: View {
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
                     scrolledContent
                         .frame(width: contentWidth, alignment: .topLeading)
-                        // 至少填满视口、顶对齐。内容比视口矮时（轨道少，这是常
-                        // 态）不撑满的话 SwiftUI 会把它在纵向**居中**，于是：
-                        // 播放头那条线只画在中间那一段，上面接不到标尺 —— 用户
-                        // 看见的就是「指针是断的」；而标尺靠 `.offset` 被拉回视
-                        // 口顶上之后，它的**命中区没跟过去**，点标尺 seek 不了。
-                        // 两个症状同一个根：内容不该被居中。
-                        .frame(minHeight: viewportHeight, alignment: .top)
+                        // 至少填满视口、左上角对齐。**两轴都要**：内容比视口小
+                        // 时 SwiftUI 的 ScrollView 会把它居中（实测 800 宽的视口
+                        // 放 200 宽的内容，内容 minX = 300），于是：
+                        // - 纵向（轨道少，这是常态）：播放头那条线只画在中间那
+                        //   一段，上面接不到标尺 —— 用户看见的就是「指针是断
+                        //   的」；而标尺靠 `.offset` 被拉回视口顶上之后，它的
+                        //   **命中区没跟过去**，点标尺 seek 不了。
+                        // - 横向（工程短、窗口宽，同样是常态）：整条时间线连标
+                        //   尺带轨道一起飘到视口中间，看着就是「刚加进来的素材
+                        //   没贴左边」；更要命的是框选的
+                        //   `内容 x = 视口 x + offsetX` 这个前提被打破，框会整
+                        //   体画到指针右边 (视口宽 - 内容宽)/2 那么远。
+                        // 全是同一个根：内容不该被居中。
+                        .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
                 }
                 // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
                 // 由 TimelineMagnificationBridge 里的 local monitor 处理。
