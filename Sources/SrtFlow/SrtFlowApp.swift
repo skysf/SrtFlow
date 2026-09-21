@@ -10,6 +10,69 @@ enum WindowID {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
+    // MARK: - 剪切 / 拷贝 / 粘贴（目前只认剪辑页的滤镜段）
+    //
+    // **实现在 app delegate 上**，也就是响应链的最末端。两条理由：
+    //
+    // 一、**输入框优先，白捡的**。文本视图在响应链上排在前面，输入框里的 ⌘C
+    //    还是复制文字，轮不到这里。自己监听按键的话，这件事得手写一遍。
+    //
+    // 二、**自己监听按键在 ⌘V 上直接不成立**（2026-09-21 实测）：⌘C 能收到，
+    //    ⌘V 收不到 —— 系统「编辑」菜单里 Paste 是**亮**的（有别人响应
+    //    `paste:`），键盘等价符在本地监听之前就被它吃掉了；Copy 是灰的所以漏了
+    //    下来。一半通一半不通最难查，索性整件事交给响应链。
+    //
+    // 附带的好处：菜单项的亮灭由 `validateMenuItem` 说了算，不再是点了没反应。
+
+    /// 这一刻这三个动作管不管用：只在剪辑页，而且剪辑页没在打字。
+    ///
+    /// 菜单动作和 `validateMenuItem` 都由 AppKit 在主线程上调，所以
+    /// `assumeIsolated` 是成立的 —— 但这几个入口是 `@objc`，签名上不能带
+    /// `@MainActor`，只能在里面声明。
+    @MainActor
+    private var pasteboardActionsApply: Bool {
+        guard MainWindowState.shared.section == .videoEdit else { return false }
+        // 正在输入框里打字时，第一响应者是文本视图，本来就轮不到 delegate；
+        // 这条是双保险，也顺手把「字幕草稿开着」那种第一响应者会偶发丢掉的
+        // 情况挡住（同 VideoEditView.handleEvent 的那条纪律）。
+        if NSApp.keyWindow?.firstResponder is NSTextView { return false }
+        return VideoEditProject.shared.subtitleDraft == nil
+    }
+
+    @objc func copy(_ sender: Any?) {
+        MainActor.assumeIsolated {
+            guard pasteboardActionsApply else { return }
+            _ = VideoEditProject.shared.copySelectedFilter()
+        }
+    }
+
+    @objc func cut(_ sender: Any?) {
+        MainActor.assumeIsolated {
+            guard pasteboardActionsApply else { return }
+            _ = VideoEditProject.shared.cutSelectedFilter()
+        }
+    }
+
+    @objc func paste(_ sender: Any?) {
+        MainActor.assumeIsolated {
+            guard pasteboardActionsApply else { return }
+            VideoEditProject.shared.pasteFilter()
+        }
+    }
+
+    func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+        MainActor.assumeIsolated {
+            switch menuItem.action {
+            case #selector(copy(_:)), #selector(cut(_:)):
+                return pasteboardActionsApply && VideoEditProject.shared.selectedFilter != nil
+            case #selector(paste(_:)):
+                return pasteboardActionsApply && FilterClipboard.read() != nil
+            default:
+                return true
+            }
+        }
+    }
+
     /// 拖到 App 图标上、或者用「打开方式 → SrtFlow」进来的文件。
     ///
     /// 字幕文件（双击 .srt 也走这里）去烧录页的字幕列编辑；带字幕的视频去烧录，

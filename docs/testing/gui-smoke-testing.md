@@ -57,6 +57,13 @@
   （修饰键设 `event.flags = .maskCommand`，Esc=53、⌫=51、Z=6 可发 ⌘Z）。
   System Events 的 `click at {x,y}` 走 AX 动作，是备用点击路径（SwiftUI 的
   剪辑块会被解析成 AX button）。
+- **注入带修饰键的按键必须先单独发一拍 flagsChanged，且每拍之间留 ~30ms**
+  （2026-09-21 实测）：只发 `keyDown`/`keyUp` 且背靠背时，**每 5 次丢 1 次** ——
+  App 那边的本地监听根本没收到那一下。丢事件会被误判成「功能没生效」，我在滤镜
+  复制粘贴那一刀上就是这么查了半天产品代码，最后发现是注入的问题。
+  改成「⌘ 按下 → 键按下 → 键抬起 → ⌘ 抬起」四拍、每拍后 `usleep(30_000)`，
+  实测 8/8 全中。**任何一次「按了没反应」的结论，先把同一个键连发几次数一数**，
+  再去怀疑产品。
 - **录制控制窗（`sharingType = .none`）自动化够不着**（2026-08-11 实测）：
   `screencapture -l <id>` 拍出来是空白，`CGWindowListCopyWindowInfo` 里
   `kCGWindowIsOnscreen = false`，AX 树和 System Events 的 windows 里也没有它，
