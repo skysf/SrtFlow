@@ -455,7 +455,12 @@ struct VideoEditTimelineView: View {
         .onDrop(
             of: slot.isMain && !hidden ? [TransitionDrag.type] : [],
             delegate: TransitionDropDelegate(
-                project: project, pps: pps, preview: $transitionDrop
+                project: project,
+                pps: pps,
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: CGSize(width: viewportWidth, height: viewportHeight),
+                preview: $transitionDrop
             )
         )
     }

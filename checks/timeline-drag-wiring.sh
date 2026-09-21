@@ -578,6 +578,35 @@ NON_DROP="$(awk '/struct TransitionDropDelegate/,/^\}/' "$DRAG" \
   | grep -nE 'project\.(perform|liveApply|applyTransition|setTransition)' || true)"
 [ -z "$NON_DROP" ] || fail "落点代理在拖动过程中写了模型（只有 performDrop 能落地）：$NON_DROP"
 
+# 9) 拖到视口边缘要把时间线推走，否则屏幕外的接缝永远够不着。心跳和剪辑拖动
+#    共用同一台 —— 再起一台就又多一个「什么时候推、推多快」的来源。
+[ "$(drag_hits "$DRAG" 'autoScroller\.update\(')" -ne 0 ] \
+  || fail "转场落点没接边缘自动滚动：拖不到屏幕外的接缝"
+
+# 10) 心跳不许比这一轮拖放活得久：离开和落地两条路都要 stop()，
+#     少一条 RunLoop 上就留着一个 60Hz 的空转 timer。
+if EXIT_BODY="$(awk '/func dropExited\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
+  printf '%s\n' "$EXIT_BODY" | grep -q 'autoScroller.stop()' \
+    || fail "dropExited 没停心跳：指针离开后时间线会一直自己滚"
+fi
+if DROP_BODY2="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
+  printf '%s\n' "$DROP_BODY2" | grep -q 'autoScroller.stop()' \
+    || fail "performDrop 没停心跳：松手后时间线会一直自己滚"
+fi
+
+# 11) **只横着滚**。转场只落在主轨那一行，纵向滚下去反而把主轨滚出视口、落点当场
+#     消失。传 height: 0 让心跳的纵向那一半整个跳过。
+[ "$(drag_hits "$DRAG" 'viewport: CGSize\(width: viewport\.width, height: 0\)')" -ne 0 ] \
+  || fail "转场落点的自动滚动没限定成只横向：纵向滚动会把主轨滚出视口"
+
+# 12) 视口坐标靠**现读**的滚动量换算（§5b 同一条）。缓存一份的话，自动滚动期间
+#     指针在视口里的位置会越算越偏，边缘带自己就飘走了。
+if SCROLL_BODY="$(awk '/private func autoScroll\(contentX: Double\)/,/^    \}/' "$DRAG")"; then
+  printf '%s\n' "$SCROLL_BODY" | grep -qc 'geometry.offsetX' >/dev/null
+  [ "$(printf '%s\n' "$SCROLL_BODY" | grep -c 'geometry.offsetX')" -ge 2 ] \
+    || fail "autoScroll 没有两处现读 geometry.offsetX（换算视口坐标一处、滚动后重算一处）"
+fi
+
 # 8) 点一张卡和拖一张卡必须走同一条落地路径，否则同一个动作两个入口两种结果。
 [ "$(drag_hits "Sources/SrtFlow/VideoEditProject+TransitionLibrary.swift" 'func applyTransition\(toSeamAfter outgoingID: UUID')" -ne 0 ] \
   || fail "没有共用的 applyTransition(toSeamAfter:_:)：点卡片和拖卡片会分叉"
