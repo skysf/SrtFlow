@@ -36,6 +36,7 @@ final class FilterThumbnailStore: ObservableObject {
     func reload(clip: EditClip?, time: Double) async {
         let key = Self.key(for: clip, time: time)
         guard key != loadedKey else { return }
+        // 先占住这个 key，免得同一帧被并发要两次。
         loadedKey = key
         guard let clip else {
             source = nil
@@ -43,6 +44,12 @@ final class FilterThumbnailStore: ObservableObject {
             return
         }
         let frame = await Self.frame(for: clip, at: time)
+        // 扫帧的过程中播放头又走了：这一份已经作废，**把 key 让出来**，
+        // 否则之后再要这一帧会被上面那道 guard 挡掉，小样永远停在旧画面上。
+        if Task.isCancelled {
+            loadedKey = nil
+            return
+        }
         source = frame
         guard let frame else {
             graded = [:]
@@ -107,9 +114,18 @@ struct FilterLibraryPanel: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // 播放头一动就换小样。`task(id:)` 的 id 是「哪一段的哪一帧」，
-        // 所以同一帧内来回拖不会反复扫帧。
+        // 播放头一动就换小样，但**要等它停稳**。
+        //
+        // `task(id:)` 的 id 是「哪一段的哪一帧」（按 0.1s 量化）。播放中和拖播放头
+        // 时它每 0.1s 换一次，不防抖的话就是每秒扫十次帧、做一百次 CI 调色 ——
+        // 而那十张小图在画面飞跑的时候本来也看不清。id 一变这个 task 就被取消，
+        // 所以只有停下来之后的那一次会真的干活。
+        //
+        // 第一次不等：一打开这一栏就该有东西看，不该先空 0.3 秒。
         .task(id: FilterThumbnailStore.key(for: clipUnderPlayhead, time: clock.displayTime)) {
+            if thumbnails.source != nil {
+                do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
+            }
             await thumbnails.reload(clip: clipUnderPlayhead, time: clock.displayTime)
         }
     }

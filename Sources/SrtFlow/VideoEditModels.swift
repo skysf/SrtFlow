@@ -893,23 +893,61 @@ extension TimelineState {
                 return promoted
             }
         }
-        // 滤镜按**导出区间求交后平移**，不要求用户额外选中它：滤镜挂在时间范围
-        // 上，不是挂在某个片段上，「只导出选中的」当然该带着这段画面的调色走。
+        // 滤镜跟着**画面**走，不要求用户额外选中它：它挂在时间范围上而不是挂在
+        // 某个片段上，「只导出选中的」当然该带着这段画面的调色一起走。
         //
-        // 已知的边界：下面主轨独占时会 `packMain()` 拼紧凑，而滤镜是按时间平移
-        // 的。选的是连续几段时两者一致；选的是**不连续**的几段时，画面被拼拢了、
-        // 滤镜还按原来的时刻站着，会错位。宁可错位也不丢 —— 静默丢掉调色是
-        // 「导出成功但成片不是他要的」，那更难发现。
-        let windowStart = earliest
-        let windowEnd = picked.map(\.timelineEnd).max() ?? earliest
-        sub.filters = filters.compactMap { filter in
-            let start = max(filter.timelineStart, windowStart)
-            let end = min(filter.timelineEnd, windowEnd)
-            guard end - start > 0.0005 else { return nil }
-            var copy = filter
-            copy.timelineStart = start - earliest
-            copy.duration = end - start
-            return copy
+        // 两种映射，判据就是下面那句 `packMain()` 跑不跑：
+        //
+        // - **会拼紧凑时逐段映射**：选的段被拼拢之后，原来在第 3 段上的那截调色
+        //   得跟着第 3 段挪到新位置。按时间平移是错的 —— 选了不连续的几段时，
+        //   画面拼拢了、滤镜还站在原来的时刻，整个错位（2026-09-21 修）。
+        //   一段滤镜可能因此裂成几截（跨了几段选中的画面），落在**没被选中的**
+        //   那些时间上的部分直接丢掉：那段画面本来就不在这次导出里。
+        // - **不拼紧凑时按原样平移**：那时片段保持相对位置，空隙也照样保留
+        //   （上层轨可能正好在那儿有画面），所以不能按「主轨段」切。
+        let willPack = sub.overlayTracks.isEmpty && sub.audioTracks.isEmpty
+        if willPack, !sub.mainClips.isEmpty {
+            // 拼紧凑之后每一段落在哪。和下面那句 `packMain()` 同一个函数，
+            // 所以画面挪到哪儿、调色就挪到哪儿。
+            let packedStarts = Self.packedStarts(sub.mainClips)
+            var pieces: [FilterClip] = []
+            for filter in filters {
+                // 这一段滤镜刚刚落下的最后一截：紧挨着就续上去，别裂成一堆碎块。
+                var openPiece: Int?
+                for (index, clip) in sub.mainClips.enumerated() {
+                    // `shifted` 把起点减去了 earliest，加回来才是原时间线上的位置。
+                    let originalStart = clip.timelineStart + earliest
+                    let originalEnd = originalStart + clip.timelineDuration
+                    let low = max(filter.timelineStart, originalStart)
+                    let high = min(filter.timelineEnd, originalEnd)
+                    guard high - low > 0.001 else { openPiece = nil; continue }
+                    let mappedStart = packedStarts[index] + (low - originalStart)
+                    if let open = openPiece,
+                       abs(pieces[open].timelineEnd - mappedStart) < 0.001 {
+                        pieces[open].duration += high - low
+                    } else {
+                        pieces.append(FilterClip(
+                            preset: filter.preset, strength: filter.strength,
+                            timelineStart: mappedStart, duration: high - low,
+                            layer: filter.layer
+                        ))
+                        openPiece = pieces.count - 1
+                    }
+                }
+            }
+            sub.filters = pieces
+        } else {
+            let windowStart = earliest
+            let windowEnd = picked.map(\.timelineEnd).max() ?? earliest
+            sub.filters = filters.compactMap { filter in
+                let start = max(filter.timelineStart, windowStart)
+                let end = min(filter.timelineEnd, windowEnd)
+                guard end - start > 0.0005 else { return nil }
+                var copy = filter
+                copy.timelineStart = start - earliest
+                copy.duration = end - start
+                return copy
+            }
         }
         // 整层都被切没了就把层号收拢，别在子时间线里留空层。
         sub.compactFilterLayers()

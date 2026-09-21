@@ -300,6 +300,67 @@ func model() {
     checkClose(onlySecond.filters.first?.duration ?? -1, 2, 1e-9,
                "只留区间内那 2 秒（4…6s 与 4…8s 的交集）")
     checkEqual(onlySecond.filters.first?.layer, 0, "整层被切没之后层号收拢")
+
+    // **选不连续的几段**：画面会被 packMain 拼拢，滤镜必须跟着画面走。
+    //
+    // 这一组是 2026-09-21 的回归：修之前滤镜按时间平移，整个错位 ——
+    // 第 3 段被拼到第 2 段的位置上，落在它身上的调色却还站在原来的时刻。
+    var gapped = TimelineState()
+    let c1 = EditClip(sourceURL: media, sourceDuration: 4, timelineStart: 0)
+    let c2 = EditClip(sourceURL: media, sourceDuration: 4, timelineStart: 4)
+    let c3 = EditClip(sourceURL: media, sourceDuration: 4, timelineStart: 8)
+    gapped.mainClips = [c1, c2, c3]
+    // 只染第 3 段（8…12s）。选中第 1 段和第 3 段之后，第 3 段被拼到 4…8s。
+    gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 8, duration: 4, layer: 0)]
+    let skipMiddle = gapped.selectionForExport(ids: [c1.id, c3.id])
+    checkEqual(skipMiddle.mainClips.count, 2, "两段进了子时间线")
+    checkClose(skipMiddle.mainClips.last?.timelineStart ?? -1, 4, 1e-9, "第 3 段被拼到 4s")
+    checkEqual(skipMiddle.filters.count, 1, "滤镜还在")
+    checkClose(skipMiddle.filters.first?.timelineStart ?? -1, 4, 1e-9,
+               "调色跟着它染的那一段挪到 4s（修之前是 8s，整个错位）")
+    checkClose(skipMiddle.filters.first?.duration ?? -1, 4, 1e-9, "时长不变")
+
+    // 跨两段的滤镜：两段都被选中且拼在一起时，应当合成**一截**，不是两块。
+    gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 2, duration: 4, layer: 0)]
+    let across = gapped.selectionForExport(ids: [c1.id, c2.id])
+    checkEqual(across.filters.count, 1, "跨两段但两段相接 → 合成一截")
+    checkClose(across.filters.first?.timelineStart ?? -1, 2, 1e-9, "起点跟着第 1 段")
+    checkClose(across.filters.first?.duration ?? -1, 4, 1e-9, "两截接上之后总长不变")
+
+    // 跨过**没被选中**的那一段：落在它身上的那截（4…8s）直接丢掉 —— 那段画面
+    // 本来就不在这次导出里。剩下的两截落在 2…4 和 4…6，**拼拢之后正好首尾相接**，
+    // 所以合成一截：那和两块 2…4 + 4…6 是同一份画面，没必要留两个块。
+    gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 2, duration: 8, layer: 0)]
+    let split = gapped.selectionForExport(ids: [c1.id, c3.id])
+    checkEqual(split.filters.count, 1, "丢掉中间那截之后，剩下两截相接 → 合成一截")
+    checkClose(split.filters.first?.timelineStart ?? -1, 2, 1e-9, "从第 1 段的 2s 起")
+    checkClose(split.filters.first?.duration ?? -1, 4, 1e-9,
+               "2…4（第 1 段）+ 4…6（第 3 段）= 4 秒，中间那 4 秒没进来")
+
+    // 反面：中间那段**选中了但没被染**，这时就不许合并 —— 合了会把本来没调色的
+    // 那一段也染上。
+    gapped.filters = [
+        FilterClip(preset: .coldIron, timelineStart: 2, duration: 2, layer: 0),
+        FilterClip(preset: .coldIron, timelineStart: 9, duration: 2, layer: 0),
+    ]
+    let twoPieces = gapped.selectionForExport(ids: [c1.id, c2.id, c3.id])
+    checkEqual(twoPieces.filters.count, 2, "中间那段没被染 → 两段各自独立，不合并")
+    checkClose(twoPieces.filters.first?.timelineStart ?? -1, 2, 1e-9, "第一段原位")
+    checkClose(twoPieces.filters.last?.timelineStart ?? -1, 9, 1e-9,
+               "第二段原位（三段全选、首尾相接，拼拢等于没动）")
+
+    // 带上音频就不拼紧凑了（片段保持相对位置），那时仍然按原样平移 ——
+    // 空隙照样保留，上层轨可能正好在那儿有画面，不能按主轨段切。
+    var withAudio = gapped
+    // 显式写一遍，别沿用上一组留下的那两段（`gapped` 被反复改过）。
+    withAudio.filters = [FilterClip(preset: .coldIron, timelineStart: 2, duration: 8, layer: 0)]
+    withAudio.audioTracks = [EditLane(clips: [
+        EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 12, timelineStart: 0)
+    ])]
+    let audioIDs: Set<UUID> = [c1.id, c3.id, withAudio.audioTracks[0].clips[0].id]
+    let kept = withAudio.selectionForExport(ids: audioIDs)
+    checkEqual(kept.filters.count, 1, "不拼紧凑时不裂开")
+    checkClose(kept.filters.first?.timelineStart ?? -1, 2, 1e-9, "按原样平移")
 }
 
 // MARK: - 三、预览 vs 导出，逐像素
