@@ -15,7 +15,7 @@ import UniformTypeIdentifiers
 // `FilterDropPlan` 里。
 
 enum FilterDrag {
-    static let typeIdentifier = "com.srtflow.filter"
+    static let typeIdentifier = FilterPayloadType.drag
     static let type = UTType(exportedAs: typeIdentifier, conformingTo: .data)
 
     /// 起手时记下拖的是哪一款。理由同转场：落点框要**同步**算出来，
