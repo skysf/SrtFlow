@@ -666,7 +666,42 @@ fi
 [ "$(drag_hits "Sources/SrtFlow/VideoEditProject+TransitionLibrary.swift" 'applyTransition\(toSeamAfter: seam\.outgoing\.id')" -ne 0 ] \
   || fail "applyTransitionFromLibrary 没走共用落地函数"
 
+# ── 扫帧 peek 只有一个所有者（2026-09-21 用户拍板：任何地方都能预览） ──
+# 鼠标扫过时间线**任何地方**，画面就去看一眼那一帧。入口只能有**一个**：
+# 以前它挂在剪辑块自己身上（于是只有视频块本体能预览，标尺/空白/音频轨都没有），
+# 现在挂在容器上。两处都在的话，容器和块两圈 hover 都写 `peekTime`，谁后到谁赢
+# —— 那是竞态，不是行为。所以这里按**文件**钉：全 Sources 下只准这一个文件出现
+# 扫帧入口和 peek 的写入。
+HOVER_FILES="$(grep -rlE '^[[:space:]]*\.onContinuousHover' --include='*.swift' Sources | sort | tr '\n' ' ' | sed 's/ $//')"
+[ "$HOVER_FILES" = "$VIEW" ] \
+  || fail "扫帧入口 .onContinuousHover 出现在 [${HOVER_FILES}]，应当只有 ${VIEW}：多一处就是两圈 hover 抢着写 peekTime 的竞态"
+PEEK_FILES="$(grep -rlE '^[^/]*clock\.peek\(at:' --include='*.swift' Sources | sort | tr '\n' ' ' | sed 's/ $//')"
+[ "$PEEK_FILES" = "$VIEW" ] \
+  || fail "peek(at:) 的写入出现在 [${PEEK_FILES}]，应当只有 ${VIEW}（endPeek 不受限：收掉已经亮着的影子到处都该能做）"
+
+if BODY="$(require_func 'func hoverPeek(' "$VIEW")"; then
+  # 和点击同一份夹紧：影子指针指着哪儿、画面就得是哪儿。不夹的话，鼠标扫进
+  # 工程长度之外的那片空白，影子一路往右跑而画面早就停在最后一帧了。
+  printf '%s\n' "$BODY" | grep -q 'min(max(0, point.x / pps), project.duration)' \
+    || fail "hoverPeek 没把扫帧时刻夹进 [0, duration]：影子指针会和画面各说各话"
+  # 播放中 / 拖块 / 拖框 / 裁切都不扫帧。裁切那条只能从 project 上判 ——
+  # `isTrimming` 是剪辑块内的 @State，容器看不见。
+  for guard_expr in '!clock.isPlaying' 'clipDrag == nil' 'marquee == nil' 'project.liveEditOrigin == nil'; do
+    printf '%s\n' "$BODY" | grep -qF "$guard_expr" \
+      || fail "hoverPeek 少了 ${guard_expr} 这道 guard：按住在动的时候画面会被扫帧抢走"
+  done
+  # 时刻没变就不写：peekTime 是 @Published，每写一次连带整条时间线视图树重算，
+  # 而现在鼠标扫过时间线**任何地方**都会走到这里（纵向移动、亚像素抖动算出来
+  # 都是同一刻）。
+  printf '%s\n' "$BODY" | grep -q 'clock.peekTime ?? -1' \
+    || fail "hoverPeek 少了「时刻没变就不写」的门槛：鼠标每动一下都会重算整条时间线"
+fi
+if BODY="$(require_func 'func markerPeek(' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'markerPeekTime = time' \
+    || fail "markerPeek 没记下仲裁位：容器下一拍就会把画面从标记那一帧拽回指针底下"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

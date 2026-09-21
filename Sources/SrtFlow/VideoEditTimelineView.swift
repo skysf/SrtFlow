@@ -41,6 +41,13 @@ struct VideoEditTimelineView: View {
     /// 正在被拖的字幕 cue。剪辑/形状块各自是独立视图、用自己的 `isMoving`
     /// 标记起手，cue 块是 `ForEach` 里的裸图形，只能在这一层按 id 记。
     @State var movingCueID: UUID?
+    /// 指针正悬在某枚标记帽子上时，那枚标记所在的时间线时刻；nil = 没悬着。
+    /// **扫帧 peek 的仲裁位**（合同见 `hoverPeek` / `markerPeek`）。
+    ///
+    /// 必须记在**这一层**：扫帧 peek 的唯一所有者是容器，而标记帽子是剪辑块里的
+    /// 子视图 —— 仲裁位留在块内的话容器看不见，鼠标一碰标记，容器下一拍就会把
+    /// 画面从标记那一帧拽回指针底下。
+    @State var markerPeekTime: Double?
     /// 双击打开了就地编辑浮层的那条 cue（编辑本体是 `SubtitleInlineEditor`，
     /// 与预览里双击字幕共用同一份提交规则）。
     ///
@@ -292,6 +299,11 @@ struct VideoEditTimelineView: View {
                 // 正常松手走 onEnded，这条管的是「手势没有终点」的那些死法。
                 .onDisappear {
                     autoScroller.stop()
+                    // 扫帧的 `.ended` 不保证会来（切栏目、关窗、模态挡在前面时
+                    // 指针「离开」这件事根本不发事件，同 2026-08-23 那条教训）。
+                    // 不收的话影子指针留在屏幕上、画面僵在那一帧。
+                    clock.endPeek()
+                    markerPeekTime = nil
                     clipDrag = nil
                     dragTargetRow = nil
                     marquee = nil
@@ -447,6 +459,8 @@ struct VideoEditTimelineView: View {
         // 和上面那一下点击分得开：这条起手要 4pt，点击是零位移，一次鼠标操作
         // 只会走其中一条。
         .gesture(marqueeGesture, including: project.activeTool == .split ? .subviews : .all)
+        // 扫帧预览（peek）：整条时间线**只有这一个入口**，理由见 hoverPeek。
+        .onContinuousHover(coordinateSpace: .local, perform: hoverPeek)
     }
 
     @ViewBuilder
@@ -502,7 +516,8 @@ struct VideoEditTimelineView: View {
                     },
                     onTrimEnd: {
                         project.endLiveEdit()
-                    }
+                    },
+                    onMarkerPeek: { markerPeek($0) }
                 )
             }
             // 隐藏的轨：灰显、去色、点不动。
@@ -564,6 +579,61 @@ struct VideoEditTimelineView: View {
     /// 删右）随即全部变灰。
     func seekFromTimeline(time: Double, precise: Bool) {
         clock.seek(to: min(max(0, time), project.duration), precise: precise)
+    }
+
+    /// 鼠标扫过时间线**任何地方**，画面就滚到指的那一帧看一眼（peek）：真播放头
+    /// 原地不动，时间线上另画一根影子指针，指针离开时间线就把画面滚回播放头。
+    ///
+    /// **整条时间线只有这一个扫帧入口**（2026-09-21 用户拍板）。在那之前它挂在
+    /// 剪辑块自己身上，于是只有视频块本体能预览 —— 标尺、轨道空白、音频轨、块
+    /// 以外的空白全都没有。挪到容器上之后，块那圈 `.onContinuousHover` 必须
+    /// **删掉**：两圈都在、都写 peek 的话，谁后到谁赢，那是竞态，不是行为。
+    ///
+    /// `.local` 坐标以内容原点为零点，所以 `point.x / pps` 直接就是时刻，不用补
+    /// 滚动量（和框选的分别见 docs/architecture/timeline-drag-gestures.md §5e）。
+    func hoverPeek(_ phase: HoverPhase) {
+        switch phase {
+        case .active(let point):
+            // 播放中、拖块、拖框、裁切（`liveEditOrigin`：连续修改的快照还挂着）
+            // 都不扫帧。裁切那条只能从 project 上判 —— `isTrimming` 是块内的
+            // @State，容器看不见。
+            guard !clock.isPlaying, clipDrag == nil, marquee == nil,
+                  project.liveEditOrigin == nil else { return }
+            // 标记正接管着 peek，别把画面从标记那一帧拽回指针底下。
+            guard markerPeekTime == nil else { return }
+            // 和点击同一份夹紧：超出工程长度的那片空白里，影子指针停在片尾，画面
+            // 也就是最后一帧 —— 影子指着哪儿、画面就是哪儿，不会各说各话。
+            let time = min(max(0, point.x / pps), project.duration)
+            // 时刻没变就不写。`peekTime` 是 @Published，每写一次连带整条时间线
+            // 视图树重算，而纵向移动、亚像素抖动算出来都是同一刻 —— 现在鼠标扫过
+            // 时间线**任何地方**都会走到这里，这道门槛不是省几次重绘的事。
+            guard abs(time - (clock.peekTime ?? -1)) * pps > 0.5 else { return }
+            clock.peek(at: time)
+        case .ended:
+            // 指针是「进了块上的标记」而不是「离开了时间线」，peek 该留给标记。
+            guard markerPeekTime == nil else { return }
+            clock.endPeek()
+        }
+    }
+
+    /// 指针进出标记帽子时，peek 的交接。
+    ///
+    /// 标记的帽子是可命中的子视图，但 `.onContinuousHover` 不会因为指针压在子视图
+    /// 上就停发 —— 所以这里不是「接住块让出来的 peek」，而是**把容器顶掉**：
+    /// 悬着标记期间 `hoverPeek` 自己让位，画面钉在标记那一帧（帽子有 hitWidth，
+    /// 指针在帽子里挪几个点不该让画面跟着漂）。
+    ///
+    /// 离开标记时**照常** endPeek：指针要是还在时间线上，下一次鼠标移动会立刻把
+    /// 扫帧接回去；指针要是已经走了，画面也不会僵在标记那一帧。
+    func markerPeek(_ time: Double?) {
+        markerPeekTime = time
+        guard !clock.isPlaying, clipDrag == nil, marquee == nil,
+              project.liveEditOrigin == nil else { return }
+        if let time {
+            clock.peek(at: time)
+        } else {
+            clock.endPeek()
+        }
     }
 
     /// 悬停预览的影子指针：半透明细线、没有把手 —— 只说明「画面此刻在看这儿」。
