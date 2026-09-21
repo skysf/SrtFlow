@@ -19,6 +19,17 @@ enum TransitionCapacity: Equatable {
     case noHandles
 }
 
+/// 拖动中画在主轨上的那个落点框。纯值 —— 画框、落地、断言都读同一份。
+struct TransitionDropPreview: Equatable {
+    /// 出场段在 `mainClips` 里的下标（= 缝的编号）。
+    let seamIndex: Int
+    /// 落地后的转场时长（秒）。框的宽度就是按它算的。
+    let duration: Double
+    /// 框的左边界与宽度（pt），和转场遮罩同源。
+    let x: Double
+    let width: Double
+}
+
 extension EditClip {
     /// 尾巴上还没用到的素材，换算成**时间线秒**（除过变速）。
     var trailingHandle: Double {
@@ -190,13 +201,30 @@ extension TimelineState {
         return min(mainClips[index].transitionDuration, maxDuration)
     }
 
-    /// 这条缝上的转场在**时间线上**占的那一段 —— 时间线的转场遮罩就画在这儿。
-    /// 没有转场、或者这条缝做不出转场，返回 nil。
+    /// 一条缝上 `duration` 秒的转场在**时间线上**占的那一段。
+    ///
+    /// 时间线的转场遮罩和拖放中的落点框**都走这一份**。两边各写一遍的话，框和
+    /// 松手后的遮罩迟早对不上 —— 用户看到的就是「明明放在这儿，怎么跑偏了」。
     ///
     /// 两种几何两种算法：
-    /// - **已相叠**（磁吸排的）：转场就发生在两段重叠的那一段上，窗口即重叠区。
+    /// - **已相叠**（磁吸排的）：转场就发生在两段重叠的那一段上，窗口即重叠区，
+    ///   和 `duration` 无关（几何由排位说了算）。
     /// - **首尾相接**：转场跨在缝上，两边各一半 —— 借余料那条路是各借 d/2，
     ///   压黑那条路是各做 d/2 的渐变，两者的窗口一模一样。
+    static func transitionWindow(
+        outgoing: EditClip, incoming: EditClip, duration: Double
+    ) -> (start: Double, duration: Double)? {
+        if needsHandles(outgoing: outgoing, incoming: incoming) {
+            guard duration > 0.01 else { return nil }
+            return (outgoing.timelineEnd - duration / 2, duration)
+        }
+        let overlap = outgoing.timelineEnd - incoming.timelineStart
+        guard overlap > 0.01 else { return nil }
+        return (incoming.timelineStart, overlap)
+    }
+
+    /// 这条缝上的转场在时间线上占的那一段 —— 时间线的转场遮罩就画在这儿。
+    /// 没有转场、或者这条缝做不出转场，返回 nil。
     func transitionWindow(afterMainIndex index: Int) -> (start: Double, duration: Double)? {
         guard index >= 0, index + 1 < mainClips.count else { return nil }
         let outgoing = mainClips[index]
@@ -205,14 +233,10 @@ extension TimelineState {
         guard case .available(let maxDuration) = transitionCapacity(afterMainIndex: index) else {
             return nil
         }
-        if Self.needsHandles(outgoing: outgoing, incoming: incoming) {
-            let d = min(outgoing.transitionDuration, maxDuration)
-            guard d > 0.01 else { return nil }
-            return (outgoing.timelineEnd - d / 2, d)
-        }
-        let overlap = outgoing.timelineEnd - incoming.timelineStart
-        guard overlap > 0.01 else { return nil }
-        return (incoming.timelineStart, overlap)
+        return Self.transitionWindow(
+            outgoing: outgoing, incoming: incoming,
+            duration: min(outgoing.transitionDuration, maxDuration)
+        )
     }
 
     /// 这一段后面那条缝上的转场，此刻在时间线上**画得出来**吗 —— 也就是遮罩在不在。
@@ -238,6 +262,50 @@ extension TimelineState {
         let width = max(minWidth, window.duration * pps)
         let center = (window.start + window.duration / 2) * pps
         return (center - width / 2, width)
+    }
+
+    /// 一张卡落到这条缝上时，转场时长取多少 —— `nil` = **不改**。
+    ///
+    /// 空缝给 `transitionDropDefaultDuration`；已有转场的缝**只换种类、不改时长**
+    /// （用户调过的秒数不该被一次换种类抹掉，2026-09-20 拍板）。
+    /// **点一张卡和拖一张卡共用这一份**（`applyTransition(toSeamAfter:_:)`），
+    /// 否则同一个动作在两个入口给出不同结果。
+    static let transitionDropDefaultDuration = 0.5
+
+    static func transitionDropDuration(existing outgoing: EditClip) -> Double? {
+        outgoing.transitionAfter == .none ? transitionDropDefaultDuration : nil
+    }
+
+    /// 拖动中画在主轨上的落点框：落在哪条缝、画在哪儿、落地后会是多少秒。
+    ///
+    /// 框的几何和遮罩**同源**（都走 `transitionWindow` + `transitionMaskRect`），
+    /// 宽度按**落地后实际会是的秒数**算 —— 松手后遮罩一变宽变窄，用户就会以为
+    /// 自己放偏了。
+    ///
+    /// 判据不能问 `transitionWindow(afterMainIndex:)`：它要求
+    /// `transitionAfter != .none`，空缝上一定返回 nil，而空缝正是这个手势最主要
+    /// 的落点（那也是 `transitionDropTarget` 只问容量的同一个理由）。
+    static func transitionDropPreview(
+        atX x: Double, pps: Double, mainClips: [EditClip], kind: ClipTransition,
+        maxDistance: Double = 40, minWidth: Double = 18
+    ) -> TransitionDropPreview? {
+        guard let index = transitionDropTarget(
+            atX: x, pps: pps, mainClips: mainClips, kind: kind, maxDistance: maxDistance
+        ) else { return nil }
+        let outgoing = mainClips[index]
+        let incoming = mainClips[index + 1]
+        guard case .available(let maxDuration) = transitionCapacity(
+            outgoing: outgoing, incoming: incoming, kind: kind
+        ) else { return nil }
+        let wanted = transitionDropDuration(existing: outgoing) ?? outgoing.transitionDuration
+        let duration = min(wanted, maxDuration)
+        guard let window = transitionWindow(
+            outgoing: outgoing, incoming: incoming, duration: duration
+        ) else { return nil }
+        let rect = transitionMaskRect(window: window, pps: pps, minWidth: minWidth)
+        return TransitionDropPreview(
+            seamIndex: index, duration: duration, x: rect.x, width: rect.width
+        )
     }
 
     /// 把接缝两侧的片段各向外借 d/2 的余料，让它们**真的相叠 d**。

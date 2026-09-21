@@ -1387,6 +1387,144 @@ do {
     check(noSpare.hasVisibleTransition(afterOutgoing: bare.id), "零余料的缝上压黑照样有遮罩")
 }
 
+// MARK: - 30. 落点框：几何必须和松手后的真遮罩一模一样
+//
+// 框和遮罩各算一遍的话，松手那一下框会「跳」一下 —— 用户看到的就是「明明放在
+// 这儿，怎么跑偏了」。这一节把两者端到端比一遍：算出落点框 → 按落地规则真的
+// 改一份 state → 用**遮罩自己那条路**（transitionWindow + transitionMaskRect）
+// 算一次矩形 → 两个矩形必须逐字相等。
+
+/// 模拟松手：照 `setTransition(after:_:duration:)` 的口径改一份 state。
+func landed(_ clips: [EditClip], seam: Int, kind: ClipTransition) -> TimelineState {
+    var next = clips
+    next[seam].transitionAfter = kind
+    if let d = TimelineState.transitionDropDuration(existing: clips[seam]) {
+        next[seam].transitionDuration = min(max(d, 0.1), 3)
+    }
+    var state = TimelineState()
+    state.mainClips = next
+    return state
+}
+
+/// 落点框 vs 松手后的遮罩，逐字比。
+func checkPreviewMatchesMask(
+    _ clips: [EditClip], seam: Int, kind: ClipTransition, atX x: Double,
+    _ label: String, line: Int = #line
+) {
+    guard let preview = TimelineState.transitionDropPreview(
+        atX: x, pps: pps, mainClips: clips, kind: kind
+    ) else {
+        check(false, "\(label)：落点框没算出来", line: line)
+        return
+    }
+    checkEqual(preview.seamIndex, seam, "\(label)：落在第 \(seam) 条缝上", line: line)
+    let state = landed(clips, seam: seam, kind: kind)
+    guard let window = state.transitionWindow(afterMainIndex: seam) else {
+        check(false, "\(label)：松手后遮罩反而画不出来", line: line)
+        return
+    }
+    let mask = TimelineState.transitionMaskRect(window: window, pps: pps, minWidth: 18)
+    checkClose(preview.x, mask.x, "\(label)：框的左边界 = 遮罩的左边界", line: line)
+    checkClose(preview.width, mask.width, "\(label)：框的宽度 = 遮罩的宽度", line: line)
+}
+
+// 30a. 空缝：给默认的 0.5s，框和遮罩同源
+do {
+    let clips = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    let preview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: clips, kind: .crossFade
+    )
+    checkClose(preview?.duration ?? -1, 0.5, "空缝落地取默认的 0.5s")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 48, "空缝 + 叠化")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .blackFade, atX: 48, "空缝 + 压黑")
+
+    // **残留时长必须被忽略。** `EditClip.transitionDuration` 的默认值正好是 0.5，
+    // 所以上面那条样本里「取默认」和「沿用片段上残留的值」长得一模一样 ——
+    // 真正能分开两者的是这一种：设过 1.2s 的转场被移除，片段上那 1.2 还留着。
+    var stale = seamClip(start: 0, duration: 2)
+    stale.transitionAfter = .none
+    stale.transitionDuration = 1.2
+    let staleClips = [stale, seamClip(start: 2, duration: 3)]
+    checkEqual(TimelineState.transitionDropDuration(existing: stale), 0.5,
+               "空缝一律回到 0.5s，不沿用移除前残留的秒数")
+    let stalePreview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: staleClips, kind: .crossFade
+    )
+    checkClose(stalePreview?.duration ?? -1, 0.5, "残留 1.2s 的空缝，落地仍然是 0.5s")
+    checkPreviewMatchesMask(staleClips, seam: 0, kind: .crossFade, atX: 48, "空缝 + 残留时长")
+}
+
+// 30b. 已有转场的缝：**只换种类、不改时长**
+do {
+    var first = seamClip(start: 0, duration: 2)
+    first.transitionAfter = .crossFade
+    first.transitionDuration = 1.2
+    let clips = [first, seamClip(start: 2, duration: 3)]
+    let preview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: clips, kind: .pushLeft
+    )
+    checkClose(preview?.duration ?? -1, 0.8, "已有转场的缝保留用户调过的秒数（这里被容量 0.8 夹住）")
+    checkEqual(TimelineState.transitionDropDuration(existing: first), nil, "已有转场 → 落地不传时长")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .pushLeft, atX: 48, "已有转场 + 换种类")
+}
+
+// 30c. 容量夹紧：余料不够 0.5s 时按容量来，框跟着变窄
+do {
+    // 两头各 0.12s 余料 → borrowable 0.24，byLength*0.4 = 0.32 → 容量 0.24
+    let clips = [
+        seamClip(start: 0, duration: 2, spare: 0.12), seamClip(start: 2, duration: 3, spare: 0.12),
+    ]
+    let preview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: clips, kind: .crossFade
+    )
+    checkClose(preview?.duration ?? -1, 0.24, "0.5s 放不下时夹到容量上限")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 48, "容量夹紧")
+}
+
+// 30d. 窄转场：宽度有下限，位置必须按**窗口中心**补偿（#43 那一刀的成果）
+do {
+    let clips = [
+        seamClip(start: 0, duration: 2, spare: 0.12), seamClip(start: 2, duration: 3, spare: 0.12),
+    ]
+    let preview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: clips, kind: .crossFade
+    )!
+    // 0.24s × 24pps = 5.76pt < 下限 18
+    checkClose(preview.width, 18, "窄到贴下限时框宽取下限")
+    checkClose(preview.x + preview.width / 2, 48, "下限多出来的宽度两边均摊，框心仍对准缝")
+}
+
+// 30e. 已相叠的缝（磁吸排的）：窗口 = 重叠区，和落地时长无关
+do {
+    // 重叠 1.2s = 28.8pt，**特意大过 18pt 的宽度下限** —— 不然框宽会被下限夹成
+    // 18，这一条就验不出「宽度来自重叠区而不是落地时长」了。
+    let clips = [clip(start: 0, duration: 2), clip(start: 0.8, duration: 2)]
+    let preview = TimelineState.transitionDropPreview(
+        atX: 48, pps: pps, mainClips: clips, kind: .crossFade
+    )!
+    checkClose(preview.duration, 0.5, "落地时长仍然是默认的 0.5s")
+    checkClose(preview.width, 1.2 * pps, "但框宽 = 重叠量 1.2s，不是那 0.5s")
+    checkClose(preview.x, 0.8 * pps, "框从重叠区的起点画起")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 48, "已相叠")
+}
+
+// 30f. 接不了的缝一律没有框 —— 和 transitionDropTarget 同一份判据
+do {
+    let gapped = [seamClip(start: 0, duration: 2), seamClip(start: 2.5, duration: 3)]
+    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: gapped, kind: .crossFade) == nil,
+          "有间隙 → 没有落点框")
+    let bare = [clip(start: 0, duration: 2), clip(start: 2, duration: 2)]
+    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: bare, kind: .crossFade) == nil,
+          "零余料 + 叠化 → 没有落点框")
+    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: bare, kind: .blackFade) != nil,
+          "同一条缝 + 压黑 → 有框")
+    let far = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
+    check(TimelineState.transitionDropPreview(atX: 500, pps: pps, mainClips: far, kind: .crossFade) == nil,
+          "离任何缝都超过 40pt → 没有框")
+    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: far, kind: ClipTransition.none) == nil,
+          "「无」拖不上去 → 没有框")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

@@ -518,7 +518,73 @@ if SCROLL_BLOCK="$(grep -A 12 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" 
     || fail "时间线滚动内容没有 .frame(minHeight: viewportHeight, alignment: .top)：内容比视口矮时会被纵向居中，播放头的线会断、标尺点不动"
 fi
 
+# ── 从转场库拖卡片到接缝 ──────────────────────────────────────────────
+# 时间线在这之前**零 SwiftUI 拖放**（块的移动/裁切、标尺 scrub 全是 DragGesture），
+# 这是新起的一套。落点算法与落点框的几何由 checks/TimelineSnap §28-§30 守着 ——
+# 那些断言全过、接线接错的话，用户拖上去照样什么都不会发生。
+DRAG="Sources/SrtFlow/VideoEditTransitionDrag.swift"
+PICKER="Sources/SrtFlow/VideoEditTransitionPicker.swift"
+for f in "$DRAG" "$PICKER"; do
+  [ -f "$f" ] || fail "文件不在：$f"
+done
+
+# 注释行不算数：说明里写「不能用 .fileURL」是交代，不是违规。
+drag_hits() { grep -vE '^[[:space:]]*(//|\*)' "$1" | grep -cE "$2" || true; }
+
+# 1) 拖源：卡片要能拖，且用的就是那个自定义类型。
+[ "$(drag_hits "$PICKER" '\.onDrag \{ TransitionDrag\.itemProvider\(for: kind\) \}')" -ne 0 ] \
+  || fail "转场卡片没挂 .onDrag：库里的卡片拖不动"
+
+# 2) 落点：挂在**主轨那一行**上，靠 slot.isMain 把纵向合法性天然判掉。
+[ "$(drag_hits "$VIEW" 'of: slot\.isMain && !hidden \? \[TransitionDrag\.type\] : \[\]')" -ne 0 ] \
+  || fail "主轨行没挂转场落点，或没按 slot.isMain 限定：拖到字幕轨/形状轨上也会接"
+[ "$(drag_hits "$VIEW" 'delegate: TransitionDropDelegate\(')" -ne 0 ] \
+  || fail "落点没走 DropDelegate：.dropDestination 的 isTargeted 只给 Bool，画不出落点框"
+
+# 3) 两处用**同一个**类型常量。各写一个字面量的话，改一处就再也拖不上去，
+#    而且两边都「看起来是对的」。
+[ "$(drag_hits "$DRAG" 'static let typeIdentifier = "com\.srtflow\.transition"')" -ne 0 ] \
+  || fail "$DRAG 里没有那个类型标识符常量"
+#    **别整文件豁免**：只把 VideoEditTransitionDrag.swift 排除掉的话，在**那个
+#    文件里**再写一处字面量照样绿（初版就是这么假绿的，反向探针当场抓到）。
+#    改成数全仓非注释行里的字面量，必须正好一次 —— 就是那条 typeIdentifier。
+ID_LITERALS="$(grep -rhE 'com\.srtflow\.transition' Sources/SrtFlow --include='*.swift' \
+  | grep -vE '^[[:space:]]*(//|\*)' | wc -l | tr -d ' ')"
+[ "$ID_LITERALS" -eq 1 ] \
+  || fail "类型标识符的字面量出现了 $ID_LITERALS 次（应为 1）：只许 TransitionDrag.typeIdentifier 那一处，别处一律引用它"
+
+# 4) 载荷**不许**用 .fileURL：VideoEditView 整个挂着 .onDropOfFiles，
+#    同一个类型两边都认领会打架。
+[ "$(drag_hits "$DRAG" 'UTType\.fileURL|\.fileURL')" -eq 0 ] \
+  || fail "转场拖放用了 .fileURL：会和 VideoEditView 的 .onDropOfFiles 抢同一种拖入"
+
+# 5) 落地和画框必须走**同一个**函数、同一个坐标。各算一次的话，框画在这条缝上、
+#    转场却落到另一条 —— 最难查的一种错。performDrop 里不许回读那份 @State。
+if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
+  printf '%s\n' "$DROP_BODY" | grep -qE 'let target = target\(info\)' \
+    || fail "performDrop 没有用 target(info) 重算落点：读 @State 会和画框那一拍脱节"
+fi
+
+# 6) 落点框只画不吃事件：它盖在主轨上，吃掉 hit test 就会把落点自己挡住
+#    （同第 8 节「块内装饰不吃事件」的理由）。
+if IND_BODY="$(awk '/struct TransitionDropIndicator/,0' "$DRAG")"; then
+  printf '%s\n' "$IND_BODY" | grep -q 'allowsHitTesting(false)' \
+    || fail "落点框没有 allowsHitTesting(false)：会挡住自己的落点"
+fi
+
+# 7) 拖动**过程**中一个字都不写模型（§0）：代理里只有 performDrop 能落地。
+NON_DROP="$(awk '/struct TransitionDropDelegate/,/^\}/' "$DRAG" \
+  | awk '/func (validateDrop|dropEntered|dropUpdated|dropExited)/,/^    \}/' \
+  | grep -nE 'project\.(perform|liveApply|applyTransition|setTransition)' || true)"
+[ -z "$NON_DROP" ] || fail "落点代理在拖动过程中写了模型（只有 performDrop 能落地）：$NON_DROP"
+
+# 8) 点一张卡和拖一张卡必须走同一条落地路径，否则同一个动作两个入口两种结果。
+[ "$(drag_hits "Sources/SrtFlow/VideoEditProject+TransitionLibrary.swift" 'func applyTransition\(toSeamAfter outgoingID: UUID')" -ne 0 ] \
+  || fail "没有共用的 applyTransition(toSeamAfter:_:)：点卡片和拖卡片会分叉"
+[ "$(drag_hits "Sources/SrtFlow/VideoEditProject+TransitionLibrary.swift" 'applyTransition\(toSeamAfter: seam\.outgoing\.id')" -ne 0 ] \
+  || fail "applyTransitionFromLibrary 没走共用落地函数"
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 滚动内容填满视口"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容填满视口"
