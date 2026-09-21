@@ -30,14 +30,18 @@ struct ClipBlockView: View {
     let onDragEnd: () -> Void
     let onTrim: (Bool, Double) -> Void
     let onTrimEnd: () -> Void
+    /// 指针进出块上的标记帽子。扫帧 peek 的所有者是时间线容器，块只负责把
+    /// 「悬着哪一枚」报上去（仲裁本体在 `VideoEditTimelineView.markerPeek`）。
+    let onMarkerPeek: (Double?) -> Void
 
-    /// 移动手势进行中（悬停扫帧要让位，第一拍还要开一轮拖动会话）。
+    /// 移动手势进行中：第一拍要开一轮拖动会话。（扫帧让位归容器判 —— 它看
+    /// `clipDrag`，那是同一件事的模型侧。）
     @State private var isMoving = false
     /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
     @State private var isTrimming = false
-    /// 指针正悬在某枚标记上时，那枚标记所在的时间线时刻；nil = 没悬着。
-    /// 扫帧 peek 归属的仲裁位，见 `markerHover`。
-    @State private var markerHoverTime: Double?
+    /// 这块上有没有标记正被悬着。只用来抬 zIndex（备注气泡会铺到邻块上面去，
+    /// 不抬起来会被后画的块盖住）—— peek 的仲裁位在时间线容器那一层。
+    @State private var markerHovered = false
 
     /// 最小宽度和框选的命中判定共用一个常量（`TimelineMarquee`）：画多宽就该
     /// 按多宽判，两边各写一个字面量迟早分叉。
@@ -81,12 +85,12 @@ struct ClipBlockView: View {
         // 只 guard 回调的话，4pt 的手抖仍会被手势吃掉，本该落下的那一刀就没了。
         .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
         .overlay(alignment: .bottomLeading) { keyframeMarkers }
-        .onContinuousHover(coordinateSpace: .local, perform: hoverScrub)
         // 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
         // nil = 这一处不接管指针，交回外层。
         .pointerStyle(project.activeTool == .split ? .rectSelection : nil)
-        // 标记要压在扫帧之上（它自己接管 peek），但必须排在裁切把手**之前** ——
-        // 排在后面的话，贴着块两端的标记会盖住把手，那一端就再也裁不动了。
+        // 标记必须排在裁切把手**之前** —— 排在后面的话，贴着块两端的标记会盖住
+        // 把手，那一端就再也裁不动了。（悬到帽子上时容器的扫帧会让位给它，
+        // 仲裁在 VideoEditTimelineView.markerPeek。）
         // 刀片模式下整条让路：点在标记上也该落下那一刀。
         .overlay(alignment: .topLeading) { markerStrip }
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置。
@@ -96,7 +100,7 @@ struct ClipBlockView: View {
         .instantHelp(verbatim: clip.name)
         .offset(x: (clip.timelineStart + (dragOffset ?? 0)) * pps)
         // 备注气泡会铺到邻块上面去，所以悬着标记的块要抬起来，别被后画的块盖住。
-        .zIndex(dragOffset != nil ? 10 : (markerHoverTime != nil ? 5 : 0))
+        .zIndex(dragOffset != nil ? 10 : (markerHovered ? 5 : 0))
         // 邻居被磁吸重排时平滑挪过去，别硬跳。**正在被拖/被裁的块必须豁免**：
         // 它每一拍都在改位置，0.12s 动画反复重定向画出来的就是「低通滤波后的
         // 鼠标」—— 手越快落后越多，这正是 2026-08-09 那个「光标到最右、块还在
@@ -243,41 +247,15 @@ struct ClipBlockView: View {
         }
     }
 
-    /// 指针进出标记时，peek 的交接。
+    /// 指针进出标记帽子：只往上报，不自己动 peek。
     ///
-    /// 必须有这么一个仲裁位：标记的帽子是可命中的子视图，指针一进去，块自己那圈
-    /// `.onContinuousHover` 立刻收到 `.ended` —— 什么都不做的话，鼠标一碰标记
-    /// 画面就弹回播放头。所以进标记时由标记把 peek 顶到它自己那一帧，块那边的
-    /// `.ended` 让位；离开标记时**照常** endPeek：指针要是还在块上，下一次
-    /// 鼠标移动会立刻把扫帧接回去，指针要是已经走了，画面也不会僵在标记那一帧。
+    /// 扫帧 peek 的**唯一所有者是时间线容器**（2026-09-21 起，见
+    /// `VideoEditTimelineView.hoverPeek`）。块这边再写一份的话，容器和块两圈
+    /// hover 都在写 `peekTime`，谁后到谁赢 —— 那是竞态，不是行为。
+    /// 本地只留一个「有没有悬着」给 zIndex 用。
     private func markerHover(_ time: Double?) {
-        markerHoverTime = time
-        guard !project.clock.isPlaying, !isMoving, !isTrimming else { return }
-        if let time {
-            project.clock.peek(at: time)
-        } else {
-            project.clock.endPeek()
-        }
-    }
-
-    /// 鼠标扫过视频块时，画面滚到指的那一帧**看一眼**（peek）：真播放头原地
-    /// 不动，时间线上另画一根影子指针，鼠标离开就把画面滚回播放头。
-    /// 以前这里直接 seek —— 用户点好的播放头位置会被悬停悄悄拖走。
-    /// 不做节流：peek 走 PlayerClock 的链式 seek，天然限流。
-    private func hoverScrub(_ phase: HoverPhase) {
-        guard !clip.isAudioOnly, !isAudioRow else { return }
-        switch phase {
-        case .active(let point):
-            guard !project.clock.isPlaying, !isMoving, !isTrimming else { return }
-            // 标记正接管着 peek，别把画面从标记那一帧拽回指针底下。
-            guard markerHoverTime == nil else { return }
-            let x = min(max(0, point.x), width)
-            project.clock.peek(at: clip.timelineStart + x / pps)
-        case .ended:
-            // 指针是「进了块上的标记」而不是「离开了块」，peek 该留给标记。
-            guard markerHoverTime == nil else { return }
-            project.clock.endPeek()
-        }
+        markerHovered = time != nil
+        onMarkerPeek(time)
     }
 
     @ViewBuilder

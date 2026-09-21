@@ -164,10 +164,18 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
   Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
-# 标记的帽子是可命中的子视图，指针一进去块自己的 onContinuousHover 立刻收到
-# .ended。没有这道让位，鼠标一碰标记画面就弹回播放头（扫帧 peek 被掐断）。
+# 标记的帽子是可命中的子视图，但容器那圈 onContinuousHover 不会因为指针压在子视图
+# 上就停发（2026-09-21 起扫帧 peek 的唯一所有者是时间线容器）。没有这道让位，
+# 鼠标悬在标记上时容器下一拍就会把画面从标记那一帧拽回指针底下。
 require "扫帧 peek 要给标记让位" \
-  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'guard markerHoverTime == nil else'
+  Sources/SrtFlow/VideoEditTimelineView.swift 'guard markerPeekTime == nil else'
+# 块自己不许写 peek：两处都写 = 谁后到谁赢的竞态。它只把「悬着哪一枚」报上去。
+require "剪辑块把标记悬停上报给容器" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'onMarkerPeek\(time\)'
+# 只禁「写」：`endPeek()` 是合法的 —— 裁切起手要把已经画出来的影子收掉，
+# 容器那边的 guard 只能拦住「继续扫帧」，拦不住「已经亮着的那根线」。
+forbid "剪辑块不许自己写 peek（所有者是时间线容器）" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift '^[^/]*clock\.peek\(at:'
 # 单段隐藏（V，2026-09-18 用户拍板）：两级隐藏的渲染语义是同一条，
 # 预览和 ffmpeg 两条链路都得滤掉它 —— 漏一条就是「预览里没了、成片里还在」。
 # 合同见 docs/architecture/clip-visibility.md。

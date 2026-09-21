@@ -516,14 +516,60 @@ fi
 #   4. 框选算的是 `内容 x = 视口 x + offsetX`（见上面 §5b 那组守卫），居中
 #      把这个前提打破了，框整体偏到指针右边 (视口宽 - 内容宽)/2。
 # 四个症状同一个根。修法就是这一行两轴的 min 尺寸。
-if SCROLL_BLOCK="$(grep -A 18 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" || true)"; then
+if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
   # 三个条件写在**同一行**上匹配：分开写的话 `alignment: .topLeading` 会被上一
   # 行 `.frame(width: contentWidth, alignment: .topLeading)` 顺手匹配掉，对齐
   # 那条就成了永远为真的假绿；只查 minHeight 的话横向那一半照样能溜过去。
-  printf '%s\n' "$SCROLL_BLOCK" \
+  printf '%s\n' "$BODY" \
     | grep -q 'minWidth: viewportWidth, minHeight: viewportHeight, alignment: \.topLeading)' \
     || fail "时间线滚动内容没有 .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)：内容比视口小时会被居中 —— 纵向会让播放头断线、标尺点不动，横向会让素材不贴左边、框选整体偏到指针右边"
+
+  # 2026-09-21 第二轮补的那条：**撑出来的空白必须在命中区里面**。
+  # `.contentShape` 摆在那个 frame 前面的话（改成「点空白移播放头」之前就是这样），
+  # 能点的只有 contentWidth 那一段 —— 工程短时它是 600pt 的地板，窗口一宽，右边
+  # 小半个视口是彻底的死区：点了不移播放头、不清选择，框也拉不起来。
+  # 所以除了「那一行在」，还得钉**顺序**：按行号比大小，比对最后一个 contentShape
+  #（前面还有一个，是给滤镜拖放用的、故意只盖到内容区为止）。
+  line_of() { printf '%s\n' "$BODY" | grep -nE "$1" | eval "$2" | cut -d: -f1; }
+  FILL_LINE="$(line_of '^[[:space:]]*\.frame\(minWidth: viewportWidth' 'head -1')"
+  SHAPE_LINE="$(line_of '^[[:space:]]*\.contentShape\(Rectangle\(\)\)' 'tail -1')"
+  TAP_LINE="$(line_of '^[[:space:]]*\.onTapGesture' 'tail -1')"
+  MARQUEE_LINE="$(line_of '^[[:space:]]*\.gesture\(marqueeGesture' 'tail -1')"
+  for probe in "$FILL_LINE" "$SHAPE_LINE" "$TAP_LINE" "$MARQUEE_LINE"; do
+    [ -n "$probe" ] || fail "scrolledContent 的修饰符栈里少了填满视口的 frame / contentShape / 点击 / 框选中的某一个，顺序守卫失去目标"
+  done
+  if [ -n "$FILL_LINE" ] && [ -n "$SHAPE_LINE" ] && [ -n "$TAP_LINE" ] && [ -n "$MARQUEE_LINE" ]; then
+    [ "$FILL_LINE" -lt "$SHAPE_LINE" ] \
+      || fail "命中区（.contentShape）排在「填满视口」的 frame 前面：右边撑出来的那片空白会变成死区，点不动播放头也拉不起框"
+    [ "$SHAPE_LINE" -lt "$TAP_LINE" ] && [ "$SHAPE_LINE" -lt "$MARQUEE_LINE" ] \
+      || fail "点击 / 框选没挂在最后那个 .contentShape 之后：它们吃到的还是内容区那一层的命中形状"
+  fi
 fi
+
+# ── 点非素材处 = 把播放头挪过来（2026-09-21 用户拍板） ─────────────────
+# 在这之前，播放头只能在 26pt 高的标尺上点出来。合同是：
+#   点空白 → 移播放头**并且**清空选择；按住拖 → 还是框选（两者靠 4pt 门槛分开）。
+# 「非素材处」不用自己判：块本体 / 标尺 / 把手 / 标记帽子各有自己的手势，
+# SwiftUI 里子视图优先，落到容器上的只剩谁都不认领的空白。
+if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'onTapGesture(coordinateSpace: \.local)' \
+    || fail "点空白的手势没带 coordinateSpace: .local：拿不到落点，播放头不知道该挪到哪一刻"
+  printf '%s\n' "$BODY" | grep -q 'seekFromTimeline(time: location\.x / pps' \
+    || fail "点空白没把播放头挪过去（少了 seekFromTimeline）"
+  printf '%s\n' "$BODY" | grep -q 'project\.clearSelection()' \
+    || fail "点空白不再清空选择：界面上就没有任何地方能取消选中了"
+fi
+# 夹紧只能有一处：标尺和点空白各写一份 min/max 迟早分叉（一边夹到片尾、一边不夹，
+# 点右边那片空白就会把播放头送到工程之外，工具栏上一排按钮随即全灰）。
+if BODY="$(require_func 'func seekFromTimeline(' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'min(max(0, time), project.duration)' \
+    || fail "seekFromTimeline 没把落点夹进 [0, duration]"
+fi
+grep_code 'seekFromTimeline(time: time, precise: precise)' "$VIEW" \
+  || fail "标尺的 onSeek 没走 seekFromTimeline：夹紧会变成两份账"
+CLAMPS="$(grep -c 'clock\.seek(to: min(max(0' "$VIEW" || true)"
+[ "$CLAMPS" -le 1 ] \
+  || fail "$VIEW 里有 ${CLAMPS} 处自己夹紧后 seek：落点只许 seekFromTimeline 一处算"
 
 # ── 从转场库拖卡片到接缝 ──────────────────────────────────────────────
 # 时间线在这之前**零 SwiftUI 拖放**（块的移动/裁切、标尺 scrub 全是 DragGesture），
@@ -620,7 +666,42 @@ fi
 [ "$(drag_hits "Sources/SrtFlow/VideoEditProject+TransitionLibrary.swift" 'applyTransition\(toSeamAfter: seam\.outgoing\.id')" -ne 0 ] \
   || fail "applyTransitionFromLibrary 没走共用落地函数"
 
+# ── 扫帧 peek 只有一个所有者（2026-09-21 用户拍板：任何地方都能预览） ──
+# 鼠标扫过时间线**任何地方**，画面就去看一眼那一帧。入口只能有**一个**：
+# 以前它挂在剪辑块自己身上（于是只有视频块本体能预览，标尺/空白/音频轨都没有），
+# 现在挂在容器上。两处都在的话，容器和块两圈 hover 都写 `peekTime`，谁后到谁赢
+# —— 那是竞态，不是行为。所以这里按**文件**钉：全 Sources 下只准这一个文件出现
+# 扫帧入口和 peek 的写入。
+HOVER_FILES="$(grep -rlE '^[[:space:]]*\.onContinuousHover' --include='*.swift' Sources | sort | tr '\n' ' ' | sed 's/ $//')"
+[ "$HOVER_FILES" = "$VIEW" ] \
+  || fail "扫帧入口 .onContinuousHover 出现在 [${HOVER_FILES}]，应当只有 ${VIEW}：多一处就是两圈 hover 抢着写 peekTime 的竞态"
+PEEK_FILES="$(grep -rlE '^[^/]*clock\.peek\(at:' --include='*.swift' Sources | sort | tr '\n' ' ' | sed 's/ $//')"
+[ "$PEEK_FILES" = "$VIEW" ] \
+  || fail "peek(at:) 的写入出现在 [${PEEK_FILES}]，应当只有 ${VIEW}（endPeek 不受限：收掉已经亮着的影子到处都该能做）"
+
+if BODY="$(require_func 'func hoverPeek(' "$VIEW")"; then
+  # 和点击同一份夹紧：影子指针指着哪儿、画面就得是哪儿。不夹的话，鼠标扫进
+  # 工程长度之外的那片空白，影子一路往右跑而画面早就停在最后一帧了。
+  printf '%s\n' "$BODY" | grep -q 'min(max(0, point.x / pps), project.duration)' \
+    || fail "hoverPeek 没把扫帧时刻夹进 [0, duration]：影子指针会和画面各说各话"
+  # 播放中 / 拖块 / 拖框 / 裁切都不扫帧。裁切那条只能从 project 上判 ——
+  # `isTrimming` 是剪辑块内的 @State，容器看不见。
+  for guard_expr in '!clock.isPlaying' 'clipDrag == nil' 'marquee == nil' 'project.liveEditOrigin == nil'; do
+    printf '%s\n' "$BODY" | grep -qF "$guard_expr" \
+      || fail "hoverPeek 少了 ${guard_expr} 这道 guard：按住在动的时候画面会被扫帧抢走"
+  done
+  # 时刻没变就不写：peekTime 是 @Published，每写一次连带整条时间线视图树重算，
+  # 而现在鼠标扫过时间线**任何地方**都会走到这里（纵向移动、亚像素抖动算出来
+  # 都是同一刻）。
+  printf '%s\n' "$BODY" | grep -q 'clock.peekTime ?? -1' \
+    || fail "hoverPeek 少了「时刻没变就不写」的门槛：鼠标每动一下都会重算整条时间线"
+fi
+if BODY="$(require_func 'func markerPeek(' "$VIEW")"; then
+  printf '%s\n' "$BODY" | grep -q 'markerPeekTime = time' \
+    || fail "markerPeek 没记下仲裁位：容器下一拍就会把画面从标记那一帧拽回指针底下"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

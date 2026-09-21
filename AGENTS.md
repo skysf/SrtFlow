@@ -92,7 +92,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
-| 时间线捏合、滚动、移动、裁切、吸附、框选 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) |
+| 时间线捏合、滚动、移动、裁切、吸附、框选、点击落点、扫帧预览 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 轨道模型、时间线行结构、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md) |
@@ -179,7 +179,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [时间线捏合缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
-  以及框选（相交即选中、混选与「预览最多一套框」、整组一起移动）。
+  框选（相交即选中、混选与「预览最多一套框」、整组一起移动），以及命中区必须盖在填满视口
+  之后、点非素材处移播放头、扫帧 peek 的唯一所有者。
 - [预览自由变换](docs/architecture/preview-free-transform.md) — `ClipPlacement` 与预览/导出同账。
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
@@ -250,6 +251,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-20 播放头断线、点标尺没反应](docs/bugfixes/2026-09-20-playhead-line-broken-and-ruler-dead.md) — 内容比视口矮时被 SwiftUI 纵向居中：线只画中间一段、标尺的命中区没跟着 `.offset` 走。
 - [2026-09-21 源文件清单守卫只盯着枢纽文件](docs/bugfixes/2026-09-21-source-list-guard-only-watched-the-hub.md) — 上面那条守卫只算一个文件的同伴，另外两类漏项看不见；本地全绿、CI 六项编不过。守卫已扩到清单里的每一个文件，并写明「别开只有 extension 的文件」这条盲区。
 - [2026-09-21 刚加进轨道的素材没贴左边](docs/bugfixes/2026-09-21-timeline-content-centered-horizontally.md) — 上一条的**横向孪生**：只修了纵向、守卫也只钉了纵向，于是「工程短 + 窗口宽」下整条时间线飘到视口中间，还把框选的 `内容 x = 视口 x + offsetX` 打破了。两轴一起钉。
+- [2026-09-21 时间线右边小半个视口是死区](docs/bugfixes/2026-09-21-timeline-right-padding-dead-zone.md) — `minWidth` 撑出来的空白不自带命中区；顺序决定命中区盖多大，而界面上看不出来；另一根轴没事纯属被播放头顺手撑住。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

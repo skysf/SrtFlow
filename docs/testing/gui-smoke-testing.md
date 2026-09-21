@@ -39,6 +39,14 @@
 - **按窗口 ID 截图，别依赖 frontmost**：CGWindowListCopyWindowInfo 按 pid 找
   kCGWindowNumber，`screencapture -l <id> -x` 可无视遮挡；加 `-o` 去阴影后
   图像与窗口坐标是干净的 2x 映射，方便换算注入坐标。
+- **别用 `screencapture -R` 截屏幕区域**（2026-09-21 踩坑）：窗口左边缘常在屏幕
+  外（`x = -6` 这种），`-R -6,525,300,24` 会被参数解析当成选项，screencapture
+  于是**退回交互式截图**并抢走前台 —— 后续注入全落到别处，拍回来的图是另一个
+  应用的界面，看起来像是「产品行为莫名其妙」。要局部就 `-l` 截整窗口再
+  `sips -c <h> <w> --cropOffset <top> <left>` 裁，坐标也更稳（窗口内坐标 ×2）。
+- **每次注入前重新激活目标进程**：终端一有输出就可能把前台抢回去，而鼠标事件
+  只对最前的窗口可靠。`tell application "System Events" to tell process
+  "SrtFlowDev" to set frontmost to true` 穿插在每一步之间。
 
 ## 四、事件注入的边界
 
@@ -77,13 +85,32 @@
   hack 不可靠）。捏合的最终验证只能：用户按一次，或
   `log stream --predicate 'category == "timeline-zoom"'` 实时确认。
   **`log show` 事后查 ad-hoc 调试拷贝查不到任何日志**，别浪费时间。
-  **SwiftUI 的 hover（`onContinuousHover`/`onHover`）对合成 mouseMoved 也不
-  响应**（2026-08-08 实测：warp 到位 + 连发 move 均不触发 tracking area）——
-  悬停类交互与捏合同级：状态机用自检钉住，手感留给用户真机过。
+- **hover 可以注入，前提是 event source 不能是 nil**（2026-09-21 更正）。
+  这一条以前写的是「SwiftUI 的 hover 对合成 mouseMoved 不响应」，那个结论是
+  **错的** —— 真正的原因是事件的 source 传了 `nil`：
+
+  ```swift
+  let src = CGEventSource(stateID: .hidSystemState)   // ← 少了它，全程静默无效
+  let e = CGEvent(mouseEventSource: src, mouseType: .mouseMoved,
+                  mouseCursorPosition: p, mouseButton: .left)
+  e?.setIntegerValueField(.mouseEventDeltaX, value: 1)   // delta 也要给
+  e?.post(tap: .cghidEventTap)
+  ```
+
+  先 `CGWarpMouseCursorPosition` 到位，再连发几拍位置**略有变化**的
+  `mouseMoved`（同一个点重复发不算移动）。实测 2026-09-21：扫帧 peek 在剪辑块
+  本体、轨道空白、标尺、音频轨四处都被这样驱动起来了，读数取自预览画面里
+  testsrc2 烧进去的时间码，与 transport 的播放头读数交叉对照。
+  同一个坑连着 `scrollWheelEvent2Source:` —— **nil source 的滚轮事件同样静默
+  无效**，`CGWarpMouseCursorPosition` 之后什么也不会发生。
+- **`CGWarpMouseCursorPosition` 自己不产生事件**：它只是把指针挪过去。在同一个
+  tracking area **内部**挪动，不补一拍真正的移动事件的话，SwiftUI 记的还是旧
+  位置 —— 表现就是「hover 回调不再触发」，很容易误判成产品 bug。
 - **横向滚动可注入**（2026-08-16 实测）：`CGEvent(scrollWheelEvent2Source:
   units: .pixel, wheelCount: 2, wheel2: dx)`，光标先 warp 进滚动区**内**（点在
-  工具栏上整批静默无效）。滚动事件顺带会刷新 hover tracking——光标停在块上时
-  注入滚动，`onContinuousHover` 的 peek 会真的触发，可以借此驱动悬停类状态。
+  工具栏上整批静默无效）。**水平那一路（`wheel2`）实测驱不动 SwiftUI 的
+  `ScrollView`**（2026-09-21：内容宽于视口、窗口在最前，连滚 1/10/120px 窗口
+  截图 md5 一字不变）；垂直（`wheel1`）正常。要横向滚动就改用别的手段。
 - **带修饰键的注入会把修饰键留在系统状态里**（2026-08-16 踩坑）：Ctrl+滚轮
   缩放注入（`event.flags = .maskControl`）之后，后续**无 flags** 的注入照样
   继承住 Ctrl —— 左键点击全变成 Ctrl+点击（弹右键菜单）、普通滚动全变成缩放，
