@@ -450,9 +450,24 @@ struct VideoEditView: View {
             if project.importingCount > 0 {
                 HStack(spacing: 4) {
                     ProgressView().controlSize(.mini)
-                    Text("Adding…")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // 定格也记在 `importingCount` 上（它同样是后台转码），但
+                    // 「正在添加…」是导入素材那件事的文案 —— 用户点的是定格，
+                    // 看到「添加」只会以为自己点错了按钮。两件事同时在跑时算定格：
+                    // 那是他刚刚亲手点的那一个。
+                    // **两个字面量各写在自己的分支里**，不要写成
+                    // `Text(cond ? "A" : "B")` —— 文案覆盖扫描器认不出三目里的
+                    // 字面量，那样写会把这两条一起从"用到的文案"里漏掉，
+                    // 检查照样绿（它只查用到的有没有译文），等于悄悄开一个洞。
+                    // 实测：改成三目之后计数从 626 掉到 625。
+                    Group {
+                        if project.isFreezing {
+                            Text("Freezing…")
+                        } else {
+                            Text("Adding…")
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
@@ -537,7 +552,12 @@ struct VideoEditView: View {
                 project.splitAtPlayhead()
             }
             .disabled(!canSplit)
-            ToolbarIcon(icon: "snowflake", help: "Freeze the frame at the playhead", shortcut: .commandShift("F")) {
+            // 定格要抽帧 + 转码，实测 720p 约 0.5 秒、4K 更久。反馈就放在用户
+            // 刚点的这个按钮上 —— 播放条那一行虽然也有转圈，但那是另一行工具栏。
+            ToolbarIcon(
+                icon: "snowflake", help: "Freeze the frame at the playhead",
+                shortcut: .commandShift("F"), isBusy: project.isFreezing
+            ) {
                 project.freezeFrameAtPlayhead()
             }
             .disabled(!project.canFreezeFrame)
@@ -682,19 +702,34 @@ private struct ToolbarIcon: View {
     let help: LocalizedStringKey
     /// 快捷键：显示在提示右边的键帽，能挂等价符的顺手挂上。
     let shortcut: HelpShortcut?
+    /// 这个动作正在后台跑：图标原地换成转圈。
+    let isBusy: Bool
     let action: () -> Void
 
-    init(icon: String, help: LocalizedStringKey, shortcut: HelpShortcut? = nil, action: @escaping () -> Void) {
+    init(
+        icon: String, help: LocalizedStringKey, shortcut: HelpShortcut? = nil,
+        isBusy: Bool = false, action: @escaping () -> Void
+    ) {
         self.icon = icon
         self.help = help
         self.shortcut = shortcut
+        self.isBusy = isBusy
         self.action = action
     }
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: icon)
-                .frame(width: 20, height: 18)
+            // 忙的时候原地换成转圈。**尺寸写在外层、和图标完全一样** ——
+            // 写在分支里的话两种内容的固有尺寸不同，工具栏会在转圈出现和消失时
+            // 各跳一下。
+            Group {
+                if isBusy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: icon)
+                }
+            }
+            .frame(width: 20, height: 18)
         }
         .buttonStyle(.borderless)
         .instantHelp(help, shortcut: shortcut)
