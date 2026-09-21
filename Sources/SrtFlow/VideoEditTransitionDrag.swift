@@ -41,6 +41,11 @@ enum TransitionDrag {
 struct TransitionDropDelegate: DropDelegate {
     let project: VideoEditProject
     let pps: Double
+    /// 横向滚动量的唯一来源（§5b：现读，不缓存）。
+    let geometry: TimelineScrollGeometry
+    /// 拖到视口边缘时把时间线推走的那台心跳。和剪辑拖动共用同一台。
+    let autoScroller: TimelineAutoScroller
+    let viewport: CGSize
     /// 落点框。`nil` = 这一刻没有可落的缝（不高亮，松手也不接）。
     @Binding var preview: TransitionDropPreview?
 
@@ -59,13 +64,17 @@ struct TransitionDropDelegate: DropDelegate {
             // 会整整晚一帧 —— 指针已经离开可落区，光标还显示能放。
             let next = target(info)
             preview = next
+            autoScroll(contentX: info.location.x)
             // 没有可落的缝就明说不接：指针变成禁止号，松手回弹。
             return DropProposal(operation: next == nil ? .cancel : .copy)
         }
     }
 
     func dropExited(info: DropInfo) {
-        MainActor.assumeIsolated { preview = nil }
+        MainActor.assumeIsolated {
+            preview = nil
+            autoScroller.stop()
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -73,6 +82,7 @@ struct TransitionDropDelegate: DropDelegate {
             defer {
                 preview = nil
                 TransitionDrag.kind = nil
+                autoScroller.stop()
             }
             // **落地和画框走同一个函数、同一个坐标**，不读那份 @State —— 两边各
             // 算一次的话，框画在这条缝上、转场却落到另一条，是最难查的一种错。
@@ -86,10 +96,40 @@ struct TransitionDropDelegate: DropDelegate {
 
     @MainActor
     private func target(_ info: DropInfo) -> TransitionDropPreview? {
+        previewAt(contentX: info.location.x)
+    }
+
+    @MainActor
+    private func previewAt(contentX: Double) -> TransitionDropPreview? {
         guard let kind = TransitionDrag.kind else { return nil }
         return TimelineState.transitionDropPreview(
-            atX: info.location.x, pps: pps, mainClips: project.state.mainClips, kind: kind
+            atX: contentX, pps: pps, mainClips: project.state.mainClips, kind: kind
         )
+    }
+
+    /// 指针停在视口边缘时把时间线横着推走，好让它够得到屏幕外的接缝。
+    ///
+    /// `DropInfo.location` 是**内容坐标**（行随内容一起滚），而心跳要的是指针在
+    /// **视口**里的位置 —— 差的正是当下的横向滚动量，现读（§5b：滚动量只有
+    /// `TimelineScrollGeometry` 一个来源，不许再缓存一份）。
+    ///
+    /// 自动滚动那一拍指针在屏幕上**一动没动**，但内容被从它底下抽走了，指针底下
+    /// 的内容坐标因此变了 —— 所以回调里拿「视口 x + **新的**滚动量」重算，不能
+    /// 沿用上一拍那个内容坐标。这和 `ClipDragSession.update` 补 `scrolled` 是同
+    /// 一件事。
+    ///
+    /// **只横着滚**：转场只能落在主轨那一行，纵向滚下去反而会把主轨滚出视口、
+    /// 落点当场消失。传 `height: 0` 让心跳的纵向那一半整个跳过（它自己的门槛就是
+    /// `viewport.height > edgeHeight * 2`），`pointer.y` 因此也不参与计算。
+    @MainActor
+    private func autoScroll(contentX: Double) {
+        let viewportX = contentX - geometry.offsetX
+        autoScroller.update(
+            pointer: CGPoint(x: viewportX, y: 0),
+            viewport: CGSize(width: viewport.width, height: 0)
+        ) {
+            preview = previewAt(contentX: viewportX + geometry.offsetX)
+        }
     }
 }
 
