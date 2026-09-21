@@ -119,7 +119,9 @@ extension VideoEditTimelineView {
                     TimelineMarquee.Item(id: $0.id, start: $0.start, end: $0.end, kind: .subtitleCue)
                 }
             } else {
-                // 标尺行：拖它是 scrub，框不到任何东西。
+                // 标尺行（拖它是 scrub），以及**滤镜行** —— 滤镜段和标记、转场
+                // 同族，只点选不进框选（理由见 `EditSelection.filterID`），
+                // 所以这里不给它产出 item，框从上面扫过什么都不选。
                 return nil
             }
             // 纵向按**画出来的**块算，不是整行：字幕/形状块在行内上下都留了白，

@@ -30,6 +30,16 @@ func check(_ condition: Bool, _ message: String, line: Int = #line) {
     }
 }
 
+func checkEqual<T: Equatable>(
+    _ actual: T?, _ expected: T?, _ message: String, line: Int = #line
+) {
+    checks += 1
+    if actual != expected {
+        failures += 1
+        print("FAIL [line \(line)] \(message)：得 \(String(describing: actual))，期望 \(String(describing: expected))")
+    }
+}
+
 func checkClose(
     _ actual: Double, _ expected: Double, _ tolerance: Double, _ message: String, line: Int = #line
 ) {
@@ -220,6 +230,26 @@ func model() {
     checkClose(withClip.duration, baseDuration, 1e-9, "拖到片尾之外的滤镜不该把工程撑长")
 
     // 存盘、v17 登记与往返保真在 checks/ProjectFile/main.swift 第 25 节。
+
+    // 「只导出选中的」：滤镜按区间求交后平移，不要求用户额外选中它。
+    var pick = TimelineState()
+    let media = URL(fileURLWithPath: "/tmp/x.mp4")
+    let a = EditClip(sourceURL: media, sourceDuration: 4, timelineStart: 0)
+    let b = EditClip(sourceURL: media, sourceDuration: 4, timelineStart: 4)
+    pick.mainClips = [a, b]
+    pick.filters = [
+        // 跨在两段上，只有后半截落在导出区间里。
+        FilterClip(preset: .coldIron, timelineStart: 2, duration: 4, layer: 0),
+        // 整段在区间之外，应当被切掉。
+        FilterClip(preset: .coldIron, timelineStart: 0, duration: 1, layer: 1),
+    ]
+    let onlySecond = pick.selectionForExport(ids: [b.id])
+    checkEqual(onlySecond.filters.count, 1, "区间外的滤镜段不进子时间线")
+    checkClose(onlySecond.filters.first?.timelineStart ?? -1, 0, 1e-9,
+               "求交后平移到 0 起点")
+    checkClose(onlySecond.filters.first?.duration ?? -1, 2, 1e-9,
+               "只留区间内那 2 秒（4…6s 与 4…8s 的交集）")
+    checkEqual(onlySecond.filters.first?.layer, 0, "整层被切没之后层号收拢")
 }
 
 // MARK: - 三、预览 vs 导出，逐像素

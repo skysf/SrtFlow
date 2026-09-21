@@ -893,6 +893,26 @@ extension TimelineState {
                 return promoted
             }
         }
+        // 滤镜按**导出区间求交后平移**，不要求用户额外选中它：滤镜挂在时间范围
+        // 上，不是挂在某个片段上，「只导出选中的」当然该带着这段画面的调色走。
+        //
+        // 已知的边界：下面主轨独占时会 `packMain()` 拼紧凑，而滤镜是按时间平移
+        // 的。选的是连续几段时两者一致；选的是**不连续**的几段时，画面被拼拢了、
+        // 滤镜还按原来的时刻站着，会错位。宁可错位也不丢 —— 静默丢掉调色是
+        // 「导出成功但成片不是他要的」，那更难发现。
+        let windowStart = earliest
+        let windowEnd = picked.map(\.timelineEnd).max() ?? earliest
+        sub.filters = filters.compactMap { filter in
+            let start = max(filter.timelineStart, windowStart)
+            let end = min(filter.timelineEnd, windowEnd)
+            guard end - start > 0.0005 else { return nil }
+            var copy = filter
+            copy.timelineStart = start - earliest
+            copy.duration = end - start
+            return copy
+        }
+        // 整层都被切没了就把层号收拢，别在子时间线里留空层。
+        sub.compactFilterLayers()
         sub.canvasRatio = canvasRatio
         // 帧率必须跟着走：漏了这一行，选段导出会退回默认 24，与工程规格不符。
         sub.frameRate = frameRate
