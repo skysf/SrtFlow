@@ -285,7 +285,14 @@ struct VideoEditView: View {
             ZStack {
                 Color.black
                 if !project.state.isEmpty {
-                    PlayerViewRepresentable(player: clock.player, controlsStyle: .none)
+                    // 滤镜挂在播放器视图自己身上，所以 ZStack 里它**上面**的那些
+                    // 叠层（形状 / 文字 / 字幕 / 变换框）天然不吃调色 —— 与导出
+                    // 滤镜链里「滤镜插在画面合成之后、形状之前」一字不差。
+                    PlayerViewRepresentable(
+                        player: clock.player,
+                        controlsStyle: .none,
+                        filterStack: FilterStack(in: project.state, at: clock.displayTime)
+                    )
                     // 点选画面内容 + 变换框。放在形状叠层下面：形状的点击优先。
                     ClipTransformCanvas(project: project, clock: clock, boxSize: size)
                 } else {
@@ -631,6 +638,16 @@ struct VideoEditView: View {
                 } label: {
                     Label(LocalizedStringKey(kind.title), systemImage: kind.icon)
                 }
+            }
+            Divider()
+            // 第一刀的滤镜入口。第二刀换成左边那栏的滤镜库（卡片 + 悬停 +），
+            // 这个菜单项留着 —— 菜单是「在播放头放一个东西」的统一入口。
+            Menu {
+                ForEach(FilterPreset.allCases) { preset in
+                    Button(LocalizedStringKey(preset.title)) { project.addFilter(preset) }
+                }
+            } label: {
+                Label("Filter", systemImage: "camera.filters")
             }
         } label: {
             Label("Add", systemImage: "plus")

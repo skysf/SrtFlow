@@ -559,6 +559,8 @@ extension TimelineState {
                 updateShape(member.id) { $0.timelineStart = start }
             case .text:
                 updateTextOverlay(member.id) { $0.timelineStart = start }
+            case .filter:
+                updateFilter(member.id) { $0.timelineStart = start }
             case .subtitleCue:
                 cueStarts[member.id] = start
             }

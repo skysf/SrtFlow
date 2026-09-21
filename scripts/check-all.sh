@@ -75,6 +75,7 @@ run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" script
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
+run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
 
 echo ""

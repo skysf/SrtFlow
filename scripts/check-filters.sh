@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# **上层视频轨 + 画面渐变的真实回归**。
+# **时间轴滤镜（调色）的回归**：LUT 数学 + 模型规则 + 预览/导出逐像素比对。
 #
-# 调真实的 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数，真跑一遍导出，
-# 再抽帧量整幅亮度。断言里的数与 `scripts/check-preview-composition.sh` 中
-# 同一场景**对齐** —— 两条管线同账是这套东西的核心合同。
+# 第三组是这条脚本的重点，也是「滤镜」这个功能的验收项：同一个输入色，
+# 三方必须对得上 —— 配方算出来的值、CoreImage 渲出来的值、真跑生产
+# `VideoEditExportGraph.plan()` 出片后解出来的值。
 #
-# 守三条契约（改 VideoEditExportGraph 的上层轨滤镜段之前必读）：
-#   1. 上层视频轨默认等比铺满画布居中，两侧留空露出下层（不是画中画小框，
-#      也不补黑）；
-#   2. 画面渐变在 alpha 上做，露出来的是下面那一层；
-#   3. 主轨接缝上有转场时，那一边的渐变让位给 xfade，不叠加。
+# 为什么非得真跑 ffmpeg：表的排列顺序、查表的色彩空间、`enable` 的时间窗、
+# 整条生产滤镜链接不接得上 —— 这些纯值断言一个都摸不到。反向验证做过：把
+# .cube 的通道顺序写反，逐像素那几条当场变红（2026-09-21 实测）。
+#
+# `interp=trilinear` 这一项由**参数断言**守，不是靠像素：冷铁的表在取样点
+# 附近是局部线性的，而 tetrahedral 和 trilinear 对线性函数给出同一个值 ——
+# 像素比对分辨不了。等第二刀补上带曲线的预设，像素那条才会跟着变敏感。
 #
 # 用法：
-#   scripts/check-video-fade.sh
-#
-# 需要 ffmpeg：素材是现造的纯色视频（假文件过不了真实解码，抽不出帧）。
+#   scripts/check-filters.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# Rosetta 终端下必须显式指定 arm64，否则会去编 x86_64（见 docs/build/）。
+# Rosetta 终端下必须显式指定 arm64（见 docs/build/）。
 ARCH_FLAG="--arch arm64"
 TRIPLE="arm64-apple-macosx15.0"
 
@@ -28,7 +28,7 @@ echo "==> swift build ${ARCH_FLAG}"
 BUILD_OUT="$(swift build ${ARCH_FLAG} 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
-OUT="$(mktemp -d)/videofade"
+OUT="$(mktemp -d)/filterscheck"
 trap 'rm -rf "$(dirname "$OUT")"' EXIT
 
 echo "==> 编译自检二进制"
@@ -38,6 +38,7 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
+  Sources/SrtFlow/VideoEditFilterLUT.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
@@ -67,7 +68,7 @@ xcrun swiftc \
   Sources/SrtFlow/BurnInWorkspace.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
-  checks/VideoFade/main.swift \
+  checks/Filters/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

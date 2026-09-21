@@ -49,6 +49,11 @@ enum TrackPalette {
     /// 也不和冷/暖两条轨道色带撞 —— 一眼就能看出"这一族不是轨道"。
     static let textBlock = Color(hue: 0.58, saturation: 0.14, brightness: 0.66)
 
+    /// 滤镜块的固定色。同文字块的理由：滤镜不是一条轨，给它轨道色会让人以为
+    /// 时间线上多了条视频轨。选靛紫 —— 和文字块那档近中性的青灰分得开，也不在
+    /// 视频/音频两条色带上。
+    static let filterBlock = Color(hue: 0.70, saturation: 0.42, brightness: 0.62)
+
     /// 色号超出色相表就回绕。回绕后会撞色，但要撞得上得先开到第 7 条视频轨，
     /// 与其为此把色相挤得更密（前几条反而更难分），不如让罕见情况去撞。
     private static func color(

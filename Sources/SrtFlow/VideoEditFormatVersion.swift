@@ -228,6 +228,20 @@ extension TimelineState {
         allClips.contains { $0.isHidden }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v17-only 持久数据。
+    ///
+    /// **登记清单（新增 v17-only 字段必须同步补进来）：**
+    /// 1. `filters` —— 时间轴上的调色段（种类 / 强度 / 起止 / 叠加层号）。
+    ///
+    /// 为什么要升版本：这些键直接决定**成片是什么颜色**。只认 v16 的旧版不认识
+    /// 它们，打开后整条片子退回原色；随手编辑触发一次自动保存，调好的色就被
+    /// 永久抹掉了。判断标准同 docs/bugfixes/2026-08-04-transform-review.md：
+    /// 问的不是「新版能不能读旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// **按需**：没有滤镜段的工程不带 v17 数据（`TimelineState.encode` 里空数组
+    /// 不落键，两处必须同源），所以没用过滤镜的工程照旧能被旧版打开。
+    var requiresFormatVersion17: Bool { !filters.isEmpty }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

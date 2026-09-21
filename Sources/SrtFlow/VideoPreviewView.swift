@@ -171,6 +171,11 @@ struct PlayerViewRepresentable: NSViewRepresentable {
     /// 烧字幕预览给 `.none`：自带的控件浮在画面底部，正好压住字幕，
     /// 那一块恰恰是要看的地方，所以那边自己画播放条。
     var controlsStyle: AVPlayerViewControlsStyle = .inline
+    /// 此刻要挂的调色（时间轴上的滤镜段）。默认空 —— 烧字幕预览那个宿主
+    /// 不认识滤镜，也不该被它影响。
+    var filterStack: FilterStack = .empty
+
+    func makeCoordinator() -> FilterStackAttachment { FilterStackAttachment() }
 
     func makeNSView(context: Context) -> AVPlayerView {
         let view = AVPlayerView()
@@ -183,6 +188,9 @@ struct PlayerViewRepresentable: NSViewRepresentable {
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
         if nsView.player !== player { nsView.player = player }
         if nsView.controlsStyle != controlsStyle { nsView.controlsStyle = controlsStyle }
+        // 每秒会被调二十次（时钟 0.05s 一跳），所以「挂的还是不是上次那套」
+        // 的判断在 attachment 里做，这里无条件调。
+        context.coordinator.apply(filterStack, to: nsView)
     }
 }
 

@@ -545,6 +545,48 @@ enum VideoEditExportGraph {
             audio = outA
         }
 
+        // MARK: 滤镜（调色）
+        //
+        // 落点是**画面合成之后、形状之前**：滤镜染的是这一段时间里的全部画面
+        //（主轨 + 上层轨），不染形状/文字/字幕。这和预览侧「滤镜挂在播放器视图
+        // 上、叠层是它上面的兄弟视图」一字不差 —— 两处的层序必须同一个说法。
+        //
+        // 三条和预览对齐的硬约束（改这里之前先读 docs/architecture/filters.md）：
+        //
+        // 1. **顺序按 `orderedFilters`**（层号小的先作用）。LUT 不可交换，两条
+        //    管线各排各的就是「预览一个味道、成片另一个味道」。
+        // 2. **`interp=trilinear` 必须显式写**。lut3d 默认是 tetrahedral，而预览
+        //    侧的 CIColorCube 是三线性；不写这一项，同一张表两边算出来就不一样。
+        // 3. **`format=gbrp` 垫在前面**。不指定的话滤镜图会自己协商像素格式，
+        //    万一谈成 YUV，这张 RGB 查找表会被当成对 Y/U/V 查表用 —— 画面直接
+        //    烂掉。显式压成 8bit 平面 RGB，定义域和预览一致。
+        //
+        // 强度 0 的段整条跳过：那是「先关掉看看」，成片应当和原片逐像素相同，
+        // 而不是白跑一遍恒等表（预览侧 `FilterStack` 有同一条短路）。
+        let gradeFilters = state.orderedFilters.filter {
+            $0.strength > 0.0005 && $0.timelineEnd > 0 && $0.timelineStart < total
+        }
+        if !gradeFilters.isEmpty {
+            let rgb = nextLabel("v")
+            filters.append("[\(video)]format=gbrp[\(rgb)]")
+            video = rgb
+            for (index, grade) in gradeFilters.enumerated() {
+                let filename = "filter\(index).cube"
+                try FilterLUT.cubeFileText(for: grade.preset, strength: grade.strength)
+                    .write(
+                        to: workspace.appendingPathComponent(filename),
+                        atomically: true, encoding: .utf8
+                    )
+                let outV = nextLabel("v")
+                filters.append(
+                    "[\(video)]lut3d=file=\(filename):interp=trilinear:" +
+                    "enable='between(t,\(fmt(max(0, grade.timelineStart))),\(fmt(min(total, grade.timelineEnd))))'" +
+                    "[\(outV)]"
+                )
+                video = outV
+            }
+        }
+
         // MARK: 形状
 
         for (shape, filename) in shapeFiles {
