@@ -266,22 +266,11 @@ struct VideoEditTimelineView: View {
                 // 在那之前只有横向，下面的轨道整条被裁掉、只能靠放大窗口看见）。
                 // 轨道头列和标尺各自跟着 `scrollGeometry` 钉住，别的都跟着滚。
                 ScrollView([.horizontal, .vertical], showsIndicators: true) {
+                    // 两个尺寸约束（内容宽、至少填满视口）都写在 `scrolledContent`
+                    // 里面，不在这儿：点击 / 悬停 / 框选的命中区必须盖在**填满视口
+                    // 之后**的那一块上，而修饰符的顺序就是那个「之后」——
+                    // 摆在这里的话，撑出来的空白永远在命中区外面（见那边的注释）。
                     scrolledContent
-                        .frame(width: contentWidth, alignment: .topLeading)
-                        // 至少填满视口、左上角对齐。**两轴都要**：内容比视口小
-                        // 时 SwiftUI 的 ScrollView 会把它居中（实测 800 宽的视口
-                        // 放 200 宽的内容，内容 minX = 300），于是：
-                        // - 纵向（轨道少，这是常态）：播放头那条线只画在中间那
-                        //   一段，上面接不到标尺 —— 用户看见的就是「指针是断
-                        //   的」；而标尺靠 `.offset` 被拉回视口顶上之后，它的
-                        //   **命中区没跟过去**，点标尺 seek 不了。
-                        // - 横向（工程短、窗口宽，同样是常态）：整条时间线连标
-                        //   尺带轨道一起飘到视口中间，看着就是「刚加进来的素材
-                        //   没贴左边」；更要命的是框选的
-                        //   `内容 x = 视口 x + offsetX` 这个前提被打破，框会整
-                        //   体画到指针右边 (视口宽 - 内容宽)/2 那么远。
-                        // 全是同一个根：内容不该被居中。
-                        .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
                 }
                 // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
                 // 由 TimelineMagnificationBridge 里的 local monitor 处理。
@@ -400,11 +389,18 @@ struct VideoEditTimelineView: View {
             hoverPointer
             playhead
         }
+        // 内容区这一层：宽度就是 `contentWidth`，轨道底色和标尺刻度都画到这儿为止。
+        .frame(width: contentWidth, alignment: .topLeading)
         .contentShape(Rectangle())
         // 从滤镜库拖卡片进来。**挂在整块内容上**而不是某一行：滤镜落在哪一层
         // 由指针的纵向位置决定，挂一行就拿不到 y 了（转场只能落主轨那一条缝，
         // 所以那边挂在行上）。载荷类型是自定义的，和 `.onDropOfFiles`、
         // 转场卡片三者各认各的，不会打架。
+        //
+        // 落点**故意只到内容区为止**，不跟着下面那个「填满视口」的 frame 一起
+        // 铺开：右边撑出来的那片空白在时间轴上远远超出工程长度，而滤镜段不计入
+        // `duration`（2026-09-21 口径），落到那儿就是凭空多出一段谁也看不见、
+        // 也滚不到的调色。
         .onDrop(
             of: [FilterDrag.type],
             delegate: FilterDropDelegate(
@@ -417,13 +413,39 @@ struct VideoEditTimelineView: View {
                 preview: $filterDrop
             )
         )
-        // 点空白处：三类选择一起取消（含字幕 cue —— 漏了它，拖框会在没有任何
-        // 选中项的界面上继续挂着）。
-        .onTapGesture { project.clearSelection() }
+        // 至少填满视口、左上角对齐。**两轴都要**：内容比视口小时 SwiftUI 的
+        // ScrollView 会把它居中（实测 800 宽的视口放 200 宽的内容，内容
+        // minX = 300），于是：
+        // - 纵向（轨道少，这是常态）：播放头那条线只画在中间那一段，上面接不到
+        //   标尺 —— 用户看见的就是「指针是断的」；而标尺靠 `.offset` 被拉回视口
+        //   顶上之后，它的**命中区没跟过去**，点标尺 seek 不了。
+        // - 横向（工程短、窗口宽，同样是常态）：整条时间线连标尺带轨道一起飘到
+        //   视口中间，看着就是「刚加进来的素材没贴左边」；更要命的是框选的
+        //   `内容 x = 视口 x + offsetX` 这个前提被打破，框会整体画到指针右边
+        //   (视口宽 - 内容宽)/2 那么远。
+        // 全是同一个根：内容不该被居中。
+        .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
+        // 点击 / 框选的命中区盖的是**填满视口之后**的这一整块，所以必须挂在上面
+        // 那个 frame 后面。挂在它前面（2026-09-21 之前就是那样）的话，命中区只有
+        // `contentWidth` 宽 —— 工程短的时候那是 600pt 的地板，窗口一宽，右边小半
+        // 个视口是**彻底的死区**：点了不移播放头、不清选择，框也拉不起来。
+        .contentShape(Rectangle())
+        // 点非素材处：播放头挪过来，并且三类选择一起取消（含字幕 cue —— 漏了它，
+        // 拖框会在没有任何选中项的界面上继续挂着）。
+        //
+        // 「非素材处」不用自己判：块本体、标尺、裁切把手、标记帽子各有自己的手势，
+        // SwiftUI 里子视图的手势优先，所以能落到这儿的**只有**谁都不认领的空白。
+        .onTapGesture(coordinateSpace: .local) { location in
+            project.clearSelection()
+            seekFromTimeline(time: location.x / pps, precise: true)
+        }
         // 空白处按下拖动 = 拉框选。挂在容器上而不是各行上：SwiftUI 里子视图的
         // 手势优先，所以块本体的移动手势、标尺的 scrub 都照旧归它们自己，只有
         // 谁都不认领的空白才落到这里。刀片模式下整条停掉（`.subviews` 保留
         // 子视图的点击），不然本该落下的那一刀会被 4pt 的手抖吃成一次框选。
+        //
+        // 和上面那一下点击分得开：这条起手要 4pt，点击是零位移，一次鼠标操作
+        // 只会走其中一条。
         .gesture(marqueeGesture, including: project.activeTool == .split ? .subviews : .all)
     }
 
@@ -438,7 +460,7 @@ struct VideoEditTimelineView: View {
                 playheadX: clock.time * pps,
                 geometry: scrollGeometry,
                 onSeek: { time, precise in
-                    clock.seek(to: min(max(0, time), project.duration), precise: precise)
+                    seekFromTimeline(time: time, precise: precise)
                 }
             )
         } else if let layer = row.filterLayer {
@@ -532,6 +554,17 @@ struct VideoEditTimelineView: View {
     }
 
     // MARK: - 播放头
+
+    /// 时间线上所有「把播放头挪过去」的落点：标尺的点 / 拖，和空白处的点击。
+    ///
+    /// **夹紧只能有这一处。** 两个调用点各写一份 `min(max(0, t), duration)` 迟早
+    /// 会分叉：标尺夹到片尾、点空白不夹的话，点右边那一大片空白就会把播放头送到
+    /// 工程之外 —— 那里根本没有帧，画面停在最后一帧，而播放头却在几十秒开外，
+    /// 工具栏上所有「播放头得落在片段内」才可用的按钮（分割、冻结、标记、删左、
+    /// 删右）随即全部变灰。
+    func seekFromTimeline(time: Double, precise: Bool) {
+        clock.seek(to: min(max(0, time), project.duration), precise: precise)
+    }
 
     /// 悬停预览的影子指针：半透明细线、没有把手 —— 只说明「画面此刻在看这儿」。
     /// 真播放头（白色实线 + 把手）留在用户点定的位置，点击才会把它移过来。

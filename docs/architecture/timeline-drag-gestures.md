@@ -325,11 +325,10 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 ### 5d. 滚动内容必须**两轴**填满视口、左上角对齐
 
 ```swift
-ScrollView([.horizontal, .vertical]) {
-    scrolledContent
-        .frame(width: contentWidth, alignment: .topLeading)
-        .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
-}
+// `scrolledContent` 的修饰符栈（顺序即合同，见 5e）
+ZStack(alignment: .topLeading) { ... }
+    .frame(width: contentWidth, alignment: .topLeading)
+    .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
 ```
 
 内容比视口小时，SwiftUI 的 `ScrollView` 会把它**居中**（实测：800 宽的视口里放
@@ -355,6 +354,54 @@ ScrollView([.horizontal, .vertical]) {
 
 `contentWidth` 不受这条影响：轨道底色仍然止于内容末尾，这一行只管「内容整体摆在
 哪儿」，不管「内容有多宽」。
+
+### 5e. 命中区必须盖在「填满视口」**之后**
+
+`.frame(minWidth:minHeight:)` 撑出来的那一圈空白**也要能点**，所以命中区
+（`.contentShape(Rectangle())` 和挂在它后面的点击 / 框选）必须排在那个 frame
+**后面**。修饰符的顺序就是这里的全部合同：
+
+```swift
+    .frame(width: contentWidth, alignment: .topLeading)
+    .contentShape(Rectangle())
+    .onDrop(of: [FilterDrag.type], ...)          // ← 只盖到内容区（见下）
+    .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
+    .contentShape(Rectangle())                   // ← 盖住撑出来的空白
+    .onTapGesture(coordinateSpace: .local) { ... }
+    .gesture(marqueeGesture, ...)
+```
+
+排在前面（2026-09-21 之前就是那样）的话，能点的只有 `contentWidth` 那一段 ——
+工程短时它是 **600pt 的地板**，窗口一宽，右边小半个视口是彻底的死区：点了不移
+播放头、不清选择，框也拉不起来（[案例](../bugfixes/2026-09-21-timeline-right-padding-dead-zone.md)）。
+
+**`.onDrop` 是故意的例外**，只盖到内容区为止：右边撑出来的空白在时间轴上远远超出
+工程长度，而滤镜段不计入 `duration`，落到那儿就是凭空多出一段谁也看不见、也滚不到
+的调色。
+
+`.local` 坐标在这两层里都以**内容原点**为零点（两个 frame 都是 `.topLeading`
+对齐），所以 `location.x / pps` 直接就是时刻，不用再补滚动量 —— 这是它和框选
+（钉在视口坐标系上、必须现读 `offsetX`，见 §5b）的分别。
+
+### 5f. 谁来移动播放头：唯一夹紧点 `seekFromTimeline`
+
+2026-09-21 用户拍板：**点时间线上任何非素材处，白色播放头就挪过来**。在那之前它
+只能在 26pt 高的标尺上点出来。
+
+- **哪些地方算「非素材处」不用自己判**：块本体、标尺、裁切把手、标记帽子各有
+  自己的手势，SwiftUI 里子视图的手势优先，能落到容器那一下点击上的**只剩**谁都
+  不认领的空白。所以合同是「容器收到点击」而不是「我算出指针不在任何块上」——
+  后者等于把命中几何抄第二遍，块一改形状就分叉。
+- **点 = 移播放头 + 清空选择；拖 = 框选**。两者靠门槛分开：框选起手要 4pt，
+  点击是零位移，一次鼠标操作只会走其中一条。
+- **夹紧只有一处**（`VideoEditTimelineView.seekFromTimeline`）。标尺和点空白各写
+  一份 `min(max(0, t), duration)` 迟早分叉：一边夹到片尾、一边不夹的话，点右边那
+  片空白就会把播放头送到工程之外 —— 那里没有帧，画面停在最后一帧，而播放头在几十
+  秒开外，工具栏上所有「播放头得落在片段内」才可用的按钮（分割、冻结、标记、
+  删左、删右）随即全部变灰，看起来像是工具栏也坏了。
+
+守卫：`checks/timeline-drag-wiring.sh` 的「点非素材处 = 把播放头挪过来」一节，
+连同 5e 的顺序断言（按行号比大小，对比的是**最后一个** `.contentShape`）。
 
 ## 回归清单（改这些代码后过一遍）
 
@@ -397,6 +444,10 @@ ScrollView([.horizontal, .vertical]) {
   相对错位不变；译文轨的字幕跟原文轨走到同一时刻；⌘Z 一次全退回。
 - 框住一片按 ⌫：剪辑、形状、字幕**一起**消失（不是只删一类），⌘Z 一次全回来。
 - 刀片模式（B）下在空白处拖：不出框，点在块上照常落刀。
+- **点轨道下方的空白**：播放头挪到点的那一刻，同时选择被清空（检查器回到
+  Project）；**点块本体**：播放头一动不动，块被选中。
+- **工程短 + 窗口拉宽**（轨道底色明显止于窗口中间），点底色**右边**那片空白：
+  播放头挪到片尾并停住（不是跑到工程之外），从那儿往左拖也能拉起框。
 - 视频 + 链接音频一起换轨：音频跟到同一时刻（拖完点播放听一句，别只看轨道）。
 - 形状块拖动：亮线、吸附、松手不跳，与剪辑手感一致。
 - 把块拖到工程末尾之外：自由落点的轨允许（内容跟着长），磁吸主轨不允许。
