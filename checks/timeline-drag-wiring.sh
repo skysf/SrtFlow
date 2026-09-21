@@ -504,18 +504,25 @@ if MASK_APPLY="$(require_func 'private func apply(duration:' "$MASK")"; then
 fi
 
 
-# ── 滚动内容必须填满视口、顶对齐 ──────────────────────────────────────
-# 轨道少的时候（常态）内容比视口矮，不撑满的话 SwiftUI 会把它**纵向居中**，
-# 连出两个 bug（2026-09-20 用户报的）：
+# ── 滚动内容必须填满视口、左上角对齐（两轴都要） ──────────────────────
+# 内容比视口小时 SwiftUI 的 ScrollView 会把它**居中**，两根轴各自连出 bug：
+#
+# 纵向（轨道少，常态；2026-09-20 用户报的）：
 #   1. 播放头那条线只画在居中后那一段，上面接不到标尺 —— 「指针是断的」；
 #   2. 标尺靠 `.offset(y: geometry.offset.y)` 被拉回视口顶上，但它的**命中区
 #      没跟过去**，点可见的标尺 seek 不了 —— 「播放头没法移动」。
-# 两个症状同一个根。修法就是这一行 minHeight。
-if SCROLL_BLOCK="$(grep -A 12 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" || true)"; then
-  # 两个条件写在**同一行**上匹配：分开写的话 `alignment: .top` 会被上一行的
-  # `.topLeading` 顺手匹配掉，顶对齐那条就成了永远为真的假绿。
-  printf '%s\n' "$SCROLL_BLOCK" | grep -q 'minHeight: viewportHeight, alignment: \.top)' \
-    || fail "时间线滚动内容没有 .frame(minHeight: viewportHeight, alignment: .top)：内容比视口矮时会被纵向居中，播放头的线会断、标尺点不动"
+# 横向（工程短 + 窗口宽，同样是常态；2026-09-21 用户报的）：
+#   3. 整条时间线飘到视口中间 —— 「刚加进来的素材没贴左边」；
+#   4. 框选算的是 `内容 x = 视口 x + offsetX`（见上面 §5b 那组守卫），居中
+#      把这个前提打破了，框整体偏到指针右边 (视口宽 - 内容宽)/2。
+# 四个症状同一个根。修法就是这一行两轴的 min 尺寸。
+if SCROLL_BLOCK="$(grep -A 18 'ScrollView(\[\.horizontal, \.vertical\]' "$VIEW" || true)"; then
+  # 三个条件写在**同一行**上匹配：分开写的话 `alignment: .topLeading` 会被上一
+  # 行 `.frame(width: contentWidth, alignment: .topLeading)` 顺手匹配掉，对齐
+  # 那条就成了永远为真的假绿；只查 minHeight 的话横向那一半照样能溜过去。
+  printf '%s\n' "$SCROLL_BLOCK" \
+    | grep -q 'minWidth: viewportWidth, minHeight: viewportHeight, alignment: \.topLeading)' \
+    || fail "时间线滚动内容没有 .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)：内容比视口小时会被居中 —— 纵向会让播放头断线、标尺点不动，横向会让素材不贴左边、框选整体偏到指针右边"
 fi
 
 # ── 从转场库拖卡片到接缝 ──────────────────────────────────────────────
@@ -616,4 +623,4 @@ fi
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容填满视口"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口"
