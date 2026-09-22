@@ -154,6 +154,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   接线扫描：`checks/timeline-drag-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
 - 翻译配对预检与接线：`scripts/check-translation-preflight.sh`。
+- 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
+  拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
+  `scripts/check-audio-library.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
@@ -171,6 +174,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   选型约束（预览斜坡能精确表达才收）与悬停预览选择器。
 - [画面段的入场/出场动画](docs/plans/2026-09-18-clip-animation.md) — 产品决策（效果清单、
   吞掉画面渐变、不露边口径）、选型约束与分刀。
+- [音频库（音乐 / 音效）](docs/plans/2026-09-22-audio-library.md) — 两个来源（R2 按需下载
+  + 本地导入）、**只收 CC-BY / CC0 的授权政策**（SA 会传染给用户成片）、manifest 数据
+  契约、试听流播与 ducking、素材筛选管线与分刀。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
