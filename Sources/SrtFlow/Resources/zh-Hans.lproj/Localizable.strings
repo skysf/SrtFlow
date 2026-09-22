@@ -315,7 +315,7 @@
 
 "Adding…" = "正在添加…";
 "Freezing…" = "正在定格…";
-"Drag up or down to resize this kind of track" = "上下拖动可调整这类轨道的高度";
+"Drag up or down to resize this track" = "上下拖动可调整这条轨道的高度";
 
 "Hide or show subtitles" = "隐藏/显示字幕";
 "Subtitle track is hidden — nothing will be burned." = "字幕轨已隐藏 —— 不会烧录进导出。";

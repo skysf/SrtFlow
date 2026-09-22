@@ -59,7 +59,7 @@ need Sources/SrtFlow/VideoEditTimelineShapeRow.swift       '\.pointerStyle\(\.co
 need Sources/SrtFlow/VideoEditTimelineTextRow.swift        '\.pointerStyle\(\.columnResize\)' '文字轨裁切把手的 .columnResize'
 need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(\.columnResize\)' '片段裁切把手的 .columnResize'
 need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(project\.activeTool == \.split \? \.rectSelection : nil\)' '刀片十字（条件靠 nil 交回外层）'
-need Sources/SrtFlow/VideoEditTimelineRuler.swift          '\.pointerStyle\(\.rowResize\)'    '标尺调轨高的 .rowResize'
+need Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift  '\.pointerStyle\(\.rowResize\)'    '轨道头调行高的 .rowResize'
 need Sources/SrtFlow/VideoEditPreviewTransform.swift       '\.pointerStyle\(handle\.pointerStyle\)' '预览变换把手接 handle.pointerStyle'
 need Sources/SrtFlow/VideoEditPreviewTransform.swift       'var pointerStyle: PointerStyle'  'FrameHandle 暴露 pointerStyle'
 

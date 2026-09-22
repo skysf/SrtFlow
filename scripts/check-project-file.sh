@@ -63,6 +63,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
+  Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \

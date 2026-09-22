@@ -23,6 +23,13 @@ struct VideoEditProjectFile: Codable {
     var timeline: TimelineState
     /// 时间线里每个素材路径配一份定位信息，素材被改名/移动后靠它找回来。
     var media: [MediaRecord]
+    /// 每条轨自己的行高。**与 `timeline` 平级、不在时间线里** —— 它是装饰状态，
+    /// 进 `TimelineState` 就会跟着进撤销栈（见 `TimelineRowHeights`）。
+    ///
+    /// **不开新的 formatVersion**：登记清单问的是「旧版拿到它会不会毁数据」。
+    /// 旧版丢掉这一段，用户损失的只是几条轨的高度 —— 成片一帧不变，再拖一下就
+    /// 回来了，不像 v8 的标记那样是丢了就没有的手工输入。
+    var rowHeights: TimelineRowHeights
 
     /// reader 认识的最高版本（闸门比较对象）。
     static let latestFormatVersion = 18
@@ -33,10 +40,14 @@ struct VideoEditProjectFile: Codable {
     static let fileExtension = "srtflowproj"
 
     private enum CodingKeys: String, CodingKey {
-        case formatVersion, savedAt, timeline, media
+        case formatVersion, savedAt, timeline, media, rowHeights
     }
 
-    init(timeline: TimelineState, media: [MediaRecord]) {
+    init(
+        timeline: TimelineState,
+        media: [MediaRecord],
+        rowHeights: TimelineRowHeights = TimelineRowHeights()
+    ) {
         // 定版：帧率是无条件的 v5 数据（每个工程都有帧率，且旧版会按 30 硬编码
         // 渲染），所以**新版 writer 一律写 latest**，不再降级。
         // 「按需定版」这个机制对 v4/v6 仍然成立，但已被 v5 的无条件要求覆盖 ——
@@ -58,6 +69,9 @@ struct VideoEditProjectFile: Codable {
         savedAt = Date()
         self.timeline = timeline
         self.media = media
+        // 删掉的轨不留在文件里。**只清这一份拷贝**，内存里的那份留着 ——
+        // 删轨会触发自动保存，连内存一起清的话，用户 ⌘Z 把轨撤回来高度就没了。
+        self.rowHeights = rowHeights.pruned(keeping: timeline.laneIDs)
     }
 
     init(from decoder: Decoder) throws {
@@ -66,6 +80,20 @@ struct VideoEditProjectFile: Codable {
         savedAt = try c.decodeIfPresent(Date.self, forKey: .savedAt) ?? Date()
         timeline = try c.decode(TimelineState.self, forKey: .timeline)
         media = try c.decodeIfPresent([MediaRecord].self, forKey: .media) ?? []
+        // 老工程（和被旧版存过一轮的工程）没有这一段：所有轨走默认行高。
+        rowHeights = try c.decodeIfPresent(TimelineRowHeights.self, forKey: .rowHeights)
+            ?? TimelineRowHeights()
+    }
+
+    /// 按需写键：没人调过行高的工程，文件里连这个键都不该出现
+    /// （同 v4/v8/v9 那几个按需字段的写法，也让老工程存一轮之后 diff 是空的）。
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(formatVersion, forKey: .formatVersion)
+        try c.encode(savedAt, forKey: .savedAt)
+        try c.encode(timeline, forKey: .timeline)
+        try c.encode(media, forKey: .media)
+        if !rowHeights.isEmpty { try c.encode(rowHeights, forKey: .rowHeights) }
     }
 }
 
@@ -156,6 +184,8 @@ enum VideoEditProjectIO {
         /// 读到的素材定位表（键是**解析之后**的路径）。存盘时要拿它来兜底，
         /// 不然这次没找到的素材，书签会被下一次自动保存抹掉。
         var records: [String: MediaRecord]
+        /// 每条轨自己的行高（老工程是空的 = 全部走默认值）。
+        var rowHeights: TimelineRowHeights
     }
 
     // MARK: 存
@@ -166,13 +196,14 @@ enum VideoEditProjectIO {
     nonisolated static func save(
         _ timeline: TimelineState,
         to url: URL,
-        knownRecords: [String: MediaRecord] = [:]
+        knownRecords: [String: MediaRecord] = [:],
+        rowHeights: TimelineRowHeights = TimelineRowHeights()
     ) throws -> [String: MediaRecord] {
         let directory = url.deletingLastPathComponent()
         let media = timeline.mediaURLs.map {
             MediaRecord(url: $0, projectDirectory: directory, previous: knownRecords[$0.path])
         }
-        let file = VideoEditProjectFile(timeline: timeline, media: media)
+        let file = VideoEditProjectFile(timeline: timeline, media: media, rowHeights: rowHeights)
 
         let encoder = JSONEncoder()
         // 存得可读：工程文件进了 git 或者要人肉看一眼时有用，几十 KB 不心疼。
@@ -286,7 +317,8 @@ enum VideoEditProjectIO {
             missingMedia: missing,
             didRelink: didRelink,
             stillsToRegenerate: stills,
-            records: records
+            records: records,
+            rowHeights: file.rowHeights.pruned(keeping: timeline.laneIDs)
         )
     }
 

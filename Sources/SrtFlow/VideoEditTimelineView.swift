@@ -59,7 +59,7 @@ struct VideoEditTimelineView: View {
     /// 垂直拖动瞄准的目标行（高亮它）。
     @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
     /// 轨道头上下拖调行高的基准。
-    @State private var headerResizeBase: Double?
+    @State private var headerResizeBase: RowHeightDragState?
     /// 从转场库拖卡片进来时的落点框。**只是视图状态** —— 拖动过程中一个字都不
     /// 写 `TimelineState`（§0），模型只在松手那一下改一次。
     @State private var transitionDrop: TransitionDropPreview?
@@ -144,6 +144,9 @@ struct VideoEditTimelineView: View {
         var icon: String
         var height: Double
         var slot: TrackSlot?
+        /// 这一行的行高存在哪（nil = 这一行的高度不可调）。键是轨道身份不是
+        /// 行号，见 `TimelineRowHeights`。
+        var heightKey: TimelineRowHeightKey?
         var isRuler = false
         var isShapes = false
         /// 文字行的层号（nil = 不是文字行）。重叠的文字自动多分一层，
@@ -189,11 +192,13 @@ struct VideoEditTimelineView: View {
         // 图标与主轨**同一个**：它们是对等的视频轨，区别只有叠放次序（行的位置
         // 已经表达了）和颜色。用 pip 图标会把「这是个小窗」的旧心智带回来。
         for index in project.state.overlayTracks.indices.reversed() {
+            let row = trackRowHeight(.overlay(index))
             result.append(RowSpec(
                 id: "overlay-\(project.state.overlayTracks[index].id)",
                 icon: "film",
-                height: project.videoRowHeight,
+                height: row.height,
                 slot: .overlay(index),
+                heightKey: row.key,
                 isHidden: project.state.overlayTracks[index].isHidden
             ))
         }
@@ -206,11 +211,13 @@ struct VideoEditTimelineView: View {
         if !project.state.shapes.isEmpty {
             result.append(RowSpec(id: "shapes", icon: "square.on.square.dashed", height: 26, slot: nil, isShapes: true))
         }
+        let mainRow = trackRowHeight(.main)
         result.append(RowSpec(
             id: "main",
             icon: "film",
-            height: project.videoRowHeight,
+            height: mainRow.height,
             slot: .main,
+            heightKey: mainRow.key,
             isHidden: project.state.mainHidden
         ))
         // 一个语言一条字幕轨：原文一行，有译文再来一行。显示什么由这两只
@@ -230,15 +237,24 @@ struct VideoEditTimelineView: View {
             }
         }
         for index in project.state.audioTracks.indices {
+            let row = trackRowHeight(.audio(index))
             result.append(RowSpec(
                 id: "audio-\(project.state.audioTracks[index].id)",
                 icon: "music.note",
-                height: project.audioRowHeight,
+                height: row.height,
                 slot: .audio(index),
+                heightKey: row.key,
                 isHidden: project.state.audioTracks[index].isHidden
             ))
         }
         return result
+    }
+
+    /// 视频轨 / 音频轨这一行多高，以及它的行高存在哪个键上。
+    /// **一轨一个值**：没单独调过的轨才回落到这一类的默认高度。
+    private func trackRowHeight(_ slot: TrackSlot) -> (height: Double, key: TimelineRowHeightKey?) {
+        let key = TimelineRowHeights.key(for: slot, in: project.state)
+        return (project.rowHeight(for: key, kind: TrackRowKind(slot)), key)
     }
 
     /// 每行的纵向位置（垂直拖动找目标行用），和 VStack 的排布严格一致。

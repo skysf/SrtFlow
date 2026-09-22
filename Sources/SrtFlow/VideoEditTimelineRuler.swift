@@ -1,10 +1,12 @@
 import AppKit
 import SwiftUI
 
-// MARK: - 标尺与行高拖调
+// MARK: - 标尺
 //
 // 从 `VideoEditTimelineView.swift` 拆出来（拆分前 2101 行，远超仓库约 800 行的
 // 警戒线）。标尺自己只管画刻度和把点击换算成 seek，播放头画在滚动内容那一层。
+// 行高拖调原本也在这个文件里，2026-09-22 改成「一轨一个高度」时搬去了
+// `VideoEditTimelineRowHeights.swift`（纯值）+ `VideoEditTimelineRowHeightDrag.swift`（接线）。
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按文件扫描，挪动这里的东西要同步改它。
 
 // MARK: - 钉在视口顶上的标尺
@@ -48,55 +50,6 @@ struct TimelinePinnedRuler: View {
             .offset(y: geometry.offset.y)
             // 盖在轨道行之上（VStack 按 zIndex 决定绘制与命中顺序）。
             .zIndex(50)
-    }
-}
-
-// MARK: - 行高拖调
-
-/// 轨道行的类别，行高各记各的。
-enum TrackRowKind {
-    /// 主轨和上层轨合成一类：行高共用一个值，拖哪条都一起动。
-    case video, audio, other
-}
-
-/// 轨道头图标上的上下拖：调那一类轨道的行高。
-struct RowHeightDragModifier: ViewModifier {
-    let kind: TrackRowKind
-    @ObservedObject var project: VideoEditProject
-    @Binding var base: Double?
-
-    func body(content: Content) -> some View {
-        if kind == .other {
-            content
-        } else {
-            content
-                .gesture(
-                    DragGesture(minimumDistance: 2)
-                        .onChanged { value in
-                            if base == nil { base = current }
-                            apply((base ?? current) + value.translation.height)
-                        }
-                        .onEnded { _ in base = nil }
-                )
-                .pointerStyle(.rowResize)
-                .instantHelp("Drag up or down to resize this kind of track")
-        }
-    }
-
-    private var current: Double {
-        switch kind {
-        case .video: return project.videoRowHeight
-        case .audio: return project.audioRowHeight
-        case .other: return 0
-        }
-    }
-
-    private func apply(_ height: Double) {
-        switch kind {
-        case .video: project.videoRowHeight = min(max(height, 28), 120)
-        case .audio: project.audioRowHeight = min(max(height, 20), 100)
-        case .other: break
-        }
     }
 }
 
