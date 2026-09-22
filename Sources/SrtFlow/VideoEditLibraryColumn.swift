@@ -1,19 +1,23 @@
 import SwiftUI
 
-/// 预览左边那一栏：转场库和滤镜库共用，顶上一个分段切换。
+/// 预览左边那一栏：转场库、滤镜库和音频库共用，顶上一个分段切换。
 ///
-/// 为什么共用一栏而不是并排两栏：宽度预算不够。库 196 + 预览 430 + 检查器 252
-/// = 878，已经贴着窗口最小宽度 900；再开一栏必须把窗口最小宽度抬上去，而那两个
-/// 库从来不需要同时看着（挑转场和挑滤镜是两件事）。
+/// 为什么共用一栏而不是并排几栏：宽度预算不够。库 196 + 预览 430 + 检查器 252
+/// = 878，已经贴着窗口最小宽度 900；再开一栏必须把窗口最小宽度抬上去，而这几个
+/// 库从来不需要同时看着（挑转场、挑滤镜、挑配乐是三件事）。
 ///
-/// 分段切换本身就是这一栏的标题，所以两个面板各自都**不再画自己的标题行** ——
+/// 分段切换本身就是这一栏的标题，所以各面板都**不再画自己的标题行** ——
 /// 画了就是一栏里两行标题，把本来就窄的格子再吃掉一截。
+///
+/// **三段起只显示图标**（2026-09-22 加音频页时）：196pt 里塞三个「图标 + 文字」，
+/// 英文下 Transitions / Filters / Audio 会被截成看不出意思的残词。靠 `.instantHelp`
+/// 认路 —— 仓库本来就禁用系统 `.help`，这条是白捡的（见 instant-tooltips.md）。
 struct LibraryColumn: View {
     @ObservedObject var project: VideoEditProject
     @ObservedObject var clock: PlayerClock
 
     enum Tab: String, CaseIterable, Identifiable {
-        case transitions, filters
+        case transitions, filters, audio
 
         var id: String { rawValue }
 
@@ -21,6 +25,7 @@ struct LibraryColumn: View {
             switch self {
             case .transitions: return "Transitions"
             case .filters: return "Filters"
+            case .audio: return "Audio"
             }
         }
 
@@ -28,6 +33,7 @@ struct LibraryColumn: View {
             switch self {
             case .transitions: return "square.filled.and.line.vertical.and.square"
             case .filters: return "camera.filters"
+            case .audio: return "music.note"
             }
         }
     }
@@ -47,7 +53,8 @@ struct LibraryColumn: View {
             Picker("", selection: tab) {
                 ForEach(Tab.allCases) { item in
                     Label(item.title, systemImage: item.icon)
-                        .labelStyle(.titleAndIcon)
+                        .labelStyle(.iconOnly)
+                        .instantHelp(item.title)
                         .tag(item)
                 }
             }
@@ -61,6 +68,8 @@ struct LibraryColumn: View {
                 TransitionLibraryPanel(project: project, clock: clock)
             case .filters:
                 FilterLibraryPanel(project: project, clock: clock)
+            case .audio:
+                AudioLibraryPanel(project: project)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

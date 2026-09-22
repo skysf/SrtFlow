@@ -78,6 +78,7 @@ run_check "clip-animation（入场/出场动画：预览与成片对账）" scri
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
 run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
+run_check "audio-library（清单解析的宽容边界 + 双语搜索）" scripts/check-audio-library.sh
 
 echo ""
 echo "════════════════════════════════════════"

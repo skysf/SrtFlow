@@ -65,6 +65,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
+  Sources/SrtFlow/AudioLibraryCache.swift \
+  Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/VideoEditSelection.swift \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift \
   Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift \

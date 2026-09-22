@@ -787,7 +787,7 @@
 /* 滤镜库与十款预设（2026-09-21，刀 2） */
 "Library" = "Library";
 "Filters" = "Filters";
-"Show or hide the transition and filter library" = "Show or hide the transition and filter library";
+"Show or hide the transition, filter and audio library" = "Show or hide the transition, filter and audio library";
 "Add this filter at the playhead" = "Add this filter at the playhead";
 "Add a clip to the main track to see each filter on your own footage." = "Add a clip to the main track to see each filter on your own footage.";
 "Move the playhead over a clip to see each filter on your own footage." = "Move the playhead over a clip to see each filter on your own footage.";
@@ -800,3 +800,25 @@
 "Mist Blue" = "Mist Blue";
 "Ink & Shadow" = "Ink & Shadow";
 "Neon" = "Neon";
+
+/* 音频库 */
+"Search music" = "Search music";
+"Try again" = "Try again";
+"No music matches." = "No music matches.";
+"Offline — showing the last known list." = "Offline — showing the last known list.";
+"The audio library list is damaged." = "The audio library list is damaged.";
+"This audio library needs a newer version of the app (list format v%d, this app reads up to v%d)." = "This audio library needs a newer version of the app (list format v%d, this app reads up to v%d).";
+"Could not download this track (server said %d)." = "Could not download this track (server said %d).";
+"Music credits" = "Music credits";
+"Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown." = "Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown.";
+"Used in this project" = "Used in this project";
+"Copy credits" = "Copy credits";
+"Copy the credit lines for the tracks used in this project" = "Copy the credit lines for the tracks used in this project";
+"Credits" = "Credits";
+"Where this music comes from, and how to credit it" = "Where this music comes from, and how to credit it";
+"Downloaded tracks — click to free the space" = "Downloaded tracks — click to free the space";
+"Remove downloaded music?" = "Remove downloaded music?";
+"Remove" = "Remove";
+"Projects that use these tracks will download them again when you open them." = "Projects that use these tracks will download them again when you open them.";
+"Collapse the sidebar" = "Collapse the sidebar";
+"Expand the sidebar" = "Expand the sidebar";

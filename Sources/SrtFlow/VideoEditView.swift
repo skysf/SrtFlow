@@ -16,7 +16,12 @@ struct VideoEditView: View {
     @State private var showsExportSheet = false
     @State private var showsSubtitlePanel = false
     /// 预览左边那栏转场库的显隐。记住上次的选择 —— 它是布局偏好，不是工程数据。
-    @AppStorage("transitionLibraryVisible") private var showsTransitionLibrary = true
+    /// 左栏（转场 / 滤镜 / 音频三页共用）的显隐。
+    ///
+    /// **`@AppStorage` 的键仍叫 `transitionLibraryVisible`**：这一栏最早只有转场库，
+    /// 键名跟着语义改的话，用户上次收起来的状态会丢 —— 为了一个看不见的字符串
+    /// 让所有人的界面跳一下不划算。变量名改了，键名是历史。
+    @AppStorage("transitionLibraryVisible") private var showsLibraryColumn = true
     @ObservedObject private var recordingCoordinator = ScreenRecordingCoordinator.shared
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
@@ -37,12 +42,15 @@ struct VideoEditView: View {
                 // 时间线仍然通栏。
                 // 宽度预算：库 196 + 预览 430 + 检查器 252 = 878，没超过下面那
                 // 条 minWidth 900，所以加这一栏不用抬窗口的最小宽度。
-                if showsTransitionLibrary {
+                if showsLibraryColumn {
                     LibraryColumn(project: project, clock: clock)
                         .frame(minWidth: 196, idealWidth: 220, maxWidth: 340)
                 }
                 previewPane
-                    .frame(minWidth: 430, idealWidth: 700, maxWidth: .infinity)
+                    // idealWidth 从 700 收到 560（2026-09-22 用户拍板：预览默认
+                    // 窄一点，要大自己拉）。**只对没拖过分栏器的窗口生效** ——
+                    // AppKit 会 autosave 用户拖过的位置，这是有意接受的行为。
+                    .frame(minWidth: 430, idealWidth: 560, maxWidth: .infinity)
                     .layoutPriority(1)
                 // 右栏一位两用：字幕表**盖在检查器上面**，✕ 回到检查器
                 //（2026-08-12 用户拍板）。
@@ -84,6 +92,19 @@ struct VideoEditView: View {
                 let urls = smoke.split(separator: ":")
                     .map { URL(fileURLWithPath: String($0)) }
                 project.addMedia(urls: urls)
+            }
+            // 同一套钩子，打开一份**已存在的工程**。
+            //
+            // 为什么非要有它：音频库素材的重链接（`remoteKey` → 缓存 → R2）只在
+            // **打开工程**这条路径上跑，而那条路自动化进不去 —— 临时目录里 ad-hoc
+            // 签名的调试拷贝没在 LaunchServices 注册文档类型，命令行参数、
+            // `open -a`、AppleScript 的 `open` 三条路 2026-09-22 实测全部打不开它，
+            // 而 NSOpenPanel 的自动化本来就不可靠（见 gui-smoke-testing.md）。
+            // 没有这个钩子，「清掉缓存还找不找得回来」这条就永远只能靠人手点。
+            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_PROJECT"],
+               !smoke.isEmpty, project.state.isEmpty {
+                let url = URL(fileURLWithPath: smoke)
+                Task { await project.openProject(at: url) }
             }
         }
         .onDisappear {
@@ -141,18 +162,18 @@ struct VideoEditView: View {
             ToolbarItem(placement: .navigation) {
                 VideoEditProjectMenu(project: project)
             }
-            // 转场库的开关挨着工程名放最左边，和系统那个侧边栏开关呼应 ——
+            // 素材库的开关挨着工程名放最左边，和系统那个侧边栏开关呼应 ——
             // 都是「把左边那一栏收起来」。
             ToolbarItem(placement: .navigation) {
                 Button {
-                    showsTransitionLibrary.toggle()
+                    showsLibraryColumn.toggle()
                 } label: {
                     Label(
                         "Library",
                         systemImage: "square.filled.and.line.vertical.and.square"
                     )
                 }
-                .instantHelp("Show or hide the transition and filter library")
+                .instantHelp("Show or hide the transition, filter and audio library")
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if exporter.isExporting {

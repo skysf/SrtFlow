@@ -119,19 +119,60 @@ struct MainWindowView: View {
 
     // MARK: - 侧边栏
 
+    /// 侧边栏**默认只显示图标**，点一下展开成带文字的（2026-09-22 用户拍板要
+    /// 「默认窄、可拉宽」）。
+    ///
+    /// **为什么是「点一下展开」而不是直接拉窄了让用户拉**：macOS 的
+    /// `NavigationSplitView` 没有原生的图标条模式，而
+    /// `.navigationSplitViewColumnWidth(min:ideal:max:)` 的 **`ideal` 在 sidebar 上
+    /// 根本不生效**（2026-09-22 实测：ideal 写 64、max 留 280，列宽是 222；
+    /// 把 max 也压到 64，列宽立刻变成 72 —— 也就是列宽取的是内容固有宽度再夹紧到
+    /// `[min, max]`，`ideal` 不参与）。想让它一开始就窄，只能把 `max` 压小；
+    /// 而 `max` 压小之后又拉不开了。
+    ///
+    /// 所以改成两档，由 `@AppStorage` 记住：窄档 `[60, 72]` 只放得下图标，
+    /// 宽档 `[196, 280]` 里用户照样能拖着调。切换按钮在栏底。
+    ///
+    /// 宽档内拖出来的具体宽度仍由 AppKit autosave 记着，这是有意的 ——
+    /// 想一直看文字的人不该每次重新拉。
     private var sidebar: some View {
         List(selection: sectionSelection) {
             Section {
                 ForEach(ToolSection.allCases) { section in
-                    SidebarToolRow(section: section, activity: activity(for: section))
-                        .tag(section)
+                    SidebarToolRow(
+                        section: section,
+                        activity: activity(for: section),
+                        isCompact: isSidebarCompact
+                    )
+                    .tag(section)
                 }
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 196, ideal: 214, max: 280)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: SidebarWidthKey.self, value: geo.size.width)
+            }
+        }
+        .onPreferenceChange(SidebarWidthKey.self) { width in
+            // 阈值取 132：最长的那条中文标签（「压缩视频」四个字 ≈ 56pt）加上
+            // 图标、间距和进度徽章还能排开。低于它就只剩图标。
+            //
+            // **按实测宽度切，不按 `sidebarExpanded` 切**：宽档里用户还能继续往
+            // 窄了拖，拖到放不下文字时该自己变回图标。
+            isSidebarCompact = width < 132
+        }
+        .navigationSplitViewColumnWidth(
+            min: sidebarExpanded ? 196 : 60,
+            ideal: sidebarExpanded ? 214 : 64,
+            max: sidebarExpanded ? 280 : 72
+        )
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
     }
+
+    @State private var isSidebarCompact = true
+    /// 侧边栏是展开的（带文字）还是收起的（只有图标）。默认收起。
+    @AppStorage("sidebarExpanded") private var sidebarExpanded = false
 
     /// 侧边栏的选中项。点空白处 List 会把它清成 nil，那时保持原样 —— 右边不能空着。
     private var sectionSelection: Binding<ToolSection?> {
@@ -154,14 +195,40 @@ struct MainWindowView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            engineStatus
-            AppLanguagePicker(showsLabel: false)
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .controlSize(.small)
+            // 窄成图标条时引擎状态整条藏起来：那几行字最短也要一行半，
+            // 60pt 宽里只会挤成一坨看不懂的碎词。压缩和烧字幕两屏的底部各自
+            // 完整显示着同一条提示，信息不会丢。
+            if !isSidebarCompact { engineStatus }
+            HStack(spacing: 4) {
+                if !isSidebarCompact {
+                    AppLanguagePicker(showsLabel: false)
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .controlSize(.small)
+                }
+                Spacer(minLength: 0)
+                expandToggle
+            }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, isSidebarCompact ? 4 : 10)
         .padding(.bottom, 8)
+    }
+
+    /// 展开 / 收起侧边栏。窄档里语言选择器也藏起来（菜单式 Picker 有固有宽度，
+    /// 60pt 里放不下），所以那时这个按钮是栏底唯一的控件。
+    private var expandToggle: some View {
+        Button {
+            sidebarExpanded.toggle()
+        } label: {
+            Image(systemName: sidebarExpanded
+                  ? "chevron.backward.2" : "chevron.forward.2")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .frame(width: 22, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .instantHelp(sidebarExpanded ? "Collapse the sidebar" : "Expand the sidebar")
     }
 
     @State private var showsEngineDetail = false
@@ -308,14 +375,28 @@ struct MainWindowView: View {
 private struct SidebarToolRow: View {
     let section: ToolSection
     let activity: SidebarActivity?
+    /// 栏窄到只放得下图标。
+    let isCompact: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            Label(LocalizedStringKey(section.title), systemImage: section.icon)
-            Spacer(minLength: 4)
-            badge
+            // SwiftUI 没有 `AnyLabelStyle`，样式擦不了类型，只能分两支写。
+            if isCompact {
+                Label(LocalizedStringKey(section.title), systemImage: section.icon)
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Label(LocalizedStringKey(section.title), systemImage: section.icon)
+                    .labelStyle(.titleAndIcon)
+                Spacer(minLength: 4)
+                badge
+            }
         }
-        .instantHelp(LocalizedStringKey(section.blurb))
+        // 只剩图标时这条提示就是唯一的认路方式，所以**名字要在最前面** ——
+        // 现在的 blurb 是功能描述，窄态下先把栏目名说出来。
+        .instantHelp(
+            isCompact ? LocalizedStringKey(section.title) : LocalizedStringKey(section.blurb)
+        )
     }
 
     /// 切走了也能看见这一栏还在忙。
@@ -386,5 +467,14 @@ final class BurnInHandoff: ObservableObject {
         pendingVideos.removeAll()
         pendingSubtitles.removeAll()
         return result
+    }
+}
+
+
+/// 侧边栏当前有多宽。用来决定显不显示文字标签。
+private struct SidebarWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

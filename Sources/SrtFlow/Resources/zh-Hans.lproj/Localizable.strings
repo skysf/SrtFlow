@@ -787,7 +787,7 @@
 /* 滤镜库与十款预设（2026-09-21，刀 2） */
 "Library" = "素材库";
 "Filters" = "滤镜";
-"Show or hide the transition and filter library" = "显示或隐藏转场与滤镜库";
+"Show or hide the transition, filter and audio library" = "显示或隐藏转场、滤镜和音频库";
 "Add this filter at the playhead" = "在播放头处添加这款滤镜";
 "Add a clip to the main track to see each filter on your own footage." = "往主轨加一段素材，就能看到每款滤镜用在你自己画面上的样子。";
 "Move the playhead over a clip to see each filter on your own footage." = "把播放头移到有画面的地方，就能看到每款滤镜用在你自己画面上的样子。";
@@ -800,3 +800,25 @@
 "Mist Blue" = "雾蓝";
 "Ink & Shadow" = "墨影";
 "Neon" = "霓虹";
+
+/* 音频库 */
+"Search music" = "搜索音乐";
+"Try again" = "重试";
+"No music matches." = "没有匹配的音乐。";
+"Offline — showing the last known list." = "离线 —— 显示上次拿到的清单。";
+"The audio library list is damaged." = "音频库清单已损坏。";
+"This audio library needs a newer version of the app (list format v%d, this app reads up to v%d)." = "这个音频库需要更新的应用版本（清单格式 v%d，当前最高支持 v%d）。";
+"Could not download this track (server said %d)." = "下载失败（服务器返回 %d）。";
+"Music credits" = "音乐来源";
+"Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown." = "下面每一首都按「知识共享 署名」授权。你发布用到它的视频时，请照下面的写法署名。";
+"Used in this project" = "本工程用到了";
+"Copy credits" = "拷贝署名";
+"Copy the credit lines for the tracks used in this project" = "把本工程用到的那几条署名拷走";
+"Credits" = "音乐来源";
+"Where this music comes from, and how to credit it" = "这些音乐来自哪里，以及该怎么署名";
+"Downloaded tracks — click to free the space" = "已下载的音乐 —— 点击清理腾出空间";
+"Remove downloaded music?" = "清理已下载的音乐？";
+"Remove" = "清理";
+"Projects that use these tracks will download them again when you open them." = "用到这些音乐的工程，下次打开时会自动重新下载。";
+"Collapse the sidebar" = "收起侧边栏";
+"Expand the sidebar" = "展开侧边栏";
