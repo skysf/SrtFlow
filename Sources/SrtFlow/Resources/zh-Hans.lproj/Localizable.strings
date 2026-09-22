@@ -820,3 +820,5 @@
 "Remove downloaded music?" = "清理已下载的音乐？";
 "Remove" = "清理";
 "Projects that use these tracks will download them again when you open them." = "用到这些音乐的工程，下次打开时会自动重新下载。";
+"Collapse the sidebar" = "收起侧边栏";
+"Expand the sidebar" = "展开侧边栏";

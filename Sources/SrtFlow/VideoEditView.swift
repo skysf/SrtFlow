@@ -93,6 +93,19 @@ struct VideoEditView: View {
                     .map { URL(fileURLWithPath: String($0)) }
                 project.addMedia(urls: urls)
             }
+            // 同一套钩子，打开一份**已存在的工程**。
+            //
+            // 为什么非要有它：音频库素材的重链接（`remoteKey` → 缓存 → R2）只在
+            // **打开工程**这条路径上跑，而那条路自动化进不去 —— 临时目录里 ad-hoc
+            // 签名的调试拷贝没在 LaunchServices 注册文档类型，命令行参数、
+            // `open -a`、AppleScript 的 `open` 三条路 2026-09-22 实测全部打不开它，
+            // 而 NSOpenPanel 的自动化本来就不可靠（见 gui-smoke-testing.md）。
+            // 没有这个钩子，「清掉缓存还找不找得回来」这条就永远只能靠人手点。
+            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_PROJECT"],
+               !smoke.isEmpty, project.state.isEmpty {
+                let url = URL(fileURLWithPath: smoke)
+                Task { await project.openProject(at: url) }
+            }
         }
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }

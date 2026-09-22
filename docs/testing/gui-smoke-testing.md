@@ -30,6 +30,14 @@
   的界面就再挂一个 `.srt`**（`smoke.mp4:smoke.srt`），否则拿不到「有字幕」的
   状态，字幕面板里大半控件都不出现。NSOpenPanel 自动化（⌘⇧G 输路径）不可靠，
   别再试；文件对话框类交互一律靠这个钩子或留给用户手测。
+- `SRTFLOW_SMOKE_PROJECT=<路径>` —— 进入 Edit Video 时项目为空则打开这份
+  **已存在的工程**（2026-09-22 加）。
+  **调试拷贝打不开文档，三条路实测全灭**：命令行参数、`open -a <临时 app> <文件>`、
+  AppleScript 的 `tell app to open POSIX file` —— 临时目录里 ad-hoc 签名的拷贝
+  没在 LaunchServices 注册文档类型。没有这个钩子，凡是只在「打开工程」这条路径上
+  跑的东西（素材重链接、格式版本迁移、音频库的 `remoteKey` 恢复）都只能人手点。
+  工程文件可以手写，但 **`savedAt` 必须是 ISO8601 字符串**（reader 设了
+  `dateDecodingStrategy = .iso8601`），给数字会被判成「不是 SrtFlow 的工程文件」。
 - 测试视频用 vendor/ffmpeg 现造：`-f lavfi -i testsrc2=... -c:v h264_videotoolbox`。
 
 ## 三、驱动与截图
