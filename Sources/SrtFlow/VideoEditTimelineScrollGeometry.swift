@@ -37,6 +37,28 @@ final class TimelineScrollGeometry: ObservableObject {
     private weak var scrollView: NSScrollView?
     private var boundsObserver: NSObjectProtocol?
 
+    /// 屏幕坐标 → **滚动内容**坐标。指针不在可见内容区里（轨道头列上、时间线
+    /// 以外）时返回 nil。
+    ///
+    /// 给从 Finder 拖文件进来那条路用：它只能是闭包式 `.onDrop`（代理式收不到
+    /// 外部拖入，见 `MediaFileDropController.pointer`），拿不到 SwiftUI 给的落点，
+    /// 只能现读 `NSEvent.mouseLocation` 再换算。换算放在这儿是因为**整个时间线
+    /// 只有这个类碰 `NSScrollView`**。
+    func contentPoint(fromScreen screen: CGPoint) -> CGPoint? {
+        guard let scrollView, let window = scrollView.window,
+              let document = scrollView.documentView else { return nil }
+        let inWindow = window.convertPoint(fromScreen: screen)
+        let clipView = scrollView.contentView
+        // clip view 的 bounds 原点就是滚动量，所以这一下同时判了「在不在视口里」。
+        guard clipView.bounds.contains(clipView.convert(inWindow, from: nil)) else { return nil }
+        let point = document.convert(inWindow, from: nil)
+        // SwiftUI 的滚动内容是翻转坐标系（左上原点），和 `rowLayouts` 一致；
+        // 万一哪天不是，这里换算回来，别让落点整个上下颠倒。
+        return document.isFlipped
+            ? point
+            : CGPoint(x: point.x, y: document.bounds.height - point.y)
+    }
+
     /// 由 `TimelineScrollViewAccessor` 在滚动内容里认出滚动视图后挂上来。
     func attach(_ scrollView: NSScrollView?) {
         guard scrollView !== self.scrollView else { return }

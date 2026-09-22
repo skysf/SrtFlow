@@ -64,6 +64,7 @@ run_check "localization-coverage（界面文案两表配齐）" scripts/check-lo
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
+run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh

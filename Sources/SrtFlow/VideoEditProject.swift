@@ -804,6 +804,17 @@ final class VideoEditProject: ObservableObject {
         }
 
         if let subtitle = subtitles.first { attachSubtitle(subtitle) }
+        // 一个都没认出来时**必须吭声**。静默丢掉的话，「不支持这种文件」和
+        // 「支持、但落在你看不见的地方」在界面上长得一模一样 —— 用户只会觉得
+        // 拖放坏了（这正是 2026-09-22 之前的观感）。
+        if subtitles.isEmpty, videos.isEmpty, images.isEmpty, audios.isEmpty {
+            if let first = urls.first {
+                notice = urls.count == 1
+                    ? String(format: L10n("Could not use %@ as a clip."), first.lastPathComponent)
+                    : String(format: L10n("Could not use %d of the dropped files as clips."), urls.count)
+            }
+            return
+        }
         // 这三个都是脱手的后台任务，登记下来好在切工程时取消。
         // 工程代号要在**创建 Task 之前**抓：Task 创建后未必立刻跑，等它跑起来
         // 时用户可能已经切了工程 —— 那时在任务体里读到的就是新工程的代号，
@@ -888,7 +899,9 @@ final class VideoEditProject: ObservableObject {
     /// 图片：**立即**上轨（占位块马上能拖能剪），ffmpeg 在后台把它转成静帧
     /// 循环视频，转完无感替换 —— 之后转场、变速、上层轨全都不用特判。
     func addImages(_ urls: [URL], toOverlay: Bool, generation: Int? = nil) async {
-        guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
+        // 引擎没准备好就**一个占位块都别放**：放了立刻又被 convertStillClip 撤掉，
+        // 用户看到的是几个块闪一下就没了。
+        guard canConvertStills else {
             notice = L10n("The video engine is not ready yet.")
             return
         }
@@ -904,7 +917,7 @@ final class VideoEditProject: ObservableObject {
                 var clip = EditClip(
                     id: clipID,
                     sourceURL: url,
-                    sourceDuration: 5,
+                    sourceDuration: Self.importedImageDuration,
                     stillImageURL: url
                 )
                 clip.needsStillConversion = true
@@ -916,29 +929,48 @@ final class VideoEditProject: ObservableObject {
                     state.mainClips.append(clip)
                 }
             }
-
-            do {
-                let still = try await StillImageClipFactory.stillVideo(for: url, ffmpeg: ffmpeg)
-                let info = await probeVideo(still)
-                // 转换期间可能已经换了工程，或者这个占位块被撤销掉了。
-                // 不加这两道判断的话，`state = next` 会把新工程平白标脏。
-                guard isCurrentGeneration(generation), state.clip(with: clipID) != nil else { return }
-                // 直接替换，不占撤销栈 —— 用户没做任何操作。
-                var next = state
-                next.update(clipID) { clip in
-                    clip.sourceURL = still
-                    clip.needsStillConversion = false
-                    if let info { clip.info = info }
-                }
-                state = next
-                scheduleRebuild()
-            } catch {
-                guard isCurrentGeneration(generation) else { return }
-                notice = error.localizedDescription
-                perform(rebuildsPreview: false) { $0.remove(clipID) }
-            }
+            await convertStillClip(clipID, from: url, generation: generation)
         }
     }
+
+    /// 图片占位块 → 静帧循环视频，转完**无感替换**（不占撤销栈，用户没做任何操作）。
+    ///
+    /// 两个入口共用（按钮 / 拖到时间线以外的 `addImages`，和拖进轨道的
+    /// `importFiles`）—— 复制第二份的话，「转换期间换了工程」「占位块被撤销掉了」
+    /// 这两道守卫迟早有一边会忘。
+    func convertStillClip(_ clipID: UUID, from url: URL, generation: Int) async {
+        guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
+            notice = L10n("The video engine is not ready yet.")
+            perform(rebuildsPreview: false) { $0.remove(clipID) }
+            return
+        }
+        do {
+            let still = try await StillImageClipFactory.stillVideo(for: url, ffmpeg: ffmpeg)
+            let info = await probeVideo(still)
+            // 转换期间可能已经换了工程，或者这个占位块被撤销掉了。
+            // 不加这两道判断的话，`state = next` 会把新工程平白标脏。
+            guard isCurrentGeneration(generation), state.clip(with: clipID) != nil else { return }
+            var next = state
+            next.update(clipID) { clip in
+                clip.sourceURL = still
+                clip.needsStillConversion = false
+                if let info { clip.info = info }
+            }
+            state = next
+            scheduleRebuild()
+        } catch {
+            guard isCurrentGeneration(generation) else { return }
+            notice = error.localizedDescription
+            perform(rebuildsPreview: false) { $0.remove(clipID) }
+        }
+    }
+
+    /// 图片进时间线的默认时长。产品值，**只有这一份** —— 落点框的宽度也用它
+    /// （图片不用探测，所以拖进来立刻就是真实宽度）。
+    static let importedImageDuration = 5.0
+
+    /// 静帧转换的引擎准备好了没。图片进时间线要先过这一关。
+    var canConvertStills: Bool { MediaToolchain.shared.runtime != nil }
 
     /// 要导出的时间线：完整的，或只含选中内容（逻辑在
     /// `TimelineState.selectionForExport`，纯值变换，工程文件自检里有回归）。
@@ -1412,7 +1444,8 @@ final class VideoEditProject: ObservableObject {
         return nil
     }
 
-    private func audioDuration(_ url: URL) async -> Double? {
+    /// 拖进轨道那条路（`probeImports`）也要探，所以不是 private。
+    func audioDuration(_ url: URL) async -> Double? {
         if let cached = audioDurationCache[url] { return cached }
         let asset = AVURLAsset(url: url)
         guard let duration = try? await asset.load(.duration).seconds, duration.isFinite else { return nil }

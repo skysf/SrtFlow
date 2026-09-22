@@ -67,6 +67,11 @@ struct VideoEditTimelineView: View {
     /// 滤镜落在哪一层由指针的纵向位置决定，得拿得到 y（见 VideoEditFilterDrag.swift）。
     @State private var filterDrop: FilterDropPlan?
     @State private var audioLibraryDrop: AudioLibraryDropPlan?
+    /// 从 Finder 拖文件进来时的落点。同样挂在整块滚动内容上（落进哪条轨由指针的
+    /// 纵向位置决定），见 VideoEditMediaFileDrop.swift。
+    @State private var mediaFileDrop: MediaFileDropPlan?
+    /// 正有文件拖在时间线上方（闭包式 `.onDrop` 唯一给得出的信号）。
+    @State private var mediaFileDropTargeted = false
     /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
     ///
     /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
@@ -106,11 +111,28 @@ struct VideoEditTimelineView: View {
     }
 
     var body: some View {
-        if project.state.isEmpty {
-            emptyState
-        } else {
-            timeline
+        Group {
+            if project.state.isEmpty {
+                emptyState
+            } else {
+                timeline
+            }
         }
+        // 从 Finder 拖文件进来。**闭包式，不许换回 `DropDelegate`** —— 代理式
+        // 收不到外部拖入（2026-09-22 三处实测零调用，证据写在
+        // `VideoEditMediaFileDrop.swift` 的文件头）。
+        //
+        // **整个时间线栏只有这一个文件落点入口**，空工程那条分支也归它：落在哪
+        // 由指针说了算，指针算不出内容坐标（空工程还没有滚动视图、或者指针停在
+        // 轨道头列上）时 `drop` 自己退回没有落点的那条老路（接主轨末尾）。
+        // 分成两个入口的写法试过，只会多一处要对齐的行为。
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        // 内容区**以外**那片空白（时间线右边 / 下边撑出来的、以及空工程那条分支）
+        // 的文件落点。内容区里面归 `scrolledContent` 上那一份 —— 外部拖入由最里面
+        // 那个区独占，所以两处都要挂，但走的是同一个控制器、同一套落点算法。
+        .mediaFileDropUnderlay(mediaFileDropController)
+        .mediaFileDropTicker(mediaFileDropController, isTargeted: mediaFileDropTargeted)
     }
 
     // MARK: - 空状态
@@ -333,6 +355,22 @@ struct VideoEditTimelineView: View {
         }
     }
 
+    /// 拖文件进来这一套的落点控制器。每次用到都现造 —— 行布局、滚动量、
+    /// 视口尺寸全是现读的，存下来就会在拖动中途变陈旧。
+    private var mediaFileDropController: MediaFileDropController {
+        MediaFileDropController(
+            project: project,
+            pps: pps,
+            rowLayouts: rowLayouts(),
+            rowSpacing: rowSpacing,
+            geometry: scrollGeometry,
+            autoScroller: autoScroller,
+            viewport: CGSize(width: viewportWidth, height: viewportHeight),
+            preview: $mediaFileDrop,
+            isTargeted: $mediaFileDropTargeted
+        )
+    }
+
     var rowSpacing: Double { 5 }
 
     private var scrolledContent: some View {
@@ -348,7 +386,8 @@ struct VideoEditTimelineView: View {
             // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
             // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
             TimelineAlignmentGuides(
-                times: clipDrag?.guides ?? filterDrop?.guides ?? audioLibraryDrop?.guides ?? [],
+                times: clipDrag?.guides ?? filterDrop?.guides ?? audioLibraryDrop?.guides
+                    ?? mediaFileDrop?.guides ?? [],
                 pixelsPerSecond: pps
             )
 
@@ -375,6 +414,12 @@ struct VideoEditTimelineView: View {
                     y: audioLibraryDrop.rowY,
                     height: audioLibraryDrop.rowHeight
                 )
+            }
+
+            // 从 Finder 拖文件进来时的落点（画在 VideoEditMediaFileDrop.swift 里，
+            // 同 FilterDropIndicator 的分工：框跟着它的代理走）。
+            if let mediaFileDrop {
+                MediaFileDropIndicator(plan: mediaFileDrop, pps: pps, fullWidth: contentWidth)
             }
 
             // 拖滤镜卡片进来时的落点框。和滤镜块同一套几何（同一份
@@ -433,6 +478,10 @@ struct VideoEditTimelineView: View {
         // 内容区这一层：宽度就是 `contentWidth`，轨道底色和标尺刻度都画到这儿为止。
         .frame(width: contentWidth, alignment: .topLeading)
         .contentShape(Rectangle())
+        // 文件落点垫在滤镜 / 音频库那两个代理式落点**里面**，理由见
+        // `mediaFileDropUnderlay`。这一层还没被「填满视口」的 frame 撑开，所以只
+        // 盖到内容区为止；外面那片空白由 `body` 上的同一个控制器接，落点算法一份。
+        .mediaFileDropUnderlay(mediaFileDropController)
         // 从滤镜库拖卡片进来。**挂在整块内容上**而不是某一行：滤镜落在哪一层
         // 由指针的纵向位置决定，挂一行就拿不到 y 了（转场只能落主轨那一条缝，
         // 所以那边挂在行上）。载荷类型是自定义的，和 `.onDropOfFiles`、
@@ -586,6 +635,9 @@ struct VideoEditTimelineView: View {
                 }
             }
         }
+        // 文件落点垫在下面那个转场落点**里面**（理由见 `mediaFileDropUnderlay`）：
+        // 少了它，主轨那一行会把从 Finder 拖进来的文件接住又扔掉。
+        .mediaFileDropUnderlay(mediaFileDropController)
         // 落点**只挂主轨那一行**：纵向合法性因此天然判掉 —— 拖到字幕轨、形状轨
         // 上根本不会触发，不用再写一遍「这一行能不能接」。隐藏的轨同理。
         // 空类型数组 = 这一行不认这种拖放，代理一次都不会被调到。

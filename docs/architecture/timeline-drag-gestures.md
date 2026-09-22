@@ -80,7 +80,9 @@
 `mainClips` 的下游全按数组顺序消费：A/B 合成轨的游标式插入（乱序会被
 `insertTimeRange` 挤歪 → 黑屏）、转场按数组相邻配对、auto 画布取数组第一段。
 磁吸开着由 `packMain()` 维持；磁吸关掉的移动/跨轨落主轨必须在收尾调
-`sortMainClipsByStart()`（`TimelineState.applyDrag`、`relocateClip` 已接）。打开工程时
+`sortMainClipsByStart()`（`TimelineState.applyDrag`、`relocateClip`、
+`insertImported` 已接 —— 最后一个是 2026-09-22 新增的「从 Finder 拖文件进轨道」，
+它会往主轨**中间**插段，见 [拖文件进轨道](../plans/2026-09-22-media-file-drop.md)）。打开工程时
 `VideoEditProjectIO.load` 归一治旧文件，`CompositionBuilder.build` /
 `ExportGraph.plan` 入口再各防御一次。**新加任何改 `timelineStart` 或往
 `mainClips` 里插段的入口，都要么保序要么收尾排一次**；来龙去脉见
@@ -382,6 +384,32 @@ ZStack(alignment: .topLeading) { ... }
 `.local` 坐标在这两层里都以**内容原点**为零点（两个 frame 都是 `.topLeading`
 对齐），所以 `location.x / pps` 直接就是时刻，不用再补滚动量 —— 这是它和框选
 （钉在视口坐标系上、必须现读 `offsetX`，见 §5b）的分别。
+
+### 5e-2. 外部拖入和 App 内拖动是**两套路由**
+
+从 Finder（或任何别的 App）拖进来的东西，和自己 `.onDrag` 发起的拖动，在 SwiftUI
+里走的不是一条路，两条规则正好相反（2026-09-23 用可重放的跨 App 拖放装置实测）：
+
+| | 谁收得到 | 类型对不上时 |
+| --- | --- | --- |
+| App 内拖动 | 代理式 `.onDrop(of:delegate:)`、闭包式都行 | 一层层往外找下一个落点区 |
+| **外部拖入** | **只有闭包式** `.onDrop(of:isTargeted:perform:)` | **最里面那个独占认领，不往外找** |
+
+两条推论，都是硬约束：
+
+1. **文件落点不许用 `DropDelegate`。** 代理式收不到外部拖入，`validateDrop` 一次
+   都不会被调到 —— 功能在，界面上完全看不出来，就是拖进去没反应。
+2. **时间线里每一个 App 内的 `.onDrop` 里面，都要先垫一层文件落点**
+   （`View.mediaFileDropUnderlay`）。漏一处，它盖住的那一片就是死区：外部拖入被
+   它认领下来，而它又收不到回调，于是这次拖放以「没人要」告终，挂在更外面的
+   接收者（哪怕是整页那条兜底）一个都轮不到。
+
+别拿「滤镜 / 音频库拖放好好的」当反例 —— 那是 App 内拖动，走的是另一条路。
+案例：[2026-09-23 标尺以下拖不进文件](../bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)。
+
+闭包式不给落点位置，所以文件落点的指针是**现读** `NSEvent.mouseLocation` 再换算
+的；换算归 `TimelineScrollGeometry.contentPoint(fromScreen:)`，§5b 那条「整个时间线
+只有它碰 `NSScrollView`」照旧。
 
 ### 5f. 谁来移动播放头：唯一夹紧点 `seekFromTimeline`
 

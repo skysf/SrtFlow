@@ -311,6 +311,7 @@
 "Add at least one clip to the main track first." = "Add at least one clip to the main track first.";
 "Could not use %@ as a clip." = "Could not use %@ as a clip.";
 "Could not read %@." = "Could not read %@.";
+"Could not use %d of the dropped files as clips." = "Could not use %d of the dropped files as clips.";
 "Edit Timeline" = "Edit Timeline";
 
 "Adding…" = "Adding…";

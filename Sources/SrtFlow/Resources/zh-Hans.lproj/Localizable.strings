@@ -311,6 +311,7 @@
 "Add at least one clip to the main track first." = "先往主轨上放至少一段素材。";
 "Could not use %@ as a clip." = "没法把 %@ 用作素材。";
 "Could not read %@." = "读不了 %@。";
+"Could not use %d of the dropped files as clips." = "拖进来的文件里有 %d 个没法用作素材。";
 "Edit Timeline" = "编辑时间线";
 
 "Adding…" = "正在添加…";

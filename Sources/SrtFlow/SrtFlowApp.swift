@@ -53,10 +53,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⌘V 认两种东西：剪贴板上的**滤镜段**，和 Finder 复制的**文件**。
+    ///
+    /// 顺序是滤镜优先 —— 它写的是自己的私有类型，只可能来自本 App 的 ⌘C，
+    /// 意图比「剪贴板里恰好还躺着几个文件」明确。两者不会同时存在：
+    /// `FilterClipboard.write` 先 `clearContents()`。
     @objc func paste(_ sender: Any?) {
         MainActor.assumeIsolated {
             guard pasteboardActionsApply else { return }
-            VideoEditProject.shared.pasteFilter()
+            if FilterClipboard.read() != nil {
+                VideoEditProject.shared.pasteFilter()
+                return
+            }
+            VideoEditProject.shared.pasteMediaFiles()
         }
     }
 
@@ -66,7 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case #selector(copy(_:)), #selector(cut(_:)):
                 return pasteboardActionsApply && VideoEditProject.shared.selectedFilter != nil
             case #selector(paste(_:)):
-                return pasteboardActionsApply && FilterClipboard.read() != nil
+                // 两种载荷任意一种都算 —— 菜单项的亮灭必须和 `paste(_:)` 认的
+                // 东西一致，否则要么点了没反应，要么明明能粘却是灰的。
+                // 这条判据必须是**同步**的（`validateMenuItem` 等不了异步），
+                // 所以文件那半边读的是 `NSPasteboard` 而不是 `NSItemProvider`。
+                return pasteboardActionsApply
+                    && (FilterClipboard.read() != nil || !MediaFileDrag.pasteboardURLs().isEmpty)
             default:
                 return true
             }
