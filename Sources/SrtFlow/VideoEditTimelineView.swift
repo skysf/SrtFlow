@@ -66,6 +66,7 @@ struct VideoEditTimelineView: View {
     /// 从滤镜库拖卡片进来时的落点。落点挂在**整块滚动内容**上而不是某一行 ——
     /// 滤镜落在哪一层由指针的纵向位置决定，得拿得到 y（见 VideoEditFilterDrag.swift）。
     @State private var filterDrop: FilterDropPlan?
+    @State private var audioLibraryDrop: AudioLibraryDropPlan?
     /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
     ///
     /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
@@ -331,7 +332,8 @@ struct VideoEditTimelineView: View {
             // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
             // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
             TimelineAlignmentGuides(
-                times: clipDrag?.guides ?? filterDrop?.guides ?? [], pixelsPerSecond: pps
+                times: clipDrag?.guides ?? filterDrop?.guides ?? audioLibraryDrop?.guides ?? [],
+                pixelsPerSecond: pps
             )
 
             // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
@@ -346,6 +348,17 @@ struct VideoEditTimelineView: View {
             // relocateClip 共用同一份挤开算法 —— 框不说谎）。
             if let ghost = crossTrackGhost {
                 dropPlaceholder(span: ghost.span, y: ghost.y, height: ghost.height)
+            }
+
+            // 拖音频库素材进来时的落点框。**复用剪辑拖动那个虚线框** ——
+            // 落下去就是一个普通的音频块，没道理让用户学第二种落点语言。
+            if let audioLibraryDrop {
+                dropPlaceholder(
+                    span: TimelineSpan(start: audioLibraryDrop.start,
+                                       end: audioLibraryDrop.end),
+                    y: audioLibraryDrop.rowY,
+                    height: audioLibraryDrop.rowHeight
+                )
             }
 
             // 拖滤镜卡片进来时的落点框。和滤镜块同一套几何（同一份
@@ -423,6 +436,20 @@ struct VideoEditTimelineView: View {
                 autoScroller: autoScroller,
                 viewport: CGSize(width: viewportWidth, height: viewportHeight),
                 preview: $filterDrop
+            )
+        )
+        // 从音频库拖素材进来。同样挂在整块内容上（落在哪条音频轨由指针的纵向
+        // 位置决定），载荷类型和滤镜、转场、文件三者各认各的，不会打架。
+        .onDrop(
+            of: [AudioLibraryDrag.type],
+            delegate: AudioLibraryDropDelegate(
+                project: project,
+                pps: pps,
+                rowLayouts: rowLayouts(),
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: CGSize(width: viewportWidth, height: viewportHeight),
+                preview: $audioLibraryDrop
             )
         )
         // 至少填满视口、左上角对齐。**两轴都要**：内容比视口小时 SwiftUI 的
