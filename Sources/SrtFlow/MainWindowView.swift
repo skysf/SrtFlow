@@ -119,19 +119,45 @@ struct MainWindowView: View {
 
     // MARK: - 侧边栏
 
+    /// 侧边栏**默认只显示图标，拉宽才出文字**（2026-09-22 用户拍板）。
+    ///
+    /// macOS 的 `NavigationSplitView` **没有原生的图标条模式**（那是 iPadOS 的
+    /// `.balanced` 之类），所以只能自己量栏宽再切 `labelStyle`。量法是
+    /// `.background(GeometryReader)` + preference —— 不占位、不影响布局，
+    /// 代价是宽度变化后隔一拍才生效（拖分栏器时文字会晚一帧出现，可以接受；
+    /// 这不是手势判定，不受 2026-09-18 那条「preference 在起手那一拍是旧值」影响）。
+    ///
+    /// **栏宽 AppKit 会 autosave**：用户拉宽过一次，以后打开都是宽的。这是有意的 ——
+    /// 想一直看文字的人不该每次重新拉。
     private var sidebar: some View {
         List(selection: sectionSelection) {
             Section {
                 ForEach(ToolSection.allCases) { section in
-                    SidebarToolRow(section: section, activity: activity(for: section))
-                        .tag(section)
+                    SidebarToolRow(
+                        section: section,
+                        activity: activity(for: section),
+                        isCompact: isSidebarCompact
+                    )
+                    .tag(section)
                 }
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(min: 196, ideal: 214, max: 280)
+        .background {
+            GeometryReader { geo in
+                Color.clear.preference(key: SidebarWidthKey.self, value: geo.size.width)
+            }
+        }
+        .onPreferenceChange(SidebarWidthKey.self) { width in
+            // 阈值取 132：最长的那条中文标签（「压缩视频」四个字 ≈ 56pt）加上
+            // 图标、间距和进度徽章还能排开。低于它就只剩图标。
+            isSidebarCompact = width < 132
+        }
+        .navigationSplitViewColumnWidth(min: 60, ideal: 64, max: 280)
         .safeAreaInset(edge: .bottom, spacing: 0) { footer }
     }
+
+    @State private var isSidebarCompact = true
 
     /// 侧边栏的选中项。点空白处 List 会把它清成 nil，那时保持原样 —— 右边不能空着。
     private var sectionSelection: Binding<ToolSection?> {
@@ -154,13 +180,16 @@ struct MainWindowView: View {
     private var footer: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            engineStatus
+            // 窄成图标条时引擎状态整条藏起来：那几行字最短也要一行半，
+            // 60pt 宽里只会挤成一坨看不懂的碎词。压缩和烧字幕两屏的底部各自
+            // 完整显示着同一条提示，信息不会丢。
+            if !isSidebarCompact { engineStatus }
             AppLanguagePicker(showsLabel: false)
                 .labelsHidden()
                 .pickerStyle(.menu)
                 .controlSize(.small)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, isSidebarCompact ? 4 : 10)
         .padding(.bottom, 8)
     }
 
@@ -308,14 +337,28 @@ struct MainWindowView: View {
 private struct SidebarToolRow: View {
     let section: ToolSection
     let activity: SidebarActivity?
+    /// 栏窄到只放得下图标。
+    let isCompact: Bool
 
     var body: some View {
         HStack(spacing: 6) {
-            Label(LocalizedStringKey(section.title), systemImage: section.icon)
-            Spacer(minLength: 4)
-            badge
+            // SwiftUI 没有 `AnyLabelStyle`，样式擦不了类型，只能分两支写。
+            if isCompact {
+                Label(LocalizedStringKey(section.title), systemImage: section.icon)
+                    .labelStyle(.iconOnly)
+                    .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                Label(LocalizedStringKey(section.title), systemImage: section.icon)
+                    .labelStyle(.titleAndIcon)
+                Spacer(minLength: 4)
+                badge
+            }
         }
-        .instantHelp(LocalizedStringKey(section.blurb))
+        // 只剩图标时这条提示就是唯一的认路方式，所以**名字要在最前面** ——
+        // 现在的 blurb 是功能描述，窄态下先把栏目名说出来。
+        .instantHelp(
+            isCompact ? LocalizedStringKey(section.title) : LocalizedStringKey(section.blurb)
+        )
     }
 
     /// 切走了也能看见这一栏还在忙。
@@ -386,5 +429,14 @@ final class BurnInHandoff: ObservableObject {
         pendingVideos.removeAll()
         pendingSubtitles.removeAll()
         return result
+    }
+}
+
+
+/// 侧边栏当前有多宽。用来决定显不显示文字标签。
+private struct SidebarWidthKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

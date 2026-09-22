@@ -437,6 +437,12 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var audioAssetDuration: Double?
     /// 静态图片素材：`sourceURL` 指向生成的循环视频，这里留着原图路径当名字用。
     var stillImageURL: URL?
+    /// 这段素材来自音频库的哪一条（manifest 的 `id`）。
+    ///
+    /// 本地导入的素材是 nil。非 nil 时它是**重链接的第一层线索**：缓存被清掉、
+    /// 换了机器、工程发给别人 —— 都能按这个 id 从 R2 重新拉回来，用户根本看不到
+    /// 「素材丢失」。见 docs/architecture/video-edit-project-file.md。
+    var remoteKey: String?
     /// 图片刚拖进来、静帧视频还在后台转：块先上轨可编辑，预览暂时跳过它。
     var needsStillConversion = false
 
@@ -466,7 +472,8 @@ struct EditClip: Identifiable, Hashable, Sendable {
         animation: ClipAnimation? = nil,
         info: MediaInfo? = nil,
         audioAssetDuration: Double? = nil,
-        stillImageURL: URL? = nil
+        stillImageURL: URL? = nil,
+        remoteKey: String? = nil
     ) {
         self.id = id
         self.sourceURL = sourceURL
@@ -494,6 +501,7 @@ struct EditClip: Identifiable, Hashable, Sendable {
         self.info = info
         self.audioAssetDuration = audioAssetDuration
         self.stillImageURL = stillImageURL
+        self.remoteKey = remoteKey
     }
 
     var name: String {
@@ -1088,7 +1096,7 @@ extension EditClip: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
         case isMuted, volume, linkGroup, transitionAfter, transitionDuration
-        case placement, info, audioAssetDuration, stillImageURL
+        case placement, info, audioAssetDuration, stillImageURL, remoteKey
         case videoFadeInDuration, videoFadeOutDuration
         case rotationDegrees, opacity, flippedHorizontally, flippedVertically, crop, animation
         case presetAnimation
@@ -1126,7 +1134,8 @@ extension EditClip: Codable {
             animation: try c.decodeIfPresent(ClipAnimation.self, forKey: .animation),
             info: try c.decodeIfPresent(MediaInfo.self, forKey: .info),
             audioAssetDuration: try c.decodeIfPresent(Double.self, forKey: .audioAssetDuration),
-            stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL)
+            stillImageURL: try c.decodeIfPresent(URL.self, forKey: .stillImageURL),
+            remoteKey: try c.decodeIfPresent(String.self, forKey: .remoteKey)
         )
         // `needsStillConversion` 是导入过程中的临时状态，不存盘：打开工程时
         // 静帧视频是现查缓存现补的（见 VideoEditProjectFile.restoreStillClips）。
@@ -1183,6 +1192,8 @@ extension EditClip: Codable {
         try c.encodeIfPresent(info, forKey: .info)
         try c.encodeIfPresent(audioAssetDuration, forKey: .audioAssetDuration)
         try c.encodeIfPresent(stillImageURL, forKey: .stillImageURL)
+        // 本地导入的素材没有这个键（判据与格式版本闸门 `requiresFormatVersion18` 同源）。
+        try c.encodeIfPresent(remoteKey, forKey: .remoteKey)
         // 没有标记的段不写这个键：绝大多数工程一枚标记都没有，键写出来只是把
         // 每段的 JSON 撑大一行。
         if !markers.isEmpty { try c.encode(markers, forKey: .markers) }

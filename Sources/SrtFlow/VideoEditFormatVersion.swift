@@ -242,6 +242,27 @@ extension TimelineState {
     /// 不落键，两处必须同源），所以没用过滤镜的工程照旧能被旧版打开。
     var requiresFormatVersion17: Bool { !filters.isEmpty }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v18-only 持久数据。
+    ///
+    /// **登记清单（新增 v18-only 字段必须同步补进来）：**
+    /// 1. `EditClip.remoteKey` —— 这段素材来自音频库的哪一条（manifest 的 `id`）。
+    ///
+    /// 为什么要升版本：这个键是**素材找得回来的唯一线索**。音频库的素材缓存在
+    /// `Application Support`，用户按「清理已下载素材」腾过空间、或者把工程发给
+    /// 别人之后，本地那个文件就不在了 —— 新版按 `remoteKey` 从 R2 重新拉回来，
+    /// 用户全程无感。只认 v17 的旧版不认识这个键，照常打开还能播（那时文件还在），
+    /// 但用户随手编辑触发一次自动保存，键就被抹掉了；等他哪天清了缓存，那几段
+    /// 音乐变成永久失链，而**他没有任何办法知道原来是哪一首** —— 重链接对话框
+    /// 只会给他一个指向缓存目录的死路径。
+    /// 判断标准同 docs/bugfixes/2026-08-04-transform-review.md：问的不是
+    /// 「新版能不能读旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// **按需**：本地导入的素材不带这个键（`EditClip.encode` 里 `encodeIfPresent`，
+    /// 两处必须同源），所以没用过音频库的工程照旧能被旧版打开。
+    var requiresFormatVersion18: Bool {
+        allClips.contains { $0.remoteKey != nil }
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {
