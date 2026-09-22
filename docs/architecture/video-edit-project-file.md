@@ -40,7 +40,8 @@ Finder**。App 只负责「快速回到最近那几条」。
 `CFBundleDocumentTypes`，双击能回到 SrtFlow）。
 
 ```
-{ formatVersion, savedAt, timeline: TimelineState, media: [MediaRecord] }
+{ formatVersion, savedAt, timeline: TimelineState, media: [MediaRecord],
+  rowHeights?: TimelineRowHeights }
 ```
 
 ### 宽容解码是硬约束
@@ -108,6 +109,28 @@ Finder**。App 只负责「快速回到最近那几条」。
 
 `formatVersion` 比当前大的工程**必须拒绝打开**。硬打开的话，这版不认识的字段会在
 下一次自动保存时被静静删掉 —— 等于毁掉用户在新版里做的活。
+
+### 与 `timeline` 平级的那一段：轨道行高（2026-09-22 起）
+
+每条轨自己的行高存在 `rowHeights` 里，**故意不放进 `TimelineState`**：
+
+- 它是装饰状态。进了 `TimelineState` 就会跟着进撤销栈 —— 调完行高按 ⌘Z，
+  撤掉的是行高而不是用户上一次真编辑；走 `perform` 还会顺手重建预览，
+  拖一下行高画面闪一次。所以它挂在 `VideoEditProject.rowHeights` 上，
+  只标脏（2 秒去抖的自动保存），不进 `perform` / `liveApply`。
+- 键是**轨道身份**（`EditLane.id`，主轨单开一个 case），不是行号。
+  与 `colorIndex` 同一条理由：删掉中间一条轨，下面那条不许继承它的高度。
+- **按需写键**：没人调过行高的工程里连 `rowHeights` 这个键都不出现，
+  老工程存一轮之后 diff 是空的。
+- **不开新的 formatVersion。** 登记清单问的是「旧版拿到它会不会毁数据」：
+  旧版丢掉这一段，用户损失的只是几条轨的高度 —— 成片一帧不变，再拖一下就
+  回来了，不像 v8 的标记那样是丢了就没有的手工输入。
+- 写盘时会把已经删掉的轨裁掉，但**只裁写下去的那一份拷贝**。连内存里的条目
+  一起清的话，「删一条轨 → 自动保存 → ⌘Z 把轨撤回来」高度就没了
+  （`EditLane.id` 撤回来还是同一个 UUID）。
+
+产品口径和可调范围见
+[视频轨对等化](video-tracks.md)。
 
 ### 不进工程文件的东西
 
@@ -292,3 +315,5 @@ Finder**。App 只负责「快速回到最近那几条」。
      并出现在预览里（验 `awaitVideoEngine`）
    - 未命名工程里加一段素材 → File ▸ New Project → 应弹 Save…/Discard/Cancel，
      点 Cancel 后剪辑还在；⌘Q 也应弹同一个框，Cancel 能取消退出
+   - 两条音频轨各拖成不同高度 → 存盘 → 重开工程 → 两条轨各自的高度都还在；
+     新建工程时每条轨回到默认高度（不会带着上一份工程的条目）

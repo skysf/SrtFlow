@@ -101,6 +101,9 @@ extension VideoEditProject {
         documentURL = nil
         documentBookmark = nil
         mediaRecords = [:]
+        // 行高是上一份工程的（键是那边的轨道 UUID），留着只会让新工程拿着一堆
+        // 对不上的条目。新工程的每条轨从默认高度起步。
+        replaceRowHeightsForDocument(TimelineRowHeights())
         hasUnsavedChanges = false
         effectiveUndoManager?.removeAllActions()
     }
@@ -162,6 +165,8 @@ extension VideoEditProject {
         closeCurrentDocument()
 
         replaceStateForDocument(result.timeline)
+        // 行高跟着工程走（与时间线平级的一段），和 state 一样算「载入」不算改动。
+        replaceRowHeightsForDocument(result.rowHeights)
         documentURL = url
         documentBookmark = try? url.bookmarkData(
             options: [],
@@ -392,7 +397,8 @@ extension VideoEditProject {
             mediaRecords = try VideoEditProjectIO.save(
                 state,
                 to: url,
-                knownRecords: mediaRecords
+                knownRecords: mediaRecords,
+                rowHeights: rowHeights
             )
             if documentBookmark == nil {
                 documentBookmark = try? url.bookmarkData(

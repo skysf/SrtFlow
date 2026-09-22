@@ -26,11 +26,13 @@ WAVEFORM="Sources/SrtFlow/VideoEditTimelineWaveform.swift"
 ZOOM="Sources/SrtFlow/VideoEditTimelinePinchZoom.swift"
 GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
+ROW_HEIGHTS="Sources/SrtFlow/VideoEditTimelineRowHeights.swift"
+ROW_HEIGHT_DRAG="Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift"
 # 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
 MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
-  "$HEADER_COLUMN" "$MASK")
+  "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -481,6 +483,38 @@ if BODY="$(require_func 'private func eyeButton(' "$HEADER_COLUMN")"; then
     || fail "眼睛不是 Button 了：点眼睛会连带把整条轨的素材选中"
 fi
 
+# ── 13b. 行高：一轨一个值，且不许进撤销栈 ──────────────────────────────
+# 2026-09-22 之前行高是「一类一个值」，拖一条音频轨，所有音频轨一起变高。
+# 夹紧和存储的规则是纯值（scripts/check-project-file.sh 钉），这里钉接线：
+# 键必须是轨道身份、起手值必须认轨、写入不许走 TimelineState。
+grep_code 'let key: TimelineRowHeightKey?' "$ROW_HEIGHT_DRAG" \
+  || fail "行高拖动不是按轨道身份接的：又回到「拖一条、同类一起动」"
+grep_code 'var key: TimelineRowHeightKey' "$ROW_HEIGHT_DRAG" \
+  || fail "行高拖动的起手值没带「是哪条轨」：onEnded 不保证会来，残留值会让下一条轨从别人的高度起算"
+if BODY="$(require_func 'private func base(for key' "$ROW_HEIGHT_DRAG")"; then
+  printf '%s\n' "$BODY" | grep -q 'session.key == key' \
+    || fail "行高拖动的起手值没认轨：拖完 A 再拖 B，B 会从 A 的高度跳一下"
+fi
+# 行高只从 project.rowHeight( 取一份。视图里直接读「一类一个值」的默认高度，
+# 就等于把那条老毛病又接回来了。
+for forbidden in 'project.defaultVideoRowHeight' 'project.defaultAudioRowHeight'; do
+  grep_code "$forbidden" "$VIEW" \
+    && fail "时间线的行高又直接读这一类的默认值（${forbidden}）：同类的轨会一起动"
+done
+grep_code 'project.rowHeight(' "$VIEW" \
+  || fail "时间线的行高不再走 project.rowHeight：一轨一个值的那份账就没人认了"
+grep_code 'key: row.heightKey' "$HEADER_COLUMN" \
+  || fail "轨道头没把这一行的行高键传给拖动：又会按类去调"
+# 写入不许碰 TimelineState：进了撤销栈，调完行高按 ⌘Z 撤掉的是行高而不是
+# 用户上一次真编辑；走 perform 还会顺手重建预览，拖一下画面闪一次。
+if BODY="$(require_func 'func setRowHeight(' "$PROJECT")"; then
+  for forbidden in 'perform' 'liveApply' 'state =' 'scheduleRebuild'; do
+    printf '%s\n' "$BODY" | grep -q "$forbidden" \
+      && fail "setRowHeight 里出现了 ${forbidden}：行高是装饰状态，不许进撤销栈/重建预览"
+  done
+  printf '%s\n' "$BODY" | grep -q 'documentDidChange()' \
+    || fail "setRowHeight 没标脏：调好的行高不会被自动保存带进工程文件"
+fi
 
 # ── 接缝上的转场遮罩 ──────────────────────────────────────────────────
 # 遮罩是改转场时长的**第二条路**（第一条是检查器的滑块）。三件事必须接住：
@@ -704,4 +738,4 @@ fi
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

@@ -4,8 +4,9 @@ import SwiftUI
 // MARK: - 左侧轨道头列
 //
 // 轨道色条 + 类型图标 + 整轨隐藏的眼睛，行高和右边的轨道行严格一致。
-// 在视频轨/音频轨的图标上**上下拖**可以调那一类轨道的行高；点一下（非眼睛的
-// 地方）选中这一行的全部素材。
+// 在视频轨/音频轨的图标上**上下拖**可以调**这一条**轨的行高（2026-09-22 起
+// 一轨一个高度，接线在 `VideoEditTimelineRowHeightDrag.swift`）；点一下
+//（非眼睛的地方）选中这一行的全部素材。
 //
 // 它在滚动区**外面**（横向滚动不该把轨道头滚走），所以时间线纵向滚动时得自己
 // 跟上：`.offset(y: -geometry.offset.y)`。这是**唯一**一处订阅
@@ -19,7 +20,7 @@ struct TimelineHeaderColumn: View {
     @ObservedObject var project: VideoEditProject
     /// 纵向滚动量的推送值：只有这一列和标尺订阅它。
     @ObservedObject var geometry: TimelineScrollGeometry
-    @Binding var resizeBase: Double?
+    @Binding var resizeBase: RowHeightDragState?
 
     var body: some View {
         // **这一列不许决定时间线的高度。** 它的固有高度是所有行加起来（十来条轨
@@ -70,7 +71,7 @@ enum TimelineHeaderMetrics {
 private struct TimelineHeaderRow: View {
     let row: VideoEditTimelineView.RowSpec
     @ObservedObject var project: VideoEditProject
-    @Binding var resizeBase: Double?
+    @Binding var resizeBase: RowHeightDragState?
 
     var body: some View {
         Group {
@@ -91,9 +92,10 @@ private struct TimelineHeaderRow: View {
         // 没挪动的点击不会被它吃掉。
         .onTapGesture { selectRow() }
         .modifier(RowHeightDragModifier(
-            kind: rowKind,
+            kind: TrackRowKind(row.slot),
+            key: row.heightKey,
             project: project,
-            base: $resizeBase
+            session: $resizeBase
         ))
     }
 
@@ -168,13 +170,5 @@ private struct TimelineHeaderRow: View {
         guard let target = row.selectionRow else { return }
         let flags = NSApp.currentEvent?.modifierFlags ?? []
         project.selectRow(target, additive: flags.contains(.command) || flags.contains(.shift))
-    }
-
-    private var rowKind: TrackRowKind {
-        switch row.slot {
-        case .main, .overlay: return .video
-        case .audio: return .audio
-        case nil: return .other
-        }
     }
 }

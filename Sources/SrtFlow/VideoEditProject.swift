@@ -335,16 +335,54 @@ final class VideoEditProject: ObservableObject {
         pixelsPerSecond = min(max(value, Self.zoomRange.lowerBound), Self.zoomRange.upperBound)
     }
 
-    // 各类轨道的行高。有时块太小看不清，在轨道头上下拖就能调，记住上次的值。
-    /// 视频轨行高（主轨和上层轨**共用一个**）。两条轨是对等的，没有理由各有
-    /// 各的高度 —— 分成两个之后，拖其中一条只动一半的行，看起来像坏了。
-    /// 换了新键名（`editVideoRowHeight`）：老键存的是画中画时代 38 的矮行，
-    /// 继承过来会让上层轨开箱就比主轨矮一截，正是这次要消掉的差别。
-    @Published var videoRowHeight: Double {
-        didSet { UserDefaults.standard.set(videoRowHeight, forKey: "editVideoRowHeight") }
+    // MARK: 轨道行高
+
+    /// 每条轨自己的行高（2026-09-22 起**一轨一个值**，拖谁只动谁）。
+    ///
+    /// 有意**不放进 `TimelineState`**：行高是装饰状态，进了撤销栈之后「调完
+    /// 行高按 ⌘Z」撤掉的是行高，而不是用户上一次真编辑；而 `perform` 还会顺手
+    /// 重建预览，拖一下行高画面就闪一次。它跟着工程文件走（与 `timeline` 平级
+    /// 的一段，见 `VideoEditProjectFile`），换台机器打开高度还在。
+    @Published private(set) var rowHeights = TimelineRowHeights()
+
+    /// 没单独调过的轨用的默认行高。
+    ///
+    /// 只读：从老键 `editVideoRowHeight` / `editAudioRowHeight` 里读一次，
+    /// 让 2026-09-22 之前调过行高的用户打开就是原来的样子，之后**不再写回**。
+    /// 写回的话，拖一条轨会连带改掉「没调过的轨」的默认值 —— 那些轨会跟着一起
+    /// 变高，正是这次要消掉的毛病。
+    let defaultVideoRowHeight: Double
+    let defaultAudioRowHeight: Double
+
+    func defaultRowHeight(for kind: TrackRowKind) -> Double {
+        switch kind {
+        case .video: return defaultVideoRowHeight
+        // 不可调的行（标尺 / 滤镜 / 文字 / 形状 / 字幕）自己写死高度，
+        // 永远走不到这里；给个音频轨的值只是为了函数是全的。
+        case .audio, .other: return defaultAudioRowHeight
+        }
     }
-    @Published var audioRowHeight: Double {
-        didSet { UserDefaults.standard.set(audioRowHeight, forKey: "editAudioRowHeight") }
+
+    /// 这条轨现在多高。**行高只从这里取**，别处不许再算一份。
+    func rowHeight(for key: TimelineRowHeightKey?, kind: TrackRowKind) -> Double {
+        rowHeights.height(for: key, fallback: defaultRowHeight(for: kind))
+    }
+
+    /// 拖轨道头调行高：**只动这一条轨**。
+    ///
+    /// 不走 `perform` / `liveApply` —— 不进撤销栈、不重建预览、不碰磁吸，
+    /// 只标脏让自动保存（2 秒去抖）把它带下去。
+    func setRowHeight(_ height: Double, for key: TimelineRowHeightKey, kind: TrackRowKind) {
+        var next = rowHeights
+        next.set(height, for: key, kind: kind)
+        guard next != rowHeights else { return }
+        rowHeights = next
+        documentDidChange()
+    }
+
+    /// 打开工程时整份换掉。不算用户改动（同 `replaceStateForDocument`）。
+    func replaceRowHeightsForDocument(_ next: TimelineRowHeights) {
+        rowHeights = next
     }
 
     /// 正在后台导入的素材数（图片转静帧、探测时长时给个转圈，别让人以为拖丢了）。
@@ -387,8 +425,8 @@ final class VideoEditProject: ObservableObject {
             let value = defaults.double(forKey: key)
             return value > 0 ? value : fallback
         }
-        videoRowHeight = stored("editVideoRowHeight", 54)
-        audioRowHeight = stored("editAudioRowHeight", 34)
+        defaultVideoRowHeight = stored("editVideoRowHeight", 54)
+        defaultAudioRowHeight = stored("editAudioRowHeight", 34)
 
         // 素材在工程开着的时候也可能被改名/挪走，而去访达动文件必然让 App
         // 失焦 —— 一激活就重核对，轨道块名字和丢失提示当场跟上。
