@@ -2599,6 +2599,63 @@ do {
     checkEqual(legacy?.audioTracks.first?.clips.first?.remoteKey, nil,
                "v17 老工程没有这个键时回落 nil（不是空串）")
     check(legacy?.requiresFormatVersion18 == false, "纯本地的老工程不该被抬进 v18")
+
+    // ---- remoteKey 认领：缓存还在就直接指回去 ----
+    //
+    // 这是 remoteKey 存在的**全部理由**。没有这一段，v18 保住的只是一个没人读的
+    // 字段：用户清过缓存 / 换了机器 / 工程发给别人之后，看到的仍然是「素材丢失」
+    // 加一个指向缓存目录的死路径，而他根本没法知道原来是哪一首。
+    //
+    // 查找注入的是假的，所以这一组够不到「生产用的是不是同一条查找」——
+    // `AudioLibraryCache.fileURL` 的路径规则由 checks/AudioLibrary 单独钉。
+    let gone = URL(fileURLWithPath: "/nonexistent/cache/mus_42.m4a")
+    let recovered = root.appendingPathComponent("recovered.m4a")
+    try Data("y".utf8).write(to: recovered)
+
+    var lost = TimelineState()
+    lost.audioTracks = [EditLane(clips: [
+        EditClip(sourceURL: gone, isAudioOnly: true, sourceDuration: 10,
+                 audioAssetDuration: 10, remoteKey: "mus_42")
+    ])]
+    let claimed = VideoEditProjectIO.relinkRemoteLibraryMedia(in: &lost) { key in
+        key == "mus_42" ? recovered : nil
+    }
+    check(claimed, "认领成功要报告改过（调用方据此回存）")
+    checkEqual(lost.audioTracks.first?.clips.first?.sourceURL, recovered,
+               "路径指回缓存里的那份")
+    checkEqual(lost.audioTracks.first?.clips.first?.remoteKey, "mus_42",
+               "认领之后 remoteKey 还在（下次清缓存还要靠它）")
+
+    // 本地缓存也没有 → 不动，留给后面四层线索和 R2 兜底
+    var stillLost = TimelineState()
+    stillLost.audioTracks = [EditLane(clips: [
+        EditClip(sourceURL: gone, isAudioOnly: true, sourceDuration: 10,
+                 audioAssetDuration: 10, remoteKey: "mus_42")
+    ])]
+    check(!VideoEditProjectIO.relinkRemoteLibraryMedia(in: &stillLost) { _ in nil },
+          "查不到就不算改过")
+    checkEqual(stillLost.audioTracks.first?.clips.first?.sourceURL, gone, "查不到就别乱改")
+
+    // 文件还在原地 → 一个字都不许动。remoteKey 只说明素材来自哪，
+    // **不该越权去改一个还好好的路径**（那可能是用户自己导入的同名文件）。
+    var intact = TimelineState()
+    intact.audioTracks = [EditLane(clips: [
+        EditClip(sourceURL: recovered, isAudioOnly: true, sourceDuration: 10,
+                 audioAssetDuration: 10, remoteKey: "mus_42")
+    ])]
+    let other = root.appendingPathComponent("other.m4a")
+    try Data("z".utf8).write(to: other)
+    check(!VideoEditProjectIO.relinkRemoteLibraryMedia(in: &intact) { _ in other },
+          "文件还在就不该改")
+    checkEqual(intact.audioTracks.first?.clips.first?.sourceURL, recovered,
+               "原地命中时路径原样")
+
+    // 没有 remoteKey 的本地素材：认领逻辑完全不碰它
+    var localOnly = TimelineState()
+    localOnly.mainClips = [EditClip(sourceURL: gone, sourceDuration: 10)]
+    check(!VideoEditProjectIO.relinkRemoteLibraryMedia(in: &localOnly) { _ in recovered },
+          "没有 remoteKey 就不参与认领")
+    checkEqual(localOnly.mainClips.first?.sourceURL, gone, "本地素材的路径不许被动")
 }
 
 

@@ -31,17 +31,23 @@ final class AudioLibraryCache: ObservableObject {
     // MARK: - 位置
 
     /// `~/Library/Application Support/SrtFlow/AudioLibrary/`
-    var directory: URL {
-        let base = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+    ///
+    /// **nonisolated**：打开工程时的素材重链接是个不碰共享状态的纯函数
+    /// （`VideoEditProjectFile.load`），它要在主 actor 之外算出「这条 remoteKey
+    /// 的文件在不在本地」。路径纯粹是拼字符串，没有状态可争。
+    nonisolated static var directory: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         return base.appendingPathComponent("SrtFlow/AudioLibrary", isDirectory: true)
     }
+
+    var directory: URL { Self.directory }
 
     /// 这条素材在本地的落点。
     ///
     /// **文件名必须消毒。** `id` 来自 R2 上的 manifest —— 那是远程数据，不是我们
     /// 代码里的常量。一个写着 `../../../etc/something` 的 id 会让下载把文件写到
     /// 缓存目录外面去。这里只保留字母数字、下划线和短横，其余一律换成下划线。
-    func fileURL(for id: String) -> URL {
+    nonisolated static func fileURL(for id: String) -> URL {
         let safe = String(id.map { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" ? $0 : "_" })
         // 全被过滤光、或者只剩点号的情况下用哈希兜底，绝不允许拼出空名字。
         let name = safe.isEmpty ? String(abs(id.hashValue)) : safe
@@ -49,10 +55,14 @@ final class AudioLibraryCache: ObservableObject {
     }
 
     /// 已下载才返回；没下过返回 nil（调用方据此决定要不要下）。
-    func localURL(for id: String) -> URL? {
+    nonisolated static func localURL(for id: String) -> URL? {
         let url = fileURL(for: id)
-        return fm.fileExists(atPath: url.path) ? url : nil
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
+
+    func fileURL(for id: String) -> URL { Self.fileURL(for: id) }
+
+    func localURL(for id: String) -> URL? { Self.localURL(for: id) }
 
     // MARK: - 下载
 

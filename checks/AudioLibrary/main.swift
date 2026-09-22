@@ -214,8 +214,32 @@ func item(id: String, title: String, artist: String,
     )
 }
 
+// MARK: - 三、缓存文件名的消毒
+
+func cachePaths() {
+    // `id` 来自 R2 上的 manifest —— 远程数据，不是代码里的常量。写进文件名之前
+    // 必须消毒，否则一个精心构造的 id 能让下载把文件写到缓存目录外面去。
+    let dir = AudioLibraryCache.directory.standardizedFileURL.path
+
+    for evil in ["../../../etc/passwd", "..", "../x", "a/b/c", "x\u{0000}y", "  ", "..%2f..%2fx"] {
+        let url = AudioLibraryCache.fileURL(for: evil).standardizedFileURL
+        check(url.deletingLastPathComponent().path == dir,
+              "危险 id 也必须落在缓存目录里：\(evil) → \(url.path)")
+    }
+    // 正常 id 原样用，不能被消毒规则改写 —— 改写了就对不上 manifest 的 id
+    checkEqual(AudioLibraryCache.fileURL(for: "mus_1048289").lastPathComponent,
+               "mus_1048289.m4a", "正常 id 原样成文件名")
+    // 不同 id 不许撞同一个文件（消毒不能把两条不同素材合成一个）
+    check(AudioLibraryCache.fileURL(for: "mus_1") != AudioLibraryCache.fileURL(for: "mus_2"),
+          "不同 id 不许撞文件名")
+    // 全是非法字符时用哈希兜底，绝不能拼出空名字
+    check(!AudioLibraryCache.fileURL(for: "///").lastPathComponent.hasPrefix("."),
+          "全非法的 id 也要有个正经文件名")
+}
+
 parsing()
 searching()
+cachePaths()
 
 print("\(checks) checks, \(failures) failures")
 if failures > 0 { exit(1) }

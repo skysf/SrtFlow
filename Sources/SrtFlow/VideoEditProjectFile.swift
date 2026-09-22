@@ -231,12 +231,22 @@ enum VideoEditProjectIO {
         // 这一步而不是等第一次编辑 —— `perform` 的补号会和用户那次改动一起
         // 进撤销栈，把「打开就该有的颜色」算成用户改的，撤销一下颜色就没了。
         timeline.assignMissingTrackColors()
+        // 音频库素材：**先按 remoteKey 认领**，再走四层线索。
+        //
+        // 它排在最前面是因为它是**最强的线索**：四层线索找的是「同一个文件搬到
+        // 哪去了」，而 remoteKey 说的是「这段素材本来是什么」—— 缓存目录换了名字、
+        // 用户清过缓存又重下、工程从别的机器拷过来，路径全都对不上，但 id 一直是
+        // 那个 id。让它先认领一遍，后面那四层就不用为这些素材白跑。
+        //
+        // 这一步只认**已经在本地**的（纯路径判断，不碰网络）；本地没有的留给
+        // `VideoEditProject` 打开之后去 R2 拉（见 recoverRemoteMedia）。
+        let remoteRelinked = relinkRemoteLibraryMedia(in: &timeline)
         let projectDirectory = url.deletingLastPathComponent()
         let stored = Dictionary(file.media.map { ($0.path, $0) }, uniquingKeysWith: { a, _ in a })
         var records: [String: MediaRecord] = [:]
 
         var missing: [URL] = []
-        var didRelink = false
+        var didRelink = remoteRelinked
         // 已经找到的素材所在目录：后面找不到的素材优先去这些地方碰运气 ——
         // 素材通常整批一起搬，找到一个就等于找到一窝。
         var knownDirectories: [URL] = [projectDirectory]
@@ -281,6 +291,34 @@ enum VideoEditProjectIO {
     }
 
     // MARK: 素材定位
+
+    /// 把 `remoteKey` 非空、但当前路径已经不存在的素材，指回音频库缓存里的那份。
+    ///
+    /// 返回有没有真的改过路径（调用方据此决定要不要标脏）。
+    ///
+    /// **只改指向缓存的那一段，不动别的**：remoteKey 只说明「这段素材来自音频库
+    /// 的哪一条」，它不该越权去修一个用户自己导入的同名文件。
+    ///
+    /// `lookup` 只为自检可注入（默认就是生产那条路径）—— 真正的缓存目录在用户的
+    /// Application Support 下，自检不该往那里写东西。**注入的代价是这条断言够不到
+    /// 「生产用的是不是同一个查找」**，所以 `AudioLibraryCache.fileURL` 的路径规则
+    /// 由 checks/AudioLibrary 单独钉一遍（尤其是文件名消毒）。
+    @discardableResult
+    nonisolated static func relinkRemoteLibraryMedia(
+        in timeline: inout TimelineState,
+        lookup: (String) -> URL? = { AudioLibraryCache.localURL(for: $0) }
+    ) -> Bool {
+        var changed = false
+        for clip in timeline.allClips {
+            guard let key = clip.remoteKey else { continue }
+            // 路径还在就什么都不用做 —— 常态是缓存没动过。
+            if FileManager.default.fileExists(atPath: clip.sourceURL.path) { continue }
+            guard let cached = lookup(key), cached != clip.sourceURL else { continue }
+            timeline.replaceMedia(clip.sourceURL, with: cached)
+            changed = true
+        }
+        return changed
+    }
 
     private enum Resolution {
         /// 找到了。`moved` 表示位置跟存盘时不一样，时间线里的引用要跟着改。

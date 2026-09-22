@@ -191,6 +191,68 @@ extension VideoEditProject {
                 await regenerateStills(result.stillsToRegenerate, generation: generation)
             })
         }
+
+        // 音频库素材的最后一层：本地缓存里也没有，就去 R2 按 id 重新拉。
+        // 放在最后、异步跑 —— 它要走网络，不该拖着工程打不开。
+        recoverRemoteLibraryMedia()
+    }
+
+    /// 把「有 remoteKey、但本地文件不在了」的素材从音频库重新下回来。
+    ///
+    /// 这是 `remoteKey` 存在的**全部理由**：用户清过缓存、换了机器、工程发给
+    /// 别人 —— 路径全都对不上，但 id 还在。没有这一步，v18 保住的就只是一个
+    /// 没人读的字段，用户看到的还是「素材丢失」加一个指向缓存目录的死路径。
+    ///
+    /// 静默进行，不弹任何东西：成功的话用户根本不该察觉；失败的话那几条本来
+    /// 就已经在 `missingMedia` 里，重链接条会照常显示。
+    private func recoverRemoteLibraryMedia() {
+        let wanted = state.allClips.compactMap { clip -> String? in
+            guard let key = clip.remoteKey,
+                  !FileManager.default.fileExists(atPath: clip.sourceURL.path)
+            else { return nil }
+            return key
+        }
+        guard !wanted.isEmpty else { return }
+
+        let generation = documentGeneration
+        trackImportTask(Task { [weak self] in
+            guard let self else { return }
+            let store = AudioLibraryStore.music
+            store.loadIfNeeded()
+            // 等清单到手（它可能正好在拉）。拉不到就算了 —— 那几条会留在
+            // missingMedia 里，用户还有手动重链接那条路。
+            for _ in 0..<60 where store.state.items.isEmpty {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+            }
+            let byID = Dictionary(
+                store.state.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }
+            )
+            for key in Set(wanted) {
+                guard isCurrentGeneration(generation), !Task.isCancelled else { return }
+                guard let item = byID[key] else { continue }
+                guard let url = try? await AudioLibraryCache.shared.download(item) else { continue }
+                // 下载期间用户可能已经换了工程：这份素材是上一个工程的，别往新的里塞
+                //（同 addVideos 那条代号守卫）。
+                guard isCurrentGeneration(generation) else { return }
+                relinkRecoveredRemoteMedia(key: key, to: url)
+            }
+        })
+    }
+
+    /// 把某条 remoteKey 对应的所有片段指到新下好的文件上，并把它移出丢失清单。
+    private func relinkRecoveredRemoteMedia(key: String, to url: URL) {
+        let stale = Set(
+            state.allClips.filter { $0.remoteKey == key && $0.sourceURL != url }.map(\.sourceURL)
+        )
+        guard !stale.isEmpty else { return }
+        perform { timeline in
+            for old in stale { timeline.replaceMedia(old, with: url) }
+        }
+        missingMedia.removeAll { stale.contains($0) }
+        // 路径变了立刻回存，跟打开工程时 didRelink 的处理一致。
+        hasUnsavedChanges = true
+        saveNow()
     }
 
     // MARK: - 图片段的静帧
