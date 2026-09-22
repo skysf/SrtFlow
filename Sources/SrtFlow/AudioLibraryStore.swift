@@ -6,9 +6,9 @@ import Foundation
 // 整个面板会是空的 —— 用户看到的是「我的音乐库没了」，而不是「现在没网」。
 // 所以每次成功拉取都留一份到本地，离线时用它，并在界面上标明这是离线清单。
 //
-// 拉取地址来自 `AudioLibrarySource`，不是写死的常量：以后从公开域名换到 Worker
-// 网关只要改这一处（plan 第四节第 1 条的另一半 —— 素材 URL 由 manifest 给，
-// 清单 URL 由这里给）。
+// 拉取地址来自 `AudioLibrarySource`，不是写死的常量：换域名、换 CDN、哪天真要加
+// 一层网关，都只要改这一处（plan 第四节第 1 条的另一半 —— 素材 URL 由 manifest
+// 给，清单 URL 由这里给）。网关目前不做，理由见 plan 第八节。
 
 /// 一个库（音乐 / 音效各一个）。
 struct AudioLibrarySource: Sendable {
