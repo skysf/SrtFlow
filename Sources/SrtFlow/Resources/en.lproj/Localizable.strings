@@ -809,3 +809,10 @@
 "The audio library list is damaged." = "The audio library list is damaged.";
 "This audio library needs a newer version of the app (list format v%d, this app reads up to v%d)." = "This audio library needs a newer version of the app (list format v%d, this app reads up to v%d).";
 "Could not download this track (server said %d)." = "Could not download this track (server said %d).";
+"Music credits" = "Music credits";
+"Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown." = "Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown.";
+"Used in this project" = "Used in this project";
+"Copy credits" = "Copy credits";
+"Copy the credit lines for the tracks used in this project" = "Copy the credit lines for the tracks used in this project";
+"Credits" = "Credits";
+"Where this music comes from, and how to credit it" = "Where this music comes from, and how to credit it";

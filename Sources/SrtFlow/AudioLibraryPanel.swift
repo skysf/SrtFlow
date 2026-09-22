@@ -35,14 +35,20 @@ struct AudioLibraryPanel: View {
         }
     }
 
+    @State private var showsCredits = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             searchField
             if !allTags.isEmpty { tagFilter }
             Divider()
             content
+            if !store.state.items.isEmpty { creditsBar }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(isPresented: $showsCredits) {
+            AudioLibraryCreditsView(items: store.state.items, usedIDs: usedRemoteKeys)
+        }
         .onAppear { store.loadIfNeeded() }
         .onDisappear {
             // 切走这一页就停试听 —— 声音还在响而界面已经不见了，用户找不到从哪停。
@@ -183,6 +189,45 @@ struct AudioLibraryPanel: View {
     private func centered<V: View>(@ViewBuilder _ content: () -> V) -> some View {
         VStack { Spacer(); content(); Spacer() }
             .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 署名
+
+    /// 当前工程里用到的音频库素材。**所有轨都要扫** —— 用户完全可以把一段音乐
+    /// 拖到上层视频轨上当纯音频用，只扫 `audioTracks` 会漏掉它，而漏掉一条
+    /// 就是漏掉一次署名。
+    private var usedRemoteKeys: Set<String> {
+        Set(project.state.allClips.compactMap(\.remoteKey))
+    }
+
+    /// 库底下常驻的一行。**不是可有可无的装饰** —— CC-BY 要求署名，这行是
+    /// 用户履行义务的唯一入口，所以只要库里有东西它就在。
+    private var creditsBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                showsCredits = true
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "info.circle")
+                    Text("Credits")
+                    Spacer()
+                    if !usedRemoteKeys.isEmpty {
+                        Text(verbatim: "\(usedRemoteKeys.count)")
+                            .monospacedDigit()
+                            .padding(.horizontal, 5)
+                            .background(.quaternary, in: Capsule())
+                    }
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .instantHelp("Where this music comes from, and how to credit it")
+        }
     }
 
     // MARK: - 落到时间线

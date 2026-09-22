@@ -109,6 +109,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
+| 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换 | [本地化](docs/architecture/localization.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
@@ -117,6 +118,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 - 构建与打包的 Rosetta / arm64 要求、常用命令、打包和验收：
   [docs/build/build-and-packaging.md](docs/build/build-and-packaging.md)。
+- 音频库素材的制备与上传（选曲 → 规格化 → manifest → R2）：
+  [docs/build/audio-library-pipeline.md](docs/build/audio-library-pipeline.md)。
+  脚本在 `scripts/audio-library/`，**不在 `check-all.sh` 里**（它制备素材，不是检查）。
 - 全部自动检查：`scripts/check-all.sh`。CI 在每个 PR 上运行同一入口：
   `.github/workflows/checks.yml`。
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。

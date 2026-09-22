@@ -809,3 +809,10 @@
 "The audio library list is damaged." = "音频库清单已损坏。";
 "This audio library needs a newer version of the app (list format v%d, this app reads up to v%d)." = "这个音频库需要更新的应用版本（清单格式 v%d，当前最高支持 v%d）。";
 "Could not download this track (server said %d)." = "下载失败（服务器返回 %d）。";
+"Music credits" = "音乐来源";
+"Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown." = "下面每一首都按「知识共享 署名」授权。你发布用到它的视频时，请照下面的写法署名。";
+"Used in this project" = "本工程用到了";
+"Copy credits" = "拷贝署名";
+"Copy the credit lines for the tracks used in this project" = "把本工程用到的那几条署名拷走";
+"Credits" = "音乐来源";
+"Where this music comes from, and how to credit it" = "这些音乐来自哪里，以及该怎么署名";
