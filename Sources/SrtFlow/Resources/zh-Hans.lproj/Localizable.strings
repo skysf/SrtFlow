@@ -816,3 +816,7 @@
 "Copy the credit lines for the tracks used in this project" = "把本工程用到的那几条署名拷走";
 "Credits" = "音乐来源";
 "Where this music comes from, and how to credit it" = "这些音乐来自哪里，以及该怎么署名";
+"Downloaded tracks — click to free the space" = "已下载的音乐 —— 点击清理腾出空间";
+"Remove downloaded music?" = "清理已下载的音乐？";
+"Remove" = "清理";
+"Projects that use these tracks will download them again when you open them." = "用到这些音乐的工程，下次打开时会自动重新下载。";

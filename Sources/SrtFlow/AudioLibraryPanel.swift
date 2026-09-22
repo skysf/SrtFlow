@@ -36,6 +36,7 @@ struct AudioLibraryPanel: View {
     }
 
     @State private var showsCredits = false
+    @State private var showsClearConfirm = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -200,33 +201,72 @@ struct AudioLibraryPanel: View {
         Set(project.state.allClips.compactMap(\.remoteKey))
     }
 
-    /// 库底下常驻的一行。**不是可有可无的装饰** —— CC-BY 要求署名，这行是
-    /// 用户履行义务的唯一入口，所以只要库里有东西它就在。
+    /// 库底下常驻的一行：署名入口 + 已下载素材的清理入口。
+    ///
+    /// 署名那半**不是可有可无的装饰** —— CC-BY 要求署名，这是用户履行义务的
+    /// 唯一入口，所以只要库里有东西它就在。
+    ///
+    /// 清理那半是缓存落在 `Application Support` 的代价：系统不会替我们清，
+    /// 就得自己给个入口（见 `AudioLibraryCache` 的文件头）。
     private var creditsBar: some View {
         VStack(spacing: 0) {
             Divider()
-            Button {
-                showsCredits = true
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "info.circle")
-                    Text("Credits")
-                    Spacer()
-                    if !usedRemoteKeys.isEmpty {
-                        Text(verbatim: "\(usedRemoteKeys.count)")
-                            .monospacedDigit()
-                            .padding(.horizontal, 5)
-                            .background(.quaternary, in: Capsule())
+            HStack(spacing: 4) {
+                Button {
+                    showsCredits = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "info.circle")
+                        Text("Credits")
+                        if !usedRemoteKeys.isEmpty {
+                            Text(verbatim: "\(usedRemoteKeys.count)")
+                                .monospacedDigit()
+                                .padding(.horizontal, 5)
+                                .background(.quaternary, in: Capsule())
+                        }
                     }
+                    .contentShape(Rectangle())
                 }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
+                .buttonStyle(.plain)
+                .instantHelp("Where this music comes from, and how to credit it")
+
+                Spacer(minLength: 0)
+
+                if !cache.cachedIDs.isEmpty {
+                    Button {
+                        showsClearConfirm = true
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: "arrow.down.circle")
+                            Text(verbatim: MediaFormatting.bytes(cache.totalSize))
+                                .monospacedDigit()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .instantHelp("Downloaded tracks — click to free the space")
+                }
             }
-            .buttonStyle(.plain)
-            .instantHelp("Where this music comes from, and how to credit it")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+        }
+        .confirmationDialog(
+            L10n("Remove downloaded music?"),
+            isPresented: $showsClearConfirm, titleVisibility: .visible
+        ) {
+            Button(L10n("Remove"), role: .destructive) {
+                do {
+                    try cache.clearAll()
+                } catch {
+                    project.notice = error.localizedDescription
+                }
+            }
+            Button(L10n("Cancel"), role: .cancel) {}
+        } message: {
+            // 说清楚「不会丢」：用户最怕的是把工程里正在用的音乐删掉。
+            Text("Projects that use these tracks will download them again when you open them.")
         }
     }
 
