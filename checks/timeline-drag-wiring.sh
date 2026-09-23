@@ -459,10 +459,22 @@ grep_code 'isLaneHidden' "$ROW_SELECT_RULE" \
 # music.note 宽、字幕行没有色条，每行总宽不同 → 色条和眼睛的 x 一行一个样
 #（2026-09-18 用户报的「这一列要对齐」）。
 for cell in 'TimelineHeaderMetrics.accentWidth' 'TimelineHeaderMetrics.iconWidth' \
-            'TimelineHeaderMetrics.eyeWidth'; do
+            'TimelineHeaderMetrics.faderWidth' 'TimelineHeaderMetrics.eyeWidth'; do
   grep_code "frame(width: ${cell})" "$HEADER_COLUMN" \
     || fail "轨道头少了固定宽度的那一格（${cell}）：这一列又会一行一个样"
 done
+# 推子（2026-09-23）：没有推子的行也占着那一格；拖动中不写 state（同音量线）；
+# 标尺那一行放总推子（docs/architecture/audio-mixer.md）。
+if BODY="$(require_func 'private var fader: some View' "$HEADER_COLUMN")"; then
+  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+    || fail "没有推子的行没占住推子那一格：它的眼睛会跑到别人推子的位置上"
+  printf '%s\n' "$BODY" | grep -q 'onLive: { project.previewTrackVolume' \
+    || fail "拖轨道推子时没走 previewTrackVolume：要么听不见，要么每一拍写 state"
+fi
+grep_code 'masterStrip' "$HEADER_COLUMN" || fail "标尺那一行的总推子不见了"
+if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditTrackFader.swift | grep -qE 'project\.|perform|liveApply'; then
+  fail "推子视图自己去碰 project 了：它只该回调 onLive / onCommit（拖动中不写 state）"
+fi
 # 没有色条/没有眼睛的行也必须占着那一格，否则那几行整体左移。
 if BODY="$(require_func 'private var eye: some View' "$HEADER_COLUMN")"; then
   printf '%s\n' "$BODY" | grep -q 'Color.clear' \

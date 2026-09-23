@@ -829,3 +829,7 @@
 "Remove Volume Curve" = "去掉音量曲线";
 "Remove the volume curve and go back to 0 dB" = "去掉音量曲线，回到 0 dB";
 "Volume curve with %d points. The slider raises or lowers the whole curve." = "这段画了音量曲线（%d 个点）。滑杆会把整条曲线一起抬高或压低。";
+
+/* 轨道头推子（2026-09-23） */
+"Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "总音量。拖动调节（按住 ⇧ 细调）；⌥ 点或双击回到 0 dB。";
+"Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "这条轨的音量。拖动调节（按住 ⇧ 细调）；⌥ 点或双击回到 0 dB。";

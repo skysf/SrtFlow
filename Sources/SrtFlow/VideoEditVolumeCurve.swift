@@ -205,15 +205,11 @@ enum VolumeCurveLayout {
     static let pointHitRadius = 7.0
 
     static func y(forDecibels decibels: Double, height: Double) -> Double {
-        let span = AudioGain.maximumDB - AudioGain.minimumDB
-        let fraction = (AudioGain.clampedDecibels(decibels) - AudioGain.minimumDB) / span
-        return inset + (1 - fraction) * max(0, height - 2 * inset)
+        inset + (1 - AudioGain.scaleFraction(forDecibels: decibels)) * max(0, height - 2 * inset)
     }
 
     static func decibels(forY y: Double, height: Double) -> Double {
-        let usable = max(1, height - 2 * inset)
-        let fraction = 1 - (y - inset) / usable
-        return AudioGain.clampedDecibels(AudioGain.minimumDB + fraction * (AudioGain.maximumDB - AudioGain.minimumDB))
+        AudioGain.decibels(forScaleFraction: 1 - (y - inset) / max(1, height - 2 * inset))
     }
 
     /// 线在块里的折点（块内 x，y）：段的两端 + 落在段内的每个点。没有点就是一条水平线。

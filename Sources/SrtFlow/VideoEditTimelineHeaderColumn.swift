@@ -3,7 +3,9 @@ import SwiftUI
 
 // MARK: - 左侧轨道头列
 //
-// 轨道色条 + 类型图标 + 整轨隐藏的眼睛，行高和右边的轨道行严格一致。
+// 轨道色条 + 类型图标 + 音量推子 + 整轨隐藏的眼睛，行高和右边的轨道行严格一致。
+// 推子（2026-09-23）只在能出声的轨上（主轨 / 上层视频轨 / 音频轨）；最上面的标尺行
+// 放**总推子**（那一格原来是空的）。推子本体在 VideoEditTrackFader.swift。
 // 在视频轨/音频轨的图标上**上下拖**可以调**这一条**轨的行高（2026-09-22 起
 // 一轨一个高度，接线在 `VideoEditTimelineRowHeightDrag.swift`）；点一下
 //（非眼睛的地方）选中这一行的全部素材。
@@ -54,14 +56,17 @@ struct TimelineHeaderColumn: View {
 
 /// 轨道头一行的排版尺寸。
 ///
-/// **三格都必须写死宽度。** 以前是「色条 + 图标 + 眼睛」直接塞进居中的 HStack：
+/// **每一格都必须写死宽度。** 以前是「色条 + 图标 + 眼睛」直接塞进居中的 HStack：
 /// `film` 比 `music.note` 宽、字幕行压根没有色条，于是每一行的 HStack 总宽都不
 /// 一样，居中之后色条和眼睛的 x **一行一个样**（2026-09-18 用户报的「这一列要
 /// 对齐」）。每格宽度固定 → 每行总宽相同 → 居中即对齐，不用去量任何位置。
+/// 2026-09-23 加了推子那一格（没有推子的行照样占着），整列从 54pt 宽到 132pt。
 enum TimelineHeaderMetrics {
-    static let columnWidth: Double = 54
+    static let columnWidth: Double = 132
     static let accentWidth: Double = 3
     static let iconWidth: Double = 16
+    static let faderWidth: Double = 78
+    static let faderHeight: Double = 14
     static let eyeWidth: Double = 14
     static let spacing: Double = 3
 }
@@ -76,11 +81,12 @@ private struct TimelineHeaderRow: View {
     var body: some View {
         Group {
             if row.isRuler {
-                Color.clear
+                masterStrip
             } else {
                 HStack(spacing: TimelineHeaderMetrics.spacing) {
                     accent
                     icon
+                    fader
                     eye
                 }
             }
@@ -124,6 +130,48 @@ private struct TimelineHeaderRow: View {
             .font(.caption)
             .foregroundStyle(row.isHidden ? .tertiary : .secondary)
             .frame(width: TimelineHeaderMetrics.iconWidth)
+    }
+
+    /// 这条轨的推子。没有推子的行（字幕 / 文字 / 形状 / 滤镜）一样占着这一格 ——
+    /// 少了它，那几行的眼睛就会跑到别人推子的位置上。
+    @ViewBuilder
+    private var fader: some View {
+        Group {
+            if let slot = row.slot {
+                TrackFaderView(
+                    value: project.state.trackVolume(for: slot),
+                    isMaster: false,
+                    isDimmed: row.isHidden,
+                    onLive: { project.previewTrackVolume($0, for: slot) },
+                    onCommit: { project.setTrackVolume($0, for: slot) }
+                )
+                .frame(height: TimelineHeaderMetrics.faderHeight)
+            } else {
+                Color.clear
+            }
+        }
+        .frame(width: TimelineHeaderMetrics.faderWidth)
+    }
+
+    /// 标尺那一行：总推子（所有轨混完之后再乘一次）。图标那一格放一个喇叭，
+    /// 色条和眼睛两格空着 —— 占住位置，推子才和下面每条轨的推子对齐。
+    private var masterStrip: some View {
+        HStack(spacing: TimelineHeaderMetrics.spacing) {
+            Color.clear.frame(width: TimelineHeaderMetrics.accentWidth)
+            Image(systemName: "speaker.wave.2")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: TimelineHeaderMetrics.iconWidth)
+            TrackFaderView(
+                value: project.state.masterVolume,
+                isMaster: true,
+                isDimmed: false,
+                onLive: { project.previewMasterVolume($0) },
+                onCommit: { project.setMasterVolume($0) }
+            )
+            .frame(width: TimelineHeaderMetrics.faderWidth, height: TimelineHeaderMetrics.faderHeight)
+            Color.clear.frame(width: TimelineHeaderMetrics.eyeWidth)
+        }
     }
 
     /// 整轨显隐的眼睛。没有眼睛的行（文字/形状）一样占着这一格 —— 少了它，

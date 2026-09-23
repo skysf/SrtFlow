@@ -171,6 +171,13 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     checkEqual(VolumeCurveLayout.handle(at: CGPoint(x: 40, y: handles[0].point.y), clip: drawn, pps: 10, height: h),
                nil, "离得远就是线（拖一段）而不是点")
 
+    // ---- 三处共用的 dB 刻度（检查器滑杆 / 音量线 / 推子）----
+    checkEqual(AudioGain.scaleFraction(forDecibels: AudioGain.minimumDB), 0, "−∞ 在刻度的最左 / 最下")
+    checkEqual(AudioGain.scaleFraction(forDecibels: AudioGain.maximumDB), 1, "+6 dB 在刻度的最右 / 最上")
+    check(near(AudioGain.decibels(forScaleFraction: AudioGain.scaleFraction(forDecibels: -12)), -12, 1e-9),
+          "刻度往返（−12 dB）")
+    checkEqual(AudioGain.decibels(forScaleFraction: 7), AudioGain.maximumDB, "出了刻度夹在两头")
+
     // ---- 推子：取值口与夹紧 ----
     var mixer = TimelineState()
     let voice = audioClip()

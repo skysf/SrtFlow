@@ -66,6 +66,16 @@ enum AudioGain {
         guard value.isFinite else { return 0 }
         return min(max(value, minimumDB), maximumDB)
     }
+
+    /// dB 在「dB 线性」刻度上的位置（0 = −∞，1 = +6.02）。检查器滑杆、块上的音量线、
+    /// 轨道头推子都是这一个刻度 —— 三处各算一份的话，同一个 −6 dB 会画在三个地方。
+    static func scaleFraction(forDecibels decibels: Double) -> Double {
+        (clampedDecibels(decibels) - minimumDB) / (maximumDB - minimumDB)
+    }
+
+    static func decibels(forScaleFraction fraction: Double) -> Double {
+        clampedDecibels(minimumDB + min(max(fraction, 0), 1) * (maximumDB - minimumDB))
+    }
 }
 
 /// 声音的渐变窗口就是共用的 `FadeWindow`（字段、`none`、`isEmpty`、转场仲裁的
