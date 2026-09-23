@@ -199,6 +199,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   契约、试听流播与 ducking、素材筛选管线与分刀。
 - [从 Finder 拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) — 拖到哪就落到哪、那儿占着就**往上抬一轨**、多文件首尾相接、类型不匹配横向照用纵向退默认轨，以及 ⌘V 粘贴文件；
   与 `addMedia`（没有落点的那条老路）的分工。
+- [声音编辑：Logic 式波形、深度缩放、音量曲线、推子与电平表](docs/plans/2026-09-23-audio-mixing.md) —
+  用户授权「按体验最丝滑的方式定」之后拍的全部板（曲线属于段、推子属于轨、常显贴线操作、
+  总表放标尺行、M/S 这轮不做）及理由，外加三个探针的实测地基（`aeval` 必须在 `adelay`
+  之前、Canvas 只画 `clipBoundingRect`、音频 tap 看不到音量且不能每次换 mix 都新建）。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
