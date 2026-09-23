@@ -1219,18 +1219,8 @@ final class VideoEditProject: ObservableObject {
         perform { state in
             let group = clip.linkGroup ?? UUID()
             // 源还是那个视频文件，isAudioOnly 只表示这段只取它的声音。
-            let detached = EditClip(
-                sourceURL: clip.sourceURL,
-                isAudioOnly: true,
-                sourceStart: clip.sourceStart,
-                sourceDuration: clip.sourceDuration,
-                speed: clip.speed,
-                timelineStart: clip.timelineStart,
-                volume: clip.volume,
-                linkGroup: group,
-                info: clip.info,
-                audioAssetDuration: clip.info?.duration
-            )
+            // 音量 / 曲线 / 渐变跟着声音走（见 `EditClip.detachedAudio`）。
+            let detached = clip.detachedAudio(linkGroup: group)
             state.update(id) { original in
                 original.isMuted = true
                 original.linkGroup = group

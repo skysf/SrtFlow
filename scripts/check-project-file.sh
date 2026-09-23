@@ -36,6 +36,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditFilterLUT.swift \
   Sources/SrtFlow/VideoEditFadeWindow.swift \
@@ -76,6 +77,7 @@ xcrun swiftc \
   Sources/SrtFlow/StillImageClipFactory.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/ProjectFile/main.swift \
+  checks/ProjectFile/VolumeCurve.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----

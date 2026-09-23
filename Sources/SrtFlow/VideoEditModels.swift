@@ -431,6 +431,13 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// docs/architecture/clip-visibility.md。
     var isHidden = false
 
+    /// 画在这段声音上的音量曲线（值是 **dB**，点锚在源时间上，同关键帧）。
+    ///
+    /// 空 = 整段就是 `volume` 这一个值；有点时**曲线取代 `volume`**。取值、编辑与
+    /// 两条管线共用的折线表都在 VideoEditVolumeCurve.swift，合同见
+    /// docs/architecture/audio-volume-curve.md。不进 `init`（同 `markers`）。
+    var volumeCurve = KeyframeTrack()
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -619,12 +626,19 @@ struct EditLane: Identifiable, Hashable, Sendable {
     /// `assignMissingTrackColors()` 会在读盘和每次状态提交后补上，补过就不再动
     /// —— 颜色必须绑轨道身份，绑行号的话删掉中间一条轨会让下面所有轨换色。
     var colorIndex: Int?
+    /// 轨道头推子：整条轨的音量（线性幅度 0…2，1 = 0 dB），乘在每段自己的
+    /// 音量 / 曲线之上。见 docs/architecture/audio-mixer.md。
+    var volume: Double
 
-    init(id: UUID = UUID(), clips: [EditClip] = [], isHidden: Bool = false, colorIndex: Int? = nil) {
+    init(
+        id: UUID = UUID(), clips: [EditClip] = [], isHidden: Bool = false,
+        colorIndex: Int? = nil, volume: Double = 1
+    ) {
         self.id = id
         self.clips = clips
         self.isHidden = isHidden
         self.colorIndex = colorIndex
+        self.volume = volume
     }
 }
 
@@ -634,6 +648,11 @@ struct TimelineState: Hashable, Sendable {
     var mainClips: [EditClip] = []
     /// 主轨的整轨隐藏（预览成黑场，导出跳过）。
     var mainHidden = false
+    /// 主轨的推子（主轨不是 `EditLane`，没地方放，同 `mainHidden`）。线性 0…2。
+    var mainVolume = 1.0
+    /// 总输出推子：所有轨混完之后再乘一次。线性 0…2。
+    /// 推子两兄弟的合同见 docs/architecture/audio-mixer.md。
+    var masterVolume = 1.0
     /// 上层视频轨（可以有多条，叠放顺序：靠后的画在上面）。
     /// 与主轨**对等** —— 内容一样铺满画面，只有叠放次序的差别。
     var overlayTracks: [EditLane] = []
@@ -898,15 +917,20 @@ extension TimelineState {
         // 「只导出选中的」不该把用户明明藏起来的东西导出去。
         var sub = TimelineState()
         sub.mainClips = ClipVisibility.visible(mainClips.filter { ids.contains($0.id) }).map(shifted)
+        // 推子跟着轨走：选段导出听到的必须是时间线上听到的那一份（总推子同理）。
+        sub.mainVolume = mainVolume
+        sub.masterVolume = masterVolume
         for lane in overlayTracks where !lane.isHidden {
             let clips = ClipVisibility.visible(lane.clips.filter { ids.contains($0.id) }).map(shifted)
-            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips)) }
+            if !clips.isEmpty { sub.overlayTracks.append(EditLane(clips: clips, volume: lane.volume)) }
         }
         for lane in audioTracks where !lane.isHidden {
             let clips = ClipVisibility.visible(lane.clips.filter { ids.contains($0.id) }).map(shifted)
-            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips)) }
+            if !clips.isEmpty { sub.audioTracks.append(EditLane(clips: clips, volume: lane.volume)) }
         }
         if sub.mainClips.isEmpty, !sub.overlayTracks.isEmpty {
+            // 升上来的那条轨带着自己的推子当主轨。
+            sub.mainVolume = sub.overlayTracks[0].volume
             sub.mainClips = sub.overlayTracks.removeFirst().clips.map { clip in
                 var promoted = clip
                 // 摆放/旋转/透明度和它们的动画都是相对完整画面的，画面不在
@@ -1120,6 +1144,7 @@ extension EditClip: Codable {
         case markers
         case fadeInDuration, fadeOutDuration
         case isHidden
+        case volumeCurve
     }
 
     init(from decoder: Decoder) throws {
@@ -1160,6 +1185,11 @@ extension EditClip: Codable {
         // 缺键 = 没隐藏。老工程（v15 及更早）根本没有这个概念，回退 false
         // 就是它们当时的渲染结果 —— 升级不改变谁已经做好的片子。
         isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        // v19 起才有。缺键 = 没画过曲线（整段就是 `volume`），与老版本的渲染一致。
+        // 读进来先消毒（NaN、越界的 dB），规则见 `VolumeCurve.sanitized`。
+        volumeCurve = VolumeCurve.sanitized(
+            try c.decodeIfPresent(KeyframeTrack.self, forKey: .volumeCurve) ?? KeyframeTrack()
+        )
         // v14 及更早：画面渐变只有时长、没有"效果"这个概念。合并成一个槽之后，
         // 这些段就是 In/Out = Fade —— 不认回来的话，老工程一打开，调好的淡入淡出
         // 会因为 `kind == .none` 当场失效（不变量见 `ClipPresetAnimation.isEmpty`）。
@@ -1218,6 +1248,8 @@ extension EditClip: Codable {
         // `requiresFormatVersion15` 同源）：强度是跟着效果走的，没效果时它的值
         // 不影响任何一帧画面，写出来只会把每段的 JSON 撑大一行。
         if !presetAnimation.isEmpty { try c.encode(presetAnimation, forKey: .presetAnimation) }
+        // 没画过曲线的段不写这个键（判据与格式版本闸门 `requiresFormatVersion19` 同源）。
+        if !volumeCurve.isEmpty { try c.encode(volumeCurve, forKey: .volumeCurve) }
     }
 }
 
@@ -1252,7 +1284,7 @@ extension MarkerColor: LenientCodableEnum {
 
 extension EditLane: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, clips, isHidden, colorIndex
+        case id, clips, isHidden, colorIndex, volume
     }
 
     init(from decoder: Decoder) throws {
@@ -1261,7 +1293,9 @@ extension EditLane: Codable {
             id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
             clips: try c.decodeIfPresent([EditClip].self, forKey: .clips) ?? [],
             isHidden: try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false,
-            colorIndex: try c.decodeIfPresent(Int.self, forKey: .colorIndex)
+            colorIndex: try c.decodeIfPresent(Int.self, forKey: .colorIndex),
+            // v19 起才有。缺键 = 推子在 0 dB，就是老版本的声音。
+            volume: AudioGain.clampedLinear(try c.decodeIfPresent(Double.self, forKey: .volume) ?? 1)
         )
     }
 
@@ -1271,12 +1305,15 @@ extension EditLane: Codable {
         try c.encode(clips, forKey: .clips)
         try c.encode(isHidden, forKey: .isHidden)
         try c.encodeIfPresent(colorIndex, forKey: .colorIndex)
+        // 推子没动过（0 dB）不写键，与 `requiresFormatVersion19` 同源。
+        if volume != 1 { try c.encode(volume, forKey: .volume) }
     }
 }
 
 extension TimelineState: Codable {
     private enum CodingKeys: String, CodingKey {
         case mainClips, mainHidden, overlayTracks, audioTracks
+        case mainVolume, masterVolume
         case subtitle, subtitleHidden, translationHidden
         case subtitleLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
         case frameRate, filters
@@ -1287,6 +1324,9 @@ extension TimelineState: Codable {
         self.init()
         mainClips = try c.decodeIfPresent([EditClip].self, forKey: .mainClips) ?? []
         mainHidden = try c.decodeIfPresent(Bool.self, forKey: .mainHidden) ?? false
+        // v19 起才有。缺键 = 推子在 0 dB（老版本根本没有推子）。
+        mainVolume = AudioGain.clampedLinear(try c.decodeIfPresent(Double.self, forKey: .mainVolume) ?? 1)
+        masterVolume = AudioGain.clampedLinear(try c.decodeIfPresent(Double.self, forKey: .masterVolume) ?? 1)
         overlayTracks = try c.decodeIfPresent([EditLane].self, forKey: .overlayTracks) ?? []
         audioTracks = try c.decodeIfPresent([EditLane].self, forKey: .audioTracks) ?? []
         subtitle = try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .subtitle)
@@ -1309,6 +1349,9 @@ extension TimelineState: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(mainClips, forKey: .mainClips)
         try c.encode(mainHidden, forKey: .mainHidden)
+        // 推子没动过（0 dB）不写键，与 `requiresFormatVersion19` 同源。
+        if mainVolume != 1 { try c.encode(mainVolume, forKey: .mainVolume) }
+        if masterVolume != 1 { try c.encode(masterVolume, forKey: .masterVolume) }
         try c.encode(overlayTracks, forKey: .overlayTracks)
         try c.encode(audioTracks, forKey: .audioTracks)
         try c.encodeIfPresent(subtitle, forKey: .subtitle)
