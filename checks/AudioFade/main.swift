@@ -575,6 +575,9 @@ func main() async {
         check(false, "接缝用例的 plan() 失败：\(error)")
     }
 
+    // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
+    await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
+
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }
     finish(failures == 0 ? 0 : 1)

@@ -3,6 +3,10 @@
 > 2026-08-11 落地渐入渐出，2026-08-12 补 dB 显示与「只换 audioMix」快路径。
 > 改 `VideoEditAudioFade.swift`、`addVolumeRamps`、`makeAudioMix`、导出图里
 > 任何音频滤镜链之前必读。
+>
+> 2026-09-23 起同一条链上又多了两环：段上的[音量曲线](audio-volume-curve.md)（有点时取代
+> `volume`）和轨道 / 总[推子](audio-mixer.md)（常数，乘进每一段）。下面「两条管线同账」
+> 「只换 audioMix」「提前钉音量」三条对它们一样成立，实现各自写在那两份文档里。
 
 ## 长期约束
 
