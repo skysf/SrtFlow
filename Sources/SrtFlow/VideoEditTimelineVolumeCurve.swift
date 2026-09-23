@@ -200,15 +200,14 @@ struct VolumeCurveOverlay: View {
         var edited = session.origin
         switch session.target {
         case .point(let index):
-            let keys = session.origin.volumeCurve.keys
-            guard keys.indices.contains(index) else { return }
-            let decibels = VolumeCurveLayout.decibels(forY: location.y, height: height)
+            guard session.origin.volumeCurve.keys.indices.contains(index) else { return }
+            // 跟着指针挪同样的量，不是瞬移到指针底下（偏着抓一个点时不跳）。
             // ⇧：只改值，时间钉在原处（精细地压一个点时手一抖就横着跑了）。
-            let lockTime = NSEvent.modifierFlags.contains(.shift)
-            let time = lockTime
-                ? session.origin.timelineTime(atSource: keys[index].time)
-                : timelineTime(atX: location.x)
-            edited.moveVolumePoint(at: index, toTimeline: time, decibels: decibels)
+            edited = VolumeCurveLayout.dragging(
+                session.origin, point: index,
+                by: CGSize(width: location.x - session.start.x, height: location.y - session.start.y),
+                pps: pps, height: height, lockTime: NSEvent.modifierFlags.contains(.shift)
+            )
             session.labelDecibels = edited.volumeCurve.keys[index].value
         case .segment(let indices):
             // 纵轴是 dB 线性的：指针挪多少点，就是多少 dB。
@@ -243,16 +242,9 @@ struct VolumeLineHitShape: Shape {
     let vertices: [CGPoint]
     let handles: [CGPoint]
 
+    /// 窄带与小圆必须**并**起来（`VolumeCurveLayout.hitPath`），不能 append：
+    /// 重叠处环绕数互相抵消，点的正中间会点不中（2026-09-23 案例）。
     func path(in rect: CGRect) -> Path {
-        var line = Path()
-        line.addLines(vertices)
-        var shape = line.strokedPath(StrokeStyle(
-            lineWidth: 2 * VolumeCurveLayout.lineHitRadius, lineCap: .round, lineJoin: .round
-        ))
-        let r = VolumeCurveLayout.pointHitRadius
-        for point in handles {
-            shape.addEllipse(in: CGRect(x: point.x - r, y: point.y - r, width: 2 * r, height: 2 * r))
-        }
-        return shape
+        Path(VolumeCurveLayout.hitPath(vertices: vertices, handles: handles))
     }
 }

@@ -237,6 +237,52 @@ enum VolumeCurveLayout {
         }
     }
 
+    /// 线的命中区：贴着线的一条窄带（±`lineHitRadius`）**并上**每个点的小圆（`pointHitRadius`）。
+    ///
+    /// **必须是 union，不能把圆 append 进描边路径里**（2026-09-23 实机踩过，案例见
+    /// docs/bugfixes/2026-09-23-volume-curve-points-unclickable.md）：命中测试按非零环绕数判
+    /// 「在不在里面」，描边轮廓和圆在重叠处的走向相反，一加一减环绕数正好是 0 —— 点的圆心
+    /// 恰好就压在线上，于是**每个点的正中间都点不中**，按下去落到块上（拖点变成拖块、⌥ 点点
+    /// 删不掉）。线段中间没有圆，所以拖线、⌥ 点线加点一直是好的，更难发现。
+    static func hitPath(vertices: [CGPoint], handles: [CGPoint]) -> CGPath {
+        let line = CGMutablePath()
+        line.addLines(between: vertices)
+        let band = line.copy(strokingWithWidth: 2 * lineHitRadius, lineCap: .round, lineJoin: .round, miterLimit: 10)
+        let circles = CGMutablePath()
+        for point in handles {
+            circles.addEllipse(in: CGRect(x: point.x - pointHitRadius, y: point.y - pointHitRadius,
+                                          width: 2 * pointHitRadius, height: 2 * pointHitRadius))
+        }
+        return band.union(circles)
+    }
+
+    /// 拖一个点：点从**起手时它自己的位置**出发，跟着指针挪同样的量，不是瞬移到指针底下。
+    ///
+    /// 点的小圆有 `pointHitRadius` 那么大，偏着抓很常见；按指针的绝对位置算的话，按下去
+    /// 第一拍点就跳过去，纯竖着拖也会把时间带偏抓偏的那一截（2026-09-23 实机，同上面
+    /// `hitPath` 那个案例）。`lockTime`（⇧）：时间原样不动，只改值。
+    static func dragging(_ origin: EditClip, point index: Int, by translation: CGSize,
+                         pps: Double, height: Double, lockTime: Bool) -> EditClip {
+        let keys = origin.volumeCurve.keys
+        guard keys.indices.contains(index), pps > 0 else { return origin }
+        var edited = origin
+        let startTime = origin.timelineTime(atSource: keys[index].time)
+        let startY = y(forDecibels: keys[index].value, height: height)
+        let decibels = translation.height == 0
+            ? keys[index].value
+            : self.decibels(forY: startY + Double(translation.height), height: height)
+        if lockTime || translation.width == 0 {
+            // 时间不经 timeline ↔ source 往返：原样留着，免得浮点误差把它挪一丁点。
+            var keys = keys
+            keys[index].value = AudioGain.clampedDecibels(decibels)
+            edited.volumeCurve = KeyframeTrack(keys: keys)
+        } else {
+            edited.moveVolumePoint(at: index, toTimeline: startTime + Double(translation.width) / pps,
+                                   decibels: decibels)
+        }
+        return edited
+    }
+
     /// 按在哪个点上（没有返回 nil）。离得最近的那个。
     static func handle(at location: CGPoint, clip: EditClip, pps: Double, height: Double) -> Int? {
         handles(for: clip, pps: pps, height: height)

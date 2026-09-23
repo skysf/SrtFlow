@@ -55,7 +55,10 @@
 规则：**块内一切装饰性内容（缩略图条、波形、关键帧菱形，以及将来的同类）一律
 `allowsHitTesting(false)`**；交互统一由 `ClipBlockView` 层的手势 + 底色矩形
 命中面承担。**唯一的例外是音量线**（2026-09-23，[音量曲线](audio-volume-curve.md)）：
-它的命中区用 `contentShape` 收窄成贴着线的一条窄带 + 点的小圆，线以外的地方照旧归块。守卫在 `checks/timeline-drag-wiring.sh` 第 8 节。新增会溢出绘制的
+它的命中区用 `contentShape` 收窄成贴着线的一条窄带 + 点的小圆，线以外的地方照旧归块。守卫在 `checks/timeline-drag-wiring.sh` 第 8 节。
+**拼出来的命中形状必须真正取并集**（`CGPath.union`）：`contentShape` 按非零环绕数判里外，
+往同一条路径里 append 几块形状，重叠处可能正负抵消成洞 —— 音量线的点就这样在正中间
+点不中（[案例](../bugfixes/2026-09-23-volume-curve-points-unclickable.md)）。新增会溢出绘制的
 内容（`scaledToFill`、`fixedSize`、负 offset）时，先想清楚它的命中高度是不是
 真的等于画出来的高度。
 

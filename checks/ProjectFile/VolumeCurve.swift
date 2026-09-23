@@ -178,6 +178,57 @@ func checkVolumeCurveAndMixer(root: URL) throws {
           "刻度往返（−12 dB）")
     checkEqual(AudioGain.decibels(forScaleFraction: 7), AudioGain.maximumDB, "出了刻度夹在两头")
 
+    // ---- 命中区：点的正中间必须点得中（2026-09-23 实机案例）----
+    // 点的圆心就压在线上；圆若是 append 进描边路径（而不是 union），重叠处的环绕数正负
+    // 抵消成 0，每个点的正中间都点不中。
+    // 照实机那条线造：五个点、有平段有斜段，两个点落在段的两头。
+    var hitClip = audioClip(start: 5, duration: 10)
+    hitClip.volumeCurve = KeyframeTrack(keys: [
+        Keyframe(time: 0, value: 0), Keyframe(time: 3, value: -12), Keyframe(time: 5, value: -12),
+        Keyframe(time: 7, value: -3), Keyframe(time: 10, value: 0),
+    ])
+    let hitVertices = VolumeCurveLayout.vertices(for: hitClip, pps: 10, height: h)
+    let hitHandles = VolumeCurveLayout.handles(for: hitClip, pps: 10, height: h).map(\.point)
+    let hitPath = VolumeCurveLayout.hitPath(vertices: hitVertices, handles: hitHandles)
+    checkEqual(hitHandles.count, 5, "命中区用例里五个点都在段内")
+    for handle in hitHandles {
+        check(hitPath.contains(handle), "点的正中间点得中（\(handle)）")
+        check(hitPath.contains(CGPoint(x: handle.x + 3, y: handle.y + 3)), "点的小圆里点得中")
+    }
+    for vertex in hitVertices {
+        check(hitPath.contains(vertex), "线的每个折点上点得中（\(vertex)）")
+    }
+    let mid = CGPoint(x: (hitVertices[0].x + hitVertices[1].x) / 2, y: (hitVertices[0].y + hitVertices[1].y) / 2)
+    check(hitPath.contains(mid), "线段中间点得中")
+    check(hitPath.contains(CGPoint(x: mid.x, y: mid.y + VolumeCurveLayout.lineHitRadius - 1)),
+          "离线 4pt 以内算点在线上")
+    check(!hitPath.contains(CGPoint(x: mid.x, y: mid.y + 20)), "离线 20pt 不算（块的别处照旧归块）")
+
+    // ---- 拖点：跟着指针挪同样的量，不瞬移到指针底下（2026-09-23 实机案例）----
+    // 偏着抓（按在点右下 5pt 处）：没挪 = 点原地不动；纯竖着拖 = 时间一丝不动；
+    // 横着拖 10pt = 刚好晚 1 秒（pps 10），不是跳到指针底下再算。
+    let p1 = hitClip.volumeCurve.keys[1]
+    let still = VolumeCurveLayout.dragging(hitClip, point: 1, by: .zero, pps: 10, height: h, lockTime: false)
+    checkEqual(still.volumeCurve, hitClip.volumeCurve, "按下没挪：点原地不动（值和时间都一丝不差）")
+    let lifted = VolumeCurveLayout.dragging(hitClip, point: 1, by: CGSize(width: 0, height: -10),
+                                            pps: 10, height: h, lockTime: false)
+    checkEqual(lifted.volumeCurve.keys[1].time, p1.time, "纯竖着拖：时间一丝不动")
+    let perPoint = (AudioGain.maximumDB - AudioGain.minimumDB) / (h - 2 * VolumeCurveLayout.inset)
+    check(near(lifted.volumeCurve.keys[1].value, p1.value + 10 * perPoint, 1e-9),
+          "竖着拖 10pt = 抬 10pt 对应的 dB（量到 \(lifted.volumeCurve.keys[1].value)）")
+    let later = VolumeCurveLayout.dragging(hitClip, point: 1, by: CGSize(width: 10, height: 0),
+                                           pps: 10, height: h, lockTime: false)
+    check(near(later.volumeCurve.keys[1].time, p1.time + 1, 1e-9), "横着拖 10pt = 晚 1 秒（pps 10）")
+    checkEqual(later.volumeCurve.keys[1].value, p1.value, "纯横着拖：值一丝不动")
+    let locked = VolumeCurveLayout.dragging(hitClip, point: 1, by: CGSize(width: 30, height: -10),
+                                            pps: 10, height: h, lockTime: true)
+    checkEqual(locked.volumeCurve.keys[1].time, p1.time, "⇧ 拖：时间钉住")
+    check(near(locked.volumeCurve.keys[1].value, lifted.volumeCurve.keys[1].value, 1e-9), "⇧ 拖：值照改")
+    let squeezed = VolumeCurveLayout.dragging(hitClip, point: 1, by: CGSize(width: 500, height: 0),
+                                              pps: 10, height: h, lockTime: false)
+    check(squeezed.volumeCurve.keys[1].time < hitClip.volumeCurve.keys[2].time,
+          "拖过了下一个点也越不过去（顺序不变，下标稳定）")
+
     // ---- 推子：取值口与夹紧 ----
     var mixer = TimelineState()
     let voice = audioClip()

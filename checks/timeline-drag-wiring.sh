@@ -1051,6 +1051,19 @@ grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \
 # 在音频块上全部失灵（docs/architecture/audio-volume-curve.md）。
 grep_code 'contentShape(VolumeLineHitShape' "$VOLUME_CURVE" \
   || fail "音量线的命中区不是那条窄带了：整块都会被它吃掉"
+# 窄带和点的小圆必须**并**起来（VolumeCurveLayout.hitPath，纯值、有自检）：把圆 append
+# 进描边路径的话，重叠处环绕数正负抵消，每个点的正中间都点不中（2026-09-23 案例
+# docs/bugfixes/2026-09-23-volume-curve-points-unclickable.md）。
+grep_code 'VolumeCurveLayout.hitPath(' "$VOLUME_CURVE" \
+  || fail "音量线的命中区没走 VolumeCurveLayout.hitPath（窄带 ∪ 小圆）：自己拼路径会让点的正中间点不中"
+# 拖点跟着指针挪同样的量（VolumeCurveLayout.dragging），不许按指针的绝对位置直接搬点：
+# 偏着抓的点会在按下后第一拍跳过去（同一案例）。
+grep_code 'VolumeCurveLayout.dragging(' "$VOLUME_CURVE" \
+  || fail "拖音量线上的点没走 VolumeCurveLayout.dragging：偏着抓的点会跳到指针底下"
+# （词边界：removeVolumePoint 里也含这串字母。）
+if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -qE '(^|[^[:alnum:]_])moveVolumePoint\('; then
+  fail "音量线视图里直接调了 moveVolumePoint（按指针绝对位置搬点）：拖点要走 VolumeCurveLayout.dragging"
+fi
 # 拖动中不写 TimelineState（§0）：声音靠 previewAudioLive 临时换 mix，松手才落一次。
 grep_code 'previewAudioLive' "$VOLUME_CURVE" \
   || fail "拖音量线时没走 previewAudioLive：要么听不见，要么在每一拍写 state"
@@ -1069,4 +1082,4 @@ grep_code 'allowsHitTesting(project.activeTool == .select)' "$VOLUME_CURVE" \
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：音量线只吃线那一条窄带且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

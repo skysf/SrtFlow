@@ -297,6 +297,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-23 磁吸开着时拖文件的落点框画错位置](docs/bugfixes/2026-09-23-file-drop-frame-ignores-magnet.md) — 「画框和落地共用一个函数」只共用了落点函数，没复现 `perform` 收尾的 `packMain`；框要在副本上把落地原样走一遍（`landingsAfterMagnet`）。
 - [2026-09-23 滤镜卡片、音频库素材拖不进时间线](docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md) — 两个自定义载荷类型没在 Info.plist 声明，系统认不出，拖放被静默拒绝（从上线起就不工作）；Info.plist 里「不声明也能跑」那句推断性注释误导了后来的两个功能；探针上「外部来的自定义类型不认」其实也是这个原因。
 - [2026-09-23 转场卡片拖到接缝上没反应](docs/bugfixes/2026-09-23-transition-drop-cancel-ends-session.md) — 落点在「这里不能放」时回了 `.cancel`：那是「取消整轮拖放」，SwiftUI 之后不再调 `dropUpdated`；改回 `.forbidden`。只有一个落点之后拖动总先经过不能放的地方，这个错从偶发变成必现；同一个「拖过去没反应」这一天里先后是四个不同的原因。
+- [2026-09-23 音量线上的点按不住、偏着抓会跳](docs/bugfixes/2026-09-23-volume-curve-points-unclickable.md) — 窄带和小圆 append 进同一条路径，非零环绕数在重叠处抵消，圆心（压在线上）成了洞；自检测的是「离哪个点最近」的平行几何，没测命中测试真正用的形状。拖小把手要用相对位移。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
