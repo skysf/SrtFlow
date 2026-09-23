@@ -31,9 +31,10 @@ ROW_HEIGHT_DRAG="Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift"
 # 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
 MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 DROP_ROUTER="Sources/SrtFlow/VideoEditTimelineDropRouter.swift"
+VOLUME_CURVE="Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
-  "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER")
+  "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -1025,7 +1026,27 @@ fi
 grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \
   || fail "波形没走 WaveformStore（按文件读一次的多级峰值）"
 
+# ── 块上的音量线（2026-09-23） ─────────────────────────────────────────
+# 命中区只许是贴着线的窄带 + 点的小圆：整块吃事件的话，拖动 / 裁切 / 框选 / 点选
+# 在音频块上全部失灵（docs/architecture/audio-volume-curve.md）。
+grep_code 'contentShape(VolumeLineHitShape' "$VOLUME_CURVE" \
+  || fail "音量线的命中区不是那条窄带了：整块都会被它吃掉"
+# 拖动中不写 TimelineState（§0）：声音靠 previewAudioLive 临时换 mix，松手才落一次。
+grep_code 'previewAudioLive' "$VOLUME_CURVE" \
+  || fail "拖音量线时没走 previewAudioLive：要么听不见，要么在每一拍写 state"
+if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -qE 'liveApply|perform[ (]\{|\.perform\('; then
+  fail "音量线在手势里直接写 state 了（liveApply / perform）：拖动中每一拍都会重建整棵视图树"
+fi
+grep_code 'commitVolumeEdit' "$VOLUME_CURVE" \
+  || fail "音量线松手没有落地入口（commitVolumeEdit）"
+# 刀片模式下整条让路（点在线上也该落下那一刀）。
+grep_code 'allowsHitTesting(project.activeTool == .select)' "$VOLUME_CURVE" \
+  || fail "刀片模式下音量线还在吃点击：那一刀落不下去"
+# 线挂在波形上（音频块与视频块底部的波形带两处）。
+[ "$(grep -c 'VolumeCurveOverlay(' "$CLIP_BLOCK")" -ge 2 ] \
+  || fail "音量线没同时挂在音频块和视频块的波形带上"
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：音量线只吃线那一条窄带且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

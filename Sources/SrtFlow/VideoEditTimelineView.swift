@@ -665,7 +665,7 @@ struct VideoEditTimelineView: View {
             // 都不扫帧。裁切那条只能从 project 上判 —— `isTrimming` 是块内的
             // @State，容器看不见。
             guard !clock.isPlaying, clipDrag == nil, marquee == nil,
-                  project.liveEditOrigin == nil else { return }
+                  project.liveEditOrigin == nil, !project.isDraggingVolume else { return }
             // 标记正接管着 peek，别把画面从标记那一帧拽回指针底下。
             guard markerPeekTime == nil else { return }
             // 和点击同一份夹紧：超出工程长度的那片空白里，影子指针停在片尾，画面

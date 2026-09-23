@@ -254,22 +254,33 @@ struct VideoEditInspectorView: View {
                             if !editing { project.endLiveEdit() }
                         }
                     )
-                    Text(AudioGain.label(forLinear: clip.isMuted ? 0 : clip.volume))
+                    Text(AudioGain.label(forLinear: clip.isMuted ? 0 : AudioGain.linear(
+                        fromDecibels: volumeReferenceDecibels(clip))))
                         .font(.caption)
                         .monospacedDigit()
                         .foregroundStyle(clip.isMuted ? .tertiary : .secondary)
                         .frame(width: 58, alignment: .trailing)
                     Button {
-                        project.setVolume(clip.id, volume: 1)
+                        project.resetVolume(clip.id)
                     } label: {
                         Image(systemName: "arrow.uturn.backward")
                     }
                     .buttonStyle(.borderless)
                     .controlSize(.small)
-                    .disabled(abs(clip.volume - 1) < 0.0001)
-                    .instantHelp("Back to 0 dB (original level)")
+                    .disabled(abs(clip.volume - 1) < 0.0001 && !clip.hasVolumeCurve)
+                    .instantHelp(clip.hasVolumeCurve
+                                 ? "Remove the volume curve and go back to 0 dB"
+                                 : "Back to 0 dB (original level)")
                 }
                 .disabled(clip.isMuted)
+                // 画了曲线时滑杆是「整条一起抬 / 压」：说清楚它现在管的是什么。
+                if clip.hasVolumeCurve {
+                    Text(String(format: L10n("Volume curve with %d points. The slider raises or lowers the whole curve."),
+                                clip.volumeCurve.keys.count))
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
 
                 // 渐入渐出：秒数按时间线算（变速之后），0 = 关。
                 fadeRow(clip, edge: .fadeIn, title: "Fade in")
@@ -644,19 +655,38 @@ struct VideoEditInspectorView: View {
     }
 
     /// 滑杆读写的是 dB，落盘的仍是线性幅度 —— 换算只有 `AudioGain` 一份。
+    ///
+    /// **画了音量曲线的段**：滑杆显示播放头处（播放头不在段里就取段起点）线上的值，
+    /// 拖它 = 整条曲线一起平移、形状不变（「这段整体太响」是最常见的需求，逐点拖太累）。
+    /// 每一拍都从手势起手那一份算（`liveApply` 从快照重放），不在上一拍上叠加。
     private func liveVolumeDecibelBinding(_ clip: EditClip) -> Binding<Double> {
         Binding(
             get: {
-                let live = project.state.clip(with: clip.id)?.volume ?? clip.volume
-                return AudioGain.decibels(fromLinear: live)
+                volumeReferenceDecibels(project.state.clip(with: clip.id) ?? clip)
             },
             set: { newValue in
-                let linear = AudioGain.linear(fromDecibels: newValue)
+                let reference = volumeReferenceTime(clip)
                 project.liveApply { state in
-                    state.update(clip.id) { $0.volume = linear }
+                    state.update(clip.id) { live in
+                        if live.hasVolumeCurve {
+                            live.shiftWholeVolume(byDecibels: newValue - live.volumeLineDecibels(atTimeline: reference))
+                        } else {
+                            live.volume = AudioGain.linear(fromDecibels: newValue)
+                        }
+                    }
                 }
             }
         )
+    }
+
+    /// 音量滑杆的参照时刻：播放头在段里就是播放头，不在就是段起点。
+    private func volumeReferenceTime(_ clip: EditClip) -> Double {
+        clip.contains(time: project.clock.time) ? project.clock.time : clip.timelineStart
+    }
+
+    /// 滑杆上显示的值（dB）：没曲线就是 `volume`，有曲线是参照时刻线上的值。
+    private func volumeReferenceDecibels(_ clip: EditClip) -> Double {
+        clip.volumeLineDecibels(atTimeline: volumeReferenceTime(clip))
     }
 
     /// 渐变时长：读的是**存下来的**值（不是夹紧后的生效值），不然把段拉短再

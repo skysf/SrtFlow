@@ -148,6 +148,29 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     checkEqual(detached.volume, 0.8, "分离出来的声音带着音量")
     checkEqual(detached.isAudioOnly, true, "分离出来的是纯声音段")
 
+    // ---- 块上那条线的几何：纵轴 dB 线性、折点、抓点 ----
+    let h = 60.0
+    check(near(VolumeCurveLayout.y(forDecibels: AudioGain.maximumDB, height: h), VolumeCurveLayout.inset),
+          "+6 dB 在顶上（留 inset）")
+    check(near(VolumeCurveLayout.y(forDecibels: AudioGain.minimumDB, height: h), h - VolumeCurveLayout.inset),
+          "−∞ 在底下（留 inset）")
+    for db in [-60.0, -30, -12, -6, 0, 3, AudioGain.maximumDB] {
+        let y = VolumeCurveLayout.y(forDecibels: db, height: h)
+        check(near(VolumeCurveLayout.decibels(forY: y, height: h), db, 1e-9), "y ↔ dB 往返（\(db) dB）")
+    }
+    check(near(VolumeCurveLayout.decibels(forY: -100, height: h), AudioGain.maximumDB), "拖出顶上夹在 +6 dB")
+    var drawn = audioClip(start: 5, duration: 10)
+    check(VolumeCurveLayout.vertices(for: drawn, pps: 10, height: h).count == 2, "没有点 = 两端一条水平线")
+    drawn.volumeCurve = KeyframeTrack(keys: [Keyframe(time: 2, value: 0), Keyframe(time: 30, value: -20)])
+    let vertices = VolumeCurveLayout.vertices(for: drawn, pps: 10, height: h)
+    checkEqual(vertices.map(\.x), [0, 20, 100], "折点：段两端 + 段内的点（段外那个点只影响插值，不画）")
+    let handles = VolumeCurveLayout.handles(for: drawn, pps: 10, height: h)
+    checkEqual(handles.map(\.index), [0], "只有段内的点能抓")
+    checkEqual(VolumeCurveLayout.handle(at: CGPoint(x: 23, y: handles[0].point.y + 2), clip: drawn, pps: 10, height: h),
+               0, "离点 7pt 以内算抓住它")
+    checkEqual(VolumeCurveLayout.handle(at: CGPoint(x: 40, y: handles[0].point.y), clip: drawn, pps: 10, height: h),
+               nil, "离得远就是线（拖一段）而不是点")
+
     // ---- 推子：取值口与夹紧 ----
     var mixer = TimelineState()
     let voice = audioClip()

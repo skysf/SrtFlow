@@ -1,4 +1,5 @@
 import AVFoundation
+import QuartzCore
 import AppKit
 import SwiftUI
 import SrtFlowCore
@@ -410,6 +411,11 @@ final class VideoEditProject: ObservableObject {
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     private var audioPlan: AudioMixPlan?
+    /// `previewAudioLive` 的节流时间戳。
+    private var lastLiveAudioPreview: CFTimeInterval = 0
+    /// 正在块上拖音量线（扫帧 peek 要让位 —— 调音量时画面跟着指针乱跳只会干扰）。
+    /// 不是 @Published：只有 `hoverPeek` 在鼠标事件里读它，不需要驱动重绘。
+    var isDraggingVolume = false
     /// 素材探测失败之类需要用户看见的话。
     @Published var notice: String?
 
@@ -1467,6 +1473,23 @@ final class VideoEditProject: ObservableObject {
         guard !isRebuildingPreview else { return false }
         item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan)
         return true
+    }
+
+    /// 拖音量线 / 推子的**过程中**让预览当场听得见，但**不写 `state`**（时间线拖动 §0：
+    /// 每一拍写 @Published 会把整棵编辑器视图树连同自动保存拖垮）。拿一份临时状态算
+    /// audioMix 直接换上；节流到 ~20 次/秒。松手时的真提交走 `perform` → 快路径，
+    /// 手势中途放弃时调一次 `refreshAudioMix()` 换回真状态的 mix。
+    ///
+    /// 同一个 `makeAudioMix`、同一份 plan —— 和快路径、整条重建是同一笔账。
+    func previewAudioLive(_ mutate: (inout TimelineState) -> Void) {
+        let now = CACurrentMediaTime()
+        guard now - lastLiveAudioPreview > 0.05 else { return }
+        guard let plan = audioPlan, !plan.lanes.isEmpty,
+              let item = clock.player.currentItem, !isRebuildingPreview else { return }
+        lastLiveAudioPreview = now
+        var preview = state
+        mutate(&preview)
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: preview, plan: plan)
     }
 
     /// 不然每改一刀就跳回 0:00 没法干活。

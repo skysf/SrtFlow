@@ -175,6 +175,8 @@ struct ClipBlockView: View {
             // clipShape 裁。
             if clip.isAudioOnly || isAudioRow {
                 WaveformView(clip: clip, pps: pps, trackGain: trackGain)
+                    // 音量线画在波形上、贴着线操作（它自己的命中区只是线那一条窄带）。
+                    .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
                     .padding(.bottom, 2)
             } else if height > 28 {
                 ThumbnailStripView(clip: clip, height: max(10, height - 20 - inlineWaveformHeight), pps: pps)
@@ -182,6 +184,7 @@ struct ClipBlockView: View {
                     .padding(.horizontal, 2)
                 if showsInlineWaveform {
                     WaveformView(clip: clip, pps: pps, trackGain: trackGain)
+                        .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
                         .frame(height: inlineWaveformHeight - 2)
                         .padding(.bottom, 2)
                 }
@@ -317,6 +320,10 @@ struct ClipBlockView: View {
             project.addMarker(toClip: clip.id, atTimeline: project.clock.time)
         }
         .disabled(!clip.contains(time: project.clock.time))
+        // 右键点在音量线上也落到这份菜单（线只接管拖动和点击）。
+        if clip.hasVolumeCurve {
+            Button("Remove Volume Curve") { project.removeVolumeCurve(clip.id) }
+        }
         if !clip.isAudioOnly {
             if clip.hasAudio, !clip.isMuted {
                 Button("Detach Audio") { project.detachAudio(from: clip.id) }

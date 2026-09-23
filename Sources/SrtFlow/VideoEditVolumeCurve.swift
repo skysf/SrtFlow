@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 // MARK: - 音量曲线（画在段上的音量自动化）
@@ -187,6 +188,65 @@ extension EditClip {
     /// 所以它就是加第一个点之前的值）。
     mutating func removeVolumeCurve() {
         volumeCurve = KeyframeTrack()
+    }
+}
+
+// MARK: - 画在块上的那条线：纵轴与命中（纯值，视图和自检共用）
+
+/// 块上那条音量线的几何：纵轴是 **dB 线性**的 [−60, +6.02]（与检查器滑杆、推子同一个
+/// 刻度 —— 曲线本身按 dB 线性插值，所以屏幕上的直线就是听到的那条线）。
+enum VolumeCurveLayout {
+    /// 上下各留几点：线顶到 +6 dB / 沉到 −∞ 时还看得见、够得着。
+    static let inset = 3.0
+    /// 波形区矮于这个值就不画线（矮到拖不准）。
+    static let minimumHeight = 10.0
+    /// 离线多近算「点在线上」、离点多近算「点在点上」（pt）。
+    static let lineHitRadius = 5.0
+    static let pointHitRadius = 7.0
+
+    static func y(forDecibels decibels: Double, height: Double) -> Double {
+        let span = AudioGain.maximumDB - AudioGain.minimumDB
+        let fraction = (AudioGain.clampedDecibels(decibels) - AudioGain.minimumDB) / span
+        return inset + (1 - fraction) * max(0, height - 2 * inset)
+    }
+
+    static func decibels(forY y: Double, height: Double) -> Double {
+        let usable = max(1, height - 2 * inset)
+        let fraction = 1 - (y - inset) / usable
+        return AudioGain.clampedDecibels(AudioGain.minimumDB + fraction * (AudioGain.maximumDB - AudioGain.minimumDB))
+    }
+
+    /// 线在块里的折点（块内 x，y）：段的两端 + 落在段内的每个点。没有点就是一条水平线。
+    static func vertices(for clip: EditClip, pps: Double, height: Double) -> [CGPoint] {
+        let span = clip.timelineDuration
+        guard span > 0, pps > 0 else { return [] }
+        var xs: [Double] = [0, span * pps]
+        for key in clip.volumeCurve.keys {
+            let x = (clip.timelineTime(atSource: key.time) - clip.timelineStart) * pps
+            if x > 0, x < span * pps { xs.append(x) }
+        }
+        return xs.sorted().map { x in
+            CGPoint(x: x, y: y(forDecibels: clip.volumeLineDecibels(atTimeline: clip.timelineStart + x / pps),
+                               height: height))
+        }
+    }
+
+    /// 段内能看见、能抓的点：(在 `volumeCurve.keys` 里的下标, 块内位置)。
+    static func handles(for clip: EditClip, pps: Double, height: Double) -> [(index: Int, point: CGPoint)] {
+        let span = clip.timelineDuration
+        return clip.volumeCurve.keys.enumerated().compactMap { index, key in
+            let x = (clip.timelineTime(atSource: key.time) - clip.timelineStart) * pps
+            guard x >= -0.5, x <= span * pps + 0.5 else { return nil }
+            return (index, CGPoint(x: x, y: y(forDecibels: key.value, height: height)))
+        }
+    }
+
+    /// 按在哪个点上（没有返回 nil）。离得最近的那个。
+    static func handle(at location: CGPoint, clip: EditClip, pps: Double, height: Double) -> Int? {
+        handles(for: clip, pps: pps, height: height)
+            .map { ($0.index, hypot($0.point.x - location.x, $0.point.y - location.y)) }
+            .filter { $0.1 <= pointHitRadius }
+            .min { $0.1 < $1.1 }?.0
     }
 }
 
