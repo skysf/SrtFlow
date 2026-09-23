@@ -120,7 +120,8 @@ run_check "export-alpha-compositing（上层轨动画段 fill+matte）" scripts/
 shard 2
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
-# 真跑好几遍 ffmpeg 导出，全场最慢的一项（约 80s），单独配最少的伙伴。
+run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
+# 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链）" scripts/check-export-frame-rate.sh
 
 # ---- 第 3 组 ----
@@ -128,6 +129,7 @@ shard 3
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh
+run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
 run_check "audio-fade（渐入渐出 / 音量曲线 / 推子的真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
 
 # ---- 第 4 组 ----
@@ -135,14 +137,12 @@ shard 4
 run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1 / 很多文件同时读）" scripts/check-waveform.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
-run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
 # 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 
 # ---- 第 5 组 ----
 shard 5
 run_check "audio-library（清单解析的宽容边界 + 双语搜索）" scripts/check-audio-library.sh
-run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
