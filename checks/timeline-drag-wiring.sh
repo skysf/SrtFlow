@@ -825,6 +825,19 @@ for flag in 'MediaFileDrag.pending' 'FilterDrag.preset' 'AudioLibraryDrag.pendin
   printf '%s\n' "$LIVE_BODY" | grep -qF "$flag" \
     || fail "isLive 没看 ${flag}：那一套松手后补发的一拍照样会转发"
 done
+# 1e) **「这里不能放」只许回 `.forbidden`，不许回 `.cancel`**（2026-09-23 日志实测）。
+#     `.cancel` 是「取消这一轮拖放」：回过一次，SwiftUI 之后再也不调 dropUpdated，
+#     松手只给 dropExited。转场卡片就这么死的 —— 拖动从标尺那侧进来，第一拍不在
+#     主轨那一行，路由器回了 `.cancel`，指针挪到接缝上也救不回来。整条时间线只有
+#     一个落点之后，拖动**总是**先经过不能放的地方，所以这条对四套拖放一视同仁。
+for f in "$DROP_ROUTER" "$FILE_DROP" "$DRAG" \
+         Sources/SrtFlow/VideoEditFilterDrag.swift Sources/SrtFlow/AudioLibraryDrag.swift; do
+  CANCELS="$({ grep -nE 'DropProposal\(operation:[^)]*\.cancel' "$f" || true; } \
+    | grep -vE '^[0-9]+:[[:space:]]*//' || true)"
+  [ -z "${CANCELS}" ] \
+    || fail "${f} 的落点回了 .cancel：那会取消整轮拖放，之后不再有 dropUpdated，挪到能放的地方也救不回来 —— 改成 .forbidden：${CANCELS}"
+done
+
 #     文件那一套还要自己守住：暂存清空之后 plan 返回 nil，不许「补探一次」——
 #     初版这么写过，补发的那一拍就把框按落地之后的状态画了回来（实测）。
 grep -q 'guard let pending = MediaFileDrag.pending, !pending.isUnusable else { return nil }' "$FILE_DROP" \

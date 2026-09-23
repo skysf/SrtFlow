@@ -216,7 +216,8 @@ struct MediaFileDropDelegate: DropDelegate {
             // **确知**一个都用不了（一堆 .pdf）才说不接：指针当场变成禁止号，比松手
             // 之后再弹提示诚实。还在探测、或者读不到 URL 时一律照接（见 `isUnusable`）。
             let unusable = MediaFileDrag.pending?.isUnusable == true
-            return DropProposal(operation: unusable ? .cancel : .copy)
+            // `.forbidden`：不能用 `.cancel`，理由见 TimelineDropRouter.dropUpdated。
+            return DropProposal(operation: unusable ? .forbidden : .copy)
         }
     }
 

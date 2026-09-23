@@ -160,7 +160,8 @@ struct AudioLibraryDropDelegate: DropDelegate {
             let next = plan(at: info.location)
             preview = next
             autoScroll(contentX: info.location.x, contentY: info.location.y)
-            return DropProposal(operation: next == nil ? .cancel : .copy)
+            // `.forbidden`：不能用 `.cancel`，理由见 TimelineDropRouter.dropUpdated。
+            return DropProposal(operation: next == nil ? .forbidden : .copy)
         }
     }
 

@@ -94,8 +94,15 @@ struct TimelineDropRouter: DropDelegate {
         }
     }
 
+    /// 「这里不能放」一律回 `.forbidden`，**不许回 `.cancel`**。
+    ///
+    /// `.cancel` 在 SwiftUI 里是「取消这一轮拖放」：回过一次，之后就再也不调
+    /// `dropUpdated`，松手只给 `dropExited` —— 指针挪到能放的地方也救不回来。
+    /// 2026-09-23 转场卡片就这么死的：拖动从标尺那一侧进来，第一拍不在主轨那一行，
+    /// 回了 `.cancel`，日志里之后一条 `dropUpdated` 都没有，松手时指针明明在接缝上。
+    /// `.forbidden` 是「这儿不行、换个地方可以」：指针同样显示禁止号，拖放不断。
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard let payload = payload(info) else { return DropProposal(operation: .cancel) }
+        guard let payload = payload(info) else { return DropProposal(operation: .forbidden) }
         // 松手之后补发的那一拍：什么都不做（理由见 `isLive`）。
         guard MainActor.assumeIsolated({ isLive(payload) }) else { return nil }
         switch payload {
@@ -105,15 +112,16 @@ struct TimelineDropRouter: DropDelegate {
             return audio.dropUpdated(info: info)
         case .filter:
             guard withinContent(info) else {
-                // 出了内容区：框收起来，指针变成禁止号。
+                // 出了内容区：框收起来，指针变成禁止号（拖放不断，挪回来照样能落）。
                 filter.dropExited(info: info)
-                return DropProposal(operation: .cancel)
+                return DropProposal(operation: .forbidden)
             }
             return filter.dropUpdated(info: info)
         case .transition:
             guard onMainRow(info) else {
+                // 不在主轨那一行：禁止号，但拖放不断 —— 拖动总是从别的行进来的。
                 transition.dropExited(info: info)
-                return DropProposal(operation: .cancel)
+                return DropProposal(operation: .forbidden)
             }
             return transition.dropUpdated(info: info)
         }

@@ -430,6 +430,13 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
    拖不进来的（[案例](../bugfixes/2026-09-23-custom-drag-types-not-declared.md)）。
    `checks/exported-types-declared.sh` 逐个核对代码里的 `UTType(exportedAs:)`。
 
+7. **「这里不能放」只许回 `DropProposal(operation: .forbidden)`，不许回 `.cancel`。**
+   `.cancel` 是「取消这一轮拖放」：回过一次，SwiftUI 就再也不调 `dropUpdated`，松手只给
+   `dropExited`，指针挪到能放的地方也救不回来。只有一个落点之后，拖动总是先经过不能放
+   的地方（从左栏进来、先过标尺），所以这条对四套拖放都是必经的
+   （[案例](../bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)）。
+   `checks/timeline-drag-wiring.sh` 第 1e 条钉着。
+
 时间线以外（预览区 / 检查器 / 库栏 / 轨道头列 / 空工程）的文件拖入归 `VideoEditView`
 整页那条 `.onDropOfFiles`（接主轨末尾）。它是祖先，只接得到时间线滚动区以外的拖入，
 和路由器互不打架。
