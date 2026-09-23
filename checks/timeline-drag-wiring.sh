@@ -1002,7 +1002,19 @@ fi
 grep -q 'func mediaImportLandings' "$MEDIA_IMPORT" \
   || fail "mediaImportLandings 不在 $MEDIA_IMPORT 里了：落点自检会扫空"
 
+# ── 超宽内容：Canvas 只画可见的那一段（2026-09-23 深度缩放） ──────────
+# 放大到 4800pt/秒之后，块和标尺能有几百万点宽。SwiftUI 的 Canvas 只光栅化可见条带，
+# 却每滚 128pt 就把闭包**整宽**重跑一次：整宽画的话 10M 宽时一次 370ms、内存只涨不退
+#（270 → 1080MB）。闭包里必须按 `context.clipBoundingRect` 裁到可见范围
+#（docs/architecture/audio-waveform.md）。
+grep_code 'context.clipBoundingRect' "$WAVEFORM" \
+  || fail "波形没按 clipBoundingRect 裁到可见范围：放大后每滚一下都要把整段重画一遍"
+# 波形的数据按文件读一次（多级峰值），不许退回「每段按范围读成固定几百根柱子」——
+# 那样放多大都是那几百根，放大只是把每根拉宽（用户报的「放到最大还是不够」）。
+grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \
+  || fail "波形没走 WaveformStore（按文件读一次的多级峰值）"
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：波形只画可见条带且走多级峰值 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

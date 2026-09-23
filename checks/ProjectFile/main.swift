@@ -2672,9 +2672,9 @@ do {
     checkEqual(TrackRowKind(.overlay(0)), .video, "上层轨和主轨同一类（对等）")
     checkEqual(TrackRowKind(.audio(0)), .audio, "音频轨自成一类")
     checkEqual(TrackRowKind(nil), .other, "没有 slot 的行不可调")
-    checkEqual(TrackRowKind.video.clamped(1000), 120, "视频轨行高上限 120")
+    checkEqual(TrackRowKind.video.clamped(1000), 200, "视频轨行高上限 200")
     checkEqual(TrackRowKind.video.clamped(0), 28, "视频轨行高下限 28")
-    checkEqual(TrackRowKind.audio.clamped(1000), 100, "音频轨行高上限 100")
+    checkEqual(TrackRowKind.audio.clamped(1000), 200, "音频轨行高上限 200")
     checkEqual(TrackRowKind.audio.clamped(0), 20, "音频轨行高下限 20")
     check(TrackRowKind.other.clamped(50) == nil,
           "字幕/文字/形状/滤镜行不可调：行高和块高是一对硬编码常量，框选的命中判据靠那个差")
@@ -2686,9 +2686,9 @@ do {
     checkEqual(heights.height(for: .main, fallback: 54), 54, "没调过就走默认高度")
     checkEqual(heights.height(for: nil, fallback: 54), 54, "不可调的行也得拿到一个能用的高度")
     heights.set(300, for: .main, kind: .video)
-    checkEqual(heights.main, 120, "写入口就该夹紧，别让越界值存进工程")
+    checkEqual(heights.main, 200, "写入口就该夹紧，别让越界值存进工程")
     heights.set(70, for: .main, kind: .other)
-    checkEqual(heights.main, 120, "不可调的类写不进去")
+    checkEqual(heights.main, 200, "不可调的类写不进去")
 
     // ---- 三条轨各调各的：拖一条不许动到另一条 ----
     var state = timeline(mainMedia: [media])

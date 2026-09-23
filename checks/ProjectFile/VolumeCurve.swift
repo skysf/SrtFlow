@@ -30,6 +30,15 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     clip.isMuted = true
     checkEqual(clip.clipGain(atTimeline: 2), 0, "静音的段增益是 0，不管曲线")
 
+    // ---- 波形画的「听到的声音」：段增益 × 渐变 × 轨道推子 ----
+    var heard = audioClip(start: 2, duration: 10)
+    heard.volume = 0.5
+    heard.fadeInDuration = 2
+    check(near(heard.heardGain(atTimeline: 3, trackGain: 1), 0.25), "渐入一半处 = 0.5 × 0.5")
+    check(near(heard.heardGain(atTimeline: 8, trackGain: 2), 1.0), "渐变之后乘上推子（0.5 × 2）")
+    heard.isMuted = true
+    checkEqual(heard.heardGain(atTimeline: 8, trackGain: 2), 0, "静音的段画成一条线")
+
     // ---- 加点不改变声音：第一个点取当前的 volume ----
     var flat = audioClip()
     flat.volume = 0.5
