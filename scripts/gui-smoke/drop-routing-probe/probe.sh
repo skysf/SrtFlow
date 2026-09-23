@@ -28,8 +28,17 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>DropProbe</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>NSHighResolutionCapable</key><true/>
+<key>UTExportedTypeDeclarations</key>
+<array>
+  <dict><key>UTTypeIdentifier</key><string>com.probe.alpha</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string></array></dict>
+  <dict><key>UTTypeIdentifier</key><string>com.probe.beta</string>
+    <key>UTTypeConformsTo</key><array><string>public.data</string></array></dict>
+</array>
 </dict></plist>
 PLIST
+# 测试类型必须声明：没声明的类型系统认不出，拖放会被静默拒绝，实验结论就会被带偏
+#（2026-09-23 踩过，docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md）。
 
 # Rosetta 终端下显式编 arm64（见 docs/build/）。
 [ -x "$APP/Contents/MacOS/DropProbe" ] && [ "$APP/Contents/MacOS/DropProbe" -nt "$HERE/Probe.swift" ] \

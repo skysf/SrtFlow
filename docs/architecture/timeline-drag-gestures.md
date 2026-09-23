@@ -424,6 +424,12 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
    时记的那一笔还在不在）挡掉这一拍。照常转发的话，落点框会按落地之后的状态重画、
    挂着不走；松手点在视口边缘时，自动滚动的心跳也会被重新拉起来。
 
+6. **自定义载荷类型必须在 `packaging/Info.plist` 的 `UTExportedTypeDeclarations` 里
+   声明。** 没声明的标识符系统认不出（`UTType(identifier) == nil`），SwiftUI 判不出
+   拖进来的是不是这种类型，拖放被静默拒绝 —— 滤镜、音频库两套就是这样从上线起一直
+   拖不进来的（[案例](../bugfixes/2026-09-23-custom-drag-types-not-declared.md)）。
+   `checks/exported-types-declared.sh` 逐个核对代码里的 `UTType(exportedAs:)`。
+
 时间线以外（预览区 / 检查器 / 库栏 / 轨道头列 / 空工程）的文件拖入归 `VideoEditView`
 整页那条 `.onDropOfFiles`（接主轨末尾）。它是祖先，只接得到时间线滚动区以外的拖入，
 和路由器互不打架。
