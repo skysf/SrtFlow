@@ -173,6 +173,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
+- shell 脚本里裸 `$VAR` 不许紧跟中文 / 全角标点（bash 会把首字节吃进变量名，
+  `set -u` 下当场退出）：`checks/shell-var-boundary.sh`。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
   所以漏一行等于那份文档不存在。

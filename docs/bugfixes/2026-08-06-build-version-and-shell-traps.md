@@ -127,3 +127,24 @@ done
    会让脚本在赋值处就死掉、绕开后面精心写的错误分支。要保留自己的报错就补 `|| true`。
 4. **写完 shell 一定要真跑一遍分支，别只 `bash -n`。** 这次两个陷阱语法全合法，
    `bash -n` 一声不吭，是执行三个用例才炸出来的。
+
+## 复发：2026-09-23（陷阱 1 从「拿正则扫」升级成自动检查）
+
+上面第 2 条教训写的是「上面那条 perl 正则可以直接拿来扫」—— 但一直是**人记得才扫**。
+2026-09-23 一次扫出 5 处：
+
+- `checks/timeline-drag-wiring.sh` 4 处，全在失败提示里（`（在 $FILE_DROP）`、
+  `路由器不认 $t：`……）。这种行平时根本跑不到，一旦守卫真的触发，脚本先在
+  `set -u` 上崩掉，打出来的是 `flagM-o: unbound variable` 而不是那句提示 —— 守卫是
+  红了，红的原因却不对。是反向验证时看见「红了但没有 ✗ 那一行」才发现的
+  （[案例](2026-09-23-in-app-drops-swallowed-by-file-underlay.md)）。
+- `scripts/audio-library/fetch-metadata.sh` 1 处（`已有 $name（…）`）：素材元数据
+  已经下过、再跑一次管线时，走到「跳过」那一行就崩。
+
+同一次还踩了陷阱 3 的变体：`X="$(for f in …; do grep … | sed …; done)"`，最后一个
+文件没匹配时 grep 退出码 1，`pipefail` 把整个命令替换判成失败，脚本在赋值处**静默**
+退出 —— 连一行报错都没有。管道里的 grep 要自己兜 `|| true`。
+
+**防回归**：`checks/shell-var-boundary.sh`（进了 `scripts/check-all.sh`）扫仓库里
+全部 `.sh`（含还没提交的），注释行除外，裸 `$VAR` 紧跟多字节字符就红。反向验证：
+把 `timeline-drag-wiring.sh` 里任意一处 `${FILE_DROP}）` 改回 `$FILE_DROP）` → 红。
