@@ -1,40 +1,29 @@
 import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
-import os
 
 // 把 Finder 里的文件拖进时间线（以及 ⌘V 粘贴进时间线）。
 //
 // 两条地基和滤镜 / 音频库那两套一样：**画框和落地共用一个落点函数**、
-// **起手时把要落的东西记一笔**。另外两条在这儿正好**相反** —— 因为这是
-// **外部**拖入，不是 App 内的拖动：
+// **起手时把要落的东西记一笔**。另外两条是这一套自己的：
 //
-// 一、**不许用 `DropDelegate`。** 那两套用代理式 `.onDrop(of:delegate:)` 没问题，
-//    这条路上它**一次都不会被调到**（`validateDrop` 都收不到）。只有闭包式
-//    `.onDrop(of:isTargeted:perform:)` 收得到外部拖入。
+// 一、**这个代理不直接挂到视图上**，由 `TimelineDropRouter` 分派过来。时间线上
+//    只许有那一个 `.onDrop`：SwiftUI 把拖放交给指针底下**最里面**那个落点，类型
+//    对不上也不往外找，两个落点一里一外叠着，里面那个就会吞掉外面那个的拖入
+//    （2026-09-23 探针实测，理由和证据见 `VideoEditTimelineDropRouter.swift` 的
+//    文件头、docs/architecture/timeline-drag-gestures.md §5e-2）。
 //
-// 二、**每一个 App 内的 `.onDrop` 里面都要垫一层**（`mediaFileDropUnderlay`）：
-//    外部拖入由**最里面**那个落点区独占认领，类型对不上也不往外找，漏一处那一片
-//    就是死区。三处：滚动内容上（滤镜 / 音频库之前）、主轨那一行上（转场之前）、
-//    `VideoEditTimelineView.body` 上（内容区以外的空白 + 空工程那条分支）。
+//    载荷就是 `.fileURL`，不是自定义类型。`VideoEditView` 整页那条 `.onDropOfFiles`
+//    兜底原样留着：时间线的滚动区归路由器，时间线以外（预览区 / 检查器 / 库栏 /
+//    轨道头列 / 空工程）仍归它。这也是转场 / 滤镜 / 音频库三套**不许**用
+//    `.fileURL` 的理由（`checks/timeline-drag-wiring.sh` 钉着）。
 //
-// 两条都是 2026-09-23 用可重放的跨 App 拖放装置实测的，长期约束写在
-// docs/architecture/timeline-drag-gestures.md §5e-2，经过见
-// docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md。
-// 代价是闭包式不给指针位置：改成现读 `NSEvent.mouseLocation`，落点框靠一条心跳
-// 自己去读（见 `MediaFileDropController.pointer` / `moved`）。
-//
-// 载荷就是 `.fileURL`，不是自定义类型。`VideoEditView` 整页那条 `.onDropOfFiles`
-// 兜底原样留着 —— 垫层在它里面，时间线这一块天然轮不到它，拖到预览区 / 检查器 /
-// 库栏上仍归它。这也是转场 / 滤镜 / 音频库三套**不许**用 `.fileURL` 的理由
-// （`checks/timeline-drag-wiring.sh` 钉着）。
-//
-// 三、**时长要探测才知道，而探测是异步的**。落点框的宽度、以及「这里撞不撞得上、
+// 二、**时长要探测才知道，而探测是异步的**。落点框的宽度、以及「这里撞不撞得上、
 //    要不要往上抬一轨」全都依赖时长。所以：拖进来那一刻就开始探（`probeVideo` /
 //    `audioDuration` 都按 URL 缓存，本地文件通常几十毫秒），没探完只画一条插入线
 //    + 高亮目标轨，探完换成真实宽度的落点框。
 //
-//    **松手那一下不分两条路**：`drop` 只把「指针时间 + 目标轨」定死，
+//    **松手那一下不分两条路**：`performDrop` 只把「指针时间 + 目标轨」定死，
 //    时长探完之后照样喂给同一个 `TimelineState.mediaImportLandings`。所以
 //    「探完了再松手」和「没探完就松手」落在同一个地方，不是两套算法。
 //
@@ -73,13 +62,13 @@ enum MediaImportAnchor: Equatable {
 /// 这一轮拖进来的是什么。**只用来画落点框**，落地不读它（落地重新从
 /// `NSItemProvider` 取 URL，探测结果按 URL 缓存，所以不会多探一遍）。
 ///
-/// 为什么非要有这么一个静态暂存：落点框要在心跳的每一拍**同步**算出来，
+/// 为什么非要有这么一个静态暂存：落点框要在 `dropUpdated` 的每一拍**同步**算出来，
 /// 而读 `NSItemProvider` 和探测时长都是异步的（同 `FilterDrag.preset`、
 /// `AudioLibraryDrag.pending` 那两笔，理由一模一样）。
 enum MediaFileDrag {
     @MainActor static var pending: Pending?
     /// 指针最后停在哪（滚动内容坐标）。探测是异步的，探完那一刻用户可能正好没动
-    /// 鼠标 —— 松手那一拍指针万一读不到，得靠它兜住。
+    /// 鼠标，探测任务按它自己补画一次落点框。
     @MainActor static var lastLocation: CGPoint?
     @MainActor private static var counter = 0
 
@@ -189,161 +178,92 @@ struct MediaFileDropIndicator: View {
     }
 }
 
-/// 时间线那块滚动内容的文件落点代理。
-extension View {
-    /// 在一个 **App 内**拖放的落点**里面**先垫一层文件落点。
-    ///
-    /// 外部拖入（从 Finder 拖文件进来）由**最里面**那个落点区独占认领，类型对不上
-    /// 也不会再往外找 —— 所以时间线里每一处 `.onDrop(of:delegate:)` 都会把文件拖入
-    /// 接住又扔掉，把它盖住的那一片变成死区（2026-09-22，可重放装置实测）。垫一层
-    /// 在里面，文件拖入就先被这里接走；App 内的拖动按类型逐层往外走，照旧落到外面
-    /// 那个代理身上，互不干扰。
-    ///
-    /// **时间线里新加任何 `.onDrop` 都要先垫这一层**，`checks/timeline-drag-wiring.sh`
-    /// 钉着。
-    /// 拖文件进来时的落点心跳。
-    ///
-    /// 闭包式 `.onDrop` 只给「进没进来」一个 Bool，不给指针位置，所以拖入期间按帧
-    /// 去问一次 `NSEvent.mouseLocation`。`id:` 一变就把上一条取消掉，拖出去 / 松手 /
-    /// 视图消失都收得干净。
-    func mediaFileDropTicker(_ controller: MediaFileDropController, isTargeted: Bool) -> some View {
-        task(id: isTargeted) {
-            guard isTargeted else {
-                controller.exited()
-                return
-            }
-            controller.entered()
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 16_000_000)
-                guard !Task.isCancelled else { break }
-                controller.moved()
-            }
-        }
-    }
-
-    func mediaFileDropUnderlay(_ controller: MediaFileDropController) -> some View {
-        // `isTargeted` **每一处都要接**，而且接同一个状态：里面那层一旦独占认领，
-        // 外面那层就再也收不到「进来了」——落点框和时长探测全靠这个信号起手，
-        // 漏一处就是「+ 号有、框没有」。
-        onDrop(of: [.fileURL], isTargeted: controller.$isTargeted) { providers in
-            controller.drop(providers: providers)
-        }
-    }
-}
-
-struct MediaFileDropController {
+/// 时间线那块滚动内容的文件落点。
+///
+/// 由 `TimelineDropRouter` 分派过来，**不直接挂到视图上**（时间线只许有那一个
+/// `.onDrop`，理由见路由器的文件头）。`DropInfo.location` 是滚动内容坐标，
+/// 和 `rowLayouts` 同一套，不用补滚动量。
+struct MediaFileDropDelegate: DropDelegate {
     let project: VideoEditProject
     let pps: Double
     /// 每一行的纵向位置。指针落在哪一行 → 落进哪条轨。
     let rowLayouts: [VideoEditTimelineView.RowLayout]
-    /// 行与行之间的间距。新开的轨还没有行，框要画在它将来长出来的位置上。
-    let rowSpacing: Double
     /// 横向滚动量的唯一来源（§5b：现读，不缓存）。
     let geometry: TimelineScrollGeometry
     let autoScroller: TimelineAutoScroller
     let viewport: CGSize
     @Binding var preview: MediaFileDropPlan?
-    /// 「正有文件拖在时间线上方」。松手之后必须由这边亲手归位 —— SwiftUI 不保证
-    /// 把它打回 false（实测：连拖两次，第二次的 `.task(id:)` 因为 id 没变根本不会
-    /// 重跑，于是不再起手探测，落点框整次都不出现）。
-    @Binding var isTargeted: Bool
 
-    /// 指针此刻落在滚动内容的哪个位置（nil = 不在时间线可见区里）。
-    ///
-    /// **为什么不用 SwiftUI 给的落点。** 这套东西原本是个 `DropDelegate`，
-    /// `info.location` 是现成的。但 2026-09-22 实测：`.onDrop(of:delegate:)`
-    /// **收不到从 Finder 来的外部拖入** —— 挂在滚动内容上、挂在 ScrollView 上
-    /// 各试一次，诊断日志里连 `validateDrop` 都没有一行。同一棵视图树上闭包式的
-    /// `.onDrop(of:isTargeted:perform:)` 三个位置（整页根上、工具栏那一行、
-    /// 时间线空状态）全都收得到，深浅无关。App 内那三套拖放（转场 / 滤镜 /
-    /// 音频库）用代理式没问题 —— SwiftUI 自己路由自己发起的拖动，和外部拖入
-    /// 不是一条路，所以它们不构成反例。
-    ///
-    /// 换成闭包式就没有 `info.location` 了，指针改从 `NSEvent.mouseLocation`
-    /// **现读**：拖放回调和 AppKit 同一拍跑在主线程，读到的就是此刻的指针。
-    /// 换算归 `TimelineScrollGeometry`（整个时间线只有那里碰 NSScrollView）。
-    @MainActor
-    private func pointer() -> CGPoint? {
-        geometry.contentPoint(fromScreen: NSEvent.mouseLocation)
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [.fileURL])
     }
 
     /// 拖进时间线：起手探时长，并把第一拍的落点画出来。
-    @MainActor
-    func entered() {
-        beginProbe()
-        moved()
+    func dropEntered(info: DropInfo) {
+        MainActor.assumeIsolated {
+            beginProbe()
+            track(info.location)
+        }
     }
 
-    /// 拖动中的每一拍。闭包式 `.onDrop` 只给「进没进来」一个 Bool，不给指针，
-    /// 所以这一拍由视图那边的心跳驱动（见 `VideoEditTimelineView` 的 `.task`）。
-    @MainActor
-    func moved() {
-        guard let point = pointer() else {
-            // 指针滑到轨道头列或时间线外面去了：框收起来，别停在最后那一格上。
-            preview = nil
-            autoScroller.stop()
-            return
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        MainActor.assumeIsolated {
+            track(info.location)
+            // **确知**一个都用不了（一堆 .pdf）才说不接：指针当场变成禁止号，比松手
+            // 之后再弹提示诚实。还在探测、或者读不到 URL 时一律照接（见 `isUnusable`）。
+            let unusable = MediaFileDrag.pending?.isUnusable == true
+            return DropProposal(operation: unusable ? .cancel : .copy)
         }
-        MediaFileDrag.lastLocation = point
-        // **用刚算出来的局部值判，不要回读 `preview`**：`@Binding` 的写入不是
-        // 同步可见的，回读会让落点整整晚一帧（同另外三套拖放）。
-        let next = plan(at: point)
-        preview = next
-        autoScroll(contentX: point.x, contentY: point.y)
+    }
+
+    func dropExited(info: DropInfo) {
+        MainActor.assumeIsolated { finish() }
+    }
+
+    /// 松手。**落点这一拍就定死，和探测进度无关**：时间和目标轨只由指针决定，
+    /// 时长探完之后喂给同一个 `mediaImportLandings` —— 所以「探完了再松手」和
+    /// 「没探完就松手」走的是同一条落地路径。
+    func performDrop(info: DropInfo) -> Bool {
+        MainActor.assumeIsolated {
+            let pending = MediaFileDrag.pending?.urls ?? []
+            defer { finish() }
+            // 落点只从**这一拍的指针**算，不回读 `preview`：`@Binding` 的写入不是
+            // 同步可见的，回读会和画框那一拍脱节（同另外三套拖放）。
+            let anchor = MediaImportAnchor.pointer(max(0, info.location.x / pps))
+            let target = trackTarget(at: info.location)
+            // 松手这一刻 `itemProviders` 一般是给得出来的；给不出来就退回进场时从拖放
+            // 剪贴板读到的那一批，再不行就现读一次。**三条路都不通才放弃。**
+            let providers = info.itemProviders(for: [.fileURL])
+            if !providers.isEmpty {
+                project.importFiles(providers: providers, anchor: anchor, preferring: target)
+                return true
+            }
+            let urls = pending.isEmpty ? MediaFileDrag.draggedURLs() : pending
+            guard !urls.isEmpty else { return false }
+            project.importFiles(urls: urls, anchor: anchor, preferring: target)
+            return true
+        }
+    }
+
+    /// 指针到了 `location`：记下来、重画落点框、推一下自动滚动。
+    ///
+    /// **暂存为空就不画**（`plan` 返回 nil）：那是这一轮已经收尾了。别在这儿
+    /// 「补探一次」—— SwiftUI 松手之后还会补发一拍 `dropUpdated`，补探会把落点框
+    /// 按落地之后的状态重新画出来、挂着不走（2026-09-23 实测踩过）。
+    @MainActor
+    private func track(_ location: CGPoint) {
+        MediaFileDrag.lastLocation = location
+        // **用刚算出来的局部值**，不要回读 `preview`（理由同 `performDrop`）。
+        preview = plan(at: location)
+        autoScroll(contentX: location.x, contentY: location.y)
     }
 
     /// 拖出去，或者这一轮拖放结束。
     @MainActor
-    func exited() {
-        isTargeted = false
+    private func finish() {
         preview = nil
         autoScroller.stop()
         MediaFileDrag.reset()
-    }
-
-    /// 松手。返回 false 就是彻底没反应 —— 这次拖入已经被这个闭包认领了，
-    /// 外层兜底救不回来。
-    @MainActor
-    func drop(providers: [NSItemProvider]) -> Bool {
-        // **落点这一拍就定死，和探测进度无关**：时间和目标轨只由指针决定。
-        // 时长探完之后喂给同一个 `mediaImportLandings` —— 所以「探完了再松手」
-        // 和「没探完就松手」走的是同一条落地路径。
-        //
-        // 松手这一刻 SwiftUI 可能已经把 isTargeted 打回 false、心跳也停了，
-        // 所以指针现读一次；读不到就用最后一拍停在哪。
-        let point = pointer() ?? MediaFileDrag.lastLocation
-        let pending = MediaFileDrag.pending?.urls ?? []
-        defer { exited() }
-        // 松手这一刻 `itemProviders` 一般是给得出来的；给不出来就退回进场时从拖放
-        // 剪贴板读到的那一批，再不行就现读一次。**三条路都不通才放弃。**
-        guard let point else {
-            // 整趟都没进过滚动内容（例如只在轨道头列上晃了一下就松手）：没有落点
-            // 可言，退回没有落点的那条老路 —— 接到主轨末尾。
-            let urls = pending.isEmpty ? MediaFileDrag.draggedURLs() : pending
-            if !urls.isEmpty {
-                project.addMedia(urls: urls)
-                return true
-            }
-            guard !providers.isEmpty else { return false }
-            Task { @MainActor in
-                let loaded = await MediaFileDrag.loadURLs(from: providers)
-                guard !loaded.isEmpty else { return }
-                project.addMedia(urls: loaded)
-            }
-            return true
-        }
-        let anchor = MediaImportAnchor.pointer(max(0, point.x / pps))
-        let target = trackTarget(at: point)
-        if !providers.isEmpty {
-            project.importFiles(providers: providers, anchor: anchor, preferring: target)
-            return true
-        }
-        let urls = pending.isEmpty ? MediaFileDrag.draggedURLs() : pending
-        guard !urls.isEmpty else {
-            return false
-        }
-        project.importFiles(urls: urls, anchor: anchor, preferring: target)
-        return true
     }
 
     // MARK: - 探测
@@ -367,7 +287,7 @@ struct MediaFileDropController {
             isProbing: !urls.isEmpty
         )
         // 一个 URL 都没读到：**不探，也不拒绝**。落点框退化成一条插入线，
-        // 松手那一下照样从 `drop` 拿到真东西。
+        // 松手那一下照样从 `performDrop` 拿到真东西。
         guard !urls.isEmpty else { return }
         Task { @MainActor in
             let probed = await project.probeImports(urls)
@@ -375,8 +295,8 @@ struct MediaFileDropController {
             guard MediaFileDrag.pending?.token == token else { return }
             MediaFileDrag.pending?.media = probed
             MediaFileDrag.pending?.isProbing = false
-            // 探完这一刻用户可能正好没动鼠标：心跳照样会来，但先补一拍不亏，
-            // 落点框就永远停在「一条线」上。自己按上一次的指针位置补一次。
+            // 探完这一刻用户可能正好没动鼠标：`dropUpdated` 未必马上再来一拍，
+            // 不补的话落点框会停在「一条线」上。按上一次的指针位置自己补画一次。
             if let location = MediaFileDrag.lastLocation {
                 preview = plan(at: location)
             }
@@ -388,10 +308,10 @@ struct MediaFileDropController {
     /// 指针在这个位置时，这一批素材落在哪。
     @MainActor
     private func plan(at location: CGPoint) -> MediaFileDropPlan? {
-        // **只有确知一个都用不了才拒绝**（`isUnusable` 的注释写了为什么）。
-        // 其余一律给得出落点：最不济是一条插入线。
-        guard MediaFileDrag.pending?.isUnusable != true else { return nil }
-        let pending = MediaFileDrag.pending ?? MediaFileDrag.Pending(token: 0, isProbing: false)
+        // 没有暂存 = 这一轮已经收尾（见 `track`）；确知一个都用不了也不画
+        // （`isUnusable` 的注释写了为什么只认「确知」）。其余一律给得出落点：
+        // 最不济是一条插入线。
+        guard let pending = MediaFileDrag.pending, !pending.isUnusable else { return nil }
         let pointerTime = max(0, location.x / pps)
         let target = trackTarget(at: location)
         // 探测中那条插入线画在哪一行：指到了就是那一行，指不到就按这一批的第一段

@@ -45,9 +45,14 @@ cat > "$OUT/DragSource.app/Contents/Info.plist" <<'PLIST'
 PLIST
 
 # 拖源窗口摆在主屏右上角，避免盖住被测窗口（NSWindow 用左下原点，这里换算一下）。
+#
+# 取的是**主屏**的尺寸。别用 Finder 的 `bounds of window of desktop`：多显示器时
+# 那是所有屏幕的并集，算出来的位置可能不在任何一块屏上，AppKit 把窗口挪到哪全看
+# 它自己 —— 2026-09-23 实测被挪到了被测窗口正上方，拖源盖住落点，重放得到一个
+# 假的 op=0。
 SRC_W=200; SRC_H=140
 read -r SCREEN_W SCREEN_H <<EOF
-$(osascript -e 'tell application "Finder" to get bounds of window of desktop' | awk -F', *' '{print $3, $4}')
+$(osascript -l JavaScript -e 'ObjC.import("AppKit"); var f = $.NSScreen.screens.objectAtIndex(0).frame; f.size.width + " " + f.size.height')
 EOF
 SRC_X=$(( SCREEN_W - SRC_W ))
 SRC_BOTTOM=$(( SCREEN_H - 48 - SRC_H ))

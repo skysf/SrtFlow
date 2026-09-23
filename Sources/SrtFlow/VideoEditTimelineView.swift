@@ -20,6 +20,7 @@ import SrtFlowCore
 // - `VideoEditTimelineThumbnails.swift`     缩略图条
 // - `VideoEditTimelineWaveform.swift`       波形条
 // - `VideoEditTimelinePinchZoom.swift`      捏合缩放
+// - `VideoEditTimelineDropRouter.swift`     时间线上唯一的拖放落点（文件 / 滤镜 / 音频库 / 转场）
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -67,11 +68,9 @@ struct VideoEditTimelineView: View {
     /// 滤镜落在哪一层由指针的纵向位置决定，得拿得到 y（见 VideoEditFilterDrag.swift）。
     @State private var filterDrop: FilterDropPlan?
     @State private var audioLibraryDrop: AudioLibraryDropPlan?
-    /// 从 Finder 拖文件进来时的落点。同样挂在整块滚动内容上（落进哪条轨由指针的
-    /// 纵向位置决定），见 VideoEditMediaFileDrop.swift。
+    /// 从 Finder 拖文件进来时的落点（落进哪条轨由指针的纵向位置决定），
+    /// 见 VideoEditMediaFileDrop.swift。
     @State private var mediaFileDrop: MediaFileDropPlan?
-    /// 正有文件拖在时间线上方（闭包式 `.onDrop` 唯一给得出的信号）。
-    @State private var mediaFileDropTargeted = false
     /// 滚动量的唯一真相：手势要用的时候从 `NSScrollView` **现读**。
     ///
     /// 以前这里是一个由 preference 喂的 `@State`，而那是**异步观察**来的数 ——
@@ -111,28 +110,11 @@ struct VideoEditTimelineView: View {
     }
 
     var body: some View {
-        Group {
-            if project.state.isEmpty {
-                emptyState
-            } else {
-                timeline
-            }
+        if project.state.isEmpty {
+            emptyState
+        } else {
+            timeline
         }
-        // 从 Finder 拖文件进来。**闭包式，不许换回 `DropDelegate`** —— 代理式
-        // 收不到外部拖入（2026-09-22 三处实测零调用，证据写在
-        // `VideoEditMediaFileDrop.swift` 的文件头）。
-        //
-        // **整个时间线栏只有这一个文件落点入口**，空工程那条分支也归它：落在哪
-        // 由指针说了算，指针算不出内容坐标（空工程还没有滚动视图、或者指针停在
-        // 轨道头列上）时 `drop` 自己退回没有落点的那条老路（接主轨末尾）。
-        // 分成两个入口的写法试过，只会多一处要对齐的行为。
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .contentShape(Rectangle())
-        // 内容区**以外**那片空白（时间线右边 / 下边撑出来的、以及空工程那条分支）
-        // 的文件落点。内容区里面归 `scrolledContent` 上那一份 —— 外部拖入由最里面
-        // 那个区独占，所以两处都要挂，但走的是同一个控制器、同一套落点算法。
-        .mediaFileDropUnderlay(mediaFileDropController)
-        .mediaFileDropTicker(mediaFileDropController, isTargeted: mediaFileDropTargeted)
     }
 
     // MARK: - 空状态
@@ -355,19 +337,51 @@ struct VideoEditTimelineView: View {
         }
     }
 
-    /// 拖文件进来这一套的落点控制器。每次用到都现造 —— 行布局、滚动量、
-    /// 视口尺寸全是现读的，存下来就会在拖动中途变陈旧。
-    private var mediaFileDropController: MediaFileDropController {
-        MediaFileDropController(
-            project: project,
-            pps: pps,
-            rowLayouts: rowLayouts(),
-            rowSpacing: rowSpacing,
-            geometry: scrollGeometry,
-            autoScroller: autoScroller,
-            viewport: CGSize(width: viewportWidth, height: viewportHeight),
-            preview: $mediaFileDrop,
-            isTargeted: $mediaFileDropTargeted
+    /// 时间线上**唯一**的拖放落点（理由见 VideoEditTimelineDropRouter.swift 的
+    /// 文件头）。四套拖放各自的代理原样不动，由它按载荷分派；行布局只算一次，
+    /// 四个代理共用同一份。
+    private var timelineDropRouter: TimelineDropRouter {
+        let layouts = rowLayouts()
+        let viewport = CGSize(width: viewportWidth, height: viewportHeight)
+        let main = layouts.first { $0.spec.slot == .main && !$0.spec.isHidden }
+        return TimelineDropRouter(
+            files: MediaFileDropDelegate(
+                project: project,
+                pps: pps,
+                rowLayouts: layouts,
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: viewport,
+                preview: $mediaFileDrop
+            ),
+            filter: FilterDropDelegate(
+                project: project,
+                pps: pps,
+                rowLayouts: layouts,
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: viewport,
+                preview: $filterDrop
+            ),
+            audio: AudioLibraryDropDelegate(
+                project: project,
+                pps: pps,
+                rowLayouts: layouts,
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: viewport,
+                preview: $audioLibraryDrop
+            ),
+            transition: TransitionDropDelegate(
+                project: project,
+                pps: pps,
+                geometry: scrollGeometry,
+                autoScroller: autoScroller,
+                viewport: viewport,
+                preview: $transitionDrop
+            ),
+            mainRow: main.map { $0.minY...$0.maxY },
+            contentWidth: contentWidth
         )
     }
 
@@ -478,45 +492,6 @@ struct VideoEditTimelineView: View {
         // 内容区这一层：宽度就是 `contentWidth`，轨道底色和标尺刻度都画到这儿为止。
         .frame(width: contentWidth, alignment: .topLeading)
         .contentShape(Rectangle())
-        // 文件落点垫在滤镜 / 音频库那两个代理式落点**里面**，理由见
-        // `mediaFileDropUnderlay`。这一层还没被「填满视口」的 frame 撑开，所以只
-        // 盖到内容区为止；外面那片空白由 `body` 上的同一个控制器接，落点算法一份。
-        .mediaFileDropUnderlay(mediaFileDropController)
-        // 从滤镜库拖卡片进来。**挂在整块内容上**而不是某一行：滤镜落在哪一层
-        // 由指针的纵向位置决定，挂一行就拿不到 y 了（转场只能落主轨那一条缝，
-        // 所以那边挂在行上）。载荷类型是自定义的，和 `.onDropOfFiles`、
-        // 转场卡片三者各认各的，不会打架。
-        //
-        // 落点**故意只到内容区为止**，不跟着下面那个「填满视口」的 frame 一起
-        // 铺开：右边撑出来的那片空白在时间轴上远远超出工程长度，而滤镜段不计入
-        // `duration`（2026-09-21 口径），落到那儿就是凭空多出一段谁也看不见、
-        // 也滚不到的调色。
-        .onDrop(
-            of: [FilterDrag.type],
-            delegate: FilterDropDelegate(
-                project: project,
-                pps: pps,
-                rowLayouts: rowLayouts(),
-                geometry: scrollGeometry,
-                autoScroller: autoScroller,
-                viewport: CGSize(width: viewportWidth, height: viewportHeight),
-                preview: $filterDrop
-            )
-        )
-        // 从音频库拖素材进来。同样挂在整块内容上（落在哪条音频轨由指针的纵向
-        // 位置决定），载荷类型和滤镜、转场、文件三者各认各的，不会打架。
-        .onDrop(
-            of: [AudioLibraryDrag.type],
-            delegate: AudioLibraryDropDelegate(
-                project: project,
-                pps: pps,
-                rowLayouts: rowLayouts(),
-                geometry: scrollGeometry,
-                autoScroller: autoScroller,
-                viewport: CGSize(width: viewportWidth, height: viewportHeight),
-                preview: $audioLibraryDrop
-            )
-        )
         // 至少填满视口、左上角对齐。**两轴都要**：内容比视口小时 SwiftUI 的
         // ScrollView 会把它居中（实测 800 宽的视口放 200 宽的内容，内容
         // minX = 300），于是：
@@ -534,6 +509,15 @@ struct VideoEditTimelineView: View {
         // `contentWidth` 宽 —— 工程短的时候那是 600pt 的地板，窗口一宽，右边小半
         // 个视口是**彻底的死区**：点了不移播放头、不清选择，框也拉不起来。
         .contentShape(Rectangle())
+        // 拖放：**整条时间线只有这一个落点**。从 Finder 拖进来的文件、滤镜 / 音频库 /
+        // 转场三种卡片全在这儿按载荷分派（`TimelineDropRouter`）。别在行上、块上、
+        // 或者这条链的别处再挂 `.onDrop`：SwiftUI 把拖放交给指针底下最里面那个
+        // 落点，类型对不上也不往外找（空类型的 `.onDrop(of: [])` 也一样独占），
+        // 多挂一个就会把别人的拖入吞掉（2026-09-23 探针实测，案例见路由器文件头）。
+        //
+        // 挂在「填满视口」之后，所以右边 / 下边撑出来的空白也接得住文件；滤镜只许
+        // 落在内容区以内这条老规矩由路由器按 `contentWidth` 判。
+        .onDrop(of: TimelineDropRouter.types, delegate: timelineDropRouter)
         // 点非素材处：播放头挪过来，并且三类选择一起取消（含字幕 cue —— 漏了它，
         // 拖框会在没有任何选中项的界面上继续挂着）。
         //
@@ -635,23 +619,10 @@ struct VideoEditTimelineView: View {
                 }
             }
         }
-        // 文件落点垫在下面那个转场落点**里面**（理由见 `mediaFileDropUnderlay`）：
-        // 少了它，主轨那一行会把从 Finder 拖进来的文件接住又扔掉。
-        .mediaFileDropUnderlay(mediaFileDropController)
-        // 落点**只挂主轨那一行**：纵向合法性因此天然判掉 —— 拖到字幕轨、形状轨
-        // 上根本不会触发，不用再写一遍「这一行能不能接」。隐藏的轨同理。
-        // 空类型数组 = 这一行不认这种拖放，代理一次都不会被调到。
-        .onDrop(
-            of: slot.isMain && !hidden ? [TransitionDrag.type] : [],
-            delegate: TransitionDropDelegate(
-                project: project,
-                pps: pps,
-                geometry: scrollGeometry,
-                autoScroller: autoScroller,
-                viewport: CGSize(width: viewportWidth, height: viewportHeight),
-                preview: $transitionDrop
-            )
-        )
+        // 这一行**不挂** `.onDrop`：转场卡片的落点在滚动内容上那个唯一的路由器里，
+        // 按主轨这一行的纵向范围判（`TimelineDropRouter.mainRow`）。以前挂在每条
+        // 轨道行上（非主轨传空类型），空类型的落点照样独占拖入 —— 滤镜 / 音频库
+        // 卡片、Finder 的文件拖到轨道行上那一下全被它吞掉。
     }
 
     /// 主轨上有转场遮罩可画的那几条缝。

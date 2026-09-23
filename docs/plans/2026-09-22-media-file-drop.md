@@ -106,43 +106,40 @@ Finder 复制的文件 URL 一律判 false，菜单项是灰的。
 视图树顺序。这条原来只钉着转场，本次扩到三套
 （`checks/timeline-drag-wiring.sh`）。
 
-## 接法：闭包式 + 垫在每个 App 内落点里面
+## 接法：整条时间线只有一个落点
 
-**首测三次没修好，根因在这儿**（[案例](../bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)，
-长期约束在[拖动手势 §5e-2](../architecture/timeline-drag-gestures.md)）：
+**首测三次没修好，第四次修好了文件、却把 App 内三套卡片拖放弄死了**，两个案例：
+[文件拖不进来](../bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)、
+[卡片被文件落点吞了](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)。
+长期约束在[拖动手势 §5e-2](../architecture/timeline-drag-gestures.md)，一句话：
+SwiftUI 把一次拖放交给指针底下**最里面**那个落点，类型对不上也不往外找（空类型的
+`.onDrop(of: [])` 也一样），外部拖入和 App 内拖动都是这样。
 
-- 外部拖入**只有闭包式** `.onDrop(of:isTargeted:perform:)` 收得到；代理式
-  `.onDrop(of:delegate:)` 一次都不会被调到。
-- 外部拖入由**最里面**那个落点区独占认领，类型对不上也不往外找。所以时间线里
-  每一个 App 内的 `.onDrop` 里面都得先垫一层文件落点（`mediaFileDropUnderlay`）：
-  滚动内容上（滤镜 / 音频库之前）、主轨那一行上（转场之前），外加
-  `VideoEditTimelineView.body` 上那一份盖住内容区以外的空白和空工程那条分支。
+所以时间线上只挂**一个** `.onDrop`：`scrolledContent` 上的 `TimelineDropRouter`，
+认四种载荷（三种卡片的自定义类型 + `.fileURL`），按类型分派给各自的代理；文件这一份
+是 `MediaFileDropDelegate`，直接用 `DropInfo.location`（滚动内容坐标，和 `rowLayouts`
+同一套）。挂在「填满视口」之后，撑出来的空白也接得住文件。
 
-闭包式不给落点位置，所以指针**现读** `NSEvent.mouseLocation`，屏幕坐标 → 内容坐标
-的换算归 `TimelineScrollGeometry.contentPoint(fromScreen:)`。落点框和时长探测靠
-`isTargeted` 起手，三处垫层接**同一个**状态，而且松手后由 `exited()` 亲手归位 ——
-SwiftUI 不保证把它打回 false，不归位的话第二次拖入 `.task(id:)` 根本不重跑。
-
-整页那条 `.onDropOfFiles` 兜底**原样不动**：垫层在里面，它天然轮不到时间线这一块，
-拖到预览区 / 检查器 / 库栏上仍归它。
+整页那条 `.onDropOfFiles` 兜底**原样不动**：它是祖先，时间线滚动区归路由器，拖到
+预览区 / 检查器 / 库栏 / 轨道头列 / 空工程上仍归它（接主轨末尾）。
 
 ## 时长探测：一条落地路径，两种画法
 
 视频和音频的时长要 `probeVideo` / `audioDuration` 才知道（图片不用探，固定 5 秒），
 而**落点框的宽度和「撞不撞得上」都依赖它**。
 
-- 拖进来那一刻（`isTargeted` 变真）就开始探。两个探测都按 URL 缓存，本地文件
+- 拖进来那一刻（`dropEntered`）就开始探。两个探测都按 URL 缓存，本地文件
   通常几十毫秒。
 - 没探完：只画**插入线 + 目标轨描边**。这时候画一个宽度是假的框就是说谎。
 - 探完了：换成真实宽度的落点框，**复用剪辑拖动那个虚线框**（`dropPlaceholder`）——
   落下去就是普通的剪辑块，没道理让用户学第二种落点语言。
-- 探完那一刻用户可能正好没动鼠标 —— 心跳照样会来，但探测任务还是按
-  `MediaFileDrag.lastLocation` 自己补画一次，不赌那一拍。
-- **每次进场都重新探**，不看上一笔还在不在：`exited()` 没被调到（拖放被取消、
+- 探完那一刻用户可能正好没动鼠标 —— `dropUpdated` 未必马上再来一拍，所以探测任务
+  按 `MediaFileDrag.lastLocation` 自己补画一次，不赌那一拍。
+- **每次进场都重新探**，不看上一笔还在不在：`dropExited` 没被调到（拖放被取消、
   焦点被抢走）时，上一批文件会一直挂着，下一次拖进来的框说的就是**上一批**素材
   的长度。重探一次几乎不要钱（按 URL 缓存）。
 
-**松手那一下不分两条路**：`drop` 只把「指针时间 + 目标轨」定死，时长探完
+**松手那一下不分两条路**：`performDrop` 只把「指针时间 + 目标轨」定死，时长探完
 之后照样喂给同一个 `mediaImportLandings`。所以「探完了再松手」和「没探完就松手」
 落在同一个地方。
 
@@ -193,7 +190,7 @@ SwiftUI 不保证把它打回 false，不归位的话第二次拖入 `.task(id:)
 | 守什么 | 在哪 |
 | --- | --- |
 | 落点：拖到哪落到哪 / 撞上抬一轨 / 多文件接龙 / 类型不匹配退默认轨 / 隐藏轨跳过 / 音频从头找 / 同一次只开一条新轨 / 落地后主轨仍按时间排序 | `scripts/check-media-import.sh`（45 条） |
-| 接线：时间线真挂了落点、兜底还在、三套拖放不抢 `.fileURL`、画框与落地共用一个落点函数、`performDrop` 现算目标轨、心跳兜底、探测对代号、落点框不吃事件、新轨几何只有一份、⌘V 两边一致、落点文件保持纯值 | `checks/timeline-drag-wiring.sh` |
+| 接线：整条时间线只有一个 `.onDrop`、路由器认齐四种载荷且卡片先于文件、转场 / 滤镜的坐标合法性、松手后补发的那一拍不转发、兜底还在、三套拖放不抢 `.fileURL`、画框与落地共用一个落点函数、`performDrop` 现算目标轨、探测对代号、落点框不吃事件、新轨几何只有一份、⌘V 两边一致、落点文件保持纯值 | `checks/timeline-drag-wiring.sh` |
 | 界面文案两张表配齐 | `scripts/check-localization-coverage.sh` |
 
 **人工回归清单**（自动化够不着，发版前实机验证）：
@@ -205,7 +202,9 @@ SwiftUI 不保证把它打回 false，不归位的话第二次拖入 `.task(id:)
 - [ ] 一次拖 3 个文件：三个框首尾相接，撞上的那几段抬轨。
 - [ ] 拖一个很长的视频（探测要一会儿）：先看到插入线，再变成框；期间指针不动也会变。
 - [ ] 拖到字幕行 / 形状行 / 标尺上：仍然落得下去，时间按指针、轨按默认。
-- [ ] 拖一个 .pdf：指针显示「不能放」，松手什么都不发生（或弹一条提示）。
+- [ ] 拖一个 .pdf：指针显示「不能放」，松手什么都不发生。
+- [ ] 滤镜 / 音频库 / 转场三种卡片照常拖得进来（逐条清单见
+      [卡片被文件落点吞了](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)）。
 - [ ] 拖到预览区 / 检查器：仍按老规矩接在主轨末尾。
 - [ ] 在 Finder 里 ⌘C 一个视频 → 回到剪辑页 ⌘V：落在播放头上；编辑菜单里 Paste 是亮的。
 - [ ] 在字幕输入框里打字时 ⌘V：粘的是文字，不是素材。
