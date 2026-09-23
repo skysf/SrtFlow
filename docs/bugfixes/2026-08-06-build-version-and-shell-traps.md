@@ -148,3 +148,20 @@ done
 **防回归**：`checks/shell-var-boundary.sh`（进了 `scripts/check-all.sh`）扫仓库里
 全部 `.sh`（含还没提交的），注释行除外，裸 `$VAR` 紧跟多字节字符就红。反向验证：
 把 `timeline-drag-wiring.sh` 里任意一处 `${FILE_DROP}）` 改回 `$FILE_DROP）` → 红。
+
+## 陷阱 4（2026-09-23）：pipefail 下管道末端的 `grep -q` 会假红
+
+`grep -q` 读到第一处匹配就退出；上游（`printf "$X"`、`grep -v`、`awk` …）要是还没写完，
+下一次 write 就吃 SIGPIPE，`pipefail` 把整条管道判成失败 —— **命中了反而报没命中**。
+内容超过管道缓冲（64KB）时每次必红，小内容时看两个进程谁先跑完：本地几千次不出事，
+CI 上偶尔红一次。这就是 2026-09-23 那次「清单里明明有、CI 说缺」
+（[案例](2026-09-23-grep-q-sigpipe-false-red.md)）。
+
+```bash
+printf '%s\n' "$BODY" | grep -q 'x'        # ✗ pipefail 下时灵时不灵
+grep -q 'x' <<<"$BODY"                     # ✓ 查变量：here-string，没有管道
+some_command | grep -c 'x' >/dev/null      # ✓ 查管道输出：-c 会把输入读完
+```
+
+**防回归**：`checks/shell-pipe-grep-q.sh`（进了 `scripts/check-all.sh`）扫全部开着 pipefail
+的 `.sh`，管道接 `grep -q`（含 `-qE` / `-vq` / `--quiet`，`|` 在行尾换行的也算）就红。

@@ -555,16 +555,26 @@ enum VideoEditCompositionBuilder {
     /// `VideoEditProject.refreshAudioMix()` 直接调它换掉正在播的 item 上的
     /// mix（**不重建合成，画面不闪**）。两条路必须是同一份实现 —— 分开写
     /// 就会出现「拖完滑块的音量」和「重建之后的音量」不一样。
-    static func makeAudioMix(state: TimelineState, plan: AudioMixPlan) -> AVMutableAudioMix? {
+    ///
+    /// 音量设定先记进一张 `GainTable`，再原样铺进 AVFoundation（乘上总推子）。电平表拿的
+    /// 是**同一张**（tap 看到的是乘音量之前的采样，增益得自己乘，见 VideoEditAudioMeter.swift）。
+    /// `meters` 为 nil 时（自检、离线读）不挂 tap。
+    static func makeAudioMix(
+        state: TimelineState, plan: AudioMixPlan, meters: AudioMeterEngine? = nil
+    ) -> AVMutableAudioMix? {
         guard !plan.lanes.isEmpty else { return nil }
         var parameters: [AVMutableAudioMixInputParameters] = []
+        let master = Float(state.masterVolume)
         for lane in plan.lanes {
-            let params = AVMutableAudioMixInputParameters()
-            params.trackID = lane.trackID
+            var table = GainTable()
             // 同一条合成轨上，上一段的结束点就是插入游标当时的值。
             var previousEnd = 0.0
             for clipID in lane.clipIDs {
                 guard let clip = state.clip(with: clipID) else { continue }
+                // 轨道推子是常数，直接乘进这一段的每个设定点；总推子在铺进 AVFoundation
+                // 时再乘（电平表要的是「这条轨听到的」，不含总推子）。导出那边两个都乘进
+                // 同一段的 `volume=`，两条管线同一笔账（docs/architecture/audio-mixer.md）。
+                let gainScale = state.trackVolume(containingClip: clipID)
                 // 静音段不单独开分支：`addVolumeRamps` 里的音量已经是
                 // `isMuted ? 0 : volume`，走同一条路才能同样享受「提前钉音量」——
                 // 以前静音段是 `setVolume(0, at: 段起点)`，钉在起点上等于把
@@ -572,28 +582,46 @@ enum VideoEditCompositionBuilder {
                 // （主轨和上层轨的静音段压根不进合成，能走到这儿的只有音频轨。）
                 if lane.isMainTrack, let index = state.mainClips.firstIndex(where: { $0.id == clipID }) {
                     addVolumeRamps(
-                        params: params,
+                        table: &table,
                         clip: clip,
                         fades: .previewMainTrack(
                             clip: clip,
                             transitionBefore: index > 0 ? state.transitionOverlap(afterMainIndex: index - 1) : 0,
                             transitionAfter: state.transitionOverlap(afterMainIndex: index)
                         ),
-                        previousEnd: previousEnd
+                        previousEnd: previousEnd,
+                        gainScale: gainScale
                     )
                 } else {
                     // 上层视频轨和音频轨都没有轨内转场，用户设的渐变直接生效。
                     addVolumeRamps(
-                        params: params, clip: clip, fades: clip.audioFades, previousEnd: previousEnd
+                        table: &table, clip: clip, fades: clip.audioFades, previousEnd: previousEnd,
+                        gainScale: gainScale
                     )
                 }
                 previousEnd = clip.timelineEnd
+            }
+            let params = AVMutableAudioMixInputParameters()
+            params.trackID = lane.trackID
+            table.apply(to: params, scale: master)
+            if let meters {
+                params.audioTapProcessor = meters.tap(
+                    trackID: lane.trackID, key: meterKey(for: lane, in: state), table: table, master: master
+                )
             }
             parameters.append(params)
         }
         let mix = AVMutableAudioMix()
         mix.inputParameters = parameters
         return mix
+    }
+
+    /// 一条合成音轨属于哪条时间线轨（电平表按它归到轨道头那一条表上；主轨的 A/B
+    /// 两条合成轨归到同一条）。
+    private static func meterKey(for lane: AudioMixPlan.Lane, in state: TimelineState) -> MeterKey {
+        guard let first = lane.clipIDs.first, let location = state.location(of: first),
+              let key = TimelineRowHeights.key(for: location.track, in: state) else { return .track(.main) }
+        return .track(key)
     }
 
     // MARK: - 小工具
@@ -906,12 +934,20 @@ enum VideoEditCompositionBuilder {
     /// `previousEnd` 是**同一条合成轨上**上一段的结束点，用来给下面的「提前钉
     /// 音量」找落点，不能越过它去动上一段的尾巴。
     private static func addVolumeRamps(
-        params: AVMutableAudioMixInputParameters,
+        table: inout GainTable,
         clip: EditClip,
         fades: AudioFadeWindow,
-        previousEnd: Double
+        previousEnd: Double,
+        gainScale: Double
     ) {
-        let volume = Float(clip.isMuted ? 0 : clip.volume)
+        // 画了音量曲线的段走折线表（与导出同一张），没画的段一行不变地走老路。
+        if clip.hasVolumeCurve {
+            addCurveRamps(
+                table: &table, clip: clip, fades: fades, previousEnd: previousEnd, gainScale: gainScale
+            )
+            return
+        }
+        let volume = Float((clip.isMuted ? 0 : clip.volume) * gainScale)
         let fadeIn: Double? = fades.fadeIn > 0 ? fades.fadeIn : nil
         let fadeOut: Double? = fades.fadeOut > 0 ? fades.fadeOut : nil
 
@@ -939,31 +975,83 @@ enum VideoEditCompositionBuilder {
         // 钉的值分两种：有渐入的钉 0，没渐入的钉 body 音量本身。一律钉 0 的话，
         // 所有段都会被 de-zipper 加上一个软起音 —— 修一个 bug 造一个新的。
         let pin = min(previousEnd, clip.timelineStart)
-        params.setVolume(fadeIn == nil ? volume : 0, at: time(pin))
+        table.set(fadeIn == nil ? volume : 0, at: time(pin))
 
         var bodyStart = clip.timelineStart
         var bodyEnd = clip.timelineEnd
         if let fadeIn, fadeIn > 0 {
-            params.setVolumeRamp(
-                fromStartVolume: 0, toEndVolume: volume,
-                timeRange: CMTimeRange(start: time(clip.timelineStart), end: time(clip.timelineStart + fadeIn))
+            table.ramp(
+                from: 0, to: volume,
+                range: CMTimeRange(start: time(clip.timelineStart), end: time(clip.timelineStart + fadeIn))
             )
             bodyStart += fadeIn
         }
         if let fadeOut, fadeOut > 0 { bodyEnd -= fadeOut }
         if bodyEnd > bodyStart {
-            params.setVolumeRamp(
-                fromStartVolume: volume, toEndVolume: volume,
-                timeRange: CMTimeRange(start: time(bodyStart), end: time(bodyEnd))
+            table.ramp(
+                from: volume, to: volume,
+                range: CMTimeRange(start: time(bodyStart), end: time(bodyEnd))
             )
         }
         if let fadeOut, fadeOut > 0 {
-            params.setVolumeRamp(
-                fromStartVolume: volume, toEndVolume: 0,
-                timeRange: CMTimeRange(start: time(clip.timelineEnd - fadeOut), end: time(clip.timelineEnd))
+            table.ramp(
+                from: volume, to: 0,
+                range: CMTimeRange(start: time(clip.timelineEnd - fadeOut), end: time(clip.timelineEnd))
             )
         }
     }
+
+    /// 画了音量曲线的段：按 `VolumeCurveSampling.breakpoints` 那张折线表铺一串
+    /// 线性斜坡，再乘上渐入渐出和推子。
+    ///
+    /// 折线表是**导出也在用的那一张**（`aeval` 里是同一组点），所以两条管线
+    /// 之间没有「弦 vs 曲线」的差。唯一要额外细分的是渐变窗口：线性渐变 × 线性
+    /// 折线是二次曲线，窗口里按 `fadeSubdivisions` 等分取点（误差远小于 0.1 dB）。
+    ///
+    /// 「提前钉音量」那条规矩原样照搬（见 `addVolumeRamps` 的长注释）：钉点仍是
+    /// 同一条合成轨上一段的结束处，钉的值是这一段起点真正的增益。
+    private static func addCurveRamps(
+        table: inout GainTable,
+        clip: EditClip,
+        fades: AudioFadeWindow,
+        previousEnd: Double,
+        gainScale: Double
+    ) {
+        let span = clip.timelineDuration
+        let curve = VolumeCurveSampling.breakpoints(for: clip)
+        guard span > 0, !curve.isEmpty else { return }
+
+        var times = curve.map(\.time)
+        for (start, length) in [(0.0, fades.fadeIn), (span - fades.fadeOut, fades.fadeOut)] where length > 0 {
+            for step in 0...fadeSubdivisions {
+                times.append(start + length * Double(step) / Double(fadeSubdivisions))
+            }
+        }
+        times = times.map { min(max($0, 0), span) }.sorted()
+
+        func gain(_ offset: Double) -> Float {
+            let envelope = fades.linearEnvelope(atElapsed: offset, span: span)
+            return Float(VolumeCurveSampling.gain(at: offset, in: curve) * envelope * gainScale)
+        }
+
+        let pin = min(previousEnd, clip.timelineStart)
+        table.set(gain(0), at: time(pin))
+        // 相邻两点落在同一个 1/600 秒格子里就并掉（零长斜坡 AVFoundation 不认）。
+        var last: (time: CMTime, gain: Float) = (time(clip.timelineStart), gain(0))
+        for offset in times {
+            let at = time(clip.timelineStart + offset)
+            let value = gain(offset)
+            guard CMTimeCompare(at, last.time) > 0 else {
+                last.gain = value
+                continue
+            }
+            table.ramp(from: last.gain, to: value, range: CMTimeRange(start: last.time, end: at))
+            last = (at, value)
+        }
+    }
+
+    /// 渐变窗口里细分多少份（见 `addCurveRamps`）。
+    static let fadeSubdivisions = 16
 
     /// 按所有段落的边界切片，每一片描述「此刻谁可见、透明度怎么变」。
     private static func buildVideoComposition(

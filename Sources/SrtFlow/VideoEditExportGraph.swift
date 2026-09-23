@@ -194,12 +194,19 @@ enum VideoEditExportGraph {
 
         /// 一段音频剪辑的滤镜链（裁剪、变速、音量、渐入渐出、落到时间线位置）。
         /// 上层视频轨和音频轨都走这里 —— 两者都没有轨内转场，用户设的渐变直接生效。
+        ///
+        /// 增益那一步（音量或音量曲线 × 轨道推子 × 总推子）放在 `adelay` 之前：
+        /// 曲线走 `aeval`，而它在 `adelay` 垫的静音里读不到可靠的时间
+        ///（见 VideoEditExportAudioGain.swift）。
         func audioChain(for clip: EditClip, source: Int, label: String) -> String {
             let end = clip.sourceStart + clip.sourceDuration
             let delay = Int((clip.timelineStart * 1000).rounded())
             return "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
                 "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
-                "volume=\(fmt(clip.volume))," +
+                ExportAudioGain.gainSteps(
+                    for: clip,
+                    gainScale: state.trackVolume(containingClip: clip.id) * state.masterVolume
+                ) +
                 afadeSteps(clip.audioFades, timelineDuration: clip.timelineDuration) +
                 "adelay=\(delay)|\(delay),aresample=48000," +
                 "aformat=sample_fmts=fltp:channel_layouts=stereo[\(label)]"
@@ -223,7 +230,7 @@ enum VideoEditExportGraph {
             }
             var args: [String] = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1"]
             args += inputArguments
-            args += ["-filter_complex", filters.joined(separator: ";")]
+            args += try ExportAudioGain.filterComplexArguments(filters.joined(separator: ";"), workspace: workspace)
             args += ["-map", "[\(audioOut)]", "-c:a", "aac", "-b:a", "\(settings.audio.kbps)k"]
             args += ["-t", fmt(total)]
             args.append(tempOutput.path)
@@ -380,11 +387,19 @@ enum VideoEditExportGraph {
                             && segments[segmentIndex - 1].transition != .none,
                         hasTransitionAfter: segment.transition != .none
                     )
+                    // 增益（音量或曲线 × 推子）放在首尾定格**之前**：定格的静音是
+                    // `adelay` 垫的，`aeval` 在那一截里读不到可靠的时间。链上的第 0 秒
+                    // 因此是段的第 `renderHoldHead` 秒，曲线的时间轴要跟着减掉它
+                    //（减漏了整条曲线错后一截，check-audio-fade 第 7c 组钉着）。
                     filters.append(
                         "[\(source):a]atrim=start=\(fmt(start)):end=\(fmt(end))," +
                         "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
+                        ExportAudioGain.gainSteps(
+                            for: clip,
+                            gainScale: state.mainVolume * state.masterVolume,
+                            timeOffset: clip.renderHoldHead
+                        ) +
                         "\(audioHolds)" +
-                        "volume=\(fmt(clip.volume))," +
                         afadeSteps(fades, timelineDuration: segment.duration) +
                         "aresample=48000," +
                         "aformat=sample_fmts=fltp:channel_layouts=stereo[\(aLabel)]"
@@ -679,7 +694,7 @@ enum VideoEditExportGraph {
 
         var args: [String] = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1"]
         args += inputArguments
-        args += ["-filter_complex", filters.joined(separator: ";")]
+        args += try ExportAudioGain.filterComplexArguments(filters.joined(separator: ";"), workspace: workspace)
         args += ["-map", "[\(video)]", "-map", "[\(audio)]"]
 
         switch settings.encoder {
@@ -759,7 +774,7 @@ enum VideoEditExportGraph {
     }
 
     /// `30.0` → `"30"`，`1.2345` → `"1.234"`。滤镜参数里别出现一长串小数。
-    private static func fmt(_ value: Double) -> String {
+    static func fmt(_ value: Double) -> String {
         let rounded = (value * 1000).rounded() / 1000
         if rounded.truncatingRemainder(dividingBy: 1) == 0 {
             return String(Int(rounded))

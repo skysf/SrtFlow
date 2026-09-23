@@ -53,6 +53,29 @@ enum AudioGain {
         if value <= minimumDB { return "−∞ dB" }
         return String(format: "%.1f dB", value).replacingOccurrences(of: "-", with: "−")
     }
+
+    /// 线性幅度的合法区间 [0, 2]；NaN / inf 回 1（「没动过」），负数回 0。
+    /// 读盘和推子写入共用（音量曲线、轨道推子、总推子），别在调用点各夹一份。
+    static func clampedLinear(_ value: Double) -> Double {
+        guard value.isFinite else { return 1 }
+        return min(max(value, 0), maximumLinear)
+    }
+
+    /// dB 夹进 [−60, +6.02]；NaN 回 0 dB。
+    static func clampedDecibels(_ value: Double) -> Double {
+        guard value.isFinite else { return 0 }
+        return min(max(value, minimumDB), maximumDB)
+    }
+
+    /// dB 在「dB 线性」刻度上的位置（0 = −∞，1 = +6.02）。检查器滑杆、块上的音量线、
+    /// 轨道头推子都是这一个刻度 —— 三处各算一份的话，同一个 −6 dB 会画在三个地方。
+    static func scaleFraction(forDecibels decibels: Double) -> Double {
+        (clampedDecibels(decibels) - minimumDB) / (maximumDB - minimumDB)
+    }
+
+    static func decibels(forScaleFraction fraction: Double) -> Double {
+        clampedDecibels(minimumDB + min(max(fraction, 0), 1) * (maximumDB - minimumDB))
+    }
 }
 
 /// 声音的渐变窗口就是共用的 `FadeWindow`（字段、`none`、`isEmpty`、转场仲裁的
@@ -143,14 +166,21 @@ extension TimelineState {
         return audioMixNeutralized() == other.audioMixNeutralized()
     }
 
-    /// 把所有段的音量/渐变抹成同一个值，只留「合成结构」那部分身份。
+    /// 把所有段的音量/渐变/音量曲线、以及三级推子抹成同一个值，只留「合成结构」
+    /// 那部分身份。推子和曲线同样只进 audioMix（见 docs/architecture/audio-mixer.md），
+    /// 拖一下推子就重建一次整条预览的话，画面每拖一下闪一次。
     private func audioMixNeutralized() -> TimelineState {
         var copy = self
         copy.mutateAllClips { clip in
             clip.volume = 1
             clip.fadeInDuration = 0
             clip.fadeOutDuration = 0
+            clip.volumeCurve = KeyframeTrack()
         }
+        copy.mainVolume = 1
+        copy.masterVolume = 1
+        for index in copy.overlayTracks.indices { copy.overlayTracks[index].volume = 1 }
+        for index in copy.audioTracks.indices { copy.audioTracks[index].volume = 1 }
         return copy
     }
 

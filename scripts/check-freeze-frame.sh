@@ -29,11 +29,11 @@ if [ -z "${ELIGIBLE_BODY}" ]; then
     echo "✗ 找不到 isFreezeEligible，准入条件的守卫失去目标 —— 改名了就同步改这里" >&2
     exit 1
 fi
-printf '%s\n' "${ELIGIBLE_BODY}" | grep -q 'isInsideMainTransition' || {
+grep -q 'isInsideMainTransition' <<<"${ELIGIBLE_BODY}" || {
     echo "✗ isFreezeEligible 不再检查 isInsideMainTransition：叠化区里那一帧是两段合成的，必须禁定格" >&2
     exit 1
 }
-printf '%s\n' "${ELIGIBLE_BODY}" | grep -q 'participatesInMainTransition' && {
+grep -q 'participatesInMainTransition' <<<"${ELIGIBLE_BODY}" && {
     echo "✗ isFreezeEligible 又开始用 participatesInMainTransition 了：整段禁用已于 2026-09-20 放开（只禁转场那一段），见 docs/architecture/freeze-frame.md §4a" >&2
     exit 1
 }
@@ -54,6 +54,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \

@@ -93,7 +93,7 @@ verify_binary() {
     done
 
     # 静态构建才能随 App 走：不能依赖 /opt/homebrew 或 /usr/local 里的 dylib。
-    if otool -L "$bin" | tail -n +2 | awk '{print $1}' | grep -qE '^/(opt/homebrew|usr/local)'; then
+    if otool -L "$bin" | tail -n +2 | awk '{print $1}' | grep -cE '^/(opt/homebrew|usr/local)' >/dev/null; then
         echo "   ✗ 依赖 Homebrew 动态库，无法随 App 分发"
         otool -L "$bin" | tail -n +2 | awk '{print $1}' | grep -E '^/(opt/homebrew|usr/local)' | sed 's/^/      /'
         return 1

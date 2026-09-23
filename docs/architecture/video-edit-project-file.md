@@ -82,6 +82,9 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v14 | `TextAnimationKind.focus`、`TextAnimation.focusStartOpacity`（**按需写入**） | **新增的枚举值也算持久数据**：`TextAnimationKind` 宽容解码，旧版遇到 `focus` 会退回 `.none` —— 那一段的入场/出场静默消失，标题最显眼的那一下当场没了；随手编辑触发自动保存即永久丢失。合同见 [画面文字](text-overlays.md) |
 | v15 | `EditClip.presetAnimation`（**按需**，只认非 fade 的效果） | 段的入场/出场动画退回硬切或纯淡入，成片当场不一样。合同见 [画面段的入场 / 出场动画](clip-animation.md) |
 | v16 | `EditClip.isHidden` —— 单段隐藏（快捷键 V，**按需写入**） | 用户藏起来的镜头**回到成片里**：旧版不认识这个键，打开就照常渲染它，随手编辑触发自动保存即永久抹掉，只能一段段重新找出来再藏一遍。合同见 [段的显隐](clip-visibility.md) |
+| v17 | `TimelineState.filters` —— 时间轴上的调色段（**按需写入**） | 整条片子**退回原色**；随手编辑触发自动保存，调好的色永久丢失。没用过滤镜的工程不落这个键。合同见 [滤镜](filters.md) |
+| v18 | `EditClip.remoteKey` —— 音频库素材的 manifest id（**按需写入**） | 当下还能播，但键一旦被旧版的自动保存抹掉，等缓存被清、或工程发给别人，那几段音乐就**永久失链**，而且没人知道原来是哪一首。见下文第四节「音频库素材：四层之前先认领」 |
+| v19 | `EditClip.volumeCurve`、`EditLane.volume`、`TimelineState.mainVolume` / `masterVolume` —— 音量曲线与三级推子（**按需写入**：没画曲线、推子都在 0 dB 的工程不落这些键） | 三样都**直接决定成片的声音**：曲线整条消失（退回画曲线之前的 `volume`）、推子全回 0 dB，压下去的背景音乐当场盖过人声；随手编辑触发自动保存即永久丢失。合同见 [音量曲线](audio-volume-curve.md)、[推子与电平表](audio-mixer.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SrtFlowCore
 
 // MARK: - 标尺
 //
@@ -20,6 +21,8 @@ import SwiftUI
 struct TimelinePinnedRuler: View {
     let pps: Double
     let duration: Double
+    /// 工程帧率：放大到一秒放不下两个标签时，刻度按帧走（`mm:ss:ff`）。
+    let frameRate: ProjectFrameRate
     /// 行距：标尺的不透明底要盖住它，不然滚上来的块会从缝里露出来。
     let rowSpacing: Double
     /// 播放头此刻在内容坐标里的 x。把手画在这儿而不是跟着竖线走：标尺是不透明
@@ -29,7 +32,7 @@ struct TimelinePinnedRuler: View {
     let onSeek: (Double, Bool) -> Void
 
     var body: some View {
-        TimelineRuler(pps: pps, duration: duration, onSeek: onSeek)
+        TimelineRuler(pps: pps, duration: duration, frameRate: frameRate, onSeek: onSeek)
             // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
             // 底下，挡住了就点不动播放头了。
             .overlay(alignment: .topLeading) {
@@ -56,33 +59,41 @@ struct TimelinePinnedRuler: View {
 // MARK: - 标尺
 
 /// `|00:00 · · · · |00:10 · · · ·` 的刻度条，可点、可拖着走播放头。
+///
+/// 放大到 4800pt/秒之后标尺能有几百万点宽：Canvas 的闭包**只画
+/// `context.clipBoundingRect` 那一段**（整宽画的话每滚 128pt 就把整条刻度重算一遍，
+/// 见 docs/architecture/audio-waveform.md）。放大到一秒放不下两个标签时，刻度改按帧走、
+/// 标签写成 `mm:ss:ff`。
 struct TimelineRuler: View {
     let pps: Double
     let duration: Double
+    let frameRate: ProjectFrameRate
     let onSeek: (Double, Bool) -> Void
 
     var body: some View {
         Canvas { context, size in
-            let major = majorStep
-            let minor = major / 5
-            var t: Double = 0
-            while t * pps < size.width {
+            let scale = RulerScale.pick(pps: pps, frameRate: frameRate)
+            let visible = context.clipBoundingRect
+            // 左边多退一格：标签画在刻度线右边，刚滚出去的那个刻度的标签还露着半截。
+            let first = max(0, Int((visible.minX / (scale.major * pps)).rounded(.down)) - 1)
+            let last = Int((min(Double(size.width), visible.maxX) / (scale.major * pps)).rounded(.up))
+            guard last >= first else { return }
+            for index in first...last {
+                let t = Double(index) * scale.major
                 let x = t * pps
-                let isMajor = t.truncatingRemainder(dividingBy: major) < 0.0001
-                    || major - t.truncatingRemainder(dividingBy: major) < 0.0001
-                if isMajor {
-                    context.draw(
-                        Text("|" + label(t))
-                            .font(.system(size: 9, design: .monospaced))
-                            .foregroundStyle(.secondary),
-                        at: CGPoint(x: x + 2, y: size.height / 2),
-                        anchor: .leading
-                    )
-                } else {
-                    let dot = Path(ellipseIn: CGRect(x: x - 1, y: size.height / 2 - 1, width: 2, height: 2))
+                context.draw(
+                    Text("|" + scale.label(t, frameRate: frameRate))
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.secondary),
+                    at: CGPoint(x: x + 2, y: size.height / 2),
+                    anchor: .leading
+                )
+                guard scale.minorCount > 1 else { continue }
+                for minor in 1..<scale.minorCount {
+                    let mx = x + Double(minor) * scale.major / Double(scale.minorCount) * pps
+                    let dot = Path(ellipseIn: CGRect(x: mx - 1, y: size.height / 2 - 1, width: 2, height: 2))
                     context.fill(dot, with: .color(.secondary.opacity(0.5)))
                 }
-                t += minor
             }
         }
         .contentShape(Rectangle())
@@ -95,19 +106,5 @@ struct TimelineRuler: View {
                     onSeek(value.location.x / pps, true)
                 }
         )
-    }
-
-    /// 主刻度间隔按缩放挑，保证相邻标签不打架。
-    private var majorStep: Double {
-        let candidates: [Double] = [1, 2, 5, 10, 30, 60, 120, 300, 600]
-        for candidate in candidates where candidate * pps >= 76 {
-            return candidate
-        }
-        return 600
-    }
-
-    private func label(_ seconds: Double) -> String {
-        let total = Int(seconds.rounded())
-        return String(format: "%02d:%02d", total / 60, total % 60)
     }
 }

@@ -823,3 +823,13 @@
 "Projects that use these tracks will download them again when you open them." = "Projects that use these tracks will download them again when you open them.";
 "Collapse the sidebar" = "Collapse the sidebar";
 "Expand the sidebar" = "Expand the sidebar";
+
+/* 音量曲线（2026-09-23） */
+"Drag to change the volume. ⌥-click the line to add a point, ⌥-click a point to remove it." = "Drag to change the volume. ⌥-click the line to add a point, ⌥-click a point to remove it.";
+"Remove Volume Curve" = "Remove Volume Curve";
+"Remove the volume curve and go back to 0 dB" = "Remove the volume curve and go back to 0 dB";
+"Volume curve with %d points. The slider raises or lowers the whole curve." = "Volume curve with %d points. The slider raises or lowers the whole curve.";
+
+/* 轨道头推子（2026-09-23） */
+"Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB.";
+"Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB.";

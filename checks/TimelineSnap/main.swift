@@ -1540,6 +1540,38 @@ do {
           "「无」拖不上去 → 没有框")
 }
 
+// MARK: - 深度缩放：标尺刻度细到帧、缩略图网格（docs/architecture/audio-waveform.md）
+
+do {
+    // 默认缩放 24pt/秒：两个标签至少隔 76pt → 5 秒一档（2 秒只有 48pt）。
+    checkEqual(RulerScale.pick(pps: 24, frameRate: .fps24).major, 5, "默认缩放 5 秒一个标签")
+    // 放到最大 4800pt/秒：一帧就有 200pt，标签按帧走。
+    let deepest = RulerScale.pick(pps: 4800, frameRate: .fps24)
+    checkClose(deepest.major, 1.0 / 24, "放到最大时一帧一个标签")
+    check(deepest.showsFrames, "按帧分档时标签带帧号")
+    // 30fps 下 1000pt/秒：1 帧 33pt、2 帧 67pt 都不够，5 帧 167pt。
+    checkClose(RulerScale.pick(pps: 1000, frameRate: .fps30).major, 5.0 / 30, "30fps 下 1000pt/秒 5 帧一档")
+    checkEqual(RulerScale.pick(pps: 0.01, frameRate: .fps30).major, 600, "再小也不超过 10 分钟一档")
+    checkEqual(RulerScale(major: 1.0 / 24, minorCount: 1, showsFrames: true).label(1.5, frameRate: .fps24),
+               "00:01:12", "1.5 秒 = 第 1 秒的第 12 帧")
+    checkEqual(RulerScale(major: 1.0 / 24, minorCount: 1, showsFrames: true).label(60 - 1e-9, frameRate: .fps24),
+               "01:00:00", "差一点点到 60 秒的刻度按整帧算，不能截成 00:59:23")
+    checkEqual(RulerScale(major: 5, minorCount: 5, showsFrames: false).label(125, frameRate: .fps30),
+               "02:05", "秒一档的标签不带帧号")
+    // 缩放上限写死外部真值（拿常量跟自己比是自反断言）。
+    checkEqual(VideoEditZoom.range, 4...4800, "缩放区间 4…4800pt/秒（上限原来是 120）")
+
+    // 缩略图网格：比一帧细按帧、比一帧粗按 2 的整数次幂秒。
+    checkClose(ThumbnailGrid.step(forSecondsPerTile: 0.01, frameRate: 30), 1.0 / 30, "一格不到一帧 → 按帧取")
+    checkClose(ThumbnailGrid.step(forSecondsPerTile: 2.5, frameRate: 30), 4, "一格 2.5 秒 → 4 秒的网格")
+    checkClose(ThumbnailGrid.step(forSecondsPerTile: 0.05, frameRate: 30), 0.0625, "一格 0.05 秒 → 1/16 秒")
+    checkClose(ThumbnailGrid.snap(1.01, step: 0.5), 1.25, "取网格格子的中点")
+    // 缩放一点点，网格不变（缓存命中的前提）。
+    check(ThumbnailGrid.step(forSecondsPerTile: 2.5, frameRate: 30)
+            == ThumbnailGrid.step(forSecondsPerTile: 3.4, frameRate: 30),
+          "格宽在同一个 2 的幂区间里变，网格不变")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

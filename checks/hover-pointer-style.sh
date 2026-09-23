@@ -49,7 +49,7 @@ scan '\.push\(\)' "代码里还有 .push()（光标栈的老写法）"
 echo "==> 钉住七处把手的指针样式"
 need() {   # need <文件> <正则> <人话>
     if [ ! -f "$1" ]; then echo "✗ 文件不在：$1"; fail=1; return; fi
-    if ! code_of "$1" | grep -qE "$2"; then
+    if ! code_of "$1" | grep -cE "$2" >/dev/null; then
         echo "✗ $1 少了 $3（模式 /$2/）"
         fail=1
     fi

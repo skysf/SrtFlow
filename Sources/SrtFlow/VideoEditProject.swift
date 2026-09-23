@@ -1,4 +1,5 @@
 import AVFoundation
+import QuartzCore
 import AppKit
 import SwiftUI
 import SrtFlowCore
@@ -326,8 +327,11 @@ final class VideoEditProject: ObservableObject {
     /// 鼠标走 100 点、块只走 50 点。
     @Published var pixelsPerSecond: Double = 24
 
-    /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份。
-    static let zoomRange: ClosedRange<Double> = 4...120
+    /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份（数值与理由见 `VideoEditZoom`）。
+    static let zoomRange = VideoEditZoom.range
+
+    /// 工具栏放大 / 缩小一下乘除多少。
+    static let zoomStep = VideoEditZoom.step
 
     /// 唯一的缩放入口：夹进 `zoomRange`，非法值原样丢弃。
     func setPixelsPerSecond(_ value: Double) {
@@ -399,6 +403,8 @@ final class VideoEditProject: ObservableObject {
 
     /// 预览播放器。0.05s 的回调间隔，字幕叠层和播放头才跟得上。
     let clock = PlayerClock(observationInterval: 0.05)
+    /// 轨道头推子里的电平表（音频 tap 按合成音轨挂，见 VideoEditAudioMeter.swift）。
+    let meters = AudioMeterEngine()
 
     /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
     @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
@@ -407,6 +413,11 @@ final class VideoEditProject: ObservableObject {
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     private var audioPlan: AudioMixPlan?
+    /// `previewAudioLive` 的节流时间戳。
+    private var lastLiveAudioPreview: CFTimeInterval = 0
+    /// 正在块上拖音量线（扫帧 peek 要让位 —— 调音量时画面跟着指针乱跳只会干扰）。
+    /// 不是 @Published：只有 `hoverPeek` 在鼠标事件里读它，不需要驱动重绘。
+    var isDraggingVolume = false
     /// 素材探测失败之类需要用户看见的话。
     @Published var notice: String?
 
@@ -1219,18 +1230,8 @@ final class VideoEditProject: ObservableObject {
         perform { state in
             let group = clip.linkGroup ?? UUID()
             // 源还是那个视频文件，isAudioOnly 只表示这段只取它的声音。
-            let detached = EditClip(
-                sourceURL: clip.sourceURL,
-                isAudioOnly: true,
-                sourceStart: clip.sourceStart,
-                sourceDuration: clip.sourceDuration,
-                speed: clip.speed,
-                timelineStart: clip.timelineStart,
-                volume: clip.volume,
-                linkGroup: group,
-                info: clip.info,
-                audioAssetDuration: clip.info?.duration
-            )
+            // 音量 / 曲线 / 渐变跟着声音走（见 `EditClip.detachedAudio`）。
+            let detached = clip.detachedAudio(linkGroup: group)
             state.update(id) { original in
                 original.isMuted = true
                 original.linkGroup = group
@@ -1472,8 +1473,25 @@ final class VideoEditProject: ObservableObject {
         // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
         // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
         guard !isRebuildingPreview else { return false }
-        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan)
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
         return true
+    }
+
+    /// 拖音量线 / 推子的**过程中**让预览当场听得见，但**不写 `state`**（时间线拖动 §0：
+    /// 每一拍写 @Published 会把整棵编辑器视图树连同自动保存拖垮）。拿一份临时状态算
+    /// audioMix 直接换上；节流到 ~20 次/秒。松手时的真提交走 `perform` → 快路径，
+    /// 手势中途放弃时调一次 `refreshAudioMix()` 换回真状态的 mix。
+    ///
+    /// 同一个 `makeAudioMix`、同一份 plan —— 和快路径、整条重建是同一笔账。
+    func previewAudioLive(_ mutate: (inout TimelineState) -> Void) {
+        let now = CACurrentMediaTime()
+        guard now - lastLiveAudioPreview > 0.05 else { return }
+        guard let plan = audioPlan, !plan.lanes.isEmpty,
+              let item = clock.player.currentItem, !isRebuildingPreview else { return }
+        lastLiveAudioPreview = now
+        var preview = state
+        mutate(&preview)
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: preview, plan: plan, meters: meters)
     }
 
     /// 不然每改一刀就跳回 0:00 没法干活。
@@ -1504,7 +1522,13 @@ final class VideoEditProject: ObservableObject {
             let time = self.clock.time
             let item = AVPlayerItem(asset: built.composition)
             item.videoComposition = built.videoComposition
-            item.audioMix = built.audioMix
+            // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
+            // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
+            // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。
+            meters.beginComposition()
+            item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
+                state: snapshot, plan: built.audioPlan, meters: meters
+            ) ?? built.audioMix
             // 变速片段保持音调，跟导出时 atempo 的听感一致。
             item.audioTimePitchAlgorithm = .spectral
             self.clock.attachItem(item)

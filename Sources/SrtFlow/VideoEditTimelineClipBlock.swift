@@ -52,6 +52,16 @@ struct ClipBlockView: View {
         !isAudioRow && !clip.isAudioOnly && clip.hasAudio && !clip.isMuted && height > 46
     }
 
+    /// 视频块底部那条波形带多高：跟着行高长（行拉高了，声音那一半也该看得清、
+    /// 曲线也该拖得动），最矮 12、最高 64。
+    private var inlineWaveformHeight: Double {
+        guard showsInlineWaveform else { return 0 }
+        return min(64, max(12, (height - 20) * 0.4))
+    }
+
+    /// 这段所在那条轨的推子：波形画「听到的声音」，推子也乘进去。
+    private var trackGain: Double { project.state.trackVolume(for: slot) }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             // 单独隐藏的段（V）：灰显去色，但**不关命中** —— 它还得点得中、拖得动、
@@ -157,21 +167,25 @@ struct ClipBlockView: View {
             .padding(.horizontal, 5)
             .padding(.vertical, 2)
 
-            // 内容区：音频给波形；视频给缩略图条，有声视频底下再垫一条小波形，
+            // 内容区：音频给波形；视频给缩略图条，有声视频底下再垫一条波形带，
             // 一眼能看出这段有没有声、声音在哪起伏（对齐 CapCut 的做法）。
+            //
+            // 波形**铺满块宽、不留左右边距**：它的 x 直接就是「离段起点多少秒 × pps」，
+            // 放大到一帧 200pt 之后，2pt 的边距就是一段看得见的错位。圆角由块的
+            // clipShape 裁。
             if clip.isAudioOnly || isAudioRow {
-                WaveformView(clip: clip)
-                    .padding(.horizontal, 2)
+                WaveformView(clip: clip, pps: pps, trackGain: trackGain)
+                    // 音量线画在波形上、贴着线操作（它自己的命中区只是线那一条窄带）。
+                    .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
                     .padding(.bottom, 2)
             } else if height > 28 {
-                let waveformHeight: Double = showsInlineWaveform ? min(16, (height - 20) * 0.35) : 0
-                ThumbnailStripView(clip: clip, height: max(10, height - 20 - waveformHeight))
+                ThumbnailStripView(clip: clip, height: max(10, height - 20 - inlineWaveformHeight), pps: pps)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                     .padding(.horizontal, 2)
                 if showsInlineWaveform {
-                    WaveformView(clip: clip)
-                        .frame(height: waveformHeight - 2)
-                        .padding(.horizontal, 2)
+                    WaveformView(clip: clip, pps: pps, trackGain: trackGain)
+                        .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
+                        .frame(height: inlineWaveformHeight - 2)
                         .padding(.bottom, 2)
                 }
             }
@@ -306,6 +320,10 @@ struct ClipBlockView: View {
             project.addMarker(toClip: clip.id, atTimeline: project.clock.time)
         }
         .disabled(!clip.contains(time: project.clock.time))
+        // 右键点在音量线上也落到这份菜单（线只接管拖动和点击）。
+        if clip.hasVolumeCurve {
+            Button("Remove Volume Curve") { project.removeVolumeCurve(clip.id) }
+        }
         if !clip.isAudioOnly {
             if clip.hasAudio, !clip.isMuted {
                 Button("Detach Audio") { project.detachAudio(from: clip.id) }

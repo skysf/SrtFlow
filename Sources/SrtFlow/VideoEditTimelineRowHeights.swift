@@ -31,15 +31,16 @@ enum TrackRowKind: Hashable, Sendable {
 
     /// 可拖区间。`nil` = 这一类根本不给拖。
     ///
-    /// 只放开视频轨和音频轨（2026-09-22 用户拍板）。字幕 / 文字 / 形状 /
+    /// 只放开视频轨和音频轨（2026-09-22 用户拍板）。上限 2026-09-23 从 120 / 100 抬到
+    /// 200：立体声拆成两条、在波形上拖音量曲线，都要一条够高的轨。字幕 / 文字 / 形状 /
     /// 滤镜行的行高和块高是一对硬编码常量（字幕行 22 而 cue 块 14、形状行 26
     /// 而块 20），框选的命中判据直接依赖那个差
     /// （docs/architecture/timeline-drag-gestures.md §框选的高）——
     /// 放开就得把那套几何重做一遍。
     var heightRange: ClosedRange<Double>? {
         switch self {
-        case .video: return 28...120
-        case .audio: return 20...100
+        case .video: return 28...200
+        case .audio: return 20...200
         case .other: return nil
         }
     }

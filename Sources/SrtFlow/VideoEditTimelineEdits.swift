@@ -57,6 +57,30 @@ extension EditClip {
         }
         return freeze
     }
+
+    /// 「分离音频」造出来的那一段：同一个源文件、只取声音，挂在 `linkGroup` 上。
+    ///
+    /// **声音的设置跟着走**：音量、音量曲线、渐入渐出都是这段声音自己的属性，
+    /// 分离之后视频那段被静音，留在它身上的这些设置就再也听不见了 —— 用户画好的
+    /// 曲线凭空消失（2026-09-23 随音量曲线补上；在那之前渐入渐出也一直没跟过来）。
+    func detachedAudio(linkGroup group: UUID) -> EditClip {
+        var detached = EditClip(
+            sourceURL: sourceURL,
+            isAudioOnly: true,
+            sourceStart: sourceStart,
+            sourceDuration: sourceDuration,
+            speed: speed,
+            timelineStart: timelineStart,
+            volume: volume,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+            linkGroup: group,
+            info: info,
+            audioAssetDuration: info?.duration
+        )
+        detached.volumeCurve = volumeCurve
+        return detached
+    }
 }
 
 // MARK: - 时间线的纯值变换（分割、定格插入）
@@ -133,6 +157,9 @@ extension TimelineState {
         // 标记同样锚在源时间上，所以两半各带一份**完整**的标记表，各自只画落在
         // 自己窗口里的那些 —— 切口两边谁也不会丢标记，跟关键帧一个处理法。
         right.markers = left.markers
+        // 音量曲线也锚在源时间上：两半各带一份完整的点，切口两边的线连续
+        //（同关键帧；合同见 docs/architecture/audio-volume-curve.md）。
+        right.volumeCurve = left.volumeCurve
         left.sourceDuration = leftSourceLength
         // 切口是硬切，原来的转场跟着右半走。
         left.transitionAfter = .none

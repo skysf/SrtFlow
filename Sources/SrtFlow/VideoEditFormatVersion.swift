@@ -263,6 +263,27 @@ extension TimelineState {
         allClips.contains { $0.remoteKey != nil }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v19-only 持久数据。
+    ///
+    /// **登记清单（新增 v19-only 字段必须同步补进来）：**
+    /// 1. `EditClip.volumeCurve` —— 画在段上的音量曲线（dB，锚在源时间上）。
+    /// 2. `EditLane.volume` / `TimelineState.mainVolume` —— 轨道头的推子。
+    /// 3. `TimelineState.masterVolume` —— 总输出推子。
+    ///
+    /// 为什么要抬：三样都**直接决定成片里的声音**。只认 v18 的旧版照常打开，
+    /// 曲线整条消失（有曲线的段退回画曲线之前的那个 `volume`）、推子全回 0 dB，
+    /// 用户压下去的背景音乐当场盖过人声；随手编辑触发自动保存即永久丢失。
+    /// 判断标准同 docs/bugfixes/2026-08-04-transform-review.md：问的不是「新版能
+    /// 不能读旧文件」，而是「旧版拿到新文件会不会毁数据」。
+    ///
+    /// **按需**：没画过曲线、推子都在 0 dB 的工程不带这些键（`EditClip` /
+    /// `EditLane` / `TimelineState` 的 encode 里各自按同一判据跳过），两处必须同源。
+    /// writer 的定版仍被 v5 的无条件要求接管（一律写 latest），这里保留为登记清单。
+    /// 合同见 docs/architecture/audio-volume-curve.md 与 docs/architecture/audio-mixer.md。
+    var requiresFormatVersion19: Bool {
+        hasVolumeCurves || hasMixerSettings
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {
