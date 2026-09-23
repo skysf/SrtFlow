@@ -66,8 +66,10 @@ struct TransitionLibraryPanel: View {
         case .multipleSelection: return "Select just one clip — a transition goes on one seam at a time."
         case .notAdjacent: return "No continuous footage here — a transition needs two clips that touch."
         case .seam where !isEnabled(.crossFade):
-            // 缝是成立的，只是借不到料 —— 压黑不需要料，所以它是亮的。
-            return "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others."
+            // 缝是成立的，只是片段太短、叠化这类放不下 —— 压黑是两段各自
+            // 的渐变，不需要交叠，所以它是亮的。（余料不够已经改成定格补足，
+            // 不再是灰掉的理由，2026-09-23。）
+            return "These clips are too short to blend, so only Black fade works here."
         case .seam: return nil
         }
     }

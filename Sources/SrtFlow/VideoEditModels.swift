@@ -445,6 +445,16 @@ struct EditClip: Identifiable, Hashable, Sendable {
     var remoteKey: String?
     /// 图片刚拖进来、静帧视频还在后台转：块先上轨可编辑，预览暂时跳过它。
     var needsStillConversion = false
+    /// 转场余料不够时，渲染要把**首帧 / 尾帧定格**多久（时间线秒）。
+    ///
+    /// **只在渲染副本里非零**：唯一的写入方是 `TimelineState.expandingTransitionHandles`
+    /// （两条渲染管线入口处调的那一份），用户的工程里恒为 0、不进工程文件。
+    /// 渲染副本里 `sourceStart` / `sourceDuration` 已经把定格那两截也算进去了
+    /// （所以 `timelineDuration` 照旧是整段长度），真正要从素材里取的那一段见
+    /// `renderSourceStart` / `renderSourceDuration`。2026-09-23 用户拍板：余料不够
+    /// 就定格补足，见 VideoEditTransitionHandles.swift 的 `transitionExtension`。
+    var renderHoldHead = 0.0
+    var renderHoldTail = 0.0
 
     init(
         id: UUID = UUID(),
@@ -517,6 +527,13 @@ struct EditClip: Identifiable, Hashable, Sendable {
 
     var timelineDuration: Double { sourceDuration / max(0.05, speed) }
     var timelineEnd: Double { timelineStart + timelineDuration }
+
+    /// 真正要从素材里取的那一段（素材秒）：去掉首尾定格那两截
+    /// （`renderHoldHead` / `renderHoldTail`，只在渲染副本里非零）。
+    var renderSourceStart: Double { sourceStart + renderHoldHead * max(0.05, speed) }
+    var renderSourceDuration: Double {
+        sourceDuration - (renderHoldHead + renderHoldTail) * max(0.05, speed)
+    }
 
     func contains(time: Double) -> Bool {
         time > timelineStart + 0.001 && time < timelineEnd - 0.001

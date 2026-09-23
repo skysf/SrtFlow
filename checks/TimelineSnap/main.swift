@@ -1269,24 +1269,35 @@ do {
     checkEqual(dropTarget(48, clips, .blackFade), nil, "有空隙时压黑也不接 —— 那不是种类的问题")
 }
 
-// 28d. 零余料：压黑落得下、叠化落不下（容量**与种类有关**，#41 那一刀的成果）
+// 28d. 零余料：**所有种类都落得下**（2026-09-23 用户拍板：余料不够用首尾帧定格补足，
+// 同 Premiere / 达芬奇）。在那之前这里只有压黑能落，用户的原话是「按别的剪辑软件，
+// 只要两段贴在一起就可以应用转场」。
 do {
     let clips = [clip(start: 0, duration: 2), clip(start: 2, duration: 2)]
     check(clips[0].trailingHandle == 0 && clips[1].leadingHandle == 0, "这一版里两边确实都没有余料")
-    checkEqual(dropTarget(48, clips, .crossFade), nil, "零余料的缝上叠化落不下去")
-    checkEqual(dropTarget(48, clips, .pushLeft), nil, "推移同样要两段同时在画面上")
-    checkEqual(dropTarget(48, clips, .blackFade), 0, "压黑走原地斜坡，零余料照样能落")
+    checkEqual(dropTarget(48, clips, .crossFade), 0, "零余料的缝上叠化也落得下（定格补足）")
+    checkEqual(dropTarget(48, clips, .pushLeft), 0, "推移同样落得下")
+    checkEqual(dropTarget(48, clips, .wipeRight), 0, "擦除同样落得下")
+    checkEqual(dropTarget(48, clips, .blackFade), 0, "压黑照旧走原地斜坡")
+}
+
+// 28d-2. 片段太短（不到 0.125s）：叠化这类放不下，压黑放得下 —— 这是容量
+// 仍然「与种类有关」的地方（压黑是两段各自的渐变，不需要交叠）。
+do {
+    let clips = [clip(start: 0, duration: 0.1), clip(start: 0.1, duration: 0.1)]
+    checkEqual(dropTarget(2.4, clips, .crossFade), nil, "0.1s 的两段做不出叠化")
+    checkEqual(dropTarget(2.4, clips, .blackFade), 0, "压黑不需要交叠，照样落得下")
 }
 
 // 28e. 按**正在拖的那张卡**算容量，不是缝上当前设的那种
 do {
-    var first = clip(start: 0, duration: 2)
-    // 缝上现在设着压黑 —— 零余料的缝上它是成立的。拿它去判叠化就会放行一个
-    // 渲染管线做不出来的落点。
+    // 缝上现在设着压黑 —— 两段只有 0.1s，压黑成立、叠化不成立。拿缝上的种类去判
+    // 叠化就会放行一个渲染管线做不出来的落点。
+    var first = clip(start: 0, duration: 0.1)
     first.transitionAfter = .blackFade
-    let clips = [first, clip(start: 2, duration: 2)]
-    checkEqual(dropTarget(48, clips, .crossFade), nil, "拖叠化就按叠化算，不因为缝上是压黑而放行")
-    checkEqual(dropTarget(48, clips, .blackFade), 0, "拖压黑上去仍然成立")
+    let clips = [first, clip(start: 0.1, duration: 0.1)]
+    checkEqual(dropTarget(2.4, clips, .crossFade), nil, "拖叠化就按叠化算，不因为缝上是压黑而放行")
+    checkEqual(dropTarget(2.4, clips, .blackFade), 0, "拖压黑上去仍然成立")
 }
 
 // 28f. 已相叠的缝（磁吸排的）走 45% 那条路，不需要余料
@@ -1297,22 +1308,15 @@ do {
 
 // 28g. 近处那条做不出来、40pt 内还有一条做得出来 → 落在做得出来的那条
 do {
-    // 缝 0（a|b）两边都没有余料；缝 1（b|c）借得到。两条缝只隔 24pt。
-    let a = clip(start: 0, duration: 2)
-    let b = EditClip(
-        sourceURL: media, sourceStart: 0, sourceDuration: 1, timelineStart: 2,
-        info: MediaInfo(
-            duration: 1.5, displaySize: CGSize(width: 1920, height: 1080), frameRate: 30,
-            videoCodec: "h264", audioCodec: nil, hasAudio: false, audioCanCopyToMP4: false, fileBytes: 1
-        )
-    )
-    let c = seamClip(start: 3, duration: 2)
+    // 缝 0（a|b）：a 只有 0.1s，叠化放不下；缝 1（b|c）：两段都够长。
+    // 缝 0 在 0.1s（2.4pt）、缝 1 在 2.1s（50.4pt）。
+    let a = clip(start: 0, duration: 0.1)
+    let b = clip(start: 0.1, duration: 2)
+    let c = clip(start: 2.1, duration: 2)
     let clips = [a, b, c]
-    check(a.trailingHandle == 0 && b.leadingHandle == 0, "缝 0 两边确实都没有余料")
-    check(b.trailingHandle > 0 && c.leadingHandle > 0, "缝 1 两边确实借得到")
-    // 指针在 55pt：离缝 0 只有 7pt、离缝 1 有 17pt，但缝 0 做不出叠化。
-    checkEqual(dropTarget(55, clips, .crossFade), 1, "近处做不出来时落到做得出来的那条")
-    checkEqual(dropTarget(55, clips, .blackFade), 0, "换压黑：近处那条本来就做得出来，落它")
+    // 指针在 20pt：离缝 0 只有 17.6pt、离缝 1 有 30.4pt，但缝 0 做不出叠化。
+    checkEqual(dropTarget(20, clips, .crossFade), 1, "近处做不出来时落到做得出来的那条")
+    checkEqual(dropTarget(20, clips, .blackFade), 0, "换压黑：近处那条本来就做得出来，落它")
 }
 
 // 28h. 越界与主轨不足两段
@@ -1375,16 +1379,24 @@ do {
     gapped.mainClips[1].timelineStart = 2.5
     check(!gapped.hasVisibleTransition(afterOutgoing: first.id), "拖出间隙 → 遮罩没了")
 
-    // 余料被裁没了：叠化做不出来，容量判死，遮罩也就不画
+    // 零余料：叠化照样做得出来（2026-09-23 起余料不够用首尾帧定格补足），遮罩在
     var noSpare = TimelineState()
     var bare = clip(start: 0, duration: 2)
     bare.transitionAfter = .crossFade
     bare.transitionDuration = 0.4
     noSpare.mainClips = [bare, clip(start: 2, duration: 3)]
-    check(!noSpare.hasVisibleTransition(afterOutgoing: bare.id), "余料裁没了 → 叠化做不出来，遮罩没了")
+    check(noSpare.hasVisibleTransition(afterOutgoing: bare.id), "零余料 → 叠化靠定格补足，遮罩在")
+
+    // 片段太短：叠化做不出来，容量判死，遮罩也就不画
+    var tiny = TimelineState()
+    var short = clip(start: 0, duration: 0.1)
+    short.transitionAfter = .crossFade
+    short.transitionDuration = 0.4
+    tiny.mainClips = [short, clip(start: 0.1, duration: 3)]
+    check(!tiny.hasVisibleTransition(afterOutgoing: short.id), "片段太短 → 叠化做不出来，遮罩没了")
     // 同一条缝换成压黑就画得出来 —— 判据跟着种类走，和容量模型同一份
-    noSpare.mainClips[0].transitionAfter = .blackFade
-    check(noSpare.hasVisibleTransition(afterOutgoing: bare.id), "零余料的缝上压黑照样有遮罩")
+    tiny.mainClips[0].transitionAfter = .blackFade
+    check(tiny.hasVisibleTransition(afterOutgoing: short.id), "太短的缝上压黑照样有遮罩")
 }
 
 // MARK: - 30. 落点框：几何必须和松手后的真遮罩一模一样
@@ -1468,17 +1480,17 @@ do {
     checkPreviewMatchesMask(clips, seam: 0, kind: .pushLeft, atX: 48, "已有转场 + 换种类")
 }
 
-// 30c. 容量夹紧：余料不够 0.5s 时按容量来，框跟着变窄
+// 30c. 容量夹紧：0.5s 放不下时按容量来，框跟着变窄
 do {
-    // 两头各 0.12s 余料 → borrowable 0.24，byLength*0.4 = 0.32 → 容量 0.24
-    let clips = [
-        seamClip(start: 0, duration: 2, spare: 0.12), seamClip(start: 2, duration: 3, spare: 0.12),
-    ]
+    // 出场段只有 0.6s → byLength*0.4 = 0.24 → 容量 0.24。
+    //（2026-09-23 之前这里用「两头各 0.12s 余料」造容量；余料不够现在改成定格
+    // 补足，不再限制容量，只有长度说了算。）缝在 0.6s = 14.4pt。
+    let clips = [seamClip(start: 0, duration: 0.6), seamClip(start: 0.6, duration: 3)]
     let preview = TimelineState.transitionDropPreview(
-        atX: 48, pps: pps, mainClips: clips, kind: .crossFade
+        atX: 14.4, pps: pps, mainClips: clips, kind: .crossFade
     )
     checkClose(preview?.duration ?? -1, 0.24, "0.5s 放不下时夹到容量上限")
-    checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 48, "容量夹紧")
+    checkPreviewMatchesMask(clips, seam: 0, kind: .crossFade, atX: 14.4, "容量夹紧")
 }
 
 // 30d. 窄转场：宽度有下限，位置必须按**窗口中心**补偿（#43 那一刀的成果）
@@ -1513,11 +1525,14 @@ do {
     let gapped = [seamClip(start: 0, duration: 2), seamClip(start: 2.5, duration: 3)]
     check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: gapped, kind: .crossFade) == nil,
           "有间隙 → 没有落点框")
-    let bare = [clip(start: 0, duration: 2), clip(start: 2, duration: 2)]
-    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: bare, kind: .crossFade) == nil,
-          "零余料 + 叠化 → 没有落点框")
-    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: bare, kind: .blackFade) != nil,
+    let tiny = [clip(start: 0, duration: 0.1), clip(start: 0.1, duration: 0.1)]
+    check(TimelineState.transitionDropPreview(atX: 2.4, pps: pps, mainClips: tiny, kind: .crossFade) == nil,
+          "片段太短 + 叠化 → 没有落点框")
+    check(TimelineState.transitionDropPreview(atX: 2.4, pps: pps, mainClips: tiny, kind: .blackFade) != nil,
           "同一条缝 + 压黑 → 有框")
+    let bare = [clip(start: 0, duration: 2), clip(start: 2, duration: 2)]
+    check(TimelineState.transitionDropPreview(atX: 48, pps: pps, mainClips: bare, kind: .crossFade) != nil,
+          "零余料 + 叠化 → 有框（2026-09-23 起定格补足）")
     let far = [seamClip(start: 0, duration: 2), seamClip(start: 2, duration: 3)]
     check(TimelineState.transitionDropPreview(atX: 500, pps: pps, mainClips: far, kind: .crossFade) == nil,
           "离任何缝都超过 40pt → 没有框")

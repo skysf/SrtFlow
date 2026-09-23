@@ -4,9 +4,14 @@ import Foundation
 ///
 /// 转场要两段**同时**出现在画面上，而这个编辑器**不挪用户摆好的片段**
 /// （位置是用户的意图，2026-09-20 用户拍板）。两段只是首尾相接时，接缝左边
-/// 只有出场段、右边只有进场段 —— 唯一的出路是向两边借**被裁掉的素材**：出场
-/// 段用它尾巴上没用到的部分，进场段用它头上没用到的部分，转场以接缝为中心各
-/// 向外吃一半。Premiere 和达芬奇管这叫 handles，余量不够时同样是拒绝。
+/// 只有出场段、右边只有进场段 —— 出路是向两边借**被裁掉的素材**：出场段用它
+/// 尾巴上没用到的部分，进场段用它头上没用到的部分。Premiere 和达芬奇管这叫
+/// handles。
+///
+/// **余料不够时用首尾帧定格补足**（2026-09-23 用户拍板，Premiere 的 repeated
+/// frames、达芬奇的 freeze 同一个做法）：以前这种缝上只有压黑能用，别的种类一律
+/// 灰掉，用户的原话是「按别的剪辑软件，只要两段贴在一起就可以应用转场」。
+/// 定格那一截只在渲染副本里存在（`EditClip.renderHoldHead` / `renderHoldTail`）。
 ///
 /// 这么做的账：总时长不变、片段位置不动，而展开之后两段**真的相叠 d**，
 /// 于是导出的 xfade 链和预览的淡变逻辑原样成立（见 `expandingTransitionHandles`）。
@@ -15,8 +20,9 @@ enum TransitionCapacity: Equatable {
     case available(maxDuration: Double)
     /// 两段之间有空隙 —— 那不是一条接缝。
     case notAdjacent
-    /// 首尾相接，但至少一边没有多余素材可借。
-    case noHandles
+    /// 首尾相接，但两段里短的那段太短（不到 0.125 秒），做不出像样的转场。
+    /// （2026-09-23 之前这里是「借不到余料」，余料不够现在改成定格补足了。）
+    case tooShort
 }
 
 /// 拖动中画在主轨上的那个落点框。纯值 —— 画框、落地、断言都读同一份。
@@ -28,6 +34,20 @@ struct TransitionDropPreview: Equatable {
     /// 框的左边界与宽度（pt），和转场遮罩同源。
     let x: Double
     let width: Double
+}
+
+/// 一条缝上的转场让两侧各向外延伸多少（时间线秒）。`tail` / `head` 是借来的
+/// **真素材**，`holdTail` / `holdHead` 是余料不够时用尾帧 / 首帧**定格**补的那一截。
+/// 两侧之和恒等于转场时长 d（见 `TimelineState.transitionExtension`）。
+struct TransitionExtension: Equatable {
+    var tail: Double
+    var head: Double
+    var holdTail: Double
+    var holdHead: Double
+
+    /// 出场段往后延伸的总量、进场段往前延伸的总量。
+    var outgoingExtension: Double { tail + holdTail }
+    var incomingExtension: Double { head + holdHead }
 }
 
 extension EditClip {
@@ -68,10 +88,10 @@ extension TimelineState {
     ///
     /// 压黑就是「A 灭到黑、B 从黑亮起」，两段各自做一道 alpha 斜坡就够了 ——
     /// 主轨片段底下垫的正是黑底，`VideoFade` 那条斜坡出来的**就是**压黑。
-    /// 不借料、不丢内容、长度天然不变。
+    /// 不借料、不定格、不丢内容、长度天然不变，所以首尾相接的缝上它优先走这条路。
     ///
     /// 闪白不行：现有机制垫的是黑底，淡向白色要另铺一层白的。
-    /// 叠化、推移、擦除都要两段同时出现在画面上，更不行。
+    /// 叠化、推移、擦除都要两段同时出现在画面上 —— 它们走借料 + 定格补足那条路。
     static func rendersAsDipInPlace(_ kind: ClipTransition) -> Bool {
         kind == .blackFade
     }
@@ -101,35 +121,29 @@ extension TimelineState {
         if rendersAsDipInPlace(kind) {
             return .available(maxDuration: min(byLength * 0.4, transitionMaxDuration))
         }
-        // 相接 + 其余种类：借余料。
+        // 相接 + 其余种类：先借余料，不够的用首尾帧定格补足（见
+        // `transitionExtension`）。所以**余料多少不再决定能不能放**，只有长度说了算。
         //
-        // **窗口不必对称**。只有出场段有尾料时，把窗口整个放在接缝**之后**照样
-        // 成立：进场段在那段时间本来就在播它自己的开头，出场段拿尾料叠在上面
-        // 淡出 —— 一个完完整整的交叉淡变，两边的可见内容一帧都没少。反过来
-        // 只有进场段有头料时同理，窗口整个落在接缝之前。
-        // 所以容量是**两边余料之和**，不是 2×min（按 min 算会把单边有料的缝
-        // 白白判死，那正是 2026-09-20 第一版的毛病）。
-        let borrowable = outgoing.trailingHandle + incoming.leadingHandle
-        // 半秒的一成：比这还少借不出一帧像样的转场，当没有余料。
-        guard borrowable > 0.05 else { return .noHandles }
         // 长度上限：展开之后 `transitionOverlap` 那条 45% 的护栏会按**展开后**
         // 的长度再夹一次 d，夹到了就说明实际叠掉的量 < d，而展开时已经按 d 让
         // 出去了长度 —— 收不回来，成片会比时间线长出一截。
         //
         // 要让护栏夹不动，得 d ≤ 0.45·a' 且 d ≤ 0.45·b'（a'、b' 是展开后的长度）。
-        // 最坏情况是 d 全从一边借：全借尾料时 a' = a + d、b' = b，b 那边没长，
-        // 于是 d ≤ 0.45·b 是紧的那道；全借头料时对称地变成 d ≤ 0.45·a。
+        // 最坏情况是 d 全加在一边（全借尾料时 a' = a + d、b' = b），于是
+        // d ≤ 0.45·b 是紧的那道；全加在头上时对称地变成 d ≤ 0.45·a。定格补出来的
+        // 那一截和借来的素材一样算进展开后的长度，这笔账不变。
         // 两种都要满足 ⇒ d ≤ 0.45·min(a, b)。取 0.4 留一点余量。
-        let capped = min(borrowable, byLength * 0.4, transitionMaxDuration)
-        guard capped > 0.05 else { return .noHandles }
+        let capped = min(byLength * 0.4, transitionMaxDuration)
+        // 半秒的一成：比这还短做不出一帧像样的转场。
+        guard capped > 0.05 else { return .tooShort }
         return .available(maxDuration: capped)
     }
 
     /// 从转场库拖一张卡片到主轨上时，指针落在哪条缝上 —— 返回**出场段在
     /// `mainClips` 里的下标**（= 缝的编号）；没有可落的缝返回 nil。
     ///
-    /// 判据只问 `transitionCapacity`：`.notAdjacent`（中间有空隙）和 `.noHandles`
-    /// （余料不够）它一并盖住了，而且和两条渲染管线、库面板逐张卡片的可用判定
+    /// 判据只问 `transitionCapacity`：`.notAdjacent`（中间有空隙）和 `.tooShort`
+    /// （片段太短）它一并盖住了，而且和两条渲染管线、库面板逐张卡片的可用判定
     /// 是**同一份** —— 不会出现「拖得上去、成片里没有」。
     ///
     /// **不能改问 `transitionWindow`**：它要求 `transitionAfter != .none`，空缝上
@@ -176,8 +190,38 @@ extension TimelineState {
         return best
     }
 
-    /// 这条缝上 d 秒的转场，各从哪一边借多少。先吃出场段的尾料，不够再找进场
-    /// 段借头料 —— 窗口因此可能整个落在接缝一侧，那是成立的（见上面的说明）。
+    /// 这条缝上 d 秒的转场，两侧各向外延伸多少、其中多少是**定格**补出来的。
+    ///
+    /// - **余料够**（两边加起来 ≥ d）：照旧 `borrowSplit` —— 先吃出场段的尾料，不够
+    ///   再借进场段的头料，一帧都不定格。有真素材就不用静止画面。
+    /// - **余料不够**：两边的余料全用上，差额用首尾帧定格补（2026-09-23 用户拍板），
+    ///   并且让窗口尽量**跨在缝上两边各一半**，和时间线上的遮罩（`transitionWindow`：
+    ///   缝 ± d/2）一致 —— 出场段一侧先补到 d/2，剩下的归进场段。零余料时就是两边
+    ///   各定格 d/2：接缝前半程 A 照常播、B 的首帧定住淡入，后半程反过来。
+    ///
+    /// 两侧延伸之和恒等于 d：展开之后两段正好相叠 d，总长和片段位置都不变。
+    static func transitionExtension(
+        outgoing: EditClip, incoming: EditClip, duration d: Double
+    ) -> TransitionExtension {
+        let tailMaterial = min(outgoing.trailingHandle, d)
+        let headMaterial = min(incoming.leadingHandle, d)
+        if tailMaterial + headMaterial >= d - 1e-9 {
+            let split = borrowSplit(outgoing: outgoing, incoming: incoming, duration: d)
+            return TransitionExtension(
+                tail: split.fromTail, head: split.fromHead, holdTail: 0, holdHead: 0
+            )
+        }
+        let shortfall = d - tailMaterial - headMaterial
+        let holdTail = min(max(0, d / 2 - tailMaterial), shortfall)
+        return TransitionExtension(
+            tail: tailMaterial, head: headMaterial,
+            holdTail: holdTail, holdHead: shortfall - holdTail
+        )
+    }
+
+    /// 这条缝上 d 秒的转场，各从哪一边借多少**真素材**。先吃出场段的尾料，不够再
+    /// 找进场段借头料 —— 窗口因此可能整个落在接缝一侧，那是成立的（见上面的说明）。
+    /// 余料加起来不够 d 时由 `transitionExtension` 补定格，这里只管真素材。
     static func borrowSplit(
         outgoing: EditClip, incoming: EditClip, duration: Double
     ) -> (fromTail: Double, fromHead: Double) {
@@ -308,7 +352,7 @@ extension TimelineState {
         )
     }
 
-    /// 把接缝两侧的片段各向外借 d/2 的余料，让它们**真的相叠 d**。
+    /// 把接缝两侧的片段向外延伸（先借余料、不够的定格补足），让它们**真的相叠 d**。
     ///
     /// 两条渲染管线（预览合成、导出图）都在入口处调这一份，之后它们看到的就是
     /// 一份「相叠」的时间线 —— 原来那套按相叠写的 xfade 链和淡变逻辑一行都不用
@@ -367,23 +411,29 @@ extension TimelineState {
             }
             if after > 0 {
                 expanded.mainClips[index].transitionDuration = after
-                // 这条缝向**我的尾巴**借多少：素材秒 = 时间线秒 × 变速。
-                let tail = Self.borrowSplit(
+                // 这条缝让**我的尾巴**往后延伸多少：借来的尾料 + 定格的尾帧。
+                // 素材秒 = 时间线秒 × 变速；定格那一截也折成素材秒记进
+                // sourceDuration，`timelineDuration` 才是整段长度 —— 渲染时真正
+                // 要取的素材范围见 `EditClip.renderSourceStart/Duration`。
+                let plan = Self.transitionExtension(
                     outgoing: mainClips[index], incoming: mainClips[index + 1], duration: after
-                ).fromTail
-                expanded.mainClips[index].sourceDuration += tail * expanded.mainClips[index].speed
+                )
+                expanded.mainClips[index].sourceDuration +=
+                    (plan.tail + plan.holdTail) * expanded.mainClips[index].speed
+                expanded.mainClips[index].renderHoldTail = plan.holdTail
             }
             if before > 0 {
-                // 上一条缝向**我的头**借多少。头部前移这么多，起点跟着往前挪同
-                // 样多 —— 片段在时间线上的**可见**位置没变，变的是它多带了一段
-                // 用来做转场的引子。借不到（头料为 0）就是 0，那条缝的窗口整个
-                // 落在接缝之后，照样成立。
-                let head = Self.borrowSplit(
+                // 上一条缝让**我的头**往前延伸多少（借来的头料 + 定格的首帧）。
+                // 起点跟着往前挪同样多 —— 片段在时间线上的**可见**位置没变，变的
+                // 是它多带了一段用来做转场的引子。头料为 0 时这一截全是定格。
+                let plan = Self.transitionExtension(
                     outgoing: mainClips[index - 1], incoming: mainClips[index], duration: before
-                ).fromHead
-                expanded.mainClips[index].sourceStart -= head * expanded.mainClips[index].speed
-                expanded.mainClips[index].sourceDuration += head * expanded.mainClips[index].speed
-                expanded.mainClips[index].timelineStart -= head
+                )
+                let lead = plan.head + plan.holdHead
+                expanded.mainClips[index].sourceStart -= lead * expanded.mainClips[index].speed
+                expanded.mainClips[index].sourceDuration += lead * expanded.mainClips[index].speed
+                expanded.mainClips[index].timelineStart -= lead
+                expanded.mainClips[index].renderHoldHead = plan.holdHead
             }
         }
         return expanded

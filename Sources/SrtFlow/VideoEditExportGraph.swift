@@ -319,7 +319,14 @@ enum VideoEditExportGraph {
             let aLabel = nextLabel("a")
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
-                let end = clip.sourceStart + clip.sourceDuration
+                // 真正从素材里取的那一段。转场余料不够时，渲染副本在两头多记了
+                // 一截**定格**（`renderHoldHead` / `renderHoldTail`），那两截不在
+                // 素材里：先按真素材截，变速之后再用 `tpad` 复制首尾帧、声音补
+                // 静音把它们接回去 —— 和预览合成那边「插一帧再拉长」同一笔账。
+                let start = clip.renderSourceStart
+                let end = start + clip.renderSourceDuration
+                let videoHolds = Self.holdSteps(video: clip)
+                let audioHolds = Self.holdSteps(audio: clip)
                 if case .main(let intermediate) = prerendered[clip.id] {
                     // 关键帧动画的段：中间片就是压平好的整段画面（黑底、画布
                     // 尺寸、0 起点、时长=段长），直接进拼接链。声音仍走原素材。
@@ -344,9 +351,9 @@ enum VideoEditExportGraph {
                     let fg = nextLabel("fg")
                     let bg = nextLabel("bg")
                     filters.append(
-                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "[\(source):v]trim=start=\(fmt(start)):end=\(fmt(end))," +
                         "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=\(fps)," +
-                        "\(transformed.chain)[\(fg)]"
+                        "\(videoHolds)\(transformed.chain)[\(fg)]"
                     )
                     filters.append(
                         "color=black:s=\(width)x\(height):r=\(fps):d=\(fmt(segment.duration))[\(bg)]"
@@ -357,8 +364,9 @@ enum VideoEditExportGraph {
                     )
                 } else {
                     filters.append(
-                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "[\(source):v]trim=start=\(fmt(start)):end=\(fmt(end))," +
                         "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=\(fps)," +
+                        "\(videoHolds)" +
                         "scale=\(width):\(height):force_original_aspect_ratio=decrease," +
                         "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[\(vLabel)]"
                     )
@@ -373,8 +381,9 @@ enum VideoEditExportGraph {
                         hasTransitionAfter: segment.transition != .none
                     )
                     filters.append(
-                        "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                        "[\(source):a]atrim=start=\(fmt(start)):end=\(fmt(end))," +
                         "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
+                        "\(audioHolds)" +
                         "volume=\(fmt(clip.volume))," +
                         afadeSteps(fades, timelineDuration: segment.duration) +
                         "aresample=48000," +
@@ -756,6 +765,35 @@ enum VideoEditExportGraph {
             return String(Int(rounded))
         }
         return String(format: "%g", rounded)
+    }
+
+    /// 首尾定格的画面滤镜段（`tpad` 复制首帧 / 尾帧），接在变速和 `fps` 之后 ——
+    /// 那时链上的时间已经是时间线秒，定格时长直接用。没有定格时是空串；
+    /// 有的话自带结尾逗号。只有渲染副本里转场余料不够的主轨段才会有
+    /// （`EditClip.renderHoldHead` / `renderHoldTail`，见 VideoEditTransitionHandles）。
+    static func holdSteps(video clip: EditClip) -> String {
+        var options: [String] = []
+        if clip.renderHoldHead > 0.0005 {
+            options.append("start_mode=clone:start_duration=\(fmt(clip.renderHoldHead))")
+        }
+        if clip.renderHoldTail > 0.0005 {
+            options.append("stop_mode=clone:stop_duration=\(fmt(clip.renderHoldTail))")
+        }
+        return options.isEmpty ? "" : "tpad=" + options.joined(separator: ":") + ","
+    }
+
+    /// 首尾定格对应的声音：定格那两截是静音（前面 `adelay` 垫、后面 `apad` 补）。
+    /// 同样接在变速之后；没有定格时是空串，有的话自带结尾逗号。
+    static func holdSteps(audio clip: EditClip) -> String {
+        var steps = ""
+        if clip.renderHoldHead > 0.0005 {
+            let delay = Int((clip.renderHoldHead * 1000).rounded())
+            steps += "adelay=\(delay)|\(delay),"
+        }
+        if clip.renderHoldTail > 0.0005 {
+            steps += "apad=pad_dur=\(fmt(clip.renderHoldTail)),"
+        }
+        return steps
     }
 
     /// atempo 只吃 0.5–2，之外的倍速拆成一串。返回内容自带结尾逗号。

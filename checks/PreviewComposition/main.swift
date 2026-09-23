@@ -890,6 +890,50 @@ Task {
             }
         }
 
+        // 零余料 + 叠化：**首尾帧定格补足**（2026-09-23 用户拍板）。
+        //
+        // 两段都用满了素材。接缝前半程 A 照常播、B 的**首帧**定住淡入，后半程 B
+        // 照常播、A 的**尾帧**定住淡出；片段位置和总长都不动。纯色素材分辨不出
+        // 「在播」还是「定住」，但分辨得出「定格那一截有没有画面」—— 没做出来就是
+        // 黑的。场景、时刻、期望值和 check-video-fade.sh 的 4b-5 **逐一对应**：
+        // 预览和成片必须同账。
+        do {
+            let holdWhite = try await makeSolidVideo(white: 1, seconds: 4, name: "hold-w.mp4")
+            let holdBlack = try await makeSolidVideo(white: 0, seconds: 4, name: "hold-b.mp4")
+            let holdInfo = MediaInfo(
+                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
+                videoCodec: "h264", audioCodec: nil, hasAudio: false,
+                audioCanCopyToMP4: false, fileBytes: 1
+            )
+            func holdSeam(_ a: URL, _ b: URL) -> TimelineState {
+                var first = EditClip(sourceURL: a, sourceDuration: 4, timelineStart: 0, info: holdInfo)
+                first.transitionAfter = .crossFade
+                first.transitionDuration = 1
+                var state = TimelineState()
+                state.mainClips = [
+                    first, EditClip(sourceURL: b, sourceDuration: 4, timelineStart: 4, info: holdInfo),
+                ]
+                return state
+            }
+            if let built = await VideoEditCompositionBuilder.build(from: holdSeam(holdWhite, holdBlack)) {
+                checkClose(built.composition.duration.seconds, 8, 0.05, "定格补足不许改变合成总长")
+                let late = await averageBrightness(built, at: 4.25)
+                check(abs(late - 0.25) < 0.1,
+                      "白→黑：接缝后 0.25s，A 的尾帧定格还剩 25%（没做出定格这里是全黑），实测 \(late)")
+                let early = await averageBrightness(built, at: 3.75)
+                check(abs(early - 0.75) < 0.1, "白→黑：接缝前 0.25s，A 还有 75%，实测 \(early)")
+            } else {
+                check(false, "白→黑定格场景合成失败")
+            }
+            if let built = await VideoEditCompositionBuilder.build(from: holdSeam(holdBlack, holdWhite)) {
+                let early = await averageBrightness(built, at: 3.75)
+                check(abs(early - 0.25) < 0.1,
+                      "黑→白：接缝前 0.25s，B 的首帧定格已经透出 25%（没做出定格这里是全黑），实测 \(early)")
+            } else {
+                check(false, "黑→白定格场景合成失败")
+            }
+        }
+
     } catch {
         check(false, "自检执行失败：\(error)")
     }

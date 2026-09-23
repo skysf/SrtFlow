@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# **转场的接线守卫**：借余料展开（上半），以及「转场可点选可删除」（下半）。
+# **转场的接线守卫**：借余料展开（上半）、余料不够时定格补足（中段），以及
+# 「转场可点选可删除」（下半）。
 #
 # 转场要两段同时在画面上，而编辑器不挪用户摆好的片段 —— 只能向两边借裁掉的
 # 素材。这件事由 `TimelineState.expandingTransitionHandles()` 一个函数做完，
@@ -37,6 +38,44 @@ if [ "$FAILED" -ne 0 ]; then
 fi
 
 echo "✓ 转场借余料接线守卫通过（两条渲染管线都接上了）"
+
+# ─────────────────────────────────────────────────────────────────────────
+# 中段：余料不够时首尾帧定格补足（2026-09-23 用户拍板）
+#
+# 展开函数在渲染副本里给不够余料的那一侧记一截定格（`EditClip.renderHoldHead` /
+# `renderHoldTail`）。两件事必须同时成立，行为断言（check-video-fade.sh 4b-5、
+# check-preview-composition.sh 定格那一组）证明不了第一件：
+#   ① 定格字段**只许展开函数写**：用户的工程里它恒为 0。别处一写，它就会跟着
+#      工程、撤销栈、剪贴板到处走，而存盘又不存它 —— 预览和成片各说各话。
+#   ② 两条管线都要**消费**它：预览按真素材范围插、两头插定格帧；导出按真素材
+#      范围截、两头 `tpad` / 补静音。漏一条，那条管线的定格那一截就是黑的。
+HANDLES="Sources/SrtFlow/VideoEditTransitionHandles.swift"
+BUILDER="Sources/SrtFlow/VideoEditCompositionBuilder.swift"
+GRAPH="Sources/SrtFlow/VideoEditExportGraph.swift"
+WRITERS="$(grep -rnE '\.renderHold(Head|Tail)[[:space:]]*[-+]?=[^=]' Sources/SrtFlow --include='*.swift' \
+    | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' | grep -v "^${HANDLES}:" || true)"
+if [ -n "${WRITERS}" ]; then
+    echo "  ✗ 定格字段只许 expandingTransitionHandles 写，这些地方也在写：" >&2
+    printf '%s\n' "${WRITERS}" >&2
+    FAILED=1
+else
+    echo "  ✓ 定格字段只有 $(basename "${HANDLES}") 在写"
+fi
+grep -qE '\.renderHold(Head|Tail)[[:space:]]*=' "${HANDLES}" \
+    || { echo "  ✗ 展开函数没写定格字段：余料不够的缝会在渲染时缺一截" >&2; FAILED=1; }
+for needle in 'clip.renderSourceStart' 'clip.renderSourceDuration' 'await insertHold('; do
+    grep -qF "${needle}" "${BUILDER}" \
+        || { echo "  ✗ 预览合成没用 ${needle}：定格那一截会插成素材之外的画面或空段" >&2; FAILED=1; }
+done
+for needle in 'Self.holdSteps(video: clip)' 'Self.holdSteps(audio: clip)' 'let start = clip.renderSourceStart'; do
+    grep -qF "${needle}" "${GRAPH}" \
+        || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的 / 没声音对不上" >&2; FAILED=1; }
+done
+if [ "$FAILED" -ne 0 ]; then
+    echo "✗ 转场定格补足接线守卫失败" >&2
+    exit 1
+fi
+echo "✓ 转场定格补足接线守卫通过（只有展开函数写定格字段，两条管线都消费它）"
 
 # ─────────────────────────────────────────────────────────────────────────
 # 下半：转场可点选、⌫ 可删除（2026-09-20）
