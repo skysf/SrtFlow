@@ -195,6 +195,29 @@ extension TimelineState {
         if touchedMain { sortMainClipsByStart() }
     }
 
+    /// 磁吸开着时，这批落点**最后**会落在哪。
+    ///
+    /// 落地走的是 `perform { insertImported }`，而 `perform` 在磁吸开着时收尾会
+    /// `packMain()` —— 落主轨的段会被拼到故事线末尾，不在指针底下。落点框要是照
+    /// `mediaImportLandings` 的原样画，就是「框在这儿、素材落到那儿」。
+    ///
+    /// 所以在副本上把落地那两步原样走一遍（同一个 `insertImported`、同一个
+    /// `packMain`），读回每一段的起点 —— 不另写一份「磁吸会把它挪到哪」的推算，
+    /// 各算一份迟早分叉。没有段落主轨时原样返回。
+    func landingsAfterMagnet(_ landings: [MediaImportLanding]) -> [MediaImportLanding] {
+        guard landings.contains(where: { $0.target == .main }) else { return landings }
+        var simulated = self
+        let stand = URL(fileURLWithPath: "/dev/null")
+        let placeholders = landings.map { EditClip(sourceURL: stand, sourceDuration: $0.duration) }
+        simulated.insertImported(placeholders, at: landings)
+        simulated.packMain()
+        return zip(placeholders, landings).map { placeholder, landing in
+            var landed = landing
+            if let clip = simulated.clip(with: placeholder.id) { landed.start = clip.timelineStart }
+            return landed
+        }
+    }
+
     /// 导入素材的最短时长。探测失败不会走到这里（那条路直接报错），这是给
     /// 0 长度的畸形文件兜底的。
     static let minimumImportedDuration = 0.1

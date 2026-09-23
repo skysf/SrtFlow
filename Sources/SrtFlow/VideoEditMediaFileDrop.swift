@@ -319,6 +319,9 @@ struct MediaFileDropDelegate: DropDelegate {
         let pointerRow = rowGeometry(for: target ?? .main)
 
         guard !pending.isProbing, let first = pending.media.first else {
+            // 探完了、只有字幕：字幕挂在工程上不占轨，没有落点可画（松手照样挂上）。
+            // 不收掉的话，插入线会一直停在主轨上，看着像要往主轨里放东西。
+            if !pending.isProbing, pending.hasSubtitle { return nil }
             return MediaFileDropPlan(
                 isProbing: true,
                 pointerTime: pointerTime,
@@ -331,11 +334,19 @@ struct MediaFileDropDelegate: DropDelegate {
             anchor: .pointer(pointerTime),
             firstDuration: first.duration
         )
-        let landings = project.state.mediaImportLandings(
+        var landings = project.state.mediaImportLandings(
             pending.media.map(\.item),
             firstStart: resolved.start,
             preferring: target
         )
+        // 磁吸开着时，落主轨的段落地后会被拼到故事线末尾：框画在那儿，不画在指针底下。
+        // 被挪走的话，按指针处算出来的吸附参考线也就不对了，一起收掉。
+        var guides = resolved.guides
+        if project.magnetEnabled {
+            let packed = project.state.landingsAfterMagnet(landings)
+            if packed != landings { guides = [] }
+            landings = packed
+        }
         return MediaFileDropPlan(
             placements: landings.map { landing in
                 let row = rowGeometry(for: landing.target)
@@ -350,7 +361,7 @@ struct MediaFileDropDelegate: DropDelegate {
             pointerTime: pointerTime,
             pointerRowY: pointerRow.y,
             pointerRowHeight: pointerRow.height,
-            guides: resolved.guides
+            guides: guides
         )
     }
 

@@ -329,6 +329,46 @@ do {
     checkEqual(state.mainClips.count, 1, "按较短的一边配对，不越界")
 }
 
+// MARK: - 8. 磁吸开着时，落点框画在拼完之后的位置
+//
+// 落地走 `perform { insertImported }`，磁吸开着时 `perform` 收尾会 `packMain()`：
+// 落主轨的段会被拼到故事线末尾。框要是照 `mediaImportLandings` 原样画，就是
+// 「框在指针底下、素材落到主轨末尾」。
+
+do {
+    var state = TimelineState()
+    state.mainClips = [clip(start: 0, duration: 10)]
+    let raw = state.mediaImportLandings([video(8)], firstStart: 30, preferring: .main)
+    checkEqual(raw.at(0)?.target, .main, "30 秒处主轨空着 → 落主轨")
+    let shown = state.landingsAfterMagnet(raw)
+    checkClose(shown.at(0)?.start ?? -1, 10, "磁吸：框画在拼完之后的位置（接在主轨末尾），不是指针处的 30")
+    // 和真落地对账：同一份落点走 insertImported + packMain，结果必须和框一致。
+    var landed = state
+    landed.insertImported([clip(start: 0, duration: 8)], at: raw)
+    landed.packMain()
+    checkClose(landed.mainClips.at(1)?.timelineStart ?? -1, shown.at(0)?.start ?? -2,
+               "框和落地对得上")
+}
+
+do {
+    // 没有段落主轨（撞上了、抬到上层轨）：磁吸不动它，原样返回。
+    var state = TimelineState()
+    state.mainClips = [clip(start: 0, duration: 30)]
+    let raw = state.mediaImportLandings([video(8)], firstStart: 10, preferring: .main)
+    checkEqual(raw.at(0)?.target, .newOverlayTop, "主轨占着 → 抬轨")
+    checkEqual(state.landingsAfterMagnet(raw), raw, "不落主轨时磁吸不改落点")
+}
+
+do {
+    // 多段都落主轨：拼完之后首尾相接，接在已有素材后面。
+    var state = TimelineState()
+    state.mainClips = [clip(start: 0, duration: 10)]
+    let raw = state.mediaImportLandings([video(4), video(6)], firstStart: 20, preferring: .main)
+    let shown = state.landingsAfterMagnet(raw)
+    checkClose(shown.at(0)?.start ?? -1, 10, "第一段接在主轨末尾 10")
+    checkClose(shown.at(1)?.start ?? -1, 14, "第二段接在第一段后面 14")
+}
+
 // MARK: - 收尾
 
 print("MediaImport checks: \(checks) 项，失败 \(failures) 项")

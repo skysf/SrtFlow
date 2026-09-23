@@ -231,6 +231,9 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
   亮线是骗人的。那种情况下改画**与素材等长的青色占位框**（能一眼看出这 6 秒
   会占到哪里），位置和宽度都由 `TimelineSnap.mainInsertion` 给 —— **落地必须
   调同一个函数**，否则占位框会说谎。
+  从 Finder 拖文件进来同理：落地走 `perform`、收尾才 `packMain`，所以落点框要画在
+  `TimelineState.landingsAfterMagnet`（副本上原样走一遍 `insertImported` + `packMain`）
+  给的位置，被挪走时对齐线一起收掉（[案例](../bugfixes/2026-09-23-file-drop-frame-ignores-magnet.md)）。
 - **跨轨拖动在目标行也画等长占位框**：位置由 `TimelineState.crossTrackLandingSpan`
   给，它和落地的 `relocateClip` 共用同一份核心（`avoidingOverlap` /
   `mainInsertion`）。改挤开/插空的任何一边，另一边必须跟着改 —— 框指哪儿，

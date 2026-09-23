@@ -279,6 +279,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-21 时间线右边小半个视口是死区](docs/bugfixes/2026-09-21-timeline-right-padding-dead-zone.md) — `minWidth` 撑出来的空白不自带命中区；顺序决定命中区盖多大，而界面上看不出来；另一根轴没事纯属被播放头顺手撑住。
 - [2026-09-23 从 Finder 拖文件进时间线标尺以下没反应](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md) — **外部拖入和 App 内拖动是两套路由**：外部拖入只有闭包式 `.onDrop` 收得到，且由**最里面**那个落点区独占认领、类型对不上也不往外找。滤镜/音频库那两个代理式落点因此把文件拖入接住又扔掉，整块滚动内容变死区。三次修错的过程（套用同形旧教训、因果倒置、只修一半）比结论更值得读；守卫曾被写成**方向相反**的一条。**（「两套路由」「代理式收不到外部拖入」两条结论已更正，见下一条。）**
 - [2026-09-23 滤镜 / 音频库 / 转场卡片拖不进时间线](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md) — 上一条的修复把文件落点垫在三套卡片落点**里面**，卡片全被吞了：App 内拖动同样是「最里面那个独占、类型不对也不往外找」，空类型 `.onDrop(of: [])` 也独占。探针实测后改成整条时间线只挂一个 `TimelineDropRouter`；**两边都落不下去的合成拖动 A/B 不是证据**；松手后 SwiftUI 还会补发一拍 `dropUpdated`。
+- [2026-09-23 磁吸开着时拖文件的落点框画错位置](docs/bugfixes/2026-09-23-file-drop-frame-ignores-magnet.md) — 「画框和落地共用一个函数」只共用了落点函数，没复现 `perform` 收尾的 `packMain`；框要在副本上把落地原样走一遍（`landingsAfterMagnet`）。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

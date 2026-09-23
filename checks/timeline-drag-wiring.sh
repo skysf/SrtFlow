@@ -860,6 +860,14 @@ START_CALLS="$(grep -rhE 'importFirstStart\(' Sources/SrtFlow --include='*.swift
 [ "$START_CALLS" -eq 2 ] \
   || fail "importFirstStart 被调了 ${START_CALLS} 次（应为 2：画框一处、落地一处）"
 
+# 4b) 磁吸开着时，落点框画在拼完之后的位置：落地走 perform，perform 收尾会 packMain，
+#     落主轨的段被拼到故事线末尾。框照指针处画的话就是「框在这儿、素材落到那儿」。
+#     挪动本身在纯值的 landingsAfterMagnet 里（scripts/check-media-import.sh 对账）。
+if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint\) -> MediaFileDropPlan\?/,/^    \}/' "$FILE_DROP")"; then
+  printf '%s\n' "$PLAN_BODY" | grep -q 'landingsAfterMagnet' \
+    || fail "文件落点的 plan 没按磁吸拼完之后的位置画框：磁吸开着时框在指针底下、素材却落到主轨末尾"
+fi
+
 # 5) 落地不许回读那份 @State：@Binding 的写入不是同步可见的，回读会让落点晚
 #    一帧（同转场第 5 条）。落点只许从**这一拍的** info.location 算。
 if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
