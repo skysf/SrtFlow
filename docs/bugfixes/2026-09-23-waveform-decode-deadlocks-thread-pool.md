@@ -94,6 +94,12 @@ task。独立二进制实测：同时要 7 个文件的块，0.22 秒全部回�
   生成的 `AudioWindowReader`，它严格一个窗口一个窗口地读，同一时刻最多卡住一条线程，
   凑不满；记为守卫的白名单，理由写在守卫里。
 - `scripts/check-all.sh` 全绿（通过 34 项，失败 0 项）。
+- **PR 上的 CI 首跑红了，红的是新守卫自己**：`blocking-media-reads.sh: line 37: sigline:
+  unbound variable`。守卫在 `$( … )` 里写了 case，CI 用的 `/bin/bash` 3.2 把 case 模式的 `)`
+  当成命令替换的结尾，后面引号全错位；本机 PATH 上是 bash 5.3，所以本机一直是绿的。改成
+  heredoc 装 perl 程序，另外让 `check-all.sh` 把 `.sh` 写的检查一律交给 `/bin/bash` 跑，本机和
+  CI 从此用同一个解析器。经过记在
+  [构建版本与 shell 陷阱](2026-08-06-build-version-and-shell-traps.md) 陷阱 5。
 
 ## 查的过程（值得记的两件事）
 

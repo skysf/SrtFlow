@@ -28,6 +28,11 @@ FAILED_NAMES=""
 run_check() {
   local name="$1"
   shift
+  # shell 写的检查一律交给 macOS 自带的 /bin/bash（3.2）跑：CI 上 `env bash` 找到的就是它，
+  # 本机 PATH 上常常是 Homebrew 的 5.x。两个版本的解析宽严不一样，只在本机跑 5.x 就会
+  # 「本机全绿、CI 当场红」（2026-09-23 blocking-media-reads 首跑，见
+  # docs/bugfixes/2026-08-06-build-version-and-shell-traps.md 陷阱 5）。
+  if [[ "$1" == *.sh ]]; then set -- /bin/bash "$@"; fi
   echo ""
   echo "━━━ ${name} ━━━"
   local started ended

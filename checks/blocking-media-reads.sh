@@ -25,23 +25,43 @@ cd "$(dirname "$0")/.."
 #   同一时刻最多卡住一条线程，凑不满。哪天要并行抽，先挪到 MediaReadQueue。
 ALLOWED="Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift"
 
-HITS="$(find Sources -name '*.swift' | LC_ALL=C sort | while IFS= read -r file; do
-  case " ${ALLOWED} " in *" ${file} "*) continue ;; esac
-  perl -ne '
-    BEGIN { $sig = ""; $sigline = 0; $open = 0 }
-    next if /^\s*\/\//;
-    if (/\bfunc\b/) { $sig = $_; $sigline = $.; $open = !/\{/; }
-    elsif ($open) { $sig .= $_; $open = 0 if /\{/; }
-    if (/copyNextSampleBuffer/ && $sig =~ /\basync\b/) {
-      (my $head = $sig) =~ s/\s+/ /g;
-      printf "%s:%d（在第 %d 行的 async 函数里：%s）\n", "'"${file}"'", $., $sigline, $head;
-    }
-  ' "${file}"
-done)"
+is_allowed() { # is_allowed <文件>
+  local allowed
+  for allowed in ${ALLOWED}; do
+    if [ "$1" = "${allowed}" ]; then return 0; fi
+  done
+  return 1
+}
+
+# 判据是一段 perl，放在带引号的 heredoc 里：一个字都不经 shell 展开，文件名用 perl 自己的
+# `$ARGV`。别改回「`$( … )` 里套 case、再套单引号」的写法 —— macOS 自带的 /bin/bash 3.2
+# （CI 用的就是它）会把 case 模式的 `)` 当成命令替换的结尾，后面的引号全部错位，perl 里的
+# 变量被 shell 展开，`set -u` 当场报 unbound variable。本机 PATH 上是 Homebrew 的 bash 5.3，
+# 一声不吭（2026-09-23 CI 首跑就这么红的）。
+read -r -d '' SCAN <<'PERL' || true
+BEGIN { $sig = ""; $sigline = 0; $open = 0 }
+next if /^\s*\/\//;
+if (/\bfunc\b/) { $sig = $_; $sigline = $.; $open = !/\{/; }
+elsif ($open) { $sig .= $_; $open = 0 if /\{/; }
+if (/copyNextSampleBuffer/ && $sig =~ /\basync\b/) {
+  (my $head = $sig) =~ s/\s+/ /g;
+  printf "%s:%d（在第 %d 行的 async 函数里：%s）\n", $ARGV, $., $sigline, $head;
+}
+PERL
+
+HITS=""
+while IFS= read -r file; do
+  if is_allowed "${file}"; then continue; fi
+  found="$(perl -ne "${SCAN}" "${file}")"
+  if [ -n "${found}" ]; then
+    HITS="${HITS}${found}
+"
+  fi
+done < <(find Sources -name '*.swift' | LC_ALL=C sort)
 
 if [ -n "${HITS}" ]; then
   echo "✗ 这些阻塞读取写在了 async 函数里（会占住 Swift 并发线程池的线程，文件一多整档 QoS 死锁）：" >&2
-  printf '%s\n' "${HITS}" >&2
+  printf '%s' "${HITS}" >&2
   echo "  读采样的循环写成单独的同步函数，交给 MediaReadQueue 跑；见 docs/architecture/blocking-media-reads.md" >&2
   exit 1
 fi
