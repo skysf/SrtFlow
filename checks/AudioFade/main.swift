@@ -64,18 +64,19 @@ func run(_ launchPath: String, _ args: [String]) -> (Int32, String) {
 // MARK: - 素材：**恒定音量**的 4 秒正弦
 
 /// 恒定振幅是这套断言的前提：素材自己不能有起伏，量出来的包络才只能来自渐变。
-func makeTone(_ name: String, withVideo: Bool) -> URL {
+/// 采样率 / 声道数可以换：第 8b 组要一条轨上前后两段的源格式不一样。
+func makeTone(_ name: String, withVideo: Bool, sampleRate: Int = 48_000, channels: Int = 2) -> URL {
     let url = root.appendingPathComponent(name)
     var args = [
         "-y", "-hide_banner", "-loglevel", "error",
-        "-f", "lavfi", "-i", "sine=frequency=440:duration=4:sample_rate=48000",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=4:sample_rate=\(sampleRate)",
     ]
     if withVideo {
         args += ["-f", "lavfi", "-i", "testsrc2=size=320x180:rate=30:duration=4"]
         args += ["-map", "1:v", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
         args += ["-map", "0:a"]
     }
-    args += ["-c:a", "aac", "-b:a", "192k", "-ac", "2", "-t", "4", url.path]
+    args += ["-c:a", "aac", "-b:a", "192k", "-ac", "\(channels)", "-t", "4", url.path]
     let (code, out) = run(ffmpegPath, args)
     if code != 0 { print("造素材失败：\(out)") }
     return url
@@ -580,6 +581,7 @@ func main() async {
 
     // ---- 8. 电平表（checks/AudioFade/Meter.swift）----
     await checkMeters(audioSource: audioSource, videoSource: videoSource)
+    await checkMetersAcrossFormatChange(audioSource: audioSource, videoSource: videoSource)
 
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }

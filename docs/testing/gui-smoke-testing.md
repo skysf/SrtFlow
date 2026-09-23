@@ -38,6 +38,8 @@
   跑的东西（素材重链接、格式版本迁移、音频库的 `remoteKey` 恢复）都只能人手点。
   工程文件可以手写，但 **`savedAt` 必须是 ISO8601 字符串**（reader 设了
   `dateDecodingStrategy = .iso8601`），给数字会被判成「不是 SrtFlow 的工程文件」。
+- `SRTFLOW_SMOKE_MUTE=1` —— 播放器静音（`AVPlayer.volume = 0`，2026-09-23 加）。验播放、
+  电平表时用：人就在机器前，突然外放出声不合适。只压播放器的输出，tap 和电平表照常工作。
 - 测试视频用 vendor/ffmpeg 现造：`-f lavfi -i testsrc2=... -c:v h264_videotoolbox`。
 
 ## 三、驱动与截图
@@ -248,6 +250,25 @@
   饿死。
 - **日志打到 stderr，或者关掉 stdout 的缓冲**（`setvbuf(stdout, nil, _IONBF, 0)`）。进程挂死
   后被 kill，缓冲里的 print 一行也出不来，看上去像「什么都没发生」。
+
+## 五之四、查实时播放（没声音、播不动），不出声
+
+案例：[一条轨上换了音频格式](../bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md)。
+
+- **先分清是数据错了还是实时管线出了事**：把生产的 `VideoEditCompositionBuilder` 和工程读取
+  编进一个小程序（源文件清单抄 `check-audio-fade.sh` 与 `check-project-file.sh` 两份的并集），
+  给用户的工程建合成，用 `AVAssetReaderAudioMixOutput` 逐条合成音轨离线读、按秒量 RMS。数据对，
+  就只剩实时那一段。
+- **实时管线在命令行里也跑得起来，而且可以静音**：同一个小程序里 `AVPlayer(playerItem:)`、
+  `player.volume = 0`、`RunLoop.main.run()`，挂上生产的 `AudioMeterEngine`（`makeAudioMix(…,
+  meters:)`），每秒读一次 `player.currentTime()` 和播放头处的 `rawPeak`。tap 照样被调，播放头照样
+  走（或者照样卡住）—— 不用开窗口、不抢鼠标、不出声。
+- 在真 App 里验播放时带上 `SRTFLOW_SMOKE_MUTE=1`（见第二节）再播。人就在机器前，突然外放出声
+  不合适。
+- 电平表的环默认只留约 1.4 秒（`AudioMeterEngine()` 的 2^16 帧）：**读表要在播放中、在播放头附近
+  读**。播完再回头读一整段，读到的只有最后一秒，其余都是 0，很容易误判成「没声音」。
+- `swiftc -O` 编 40 多个源文件要一分多钟，两份（修前 / 修后）一起编再跑，很容易超过工具的
+  超时 —— 别把「还在编译」当成「卡住了」，先 `ps` 看它的 CPU 时间在不在涨。
 
 ## 六、收尾
 
