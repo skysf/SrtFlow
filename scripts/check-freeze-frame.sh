@@ -39,10 +39,10 @@ grep -q 'participatesInMainTransition' <<<"${ELIGIBLE_BODY}" && {
 }
 echo "✓ 定格准入条件：只禁叠化区，不禁整段"
 
-echo "==> swift build ${ARCH_FLAG}（拿 SrtFlowCore 的模块和目标文件）"
+echo "==> swift build ${ARCH_FLAG} --target SrtFlowCore（拿 SrtFlowCore 的模块和目标文件）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出
 #（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
-BUILD_OUT="$(swift build ${ARCH_FLAG} 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
+BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
 OUT="$(mktemp -d)/freezecheck"
@@ -51,6 +51,7 @@ trap 'rm -rf "$(dirname "$OUT")"' EXIT
 echo "==> 编译自检二进制"
 xcrun swiftc \
   -target "$TRIPLE" \
+  -wmo \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \

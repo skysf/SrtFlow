@@ -21,10 +21,10 @@ if [ ! -x "${FFMPEG_BIN}" ]; then
   exit 1
 fi
 
-echo "==> swift build ${ARCH_FLAG}（拿 SrtFlowCore 的模块）"
+echo "==> swift build ${ARCH_FLAG} --target SrtFlowCore（拿 SrtFlowCore 的模块）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出
 #（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
-BUILD_OUT="$(swift build ${ARCH_FLAG} 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
+BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 
 OUT="$(mktemp -d)/waveformcheck"
 trap 'rm -rf "$(dirname "$OUT")"' EXIT
@@ -32,6 +32,7 @@ trap 'rm -rf "$(dirname "$OUT")"' EXIT
 echo "==> 编译自检二进制"
 xcrun swiftc \
   -target "$TRIPLE" \
+  -wmo \
   -o "$OUT" \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \

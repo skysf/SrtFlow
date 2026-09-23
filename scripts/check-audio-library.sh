@@ -18,10 +18,10 @@ cd "$(dirname "$0")/.."
 ARCH_FLAG="--arch arm64"
 TRIPLE="arm64-apple-macosx15.0"
 
-echo "==> swift build ${ARCH_FLAG}"
+echo "==> swift build ${ARCH_FLAG} --target SrtFlowCore"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出
 #（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
-BUILD_OUT="$(swift build ${ARCH_FLAG} 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
+BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
 OUT="$(mktemp -d)/audiolibrarycheck"
@@ -32,6 +32,7 @@ echo "==> 编译自检二进制"
 # scripts/check-project-file.sh 开头），由 checks/check-script-source-lists.sh 守着。
 xcrun swiftc \
   -target "$TRIPLE" \
+  -wmo \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/AudioLibraryManifest.swift \
