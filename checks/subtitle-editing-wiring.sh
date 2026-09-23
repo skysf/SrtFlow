@@ -35,7 +35,7 @@ BODY="$(extract_func 'private func handleEvent' "$VIEW")"
 if [ -z "$BODY" ]; then
   fail "找不到 handleEvent（在 ${VIEW}），守卫失去目标 —— 改名了就同步改这里"
 else
-  printf '%s\n' "$BODY" | grep -q 'subtitleDraft != nil { return event }' \
+  grep -q 'subtitleDraft != nil { return event }' <<<"$BODY" \
     || fail "handleEvent 没有在快捷键分发前给字幕草稿让路：焦点丢失的那一拍，⌫ 会把正在编辑的 cue 从轨上删掉"
   # 让路必须排在 ⌫ 分支之前 —— 草稿判据放在 keyCode 判断后面等于没判。
   DRAFT_LINE="$(printf '%s\n' "$BODY" | grep -n 'subtitleDraft != nil' | head -1 | cut -d: -f1 || true)"
@@ -51,7 +51,7 @@ CMD_BODY="$(awk '/\.onDeleteCommand/{inside=1} inside{print} inside&&/\}$/{if(NR
 if ! grep -q 'onDeleteCommand' "$VIEW"; then
   fail "找不到 .onDeleteCommand（在 ${VIEW}），守卫失去目标 —— 改名了就同步改这里"
 else
-  printf '%s\n' "$CMD_BODY" | grep -q 'subtitleDraft == nil' \
+  grep -q 'subtitleDraft == nil' <<<"$CMD_BODY" \
     || fail ".onDeleteCommand 没有给字幕草稿让路：⌫ 会从这条路把正在编辑的 cue 删掉"
 fi
 

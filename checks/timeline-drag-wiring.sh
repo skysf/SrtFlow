@@ -60,7 +60,7 @@ extract_func() {
 # 只看**真代码行**：注释里写了同一串不算接上了（第 10 节反向验证时踩过一次
 # 假绿 —— 文件头的说明文字里正好有那行代码的样子）。
 grep_code() {
-  grep -n "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -q .
+  grep -n "$1" "$2" | grep -vE '^[0-9]+:[[:space:]]*//' | grep -c . >/dev/null
 }
 
 require_func() {
@@ -92,8 +92,8 @@ ANIM="$(grep -n '\.animation(.*value: clip\.timelineStart' "$CLIP_BLOCK" || true
 if [ -z "$ANIM" ]; then
   fail "找不到剪辑块那条 .animation(..., value: clip.timelineStart)，接线守卫失去目标"
 else
-  echo "$ANIM" | grep -q 'isTrimming' || fail "剪辑块的 .animation 没豁免裁切中的块（isTrimming）：$ANIM"
-  echo "$ANIM" | grep -q 'dragOffset' || fail "剪辑块的 .animation 没豁免拖动中的块（dragOffset）：$ANIM"
+  grep -q 'isTrimming' <<<"$ANIM" || fail "剪辑块的 .animation 没豁免裁切中的块（isTrimming）：$ANIM"
+  grep -q 'dragOffset' <<<"$ANIM" || fail "剪辑块的 .animation 没豁免拖动中的块（dragOffset）：$ANIM"
 fi
 
 # ── 2. 拖动过程中一个字都不许写进 TimelineState ────────────────────────
@@ -101,18 +101,18 @@ fi
 # 随即积压，块就追不上光标了。
 if UPDATE_BODY="$(require_func 'func updateClipDrag' "$DRAG_WIRING")"; then
   for forbidden in 'liveApply' 'liveMove' 'commitDrag' 'commitFreeDrag' 'relocate' 'project.perform'; do
-    printf '%s\n' "$UPDATE_BODY" | grep -q "$forbidden" \
+    grep -q "$forbidden" <<<"$UPDATE_BODY" \
       && fail "updateClipDrag 里出现了 ${forbidden}：拖动中禁止写 TimelineState"
   done
   # 候选/障碍必须在手势开始时冻住：拖动中重算 = 跟着动的伙伴又变回参考点（粘手）。
-  printf '%s\n' "$UPDATE_BODY" | grep -q 'snapCandidates\|TimelineSnap.candidates\|dragPlan(' \
+  grep -q 'snapCandidates\|TimelineSnap.candidates\|dragPlan(' <<<"$UPDATE_BODY" \
     && fail "updateClipDrag 里重算了冻结输入：候选/障碍只能在 begin 时取一次"
 fi
 
 # ── 3. 一轮拖动的输入必须在手势开始时冻结 ──────────────────────────────
 for entry in 'func beginClipDrag' 'func beginShapeDrag' 'func beginCueDrag'; do
   if BODY="$(require_func "$entry" "$DRAG_WIRING")"; then
-    printf '%s\n' "$BODY" | grep -q '[dD]ragPlan(' \
+    grep -q '[dD]ragPlan(' <<<"$BODY" \
       || fail "${entry} 没有冻结这一轮的输入（dragPlan/shapeDragPlan）"
   fi
 done
@@ -121,27 +121,27 @@ done
 # 磁吸下主轨成员要整批剔除（平了也会被 packMain 排回去 = 拖动中骗人）。
 for entry in 'func movingClipIDs(draggedID' 'func shapeDragPlan(shapeID' 'func cueDragPlan(cueID'; do
   if BODY="$(require_func "$entry" "$PROJECT")"; then
-    printf '%s\n' "$BODY" | grep -q 'draggingClipIDs(' \
+    grep -q 'draggingClipIDs(' <<<"$BODY" \
       || fail "${entry} 没走 TimelineState.draggingClipIDs：链接组/磁吸剔除的规则会各写一份"
-    printf '%s\n' "$BODY" | grep -q 'linkedClipIDs(' \
+    grep -q 'linkedClipIDs(' <<<"$BODY" \
       && fail "${entry} 自己展开了链接组：规则只能有一份（draggingClipIDs）"
   fi
 done
 if BODY="$(require_func 'func draggingClipIDs(' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'for id in seed' \
+  grep -q 'for id in seed' <<<"$BODY" \
     || fail "draggingClipIDs 没有为每一个多选成员展开链接组：另一段的音频会留在原地"
-  printf '%s\n' "$BODY" | grep -q 'magnetPinsMainTrack' \
+  grep -q 'magnetPinsMainTrack' <<<"$BODY" \
     || fail "draggingClipIDs 丢了磁吸剔除主轨成员那条"
 fi
 if BODY="$(require_func 'func dragPlan(draggedID' "$PROJECT")"; then
-  printf '%s\n' "$BODY" | grep -q 'snapCandidates' \
+  grep -q 'snapCandidates' <<<"$BODY" \
     || fail "dragPlan 没有取吸附候选：那这一轮拖动根本不会吸附"
-  printf '%s\n' "$BODY" | grep -q 'ClipDragPlan.make' \
+  grep -q 'ClipDragPlan.make' <<<"$BODY" \
     || fail "dragPlan 没走纯值的 ClipDragPlan.make：那份逻辑自检就够不着了"
 fi
 # 障碍必须排除跟着一起动的块（否则整组被自己人挡住 = 拖不动）。
 if BODY="$(require_func 'static func make(' "$SNAP")"; then
-  printf '%s\n' "$BODY" | grep -q 'filter { !movingIDs.contains' \
+  grep -q 'filter { !movingIDs.contains' <<<"$BODY" \
     || fail "ClipDragPlan.make 的障碍没排除跟着动的块"
 fi
 
@@ -157,43 +157,43 @@ for entry in 'func commitDrag' 'func commitFreeDrag'; do
 done
 # 状态变换本身留在纯值层，自检才够得着。
 if BODY="$(require_func 'mutating func applyDrag' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'clampedStart' \
+  grep -q 'clampedStart' <<<"$BODY" \
     && fail "applyDrag 里又「挤开」了一次：位置只能来自拖动中那份 DragResolution"
-  printf '%s\n' "$BODY" | grep -q 'TimelineSnap\.resolve\|resolve(desiredDelta' \
+  grep -q 'TimelineSnap\.resolve\|resolve(desiredDelta' <<<"$BODY" \
     && fail "applyDrag 里又解析了一遍落点：只能用传进来的 resolution"
-  printf '%s\n' "$BODY" | grep -q 'move(plan.members' \
+  grep -q 'move(plan.members' <<<"$BODY" \
     || fail "applyDrag 没有整组平移：跟随块会被落在旧时刻（A/V 错位）"
-  printf '%s\n' "$BODY" | grep -q 'resolution.delta' \
+  grep -q 'resolution.delta' <<<"$BODY" \
     || fail "applyDrag 没有用整组统一的 resolution.delta"
-  printf '%s\n' "$BODY" | grep -q 'resolution.mainInsertion' \
+  grep -q 'resolution.mainInsertion' <<<"$BODY" \
     || fail "applyDrag 没有用拖动中算好的 mainInsertion：主轨插入指示线会说谎"
   # 落点可能不等于 resolution.delta（磁吸插空、跨轨到岸让位），伙伴必须按
   # **实际**位移再平一次，否则整组相对位置被拆散、链接音频当场 A/V 错位。
-  printf '%s\n' "$BODY" | grep -q 'realignCompanions' \
+  grep -q 'realignCompanions' <<<"$BODY" \
     || fail "applyDrag 没有按实际落点重平伙伴：跨轨/磁吸落地会拆散整组"
   # 磁吸重排必须在 applyDrag 里做完：perform 之后还会排一次，这里不排的话
   # 自检在纯值层看到的就不是最终位置（复审指出的假绿）。
-  printf '%s\n' "$BODY" | grep -q 'if magnet { packMain() }' \
+  grep -q 'if magnet { packMain() }' <<<"$BODY" \
     || fail "applyDrag 没有在磁吸时自己 packMain：自检看到的落点不是最终落点"
 fi
 if BODY="$(require_func 'private mutating func realignCompanions' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'plan.draggedSpan.start' \
+  grep -q 'plan.draggedSpan.start' <<<"$BODY" \
     || fail "realignCompanions 没按「被拖块实际落点 - 冻结起点」算位移"
-  printf '%s\n' "$BODY" | grep -q 'Set(mainClips.map' \
+  grep -q 'Set(mainClips.map' <<<"$BODY" \
     || fail "realignCompanions 没把磁吸下的主轨成员排除：它们由 packMain 定位"
   # 被 packMain 排走的主轨块，它的链接伙伴要跟着**它**走，不是跟着整组的 delta。
   # 少了这条：把一段主轨块拖去别的轨，磁吸合拢主轨，留下的视频挪了、它分离出来的
   # 音频没挪 —— 声画错开一整段。
-  printf '%s\n' "$BODY" | grep -q 'linkedClipIDs(' \
+  grep -q 'linkedClipIDs(' <<<"$BODY" \
     || fail "realignCompanions 没让链接伙伴跟随被排走的主轨块：跨轨会声画错位"
 fi
 # 跨轨到岸让位不许把整组顶过下界（伙伴会各自被 max(0,…) 夹住，相对错位压扁）。
 if BODY="$(require_func 'mutating func applyDrag' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'groupLowerDelta' \
+  grep -q 'groupLowerDelta' <<<"$BODY" \
     || fail "applyDrag 跨轨落地没传整组下界：往左让位会压扁相对错位"
 fi
 if BODY="$(require_func 'func clampedStart(' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'notBefore' \
+  grep -q 'notBefore' <<<"$BODY" \
     || fail "clampedStart 没有下界参数：跨轨让位会越过整组能去的最左边"
 fi
 
@@ -202,13 +202,13 @@ fi
 # 落点一律按「冻结的 span + delta」算**绝对值** —— 磁吸主轨那条分支会拿实际
 # 落点把非主轨成员再平一次，叠加式的写法在那里就是双倍位移。
 if BODY="$(require_func 'private mutating func move(' "$EDITS")"; then
-  printf '%s\n' "$BODY" | grep -q 'member.span.start + delta' \
+  grep -q 'member.span.start + delta' <<<"$BODY" \
     || fail "move 没按「冻结 span + delta」算绝对落点：磁吸那条分支会变成双倍位移"
   for kind in '.clip' '.shape' '.subtitleCue'; do
-    printf '%s\n' "$BODY" | grep -q "case ${kind}" \
+    grep -q "case ${kind}" <<<"$BODY" \
       || fail "move 漏了 ${kind} 这一类成员：框选中的它不会跟着一起动"
   done
-  printf '%s\n' "$BODY" | grep -q 'LinkedSubtitleEditing.setStarts' \
+  grep -q 'LinkedSubtitleEditing.setStarts' <<<"$BODY" \
     || fail "字幕 cue 没走两轨同步的合同：译文会留在旧时刻"
 fi
 
@@ -218,7 +218,7 @@ fi
 for entry in 'private func updateMarquee' 'private func applyMarqueePoint'; do
   if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
     for forbidden in 'applyBoxSelection' 'project.select' 'clearSelection' 'project.perform' 'liveApply'; do
-      printf '%s\n' "$BODY" | grep -q "$forbidden" \
+      grep -q "$forbidden" <<<"$BODY" \
         && fail "${entry} 里出现了 ${forbidden}：拖框中禁止写 project"
     done
   fi
@@ -252,7 +252,7 @@ if [ -z "$GESTURE" ]; then
   fail "找不到块的移动手势，接线守卫失去目标"
 else
   while IFS= read -r line; do
-    printf '%s\n' "$line" | grep -q 'coordinateSpace: \.named(VideoEditTimelineView\.scrollSpace)' \
+    grep -q 'coordinateSpace: \.named(VideoEditTimelineView\.scrollSpace)' <<<"$line" \
       || fail "移动手势没钉在滚动视口坐标系上：$line"
   done <<< "$GESTURE"
 fi
@@ -260,24 +260,24 @@ fi
 # 选中的东西，整片跟着走」对那一类就是空话 —— cue 就这么漏过一轮（复审第 3 条）。
 # 不用「数手势个数」：容器上还挂着拉框手势，数得出来的绿是假绿。
 if BODY="$(require_func 'func subtitleRow' "$SUBTITLE_ROW")"; then
-  printf '%s\n' "$BODY" | grep -q 'DragGesture(minimumDistance: 4' \
+  grep -q 'DragGesture(minimumDistance: 4' <<<"$BODY" \
     || fail "字幕 cue 块没有移动手势：从 cue 起手拖不动整组"
-  printf '%s\n' "$BODY" | grep -q 'beginCueDrag(' \
+  grep -q 'beginCueDrag(' <<<"$BODY" \
     || fail "字幕 cue 的手势没冻结这一轮的输入（beginCueDrag）"
-  printf '%s\n' "$BODY" | grep -q 'endClipDrag(' \
+  grep -q 'endClipDrag(' <<<"$BODY" \
     || fail "字幕 cue 的手势没有落地入口（endClipDrag）"
   # 隐藏 = 不可编辑（与 trackRow 同一条合同）。只灰显不挡事件的话，隐藏的字幕行
   # 照样拖得动，而且改的是**两条**镜像轨的时间。
-  printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(!hidden)' \
+  grep -q 'allowsHitTesting(!hidden)' <<<"$BODY" \
     || fail "字幕行隐藏后仍然吃事件：隐藏轨必须不可编辑"
   # 起手判据要带上「有没有活着的会话」，否则被打断后留下的陈旧 id 会让同一条 cue
   # 的下一次拖动整轮建不出会话。
-  printf '%s\n' "$BODY" | grep -q 'clipDrag == nil || movingCueID != cue.id' \
+  grep -q 'clipDrag == nil || movingCueID != cue.id' <<<"$BODY" \
     || fail "cue 起手只比了 id：手势被打断后同一条 cue 会失效一次"
 fi
 # 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）。
 if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
-  printf '%s\n' "$BODY" | grep -q 'movingCueID = nil' \
+  grep -q 'movingCueID = nil' <<<"$BODY" \
     || fail "onDisappear 没清 movingCueID：下一次拖同一条 cue 会失效一次"
 fi
 grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$SHAPE_ROW" \
@@ -288,7 +288,7 @@ grep -q 'beginClipDrag(' "$VIEW" || fail "剪辑块没有接上 beginClipDrag"
 # 字幕/形状块在行内上下都留了白，按整行判的话框从留白里扫过也会选中。
 if BODY="$(require_func 'private func marqueeRows' "$MARQUEE_VIEW")"; then
   for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
-    printf '%s\n' "$BODY" | grep -q "TimelineMarquee.${constant}" \
+    grep -q "TimelineMarquee.${constant}" <<<"$BODY" \
       || fail "marqueeRows 没用 TimelineMarquee.${constant}：框选纵向又按整行判了"
   done
 fi
@@ -300,7 +300,7 @@ done
 
 # ── 6. 缩放只有一个会夹范围的入口 ──────────────────────────────────────
 # pps 掉到 1 以下时，位移换算会被 max(pps, 1) 兜底，1:1 跟手当场坏掉。
-grep -n 'pixelsPerSecond.wrappedValue = ' "$ZOOM" | grep -vq 'clamped' \
+grep -n 'pixelsPerSecond.wrappedValue = ' "$ZOOM" | grep -vc 'clamped' >/dev/null \
   && fail "捏合直接给 pixelsPerSecond 赋了未夹的值"
 grep -rn 'project.pixelsPerSecond = \|pixelsPerSecond = min(\|pixelsPerSecond = max(' Sources/SrtFlow/VideoEditView.swift \
   && fail "工具栏绕开了 setPixelsPerSecond 这个唯一缩放入口"
@@ -331,12 +331,12 @@ for deco in "struct ThumbnailStripView:${THUMBS}" "struct WaveformView:${WAVEFOR
   if [ -z "$BODY" ]; then
     fail "找不到 ${DECO_NAME}（在 ${DECO_FILE}），装饰命中守卫失去目标 —— 改名了就同步改这里"
   else
-    printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
+    grep -q 'allowsHitTesting(false)' <<<"$BODY" \
       || fail "${DECO_NAME} 没有 allowsHitTesting(false)：scaledToFill 的隐形溢出会把标尺/空白变成块的命中区"
   fi
 done
 if BODY="$(extract_func 'private var keyframeMarkers' "$CLIP_BLOCK")"; then
-  printf '%s\n' "$BODY" | grep -q 'allowsHitTesting(false)' \
+  grep -q 'allowsHitTesting(false)' <<<"$BODY" \
     || fail "keyframeMarkers 没有 allowsHitTesting(false)：菱形会抢走块的点击"
 fi
 
@@ -360,7 +360,7 @@ grep -rn 'TimelineScrollOffsetKey\|preference(\s*key: *TimelineScroll' Sources/S
 # 9b. 框选的锚点和当前点都必须现读（两处都要，只改一处 = 框会自己长歪）。
 for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
   if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
-    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetX' \
+    grep -q 'scrollGeometry\.offsetX' <<<"$BODY" \
       || fail "${entry} 没有现读滚动量（scrollGeometry.offsetX）：框会偏出一个滚动量"
   fi
 done
@@ -389,7 +389,7 @@ grep_code 'offset(y: geometry\.offset\.y)' "$RULER" \
 # 轨道头列的固有高度是所有行加起来（十来条轨 500pt 往上）。直接摆进 HStack 的话
 # 整条时间线会按这个高度要地方，VSplitView 给不了，工具栏和标尺当场被挤出窗口。
 if BODY="$(require_func 'var body: some View' "$HEADER_COLUMN")"; then
-  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+  grep -q 'Color.clear' <<<"$BODY" \
     || fail "轨道头列又自己决定高度了：它必须画在弹性容器上，否则会把工具栏挤出窗口"
 fi
 # 订阅（@ObservedObject）只许出现在这两处：别处订阅 = 滚动的每一帧重建整棵
@@ -407,21 +407,21 @@ grep -rn 'scrollTo(' "${TIMELINE_VIEWS[@]}" | grep -vE '^[^:]+:[0-9]+:[[:space:]
 # 没在推的那一轴一个字都不许碰：内容比视口窄时 SwiftUI 会居中（origin 是负的），
 # 顺手夹一下就会让整条时间线横着跳一大段。
 if BODY="$(require_func 'private func scroll(dx' "$GEOMETRY")"; then
-  printf '%s\n' "$BODY" | grep -q 'dx == 0 ? current.x' \
+  grep -q 'dx == 0 ? current.x' <<<"$BODY" \
     || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：纵向自动滚动那一拍会横着跳"
-  printf '%s\n' "$BODY" | grep -q 'dy == 0 ? current.y' \
+  grep -q 'dy == 0 ? current.y' <<<"$BODY" \
     || fail "scroll(dx:dy:) 把没在推的那一轴也夹了：横向自动滚动那一拍会竖着跳"
 fi
 # 框选的两个端点在**两个轴**上都要补滚动量。
 for entry in 'private func beginMarquee' 'private func applyMarqueePoint'; do
   if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
-    printf '%s\n' "$BODY" | grep -q 'scrollGeometry\.offsetY' \
+    grep -q 'scrollGeometry\.offsetY' <<<"$BODY" \
       || fail "${entry} 没补纵向滚动量：滚下去之后框会整体偏出一个纵向滚动量"
   fi
 done
 # 跨轨判定要按「此刻露出来的是哪几条轨」算（纵向自动滚动期间指针不动、内容在滚）。
 if BODY="$(require_func 'func verticalTarget(' "$DRAG_WIRING")"; then
-  printf '%s\n' "$BODY" | grep -q 'originScrollOffsetY' \
+  grep -q 'originScrollOffsetY' <<<"$BODY" \
     || fail "verticalTarget 没补纵向滚动量：纵向自动滚出来的轨道永远选不中"
 fi
 
@@ -442,7 +442,7 @@ grep_code '@Published var linkageEnabled = false' "$PROJECT" \
 grep_code 'offset(x: playheadX' "$RULER" \
   || fail "标尺没画播放头把手：纵向滚下去之后把手会被标尺盖住"
 if BODY="$(require_func 'private var playhead' "$VIEW")"; then
-  printf '%s\n' "$BODY" | grep -q 'frame(width: 9, height: 14)' \
+  grep -q 'frame(width: 9, height: 14)' <<<"$BODY" \
     && fail "播放头把手又画回滚动内容里了：纵向滚下去会被钉住的标尺盖住"
 fi
 
@@ -466,9 +466,9 @@ done
 # 推子（2026-09-23）：没有推子的行也占着那一格；拖动中不写 state（同音量线）；
 # 标尺那一行放总推子（docs/architecture/audio-mixer.md）。
 if BODY="$(require_func 'private var fader: some View' "$HEADER_COLUMN")"; then
-  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+  grep -q 'Color.clear' <<<"$BODY" \
     || fail "没有推子的行没占住推子那一格：它的眼睛会跑到别人推子的位置上"
-  printf '%s\n' "$BODY" | grep -q 'onLive: { project.previewTrackVolume' \
+  grep -q 'onLive: { project.previewTrackVolume' <<<"$BODY" \
     || fail "拖轨道推子时没走 previewTrackVolume：要么听不见，要么每一拍写 state"
 fi
 grep_code 'masterStrip' "$HEADER_COLUMN" || fail "标尺那一行的总推子不见了"
@@ -480,12 +480,12 @@ grep_code 'meters.beginComposition()' "$PROJECT" \
   || fail "预览重建时没让电平表的 tap 整批重来：旧 tap 挂在旧 item 上"
 [ "$(grep -c 'meters: meters' "$PROJECT")" -ge 3 ] \
   || fail "有换 audioMix 的地方没挂回电平表的 tap（重建 / 快路径 / 试听三处都要）"
-if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditTrackFader.swift | grep -qE 'project\.|perform|liveApply'; then
+if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditTrackFader.swift | grep -cE 'project\.|perform|liveApply' >/dev/null; then
   fail "推子视图自己去碰 project 了：它只该回调 onLive / onCommit（拖动中不写 state）"
 fi
 # 没有色条/没有眼睛的行也必须占着那一格，否则那几行整体左移。
 if BODY="$(require_func 'private var eye: some View' "$HEADER_COLUMN")"; then
-  printf '%s\n' "$BODY" | grep -q 'Color.clear' \
+  grep -q 'Color.clear' <<<"$BODY" \
     || fail "没有眼睛的行没占住眼睛那一格：它的图标会跑到别人眼睛的位置上"
 fi
 # 点选：轨道头点一下选中整行，判据只有 TimelineRowSelection 一份。
@@ -494,14 +494,14 @@ grep_code 'project.selectRow(' "$HEADER_COLUMN" \
 grep_code 'selectedClipIDs\|selectedShapeIDs\|selectedTextIDs\|selectedSubtitleCueIDs' "$HEADER_COLUMN" \
   && fail "轨道头自己写选择了：只能走 project.selectRow（判据留在 TimelineRowSelection）"
 if BODY="$(require_func 'func selectRow(' "$ROW_SELECT_ENTRY")"; then
-  printf '%s\n' "$BODY" | grep -q 'TimelineRowSelection.ids(' \
+  grep -q 'TimelineRowSelection.ids(' <<<"$BODY" \
     || fail "selectRow 没走纯值 TimelineRowSelection.ids：那份判据自检就够不着了"
-  printf '%s\n' "$BODY" | grep -q 'guard !result.isEmpty else { return }' \
+  grep -q 'guard !result.isEmpty else { return }' <<<"$BODY" \
     || fail "selectRow 少了空行早退：点空轨会把用户已有的选择抹掉"
 fi
 # 眼睛必须还是 Button：它自己把点击吃掉，才不会连带触发整行点选。
 if BODY="$(require_func 'private func eyeButton(' "$HEADER_COLUMN")"; then
-  printf '%s\n' "$BODY" | grep -q 'Button(action: action)' \
+  grep -q 'Button(action: action)' <<<"$BODY" \
     || fail "眼睛不是 Button 了：点眼睛会连带把整条轨的素材选中"
 fi
 
@@ -514,7 +514,7 @@ grep_code 'let key: TimelineRowHeightKey?' "$ROW_HEIGHT_DRAG" \
 grep_code 'var key: TimelineRowHeightKey' "$ROW_HEIGHT_DRAG" \
   || fail "行高拖动的起手值没带「是哪条轨」：onEnded 不保证会来，残留值会让下一条轨从别人的高度起算"
 if BODY="$(require_func 'private func base(for key' "$ROW_HEIGHT_DRAG")"; then
-  printf '%s\n' "$BODY" | grep -q 'session.key == key' \
+  grep -q 'session.key == key' <<<"$BODY" \
     || fail "行高拖动的起手值没认轨：拖完 A 再拖 B，B 会从 A 的高度跳一下"
 fi
 # 行高只从 project.rowHeight( 取一份。视图里直接读「一类一个值」的默认高度，
@@ -531,10 +531,10 @@ grep_code 'key: row.heightKey' "$HEADER_COLUMN" \
 # 用户上一次真编辑；走 perform 还会顺手重建预览，拖一下画面闪一次。
 if BODY="$(require_func 'func setRowHeight(' "$PROJECT")"; then
   for forbidden in 'perform' 'liveApply' 'state =' 'scheduleRebuild'; do
-    printf '%s\n' "$BODY" | grep -q "$forbidden" \
+    grep -q "$forbidden" <<<"$BODY" \
       && fail "setRowHeight 里出现了 ${forbidden}：行高是装饰状态，不许进撤销栈/重建预览"
   done
-  printf '%s\n' "$BODY" | grep -q 'documentDidChange()' \
+  grep -q 'documentDidChange()' <<<"$BODY" \
     || fail "setRowHeight 没标脏：调好的行高不会被自动保存带进工程文件"
 fi
 
@@ -548,14 +548,14 @@ grep_code '^ *TransitionMaskView(' "$VIEW" \
 # 拖动开始时把时长定死。改时长会让磁吸重排片段、窗口跟着挪，每一拍拿**实时**
 # 窗口去算增量就是自己追自己（手越拖越飘）——和剪辑块 dragOrigin 同一条纪律。
 if MASK_EDGE="$(require_func 'private func edge(' "$MASK")"; then
-  printf '%s\n' "$MASK_EDGE" | grep -q 'dragStartDuration == nil' \
+  grep -q 'dragStartDuration == nil' <<<"$MASK_EDGE" \
     || fail "转场遮罩的拖动没有在开始时定死时长（dragStartDuration）：磁吸重排会让它自己追自己"
 fi
 
 # 落值必须被容量夹住。拖得出一个渲染管线做不出来的时长，就又回到了
 # 「设了但成片里没有」——那正是 2026-09-20 那次事故的形状。
 if MASK_APPLY="$(require_func 'private func apply(duration:' "$MASK")"; then
-  printf '%s\n' "$MASK_APPLY" | grep -q 'maxDuration' \
+  grep -q 'maxDuration' <<<"$MASK_APPLY" \
     || fail "转场遮罩落值时没有按容量夹紧：能拖出渲染管线做不出来的时长"
 fi
 
@@ -577,7 +577,7 @@ if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
   # 行 `.frame(width: contentWidth, alignment: .topLeading)` 顺手匹配掉，对齐
   # 那条就成了永远为真的假绿；只查 minHeight 的话横向那一半照样能溜过去。
   printf '%s\n' "$BODY" \
-    | grep -q 'minWidth: viewportWidth, minHeight: viewportHeight, alignment: \.topLeading)' \
+    | grep -c 'minWidth: viewportWidth, minHeight: viewportHeight, alignment: \.topLeading)' >/dev/null \
     || fail "时间线滚动内容没有 .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)：内容比视口小时会被居中 —— 纵向会让播放头断线、标尺点不动，横向会让素材不贴左边、框选整体偏到指针右边"
 
   # 2026-09-21 第二轮补的那条：**撑出来的空白必须在命中区里面**。
@@ -620,17 +620,17 @@ fi
 # 「非素材处」不用自己判：块本体 / 标尺 / 把手 / 标记帽子各有自己的手势，
 # SwiftUI 里子视图优先，落到容器上的只剩谁都不认领的空白。
 if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
-  printf '%s\n' "$BODY" | grep -q 'onTapGesture(coordinateSpace: \.local)' \
+  grep -q 'onTapGesture(coordinateSpace: \.local)' <<<"$BODY" \
     || fail "点空白的手势没带 coordinateSpace: .local：拿不到落点，播放头不知道该挪到哪一刻"
-  printf '%s\n' "$BODY" | grep -q 'seekFromTimeline(time: location\.x / pps' \
+  grep -q 'seekFromTimeline(time: location\.x / pps' <<<"$BODY" \
     || fail "点空白没把播放头挪过去（少了 seekFromTimeline）"
-  printf '%s\n' "$BODY" | grep -q 'project\.clearSelection()' \
+  grep -q 'project\.clearSelection()' <<<"$BODY" \
     || fail "点空白不再清空选择：界面上就没有任何地方能取消选中了"
 fi
 # 夹紧只能有一处：标尺和点空白各写一份 min/max 迟早分叉（一边夹到片尾、一边不夹，
 # 点右边那片空白就会把播放头送到工程之外，工具栏上一排按钮随即全灰）。
 if BODY="$(require_func 'func seekFromTimeline(' "$VIEW")"; then
-  printf '%s\n' "$BODY" | grep -q 'min(max(0, time), project.duration)' \
+  grep -q 'min(max(0, time), project.duration)' <<<"$BODY" \
     || fail "seekFromTimeline 没把落点夹进 [0, duration]"
 fi
 grep_code 'seekFromTimeline(time: time, precise: precise)' "$VIEW" \
@@ -685,14 +685,14 @@ ID_LITERALS="$(grep -rhE 'com\.srtflow\.transition' Sources/SrtFlow --include='*
 # 5) 落地和画框必须走**同一个**函数、同一个坐标。各算一次的话，框画在这条缝上、
 #    转场却落到另一条 —— 最难查的一种错。performDrop 里不许回读那份 @State。
 if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
-  printf '%s\n' "$DROP_BODY" | grep -qE 'let target = target\(info\)' \
+  grep -qE 'let target = target\(info\)' <<<"$DROP_BODY" \
     || fail "performDrop 没有用 target(info) 重算落点：读 @State 会和画框那一拍脱节"
 fi
 
 # 6) 落点框只画不吃事件：它盖在主轨上，吃掉 hit test 就会把落点自己挡住
 #    （同第 8 节「块内装饰不吃事件」的理由）。
 if IND_BODY="$(awk '/struct TransitionDropIndicator/,0' "$DRAG")"; then
-  printf '%s\n' "$IND_BODY" | grep -q 'allowsHitTesting(false)' \
+  grep -q 'allowsHitTesting(false)' <<<"$IND_BODY" \
     || fail "落点框没有 allowsHitTesting(false)：会挡住自己的落点"
 fi
 
@@ -710,11 +710,11 @@ NON_DROP="$(awk '/struct TransitionDropDelegate/,/^\}/' "$DRAG" \
 # 10) 心跳不许比这一轮拖放活得久：离开和落地两条路都要 stop()，
 #     少一条 RunLoop 上就留着一个 60Hz 的空转 timer。
 if EXIT_BODY="$(awk '/func dropExited\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
-  printf '%s\n' "$EXIT_BODY" | grep -q 'autoScroller.stop()' \
+  grep -q 'autoScroller.stop()' <<<"$EXIT_BODY" \
     || fail "dropExited 没停心跳：指针离开后时间线会一直自己滚"
 fi
 if DROP_BODY2="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$DRAG")"; then
-  printf '%s\n' "$DROP_BODY2" | grep -q 'autoScroller.stop()' \
+  grep -q 'autoScroller.stop()' <<<"$DROP_BODY2" \
     || fail "performDrop 没停心跳：松手后时间线会一直自己滚"
 fi
 
@@ -726,7 +726,6 @@ fi
 # 12) 视口坐标靠**现读**的滚动量换算（§5b 同一条）。缓存一份的话，自动滚动期间
 #     指针在视口里的位置会越算越偏，边缘带自己就飘走了。
 if SCROLL_BODY="$(awk '/private func autoScroll\(contentX: Double\)/,/^    \}/' "$DRAG")"; then
-  printf '%s\n' "$SCROLL_BODY" | grep -qc 'geometry.offsetX' >/dev/null
   [ "$(printf '%s\n' "$SCROLL_BODY" | grep -c 'geometry.offsetX')" -ge 2 ] \
     || fail "autoScroll 没有两处现读 geometry.offsetX（换算视口坐标一处、滚动后重算一处）"
 fi
@@ -753,22 +752,22 @@ PEEK_FILES="$(grep -rlE '^[^/]*clock\.peek\(at:' --include='*.swift' Sources | s
 if BODY="$(require_func 'func hoverPeek(' "$VIEW")"; then
   # 和点击同一份夹紧：影子指针指着哪儿、画面就得是哪儿。不夹的话，鼠标扫进
   # 工程长度之外的那片空白，影子一路往右跑而画面早就停在最后一帧了。
-  printf '%s\n' "$BODY" | grep -q 'min(max(0, point.x / pps), project.duration)' \
+  grep -q 'min(max(0, point.x / pps), project.duration)' <<<"$BODY" \
     || fail "hoverPeek 没把扫帧时刻夹进 [0, duration]：影子指针会和画面各说各话"
   # 播放中 / 拖块 / 拖框 / 裁切都不扫帧。裁切那条只能从 project 上判 ——
   # `isTrimming` 是剪辑块内的 @State，容器看不见。
   for guard_expr in '!clock.isPlaying' 'clipDrag == nil' 'marquee == nil' 'project.liveEditOrigin == nil'; do
-    printf '%s\n' "$BODY" | grep -qF "$guard_expr" \
+    grep -qF "$guard_expr" <<<"$BODY" \
       || fail "hoverPeek 少了 ${guard_expr} 这道 guard：按住在动的时候画面会被扫帧抢走"
   done
   # 时刻没变就不写：peekTime 是 @Published，每写一次连带整条时间线视图树重算，
   # 而现在鼠标扫过时间线**任何地方**都会走到这里（纵向移动、亚像素抖动算出来
   # 都是同一刻）。
-  printf '%s\n' "$BODY" | grep -q 'clock.peekTime ?? -1' \
+  grep -q 'clock.peekTime ?? -1' <<<"$BODY" \
     || fail "hoverPeek 少了「时刻没变就不写」的门槛：鼠标每动一下都会重算整条时间线"
 fi
 if BODY="$(require_func 'func markerPeek(' "$VIEW")"; then
-  printf '%s\n' "$BODY" | grep -q 'markerPeekTime = time' \
+  grep -q 'markerPeekTime = time' <<<"$BODY" \
     || fail "markerPeek 没记下仲裁位：容器下一拍就会把画面从标记那一帧拽回指针底下"
 fi
 
@@ -813,7 +812,7 @@ if [ -z "$ROUTE_BODY" ]; then
   fail "找不到 TimelineDropRouter.payload（在 ${DROP_ROUTER}）：分派守卫失去目标"
 else
   for t in FilterDrag AudioLibraryDrag TransitionDrag; do
-    printf '%s\n' "$ROUTE_BODY" | grep -q "\[$t\.type\]" \
+    grep -q "\[$t\.type\]" <<<"$ROUTE_BODY" \
       || fail "路由器不认 ${t}：那一套卡片拖上时间线不会有任何反应"
   done
   FILE_ROUTE="$(printf '%s\n' "$ROUTE_BODY" | grep -n '\[\.fileURL\]' | head -1 | cut -d: -f1)"
@@ -838,12 +837,12 @@ grep -q 'case .transition where onMainRow(info)' "$DROP_ROUTER" \
 #     落点框按落地之后的状态重算、挂在时间线上不走；松手点在视口边缘时自动滚动的
 #     心跳还会被重新拉起来。路由器必须先判这一轮还活着没有，四套一个不漏。
 if UPD_BODY="$(awk '/func dropUpdated\(info: DropInfo\)/,/^    \}/' "$DROP_ROUTER")"; then
-  printf '%s\n' "$UPD_BODY" | grep -q 'isLive(payload)' \
+  grep -q 'isLive(payload)' <<<"$UPD_BODY" \
     || fail "路由器的 dropUpdated 没先判 isLive：松手后补发的那一拍会把落点框画回来、把自动滚动重新拉起来"
 fi
 LIVE_BODY="$(awk '/private func isLive\(_ payload: Payload\)/,/^    \}/' "$DROP_ROUTER")"
 for flag in 'MediaFileDrag.pending' 'FilterDrag.preset' 'AudioLibraryDrag.pending' 'TransitionDrag.kind'; do
-  printf '%s\n' "$LIVE_BODY" | grep -qF "$flag" \
+  grep -qF "$flag" <<<"$LIVE_BODY" \
     || fail "isLive 没看 ${flag}：那一套松手后补发的一拍照样会转发"
 done
 # 1e) **「这里不能放」只许回 `.forbidden`，不许回 `.cancel`**（2026-09-23 日志实测）。
@@ -864,7 +863,7 @@ done
 grep -q 'guard let pending = MediaFileDrag.pending, !pending.isUnusable else { return nil }' "$FILE_DROP" \
   || fail "文件落点的 plan 在没有暂存时没返回 nil：这一轮收尾之后还会画框"
 if TRACK_BODY="$(awk '/private func track\(_ location: CGPoint\)/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$TRACK_BODY" | grep -vE '^[[:space:]]*//' | grep -q 'beginProbe' \
+  grep -vE '^[[:space:]]*//' <<<"$TRACK_BODY" | grep -c 'beginProbe' >/dev/null \
     && fail "文件落点的 track 里在补探：松手后补发的那一拍会把落点框按落地之后的状态重新画出来"
 fi
 
@@ -898,7 +897,7 @@ START_CALLS="$(grep -rhE 'importFirstStart\(' Sources/SrtFlow --include='*.swift
 #     落主轨的段被拼到故事线末尾。框照指针处画的话就是「框在这儿、素材落到那儿」。
 #     挪动本身在纯值的 landingsAfterMagnet 里（scripts/check-media-import.sh 对账）。
 if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint\) -> MediaFileDropPlan\?/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$PLAN_BODY" | grep -q 'landingsAfterMagnet' \
+  grep -q 'landingsAfterMagnet' <<<"$PLAN_BODY" \
     || fail "文件落点的 plan 没按磁吸拼完之后的位置画框：磁吸开着时框在指针底下、素材却落到主轨末尾"
 fi
 
@@ -907,32 +906,32 @@ fi
 #     起点退到末尾之前、撞上已有素材被抬轨，要落进主轨得把指针拖到末尾右边 30 秒
 #     开外。滤镜卡片时长短，仍按中点，不在这条里。
 if START_BODY="$(require_func 'func importFirstStart(anchor:' "$FILE_DROP")"; then
-  printf '%s\n' "$START_BODY" | grep -q '/ 2' \
+  grep -q '/ 2' <<<"$START_BODY" \
     && fail "importFirstStart 又按中点对齐了：长素材的起点会退回半段时长，拖到主轨末尾后面也落不进主轨"
 fi
 if AUDIO_PLAN="$(require_func 'private func plan(at location: CGPoint) -> AudioLibraryDropPlan?' Sources/SrtFlow/AudioLibraryDrag.swift)"; then
-  printf '%s\n' "$AUDIO_PLAN" | grep -q 'duration / 2' \
+  grep -q 'duration / 2' <<<"$AUDIO_PLAN" \
     && fail "音频库落点又按中点对齐了：整首音乐的起点会退回一分多钟，拖到哪都落不到指针那儿"
 fi
 
 # 5) 落地不许回读那份 @State：@Binding 的写入不是同步可见的，回读会让落点晚
 #    一帧（同转场第 5 条）。落点只许从**这一拍的** info.location 算。
 if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$DROP_BODY" | grep -q 'info.location.x / pps' \
+  grep -q 'info.location.x / pps' <<<"$DROP_BODY" \
     || fail "文件落点的 performDrop 没按这一拍的指针算时间：读 preview 会和画框那一拍脱节"
-  printf '%s\n' "$DROP_BODY" | grep -q 'trackTarget(at: info.location)' \
+  grep -q 'trackTarget(at: info.location)' <<<"$DROP_BODY" \
     || fail "文件落点的 performDrop 没按这一拍的指针算目标轨"
-  printf '%s\n' "$DROP_BODY" | grep -q 'defer { finish() }' \
+  grep -q 'defer { finish() }' <<<"$DROP_BODY" \
     || fail "文件落点的 performDrop 没收尾（finish）：暂存留着，心跳也可能空转"
 fi
 if EXIT_BODY="$(awk '/func dropExited\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$EXIT_BODY" | grep -q 'finish()' \
+  grep -q 'finish()' <<<"$EXIT_BODY" \
     || fail "文件落点的 dropExited 没收尾（finish）：指针离开后框还挂着"
 fi
 if FINISH_BODY="$(awk '/private func finish\(\)/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$FINISH_BODY" | grep -q 'autoScroller.stop()' \
+  grep -q 'autoScroller.stop()' <<<"$FINISH_BODY" \
     || fail "finish 没停心跳：指针离开后时间线会一直自己滚"
-  printf '%s\n' "$FINISH_BODY" | grep -q 'MediaFileDrag.reset()' \
+  grep -q 'MediaFileDrag.reset()' <<<"$FINISH_BODY" \
     || fail "finish 没清暂存：下一次拖进来会拿上一批文件画框"
 fi
 
@@ -944,7 +943,7 @@ NON_DROP="$(awk '/struct MediaFileDropDelegate/,/^\}/' "$FILE_DROP" \
 
 # 6b) 滚动量只许 TimelineScrollGeometry 一处读（§5b）：文件落点自己摸 NSScrollView
 #     的话，滚动量就有了第二份账。
-if grep -vE '^[[:space:]]*(//|///|\*)' "$FILE_DROP" | grep -q 'NSScrollView'; then
+if grep -vE '^[[:space:]]*(//|///|\*)' "$FILE_DROP" | grep -c 'NSScrollView' >/dev/null; then
   fail "$FILE_DROP 自己摸 NSScrollView 了：滚动量只许 TimelineScrollGeometry 一处读"
 fi
 
@@ -965,22 +964,22 @@ TOKEN_GUARDS="$(printf '%s\n' "$PROBE_BODY" | grep -c 'MediaFileDrag.pending?.to
 #     ① 进场读 URL 走拖放剪贴板，不走 itemProviders；
 #     ② 「确知不可落」的判据里必须带上「URL 真读到了」这一项；
 #     ③ 落地不许因为探测结论而提前返回。
-printf '%s\n' "$PROBE_BODY" | grep -q 'MediaFileDrag.draggedURLs()' \
+grep -q 'MediaFileDrag.draggedURLs()' <<<"$PROBE_BODY" \
   || fail "beginProbe 没走 draggedURLs（拖放剪贴板）：itemProviders 在松手前经常是空的，整条拖入会静默失效"
-if printf '%s\n' "$PROBE_BODY" | grep -vE '^[[:space:]]*(//|///|\*)' | grep -q 'itemProviders'; then
+if grep -vE '^[[:space:]]*(//|///|\*)' <<<"$PROBE_BODY" | grep -c 'itemProviders' >/dev/null; then
   fail "beginProbe 又去读 itemProviders 了：松手前它经常返回空，这是首测「拖进去没反应」的另一个根因"
 fi
 grep -q 'var isUnusable: Bool { !isProbing && !urls.isEmpty' "$FILE_DROP" \
   || fail "isUnusable 少了「URL 真读到了」这一项：读不到 URL 会被当成「文件不行」，整条拖入当场变成不可落"
 if DROP_BODY3="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$DROP_BODY3" | grep -q 'isUnusable' \
+  grep -q 'isUnusable' <<<"$DROP_BODY3" \
     && fail "performDrop 拿探测结论当闸门：探测本来只为画框和 dropUpdated 的禁止号，拿它决定落不落就会把整次拖入吞掉"
 fi
 
 # 8) 落点框只画不吃事件（同第 8 节「块内装饰不吃事件」）：它盖在轨道上，吃掉
 #    hit test 就会把落点自己挡住。
 if IND_BODY="$(awk '/struct MediaFileDropIndicator/,/^\}/' "$FILE_DROP")"; then
-  printf '%s\n' "$IND_BODY" | grep -q 'allowsHitTesting(false)' \
+  grep -q 'allowsHitTesting(false)' <<<"$IND_BODY" \
     || fail "MediaFileDropIndicator 没有 allowsHitTesting(false)：会挡住自己的落点"
 fi
 # 8b) 落点框的**外观只有一份账**：新轨那种「行还不存在」的缩略框，跨轨拖动
@@ -995,20 +994,20 @@ NEW_LANE_CALLS="$(grep -rh 'newLaneY(' Sources/SrtFlow --include='*.swift' \
 # 9) ⌘V 两边认的东西必须一致。`paste(_:)` 收的和 `validateMenuItem` 亮的对不上，
 #    要么点了没反应，要么明明能粘却是灰的。
 if PASTE_BODY="$(awk '/@objc func paste\(_ sender: Any\?\)/,/^    \}/' "$APP_ENTRY")"; then
-  printf '%s\n' "$PASTE_BODY" | grep -q 'pasteMediaFiles()' \
+  grep -q 'pasteMediaFiles()' <<<"$PASTE_BODY" \
     || fail "paste(_:) 不认文件：⌘V 粘贴 Finder 复制的素材会没反应"
 fi
 if VALIDATE_BODY="$(awk '/func validateMenuItem/,/^    \}/' "$APP_ENTRY")"; then
-  printf '%s\n' "$VALIDATE_BODY" | grep -q 'MediaFileDrag.pasteboardURLs()' \
+  grep -q 'MediaFileDrag.pasteboardURLs()' <<<"$VALIDATE_BODY" \
     || fail "validateMenuItem 没把文件算进 Paste 的亮灭：剪贴板里有文件时菜单项仍是灰的"
 fi
 # 判据必须**同步**：validateMenuItem 等不了异步，所以只能读 NSPasteboard。
 # 两个读入口（⌘V 的系统剪贴板、拖放的拖放剪贴板）共用同一个 helper，
 # 它一旦变成异步，两边一起坏。
 if PB_BODY="$(awk '/private static func urls\(from pasteboard/,/^    \}/' "$FILE_DROP")"; then
-  printf '%s\n' "$PB_BODY" | grep -q 'pasteboard.readObjects' \
+  grep -q 'pasteboard.readObjects' <<<"$PB_BODY" \
     || fail "urls(from:) 没走 NSPasteboard 的同步读：validateMenuItem 等不了异步"
-  if printf '%s\n' "$PB_BODY" | grep -q 'await'; then
+  if grep -q 'await' <<<"$PB_BODY"; then
     fail "urls(from:) 里有 await：菜单项的亮灭判据必须同步"
   fi
 else
@@ -1038,7 +1037,7 @@ grep_code 'context.clipBoundingRect' "$THUMBS" \
 grep_code 'Slider(value: zoomSliderBinding' Sources/SrtFlow/VideoEditView.swift \
   || fail "缩放滑杆不是对数刻度的那个 binding 了"
 if BODY="$(awk '/private var zoomSliderBinding/,/^    \}$/' Sources/SrtFlow/VideoEditView.swift)"; then
-  printf '%s\n' "$BODY" | grep -q 'setPixelsPerSecond(exp(' \
+  grep -q 'setPixelsPerSecond(exp(' <<<"$BODY" \
     || fail "缩放滑杆没走 setPixelsPerSecond（唯一的缩放入口）"
 fi
 # 波形的数据按文件读一次（多级峰值），不许退回「每段按范围读成固定几百根柱子」——
@@ -1061,13 +1060,13 @@ grep_code 'VolumeCurveLayout.hitPath(' "$VOLUME_CURVE" \
 grep_code 'VolumeCurveLayout.dragging(' "$VOLUME_CURVE" \
   || fail "拖音量线上的点没走 VolumeCurveLayout.dragging：偏着抓的点会跳到指针底下"
 # （词边界：removeVolumePoint 里也含这串字母。）
-if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -qE '(^|[^[:alnum:]_])moveVolumePoint\('; then
+if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -cE '(^|[^[:alnum:]_])moveVolumePoint\(' >/dev/null; then
   fail "音量线视图里直接调了 moveVolumePoint（按指针绝对位置搬点）：拖点要走 VolumeCurveLayout.dragging"
 fi
 # 拖动中不写 TimelineState（§0）：声音靠 previewAudioLive 临时换 mix，松手才落一次。
 grep_code 'previewAudioLive' "$VOLUME_CURVE" \
   || fail "拖音量线时没走 previewAudioLive：要么听不见，要么在每一拍写 state"
-if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -qE 'liveApply|perform[ (]\{|\.perform\('; then
+if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -cE 'liveApply|perform[ (]\{|\.perform\(' >/dev/null; then
   fail "音量线在手势里直接写 state 了（liveApply / perform）：拖动中每一拍都会重建整棵视图树"
 fi
 grep_code 'commitVolumeEdit' "$VOLUME_CURVE" \

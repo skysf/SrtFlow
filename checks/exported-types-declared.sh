@@ -54,7 +54,7 @@ while IFS= read -r hit; do
     continue
   fi
   COUNT=$((COUNT + 1))
-  printf '%s\n' "${DECLARED}" | grep -qxF "${id}" || {
+  grep -qxF "${id}" <<<"${DECLARED}" || {
     echo "✗ ${id}（${file}）没在 ${PLIST} 的 UTExportedTypeDeclarations 里声明：系统认不出这个类型，拖放会被静默拒绝" >&2
     FAILED=1
   }

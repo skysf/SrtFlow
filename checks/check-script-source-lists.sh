@@ -92,7 +92,7 @@ swiftc_sources() { # swiftc_sources <脚本> —— 打印它编进自检二进�
 
 SCRIPTS=""
 for script in scripts/*.sh checks/*.sh; do
-  swiftc_sources "$script" | grep -qx "$HUB" \
+  swiftc_sources "$script" | grep -cx "$HUB" >/dev/null \
     && SCRIPTS="${SCRIPTS}${script}
 "
 done
@@ -102,7 +102,7 @@ SCRIPTS="$(printf '%s' "$SCRIPTS")"
 for script in $SCRIPTS; do
   LISTED="$(swiftc_sources "$script")"
   for companion in $HUB_COMPANIONS; do
-    printf '%s\n' "$LISTED" | grep -qx "$companion" \
+    grep -qx "$companion" <<<"$LISTED" \
       || fail "${script} 的源文件清单缺 ${companion}（${HUB} 用到了它，编不过）"
   done
 done
@@ -118,7 +118,7 @@ for script in scripts/*.sh checks/*.sh; do
   [ -n "$LISTED" ] || continue
   for listed in $LISTED; do
     for companion in $(companions_of "$listed"); do
-      printf '%s\n' "$LISTED" | grep -qx "$companion" \
+      grep -qx "$companion" <<<"$LISTED" \
         || fail "${script} 的源文件清单缺 ${companion}（${listed} 用到了它，编不过）"
     done
   done

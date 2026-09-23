@@ -247,7 +247,7 @@ require "生产抽取器必须真接上 AudioWindowReader" \
 # 无音轨素材在检查之前就抛 ReadError，取消会被跳过逻辑吞成「素材都读不了」。
 if ! grep -A2 'SubtitleAudibleClips\.selectProbe(' \
       Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
-      | grep -q 'isCancelled: { token.isCancelled }'; then
+      | grep -c 'isCancelled: { token.isCancelled }' >/dev/null; then
   echo "✗ 接线守卫：selectProbe 必须收到 token 的取消通道" >&2
   WIRING_FAIL=1
 fi

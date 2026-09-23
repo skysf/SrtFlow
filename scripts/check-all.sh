@@ -50,6 +50,7 @@ run_check "SrtFlowCoreChecks（核心库）" swift run --arch arm64 SrtFlowCoreC
 run_check "no-hardcoded-fps（扫描守卫）" checks/no-hardcoded-fps.sh
 run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-build-output.sh
 run_check "shell-var-boundary（扫描守卫）" checks/shell-var-boundary.sh
+run_check "shell-pipe-grep-q（扫描守卫）" checks/shell-pipe-grep-q.sh
 run_check "exported-types-declared（扫描守卫）" checks/exported-types-declared.sh
 run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh

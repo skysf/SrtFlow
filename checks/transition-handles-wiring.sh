@@ -24,7 +24,7 @@ FAILED=0
 for file in Sources/SrtFlow/VideoEditExportGraph.swift \
             Sources/SrtFlow/VideoEditCompositionBuilder.swift; do
     # 只认没被注释掉的调用：`// state = state.expanding…` 不算接上。
-    if grep -n "$CALL" "$file" | grep -qv '^\s*[0-9]*:\s*//'; then
+    if grep -n "$CALL" "$file" | grep -vc '^\s*[0-9]*:\s*//' >/dev/null; then
         echo "  ✓ $(basename "$file") 调了 $CALL"
     else
         echo "  ✗ $(basename "$file") **没有**调 $CALL —— 这条管线会按没展开的几何渲染" >&2
@@ -102,6 +102,7 @@ code_of() { grep -vE "^[[:space:]]*(//|\*)" "$1"; }
 # **一律用 `grep -c`，不要用 `grep -q`**：`-q` 一命中就退出，上游的 `grep -v` 当场
 # 吃到 SIGPIPE，`set -o pipefail` 再把整条管线判成失败 —— 于是命中反而报「少了」，
 # 而且成不成立要看两个进程谁先跑完，时灵时不灵。`-c` 会读完全部输入。
+#（2026-09-23 升格成全仓库的规矩，由 checks/shell-pipe-grep-q.sh 钉住。）
 hits() { code_of "$1" | grep -cE "$2" || true; }
 
 need() {   # need <文件> <正则> <人话>

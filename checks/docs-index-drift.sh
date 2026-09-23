@@ -36,7 +36,7 @@ LINKS="$(grep -o '([^()]*\.md)' "$INDEX" | tr -d '()' | sort -u)"
 
 # ── 1. docs/ 下的每一份 .md 都必须被索引 ──────────────────────────────
 while IFS= read -r doc; do
-  printf '%s\n' "$LINKS" | grep -qx "$doc" \
+  grep -qx "$doc" <<<"$LINKS" \
     || fail "${doc} 没有出现在 ${INDEX} 的索引里：只读 AGENTS.md 的代理永远打不开它 —— 按「文档目录职责」补一行到对应的索引小节"
 done < <(find docs -name '*.md' | sort)
 
