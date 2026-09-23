@@ -22,7 +22,7 @@ mkdir -p "$OUT"
 for f in data/raw.tsv data/raw.meta.tsv audio_licenses.txt; do
   name="$(basename "$f")"
   if [ -s "$OUT/$name" ]; then
-    echo "  已有 $name（$(wc -c <"$OUT/$name" | tr -d ' ') 字节），跳过"
+    echo "  已有 ${name}（$(wc -c <"$OUT/$name" | tr -d ' ') 字节），跳过"
     continue
   fi
   echo "  下载 $name …"

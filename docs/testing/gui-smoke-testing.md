@@ -143,6 +143,59 @@
   开头缓存的 bounds 换算，点击会整体偏移到别的控件上——按窗口 ID 截的图里
   一切正常，唯独行为"莫名其妙"，就是这个原因。
 
+- **Finder 的拖放注入不了**：CGEvent 驱动 Finder 不会起 `NSDraggingSession`
+  （2026-09-22 实测，光标动了、`AXIsProcessTrusted` 也为真，就是不起会话）。
+  「从别的 App 拖文件进来」这条路要用下面那套自带拖源的装置。
+- **SwiftUI 的 `.onDrag`（App 内拖动）也注入不了**：合成事件能让它起手
+  （`.onDrag` 闭包会被调到，拖动图像也跟着指针走），但落不下去，目标那边的落点
+  一个回调都收不到（2026-09-23 在探针上重测，同进程的空白探针 App 也一样）。
+  外部拖源改拖自定义类型来模拟，在探针上连只有一个落点的对照格都是 op=0 —— 但那是
+  因为探针的类型**没在 Info.plist 里声明**（系统认不出没声明的类型，见
+  [案例](../bugfixes/2026-09-23-custom-drag-types-not-declared.md)），不是「外部来的
+  自定义类型一概不认」。声明之后能不能用外部拖源模拟卡片拖放，还没测。
+  **滤镜 / 音频库 / 转场三套拖放目前只能人工验**。
+  **也别拿合成拖动做 A/B**：改前改后都落不下去，「结果一样」什么都证明不了 ——
+  2026-09-23 就是拿这样一个 A/B 当了「垫层不影响 App 内拖放」的证据，结果三套卡片
+  全被垫层吞了（[案例](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)）。
+
+## 四之二、跨 App 文件拖放的重放装置
+
+`scripts/gui-smoke/external-file-drag/replay.sh <文件> <落点x> <落点y>`
+
+自带一个最小的 AppKit 拖源 App（Finder 不吃合成事件，所以得自己造一个），起的是
+真正的跨进程拖放会话，被测 App 那边分不出区别。判据看拖源的
+`draggingSession(_:endedAt:operation:)`：
+
+- `op=1` —— 落点被接受；
+- `op=0` —— **没人要**：那个位置没有活的文件落点区，或者被某个落点区认领了又扔掉。
+
+`op` 比被测 App 自己的日志更硬：它是拖放会话的最终结果，不依赖被测 App 记账。
+坐标是全局屏幕坐标、左上为原点，和 System Events 报的窗口 position 同一套。
+
+这套装置是
+[2026-09-23 时间线文件拖放](../bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)
+那个 bug 定性的唯一手段 —— 在它之前，三轮修复每一轮都要用户实拖一次，而实拖
+只能回答「还是不行」。够不着的交互，值得自己造一个源。
+
+拖源窗口摆在**主屏**右上角。多显示器时别用 Finder 的 desktop bounds 算位置（那是
+所有屏幕的并集）：2026-09-23 实测算出来的位置不在任何一块屏上，AppKit 把拖源挪到了
+被测窗口正上方，盖住落点，重放得到一个假的 op=0。**任何一次 op=0，先看拖源窗口
+在哪**（`osascript -e 'tell application "System Events" to get position of window 1 of process "DragSource"'`）。
+
+## 四之三、落点路由探针
+
+`scripts/gui-smoke/drop-routing-probe/probe.sh`
+
+一个独立的 SwiftUI 小 App，每格只放一种落点组合（代理式 / 闭包式 / 空类型、同一
+视图叠两个 / 跨视图嵌套），所有回调写日志，启动时打印每格的中心点。配合上面的
+`replay.sh` 往格子里拖文件，看 op 和日志里是哪一格收到了回调；顶上两张卡片是
+`.onDrag` 拖源，App 内拖动那一半人手拖。
+
+**改时间线的 `.onDrop` 结构之前，先在这儿把想法测一遍。** 在 SrtFlow 里二分，
+被测的落点常常被别的落点盖着 —— 「代理式收不到外部拖入」这条错误结论就是这么测
+出来的（每次代理都被滤镜 / 音频库的落点挡在外面）。各格的实测结果见
+[案例](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)。
+
 ## 五、要真实窗口、但已经自动化了的检查
 
 有些检查**不需要人来操作**，只是需要一个图形会话（会建真实的 `NSWindow` /

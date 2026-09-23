@@ -43,10 +43,11 @@ extension VideoEditProject {
         let index = selectedTransitionSeamIndex(in: clips)
             ?? selectedMainSeamIndex(in: clips)
             ?? nearestSeamIndex(to: clock.time, in: clips)
-        // 缝找着了还不算数：两边得相接、而且借得到余料，转场才做得出来。
+        // 缝找着了还不算数：两边得相接，转场才做得出来。
         // 这道闸和两条渲染管线**同一个判据**，不会出现「面板让点、成片没有」。
-        // 只有「中间有空隙」是整条缝不成立。余料够不够是**逐种类**的事
-        //（压黑不需要余料），交给面板逐张卡片判。
+        // 只有「中间有空隙」是整条缝不成立。片段太短放不放得下是**逐种类**的事
+        //（压黑不需要两段交叠），交给面板逐张卡片判。余料不够不再是理由：
+        // 2026-09-23 起改成首尾帧定格补足（VideoEditTransitionHandles.swift）。
         if case .notAdjacent = TimelineState.transitionCapacity(
             outgoing: clips[index], incoming: clips[index + 1], kind: .crossFade
         ) { return .notAdjacent }

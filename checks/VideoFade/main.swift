@@ -213,6 +213,24 @@ func filterGraph(_ state: TimelineState, name: String) async -> String? {
     }
 }
 
+/// 容量是不是「能放、最长约 `expected` 秒」。容量是乘出来的（长度 × 0.4），
+/// 1.5 × 0.4 在 Double 里是 0.6000000000000001 —— 枚举的 `==` 是精确比较，
+/// 拿它断言浮点结果会假红。
+func capacity(_ value: TransitionCapacity, isAbout expected: Double) -> Bool {
+    if case .available(let maxDuration) = value { return abs(maxDuration - expected) < 1e-9 }
+    return false
+}
+
+/// 成品的时长（秒），从 `ffmpeg -i` 的 Duration 行读。
+func mediaDuration(_ url: URL) -> Double? {
+    let (_, out) = run(ffmpegPath, ["-hide_banner", "-i", url.path])
+    guard let range = out.range(of: "Duration: ") else { return nil }
+    let parts = out[range.upperBound...].prefix(11).split(separator: ":")
+    guard parts.count == 3, let h = Double(parts[0]), let m = Double(parts[1]),
+          let sec = Double(parts[2]) else { return nil }
+    return h * 3600 + m * 60 + sec
+}
+
 func main() async {
     guard FileManager.default.isExecutableFile(atPath: ffmpegPath) else {
         print("找不到 ffmpeg：\(ffmpegPath)（跑 scripts/vendor-ffmpeg.sh，或设 SRTFLOW_FFMPEG）")
@@ -378,10 +396,15 @@ func main() async {
         var state = TimelineState()
         state.mainClips = [first, second]
 
+        // 容量只看长度（1.5s × 0.4 = 0.6）：余料不够的部分现在由定格补足，余料只决定
+        // 借多少真素材。这里 0.4s 的转场两边余料加起来 0.5s 够用 —— 一帧都不定格。
         check(
-            state.transitionCapacity(afterMainIndex: 0) == .available(maxDuration: 0.5),
-            "两边各 0.25s 余料 → 这条缝的容量是 0.5s"
+            capacity(state.transitionCapacity(afterMainIndex: 0), isAbout: 0.6),
+            "两边各 0.25s 余料 → 容量按长度 = 1.5s × 0.4"
         )
+        let borrowed = state.expandingTransitionHandles()
+        check(borrowed.mainClips.allSatisfy { $0.renderHoldHead == 0 && $0.renderHoldTail == 0 },
+              "余料够用时一帧都不定格")
         // 「不挪用户在轨道上的片段」是拍过板的口径：展开只改素材取值范围。
         check(
             abs(state.expandingTransitionHandles().duration - state.duration) < 0.001,
@@ -412,9 +435,13 @@ func main() async {
 
         check(second.leadingHandle == 0, "这一版里进场段确实没有头料")
         check(
-            state.transitionCapacity(afterMainIndex: 0) == .available(maxDuration: 0.5),
-            "只有出场段有 0.5s 尾料 → 容量就是这 0.5s，不该被判成 noHandles"
+            capacity(state.transitionCapacity(afterMainIndex: 0), isAbout: 0.6),
+            "只有出场段有尾料 → 容量按长度 = 1.5s × 0.4"
         )
+        // 0.4s 全从出场段 0.5s 的尾料里借：窗口整个落在接缝之后，一帧都不定格。
+        let oneSided = state.expandingTransitionHandles()
+        check(oneSided.mainClips.allSatisfy { $0.renderHoldHead == 0 && $0.renderHoldTail == 0 },
+              "单边余料够用时同样一帧都不定格")
         check(
             abs(state.expandingTransitionHandles().duration - state.duration) < 0.001,
             "单边借料同样不许改变时间线总长"
@@ -424,11 +451,11 @@ func main() async {
         }
     }
 
-    // 4b-3. 零余料 + 压黑：走原地斜坡，一点料都不借
+    // 4b-3. 零余料 + 压黑：走原地斜坡，一点料都不借、也不定格
     //
     // 压黑就是「A 灭到黑、B 从黑亮起」，两段各做一道 alpha 斜坡就够了 —— 主轨
-    // 片段底下垫的正是黑底。所以它在**完全没有余料**的缝上照样成立，而叠化、
-    // 推移、擦除要两段同时在画面上，仍然得借料。容量因此**与种类有关**。
+    // 片段底下垫的正是黑底。所以它在**完全没有余料**的缝上优先走这条路。叠化、
+    // 推移、擦除要两段同时在画面上，走的是「借料 + 定格补足」（见 4b-5）。
     do {
         var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
         first.transitionAfter = .blackFade
@@ -438,10 +465,10 @@ func main() async {
         state.mainClips = [first, second]
 
         check(first.trailingHandle == 0 && second.leadingHandle == 0, "这一版里两边确实都没有余料")
-        check(state.transitionCapacity(afterMainIndex: 0, kind: .blackFade) != .noHandles,
+        check(capacity(state.transitionCapacity(afterMainIndex: 0, kind: .blackFade), isAbout: 0.8),
               "零余料的缝上压黑必须可用")
-        check(state.transitionCapacity(afterMainIndex: 0, kind: .crossFade) == .noHandles,
-              "同一条缝上叠化仍然不可用 —— 压黑那条路不该顺手把别的种类也放行")
+        check(capacity(state.transitionCapacity(afterMainIndex: 0, kind: .crossFade), isAbout: 0.8),
+              "同一条缝上叠化也可用（2026-09-23 起余料不够用首尾帧定格补足），容量按长度 = 2s × 0.4")
 
         let expanded = state.expandingTransitionHandles()
         check(expanded.mainClips[0].transitionAfter == .none, "压黑从渲染副本里摘掉，接缝上不发 xfade")
@@ -498,25 +525,106 @@ func main() async {
         }
     }
 
+    // 4b-5. 零余料 + 叠化：**首尾帧定格补足**（2026-09-23 用户拍板）
+    //
+    // 两段都用满了素材，一点余料都没有。以前这条缝上只有压黑能用；现在照
+    // Premiere / 达芬奇的做法，差的那截用首尾帧定格补：接缝前半程 A 照常播、
+    // B 的**首帧**定住淡入，后半程 B 照常播、A 的**尾帧**定住淡出。片段位置、
+    // 总时长都不动。纯白 / 纯黑素材分辨不出「在播」还是「定住」，但分辨得出
+    // 「定格那一截有没有画面」：没做出定格，那一截就是黑的。
+    do {
+        func seam(_ a: URL, _ b: URL) -> TimelineState {
+            var first = EditClip(sourceURL: a, sourceDuration: 4, timelineStart: 0, info: info(canvas, seconds: 4))
+            first.transitionAfter = .crossFade
+            first.transitionDuration = 1
+            let second = EditClip(sourceURL: b, sourceDuration: 4, timelineStart: 4, info: info(canvas, seconds: 4))
+            var state = TimelineState()
+            state.mainClips = [first, second]
+            return state
+        }
+        let whiteToBlack = seam(white, black)
+        check(whiteToBlack.mainClips[0].trailingHandle == 0 && whiteToBlack.mainClips[1].leadingHandle == 0,
+              "这一版里两边确实都没有余料")
+        check(capacity(whiteToBlack.transitionCapacity(afterMainIndex: 0), isAbout: 1.6),
+              "零余料的缝上叠化可用，容量按长度 = 4s × 0.4")
+
+        // 渲染副本：两边各定格 d/2，窗口跨在缝上（和时间线遮罩「缝 ± d/2」一致）。
+        let expanded = whiteToBlack.expandingTransitionHandles()
+        check(abs(expanded.mainClips[0].renderHoldTail - 0.5) < 0.001, "出场段尾帧定格 d/2")
+        check(abs(expanded.mainClips[1].renderHoldHead - 0.5) < 0.001, "进场段首帧定格 d/2")
+        check(expanded.mainClips[0].renderHoldHead == 0 && expanded.mainClips[1].renderHoldTail == 0,
+              "另外两头没有定格")
+        check(abs(expanded.mainClips[1].timelineStart - 3.5) < 0.001, "进场段在渲染副本里提前 d/2 进场")
+        check(abs(expanded.mainClips[0].timelineEnd - 4.5) < 0.001, "出场段在渲染副本里延后 d/2 退场")
+        check(abs(expanded.transitionOverlap(afterMainIndex: 0) - 1) < 0.001, "展开后两段正好相叠 d")
+        check(abs(expanded.duration - whiteToBlack.duration) < 0.001, "定格补足不许改变时间线总长")
+        check(abs(expanded.mainClips[0].renderSourceDuration - 4) < 0.001
+              && abs(expanded.mainClips[1].renderSourceStart) < 0.001,
+              "真正从素材里取的仍然是原来那 4s，定格那截不去素材里要")
+        // 用户的工程不许带着定格字段：它只在渲染副本里存在。
+        check(whiteToBlack.mainClips.allSatisfy { $0.renderHoldHead == 0 && $0.renderHoldTail == 0 },
+              "原件的定格字段恒为 0")
+
+        if let graph = await filterGraph(whiteToBlack, name: "hold-graph") {
+            check(graph.contains("xfade=transition=fade"), "零余料 + 叠化 → 导出发 xfade")
+            check(graph.contains("tpad=stop_mode=clone:stop_duration=0.5"), "出场段用 tpad 复制尾帧 0.5s")
+            check(graph.contains("tpad=start_mode=clone:start_duration=0.5"), "进场段用 tpad 复制首帧 0.5s")
+        }
+
+        // 真跑导出：白→黑，4.25s 处是 A 的**尾帧定格**以 25% 叠在 B 上。
+        if let product = await export(whiteToBlack, name: "hold-white-black.mp4"),
+           let whiteLevel = brightness(product, at: 1, name: "hold-wb"),
+           let blackLevel = brightness(product, at: 7, name: "hold-wb"),
+           let late = brightness(product, at: 4.25, name: "hold-wb"),
+           let early = brightness(product, at: 3.75, name: "hold-wb") {
+            let span = whiteLevel - blackLevel
+            check(span > 0.5, "白段和黑段要分得开，实测白 \(whiteLevel)、黑 \(blackLevel)")
+            let lateMix = (late - blackLevel) / span
+            let earlyMix = (early - blackLevel) / span
+            check(abs(lateMix - 0.25) < 0.1,
+                  "接缝后 0.25s：A 的尾帧定格还剩 25% —— 没做出定格这里是全黑，实测 \(lateMix)")
+            check(abs(earlyMix - 0.75) < 0.1, "接缝前 0.25s：A 还有 75%，实测 \(earlyMix)")
+            if let length = mediaDuration(product) {
+                check(abs(length - 8) < 0.15, "成片总长不变（8s），实测 \(length)")
+            } else {
+                check(false, "读不出成片时长")
+            }
+        }
+
+        // 黑→白：3.75s 处是 B 的**首帧定格**透出 25%。
+        if let product = await export(seam(black, white), name: "hold-black-white.mp4"),
+           let blackLevel = brightness(product, at: 1, name: "hold-bw"),
+           let whiteLevel = brightness(product, at: 7, name: "hold-bw"),
+           let early = brightness(product, at: 3.75, name: "hold-bw") {
+            let span = whiteLevel - blackLevel
+            let earlyMix = (early - blackLevel) / span
+            check(abs(earlyMix - 0.25) < 0.1,
+                  "接缝前 0.25s：B 的首帧定格已经透出 25% —— 没做出定格这里是全黑，实测 \(earlyMix)")
+        }
+    }
+
     // 4c. 缝不成立的两种情形：两条管线必须**都**当它没有转场
     do {
-        var first = EditClip(sourceURL: white, sourceDuration: 2, timelineStart: 0, info: info(canvas, seconds: 2))
+        // 出场段只有 0.1s：做不出像样的叠化（2026-09-23 之前这里测的是「零余料」，
+        // 余料不够现在改成定格补足了，唯一还放不下的就是太短的段）。
+        var first = EditClip(sourceURL: white, sourceDuration: 0.1, timelineStart: 0, info: info(canvas, seconds: 2))
         first.transitionAfter = .crossFade
         first.transitionDuration = 0.4
-        let touching = EditClip(sourceURL: black, sourceDuration: 2, timelineStart: 2, info: info(canvas, seconds: 2))
+        let touching = EditClip(sourceURL: black, sourceDuration: 2, timelineStart: 0.1, info: info(canvas, seconds: 2))
         var state = TimelineState()
         state.mainClips = [first, touching]
 
-        check(state.transitionCapacity(afterMainIndex: 0) == .noHandles, "两段都用满了素材，借不到余料")
+        check(state.transitionCapacity(afterMainIndex: 0) == .tooShort, "出场段只有 0.1s → 放不下")
         check(
             state.expandingTransitionHandles().transitionOverlap(afterMainIndex: 0) == 0,
-            "借不到余料时，预览侧也不许挂淡变（以前就是这里和导出分了叉）"
+            "放不下时，预览侧也不许挂淡变（以前就是这里和导出分了叉）"
         )
-        if let graph = await filterGraph(state, name: "no-handles-graph") {
-            check(!graph.contains("xfade="), "借不到余料 → 导出不许发 xfade")
+        if let graph = await filterGraph(state, name: "too-short-graph") {
+            check(!graph.contains("xfade="), "放不下 → 导出不许发 xfade")
         }
 
         var gapped = state
+        gapped.mainClips[0].sourceDuration = 2
         gapped.mainClips[1].timelineStart = 2.5
         check(gapped.transitionCapacity(afterMainIndex: 0) == .notAdjacent, "中间有空隙的不算一条缝")
         check(

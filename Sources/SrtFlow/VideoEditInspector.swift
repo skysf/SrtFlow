@@ -91,7 +91,8 @@ struct VideoEditInspectorView: View {
             // 这条缝放不放得下转场，和两条渲染管线**同一个判据**
             //（VideoEditTransitionHandles.swift）—— 不能出现「这里让设、
             // 成片里没有」。容量**与种类有关**：压黑不需要两段同时在画面
-            // 上，零余料的缝上它能用、叠化不能用，所以逐张卡片判。
+            // 上，片段极短时它仍能用、叠化不能用，所以逐张卡片判。（余料不够
+            // 已经不是理由了：2026-09-23 起改成首尾帧定格补足。）
             if case .notAdjacent = seamCapacity(outgoing, incoming, .crossFade) {
                 Text("No continuous footage here — a transition needs two clips that touch.")
                     .font(.caption2)
@@ -105,7 +106,7 @@ struct VideoEditInspectorView: View {
                     isEnabled: { canSeamDo(outgoing, incoming, $0) }
                 )
                 if !canSeamDo(outgoing, incoming, .crossFade) {
-                    Text("These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others.")
+                    Text("These clips are too short to blend, so only Black fade works here.")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -620,6 +620,10 @@ enum VideoEditCompositionBuilder {
     ///
     /// 截取范围要收口到**源轨自己的范围**里：音频流经常比视频流短一小截，
     /// 按视频时长去截音频会越界抛错 —— 整段声音就这么无声无息地丢了。
+    ///
+    /// **首尾定格**（`renderHoldHead` / `renderHoldTail`，只有渲染副本里转场余料
+    /// 不够的主轨段才有）：画面把首帧 / 尾帧插进来再拉长成定格，声音那一截留空。
+    /// 导出那边是 `tpad` 复制首尾帧 + 补静音，同一笔账（VideoEditExportGraph）。
     private static func insert(
         source: AVAssetTrack,
         clip: EditClip,
@@ -627,37 +631,93 @@ enum VideoEditCompositionBuilder {
         cursor: inout Double
     ) async -> Bool {
         let at = clip.timelineStart
+        let holdHead = clip.renderHoldHead
+        let holdTail = clip.renderHoldTail
 
         let trackRange = (try? await source.load(.timeRange))
             ?? CMTimeRange(start: .zero, duration: CMTime(seconds: clip.assetDuration, preferredTimescale: 600))
         let trackEnd = trackRange.end.seconds
-        let start = max(clip.sourceStart, max(0, trackRange.start.seconds))
+        let start = max(clip.renderSourceStart, max(0, trackRange.start.seconds))
         let available = trackEnd - start
-        guard available > 0.01, clip.sourceDuration > 0.01 else { return false }
-        let sourceDuration = min(clip.sourceDuration, available)
+        guard available > 0.01, clip.renderSourceDuration > 0.01 else { return false }
+        let sourceDuration = min(clip.renderSourceDuration, available)
 
         if at > cursor + 0.0005 {
             track.insertEmptyTimeRange(CMTimeRange(start: time(cursor), end: time(at)))
+        }
+        let isVideo = source.mediaType == .video
+        var position = at
+        if holdHead > 0.0005 {
+            if isVideo {
+                await insertHold(
+                    source: source, frameAt: start, duration: holdHead, into: track, at: position
+                )
+            } else {
+                track.insertEmptyTimeRange(
+                    CMTimeRange(start: time(position), duration: CMTime(seconds: holdHead, preferredTimescale: 600))
+                )
+            }
+            position += holdHead
         }
         do {
             try track.insertTimeRange(
                 CMTimeRange(start: time(start), duration: CMTime(seconds: sourceDuration, preferredTimescale: 600)),
                 of: source,
-                at: time(at)
+                at: time(position)
             )
         } catch {
             return false
         }
+        // 真素材那一段在时间线上的长度。被收口的部分按同一比例折算（= 取到的
+        // 素材秒 ÷ 变速），画面和声音才不会错位。
+        let realDuration = sourceDuration / max(0.05, clip.speed)
         if abs(clip.speed - 1) > 0.001 {
-            // 被收口的部分按同一比例折算，画面和声音才不会错位。
-            let scaledDuration = clip.timelineDuration * (sourceDuration / clip.sourceDuration)
             track.scaleTimeRange(
-                CMTimeRange(start: time(at), duration: CMTime(seconds: sourceDuration, preferredTimescale: 600)),
-                toDuration: CMTime(seconds: scaledDuration, preferredTimescale: 600)
+                CMTimeRange(start: time(position), duration: CMTime(seconds: sourceDuration, preferredTimescale: 600)),
+                toDuration: CMTime(seconds: realDuration, preferredTimescale: 600)
+            )
+        }
+        position += realDuration
+        if holdTail > 0.0005, isVideo {
+            // 尾帧定格一直铺到这段的结尾：素材被收口短了一截时，差的那点也由
+            // 定格补上，免得定格前面夹一条黑缝。声音不用插 —— 下一段插进来之前
+            // 游标之后的空档会补空段，就是静音。
+            let frame = await frameDuration(of: source)
+            await insertHold(
+                source: source, frameAt: max(start, start + sourceDuration - frame),
+                duration: at + clip.timelineDuration - position, into: track, at: position
             )
         }
         cursor = at + clip.timelineDuration
         return true
+    }
+
+    /// 定格：把素材 `sourceTime` 处的**那一帧**插到 `at`，拉长成 `duration` 秒。
+    /// 插不进去（素材读不出那一帧）就留一段空 —— 那一截露出下面的黑底，不至于
+    /// 让后面的段整体错位。
+    private static func insertHold(
+        source: AVAssetTrack, frameAt sourceTime: Double, duration: Double,
+        into track: AVMutableCompositionTrack, at: Double
+    ) async {
+        guard duration > 0.0005 else { return }
+        let frame = CMTime(seconds: await frameDuration(of: source), preferredTimescale: 600)
+        let target = CMTime(seconds: duration, preferredTimescale: 600)
+        do {
+            try track.insertTimeRange(
+                CMTimeRange(start: time(sourceTime), duration: frame), of: source, at: time(at)
+            )
+            track.scaleTimeRange(CMTimeRange(start: time(at), duration: frame), toDuration: target)
+        } catch {
+            track.insertEmptyTimeRange(CMTimeRange(start: time(at), duration: target))
+        }
+    }
+
+    /// 源轨一帧有多长（秒）。读不出来按 1/30。
+    private static func frameDuration(of source: AVAssetTrack) async -> Double {
+        if let min = try? await source.load(.minFrameDuration), min.isValid, min.seconds > 0 {
+            return min.seconds
+        }
+        return 1.0 / 30
     }
 
     /// 素材画面摆进输出画布的完整变换：源自带旋转摆正 → 裁切区挪到原点 →

@@ -160,7 +160,8 @@ struct AudioLibraryDropDelegate: DropDelegate {
             let next = plan(at: info.location)
             preview = next
             autoScroll(contentX: info.location.x, contentY: info.location.y)
-            return DropProposal(operation: next == nil ? .cancel : .copy)
+            // `.forbidden`：不能用 `.cancel`，理由见 TimelineDropRouter.dropUpdated。
+            return DropProposal(operation: next == nil ? .forbidden : .copy)
         }
     }
 
@@ -190,8 +191,9 @@ struct AudioLibraryDropDelegate: DropDelegate {
     private func plan(at location: CGPoint) -> AudioLibraryDropPlan? {
         guard let item = AudioLibraryDrag.pending else { return nil }
         let duration = item.duration
-        // 指针落在块的中间比落在块的左端更像「我要放在这儿」（同滤镜）。
-        let proposed = max(0, location.x / pps - duration / 2)
+        // **左边缘对齐指针**（2026-09-23 用户拍板，同从 Finder 拖文件）：整首音乐
+        // 动辄两三分钟，中点对齐时起点要退回一分多钟，拖到哪都落不到指针那儿。
+        let proposed = max(0, location.x / pps)
         let resolved = TimelineSnap.resolve(
             proposedStart: proposed,
             duration: duration,

@@ -311,6 +311,7 @@
 "Add at least one clip to the main track first." = "Add at least one clip to the main track first.";
 "Could not use %@ as a clip." = "Could not use %@ as a clip.";
 "Could not read %@." = "Could not read %@.";
+"Could not use %d of the dropped files as clips." = "Could not use %d of the dropped files as clips.";
 "Edit Timeline" = "Edit Timeline";
 
 "Adding…" = "Adding…";
@@ -767,7 +768,7 @@
 "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change.";
 
 /* 压黑走原地斜坡（2026-09-20） */
-"These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others." = "These clips have no spare footage, so only Black fade works here. Trim one of them back a little to use the others.";
+"These clips are too short to blend, so only Black fade works here." = "These clips are too short to blend, so only Black fade works here.";
 "The transition leaves the clips where they are — the total length does not change." = "The transition leaves the clips where they are — the total length does not change.";
 
 /* 时间线转场遮罩（2026-09-20） */

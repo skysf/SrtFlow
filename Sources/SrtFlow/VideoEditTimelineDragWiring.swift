@@ -177,24 +177,17 @@ extension VideoEditTimelineView {
             return (span, layout.minY, layout.spec.height)
         }
         // 开新轨：行还不存在，占位框骑在那条插入线上，高度给个缩略值。
-        let height = 22.0
+        // 几何常量在 `TimelineDropPlaceholder` 上 —— 从 Finder 拖文件落到新轨时
+        // 画的是同一个东西，两处各写一份字面量就会慢慢分叉。
         let y: Double = target.id == "new-top"
-            ? (layouts.first { $0.spec.slot != nil }?.minY ?? 30) - 4 - height / 2
-            : (layouts.last?.maxY ?? 30) + 4 - height / 2
-        return (span, y, height)
+            ? TimelineDropPlaceholder.newLaneY(above: layouts.first { $0.spec.slot != nil }?.minY ?? 30)
+            : TimelineDropPlaceholder.newLaneY(below: layouts.last?.maxY ?? 30)
+        return (span, y, TimelineDropPlaceholder.newLaneHeight)
     }
 
     /// 占位框本体：半透明填充 + 虚线描边，和被拖素材落地后等长。不拦事件。
     func dropPlaceholder(span: TimelineSpan, y: Double, height: Double) -> some View {
-        RoundedRectangle(cornerRadius: 4)
-            .fill(Color.teal.opacity(0.18))
-            .overlay(
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.teal, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
-            )
-            .frame(width: max(4, span.duration * pps), height: height)
-            .offset(x: span.start * pps, y: y)
-            .allowsHitTesting(false)
+        TimelineDropPlaceholder(span: span, pps: pps, y: y, height: height)
     }
 
     /// 垂直拖出 18pt 之后开始找目标行：同类行里挑离指尖最近的；
@@ -247,4 +240,47 @@ extension VideoEditTimelineView {
         return (best.id, best.target)
     }
 
+}
+
+/// 时间线上的落点占位框：半透明填充 + 虚线描边，和被拖素材落地后等长，不拦事件。
+///
+/// **所有落点共用这一个外观**：磁吸插空、跨轨到岸、音频库拖素材、从 Finder 拖文件
+/// 进轨道，落下去都是一个普通的块，没道理让用户学第二种落点语言。抽成独立视图是
+/// 因为最后那一个画在自己的文件里（`MediaFileDropIndicator`），够不着
+/// `VideoEditTimelineView` 上的那个方法 —— 复制一份外观常量就等于两份账。
+struct TimelineDropPlaceholder: View {
+    let span: TimelineSpan
+    let pps: Double
+    let y: Double
+    let height: Double
+
+    /// 开新轨时占位框的缩略高度。那儿只有几个点的缝（标尺到 28、最上面那条轨行
+    /// 从 33 起），按真实行高去画，框会整个跑到视口外面 —— 所以缩一缩、**骑在**
+    /// 插入线上，上下各露出来一半。
+    static let newLaneHeight = 22.0
+    /// 缩略框的中心离相邻那条轨有多远。
+    static let newLaneGap = 4.0
+
+    /// 新轨的缩略框画在哪：骑在「最上面那条轨行之上」那条插入线上。
+    static func newLaneY(above top: Double) -> Double {
+        top - newLaneGap - newLaneHeight / 2
+    }
+
+    /// 同上，「最下面那一行之下」。
+    static func newLaneY(below bottom: Double) -> Double {
+        bottom + newLaneGap - newLaneHeight / 2
+    }
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 4)
+            .fill(Color.teal.opacity(0.18))
+            .overlay(
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.teal, style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+            )
+            // 0.05 秒的碎块按真实时长只有 1 个点宽，框得有个下限才看得见。
+            .frame(width: max(4, span.duration * pps), height: height)
+            .offset(x: span.start * pps, y: y)
+            .allowsHitTesting(false)
+    }
 }

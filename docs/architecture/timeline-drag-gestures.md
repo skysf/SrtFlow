@@ -80,7 +80,9 @@
 `mainClips` 的下游全按数组顺序消费：A/B 合成轨的游标式插入（乱序会被
 `insertTimeRange` 挤歪 → 黑屏）、转场按数组相邻配对、auto 画布取数组第一段。
 磁吸开着由 `packMain()` 维持；磁吸关掉的移动/跨轨落主轨必须在收尾调
-`sortMainClipsByStart()`（`TimelineState.applyDrag`、`relocateClip` 已接）。打开工程时
+`sortMainClipsByStart()`（`TimelineState.applyDrag`、`relocateClip`、
+`insertImported` 已接 —— 最后一个是 2026-09-22 新增的「从 Finder 拖文件进轨道」，
+它会往主轨**中间**插段，见 [拖文件进轨道](../plans/2026-09-22-media-file-drop.md)）。打开工程时
 `VideoEditProjectIO.load` 归一治旧文件，`CompositionBuilder.build` /
 `ExportGraph.plan` 入口再各防御一次。**新加任何改 `timelineStart` 或往
 `mainClips` 里插段的入口，都要么保序要么收尾排一次**；来龙去脉见
@@ -229,6 +231,9 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
   亮线是骗人的。那种情况下改画**与素材等长的青色占位框**（能一眼看出这 6 秒
   会占到哪里），位置和宽度都由 `TimelineSnap.mainInsertion` 给 —— **落地必须
   调同一个函数**，否则占位框会说谎。
+  从 Finder 拖文件进来同理：落地走 `perform`、收尾才 `packMain`，所以落点框要画在
+  `TimelineState.landingsAfterMagnet`（副本上原样走一遍 `insertImported` + `packMain`）
+  给的位置，被挪走时对齐线一起收掉（[案例](../bugfixes/2026-09-23-file-drop-frame-ignores-magnet.md)）。
 - **跨轨拖动在目标行也画等长占位框**：位置由 `TimelineState.crossTrackLandingSpan`
   给，它和落地的 `relocateClip` 共用同一份核心（`avoidingOverlap` /
   `mainInsertion`）。改挤开/插空的任何一边，另一边必须跟着改 —— 框指哪儿，
@@ -364,9 +369,9 @@ ZStack(alignment: .topLeading) { ... }
 ```swift
     .frame(width: contentWidth, alignment: .topLeading)
     .contentShape(Rectangle())
-    .onDrop(of: [FilterDrag.type], ...)          // ← 只盖到内容区（见下）
     .frame(minWidth: viewportWidth, minHeight: viewportHeight, alignment: .topLeading)
     .contentShape(Rectangle())                   // ← 盖住撑出来的空白
+    .onDrop(of: TimelineDropRouter.types, ...)   // ← 整条时间线唯一的落点（§5e-2）
     .onTapGesture(coordinateSpace: .local) { ... }
     .gesture(marqueeGesture, ...)
 ```
@@ -375,13 +380,78 @@ ZStack(alignment: .topLeading) { ... }
 工程短时它是 **600pt 的地板**，窗口一宽，右边小半个视口是彻底的死区：点了不移
 播放头、不清选择，框也拉不起来（[案例](../bugfixes/2026-09-21-timeline-right-padding-dead-zone.md)）。
 
-**`.onDrop` 是故意的例外**，只盖到内容区为止：右边撑出来的空白在时间轴上远远超出
+拖放落点（§5e-2 那个唯一的 `TimelineDropRouter`）**同样挂在这之后**，撑出来的
+空白也接得住从 Finder 拖进来的文件。滤镜不许落进那片空白（它在时间轴上远远超出
 工程长度，而滤镜段不计入 `duration`，落到那儿就是凭空多出一段谁也看不见、也滚不到
-的调色。
+的调色）—— 这条以前靠「滤镜落点只挂到内容区为止」来保证，现在由路由器按
+`contentWidth` 判。
 
 `.local` 坐标在这两层里都以**内容原点**为零点（两个 frame 都是 `.topLeading`
 对齐），所以 `location.x / pps` 直接就是时刻，不用再补滚动量 —— 这是它和框选
 （钉在视口坐标系上、必须现读 `offsetX`，见 §5b）的分别。
+
+### 5e-2. 整条时间线只许有**一个**拖放落点
+
+2026-09-23 用探针（`scripts/gui-smoke/drop-routing-probe/`：独立的 SwiftUI 小 App，
+每格只放一种落点组合，所有回调写日志）测出来的 SwiftUI 路由规则：
+
+| 实测 | 结果 |
+| --- | --- |
+| 单个**代理式** `.onDrop(of: [.fileURL, …], delegate:)` 接外部文件拖入 | 回调全到，op=1 —— 代理式、闭包式都收得到外部拖入 |
+| 同一视图：里面代理式（类型对不上）、外面闭包式（对得上） | op=0，**两边一个回调都没有** |
+| 里面视图挂 `.onDrop(of: [])`（空类型）、外面视图挂闭包式（对得上） | op=0 —— 空类型也照样独占 |
+| 祖先视图挂一个代理，拖到它下面没有落点的子视图上 | op=1 |
+
+一句话：**SwiftUI 把一次拖放交给指针底下最里面那个落点，类型对不上也不往外找。**
+App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三套卡片落点里面之后，
+三套卡片全死）。
+
+硬约束：
+
+1. **时间线里只许挂一个 `.onDrop`**：`scrolledContent` 上的 `TimelineDropRouter`
+   （`VideoEditTimelineDropRouter.swift`）。Finder 的文件和滤镜 / 音频库 / 转场三种
+   卡片，都由它按载荷分派给各自的代理。行上、块上、这条修饰符链的别处一律不许再
+   挂 —— 包括 `of: []` 这种空类型的写法。`checks/timeline-drag-wiring.sh` 数着全族
+   文件里的 `.onDrop(` / `.dropDestination(`，必须正好 1 处。
+2. **自定义载荷先认、`.fileURL` 最后认**：卡片的 provider 万一同时也给得出 file URL，
+   排反了就会被当成 Finder 拖进来的文件。
+3. **合法性靠坐标判，不靠「挂在哪」**：转场只落主轨那一行（`mainRow`，藏起来的
+   主轨不接）、滤镜只落内容区以内（`contentWidth`）。
+4. **挂在「填满视口」的 frame 和最后那个 `.contentShape` 之后**（理由同 §5e 的点击 /
+   框选），撑出来的空白也接得住文件。
+5. **松手之后 SwiftUI 还会补发一拍 `dropUpdated`**（日志实测：`validate → entered →
+   updated… → PERFORM → updated`，没有 `exited`）。路由器用 `isLive`（四套各自起手
+   时记的那一笔还在不在）挡掉这一拍。照常转发的话，落点框会按落地之后的状态重画、
+   挂着不走；松手点在视口边缘时，自动滚动的心跳也会被重新拉起来。
+
+6. **自定义载荷类型必须在 `packaging/Info.plist` 的 `UTExportedTypeDeclarations` 里
+   声明。** 没声明的标识符系统认不出（`UTType(identifier) == nil`），SwiftUI 判不出
+   拖进来的是不是这种类型，拖放被静默拒绝 —— 滤镜、音频库两套就是这样从上线起一直
+   拖不进来的（[案例](../bugfixes/2026-09-23-custom-drag-types-not-declared.md)）。
+   `checks/exported-types-declared.sh` 逐个核对代码里的 `UTType(exportedAs:)`。
+
+7. **「这里不能放」只许回 `DropProposal(operation: .forbidden)`，不许回 `.cancel`。**
+   `.cancel` 是「取消这一轮拖放」：回过一次，SwiftUI 就再也不调 `dropUpdated`，松手只给
+   `dropExited`，指针挪到能放的地方也救不回来。只有一个落点之后，拖动总是先经过不能放
+   的地方（从左栏进来、先过标尺），所以这条对四套拖放都是必经的
+   （[案例](../bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)）。
+   `checks/timeline-drag-wiring.sh` 第 1e 条钉着。
+
+时间线以外（预览区 / 检查器 / 库栏 / 轨道头列 / 空工程）的文件拖入归 `VideoEditView`
+整页那条 `.onDropOfFiles`（接主轨末尾）。它是祖先，只接得到时间线滚动区以外的拖入，
+和路由器互不打架。
+
+**合成事件驱动不了 SwiftUI 的 `.onDrag`**（拖动图像跟着走，落点收不到任何回调），
+所以 App 内三套拖放的验证只能人手拖 —— 清单在
+[案例](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)里。
+
+这条规则前后坑了三回：文件落点挂在外面（标尺以下拖不进文件，
+[案例](../bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)）；
+垫在里面（三套卡片全死）；每条轨道行上的空类型转场落点（卡片和文件拖到轨道行上
+被吞）。后两回见[案例](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)。
+第一回的修复里写过「外部拖入和 App 内拖动是两套路由」「代理式收不到外部拖入」两条
+结论，**都是错的**：做实验时代理式落点每次都被别的落点盖在外面，测到的其实一直是
+「里面那个独占」。
 
 ### 5f. 谁来移动播放头：唯一夹紧点 `seekFromTimeline`
 

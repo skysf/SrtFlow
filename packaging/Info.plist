@@ -34,14 +34,50 @@
 	<string>NSApplication</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
-		<!-- 应用内拖放用：从转场库把一张卡片拖到主轨接缝上。没有文件形态，
-		     所以不带 UTTypeTagSpecification。不声明也能跑（同进程按标识符字符串
-		     匹配），声明只是更规范，也让外部工具看得懂剪贴板上那一项是什么。 -->
+		<!-- 应用内拖放 / 剪贴板用的自定义载荷类型。没有文件形态，所以不带
+		     UTTypeTagSpecification。
+
+		     **代码里每一个 UTType(exportedAs:) 都必须在这里声明**，不是「更规范」：
+		     没声明的标识符，系统的类型库查不到（UTType(identifier) == nil），
+		     SwiftUI 的落点就判不出拖进来的东西是不是这种类型，拖放被直接拒绝、
+		     一点提示都没有。滤镜卡片和音频库素材就是这么从上线起一直拖不进时间线的
+		     （2026-09-23，docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md）。
+		     checks/exported-types-declared.sh 逐个核对。 -->
 		<dict>
 			<key>UTTypeIdentifier</key>
 			<string>com.srtflow.transition</string>
 			<key>UTTypeDescription</key>
 			<string>SrtFlow Transition</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.srtflow.filter</string>
+			<key>UTTypeDescription</key>
+			<string>SrtFlow Filter</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.srtflow.filter-clip</string>
+			<key>UTTypeDescription</key>
+			<string>SrtFlow Filter Clip</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+			</array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.srtflow.audio-library-item</string>
+			<key>UTTypeDescription</key>
+			<string>SrtFlow Audio Library Item</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

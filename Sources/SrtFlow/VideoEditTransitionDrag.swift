@@ -66,7 +66,9 @@ struct TransitionDropDelegate: DropDelegate {
             preview = next
             autoScroll(contentX: info.location.x)
             // 没有可落的缝就明说不接：指针变成禁止号，松手回弹。
-            return DropProposal(operation: next == nil ? .cancel : .copy)
+            // `.forbidden` 而不是 `.cancel`：后者会取消整轮拖放，之后不再有
+            // dropUpdated，指针挪到能落的缝上也救不回来（见 TimelineDropRouter.dropUpdated）。
+            return DropProposal(operation: next == nil ? .forbidden : .copy)
         }
     }
 
