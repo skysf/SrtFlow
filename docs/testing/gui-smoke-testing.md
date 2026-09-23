@@ -206,6 +206,25 @@
   排版再量一次，面板不许自己改尺寸或挪位置。改 `InstantTooltip.swift` 必跑。
   用 `.accessory` 策略，不抢焦点、不进 Dock，跑完即退。
 
+## 五之二、屏幕锁着 / 不便抢鼠标的时候（2026-09-23）
+
+- **先确认能不能拍**：`screencapture -l` 报 "could not create image from window" 时，多半是
+  锁屏或显示器睡着了，不是权限。用 `CGSessionCopyCurrentDictionary()` 看
+  `CGSSessionScreenIsLocked`、`CGDisplayIsAsleep(CGMainDisplayID())` 一眼就知道。锁着就别白试。
+- **画出来对不对，可以离屏看**：SwiftUI 的 `ImageRenderer` 不要窗口，锁屏也能渲。把要看的
+  绘制代码（`WaveformPainter`、`ThumbnailPainter`、`TimelineRuler`、`TrackFaderView` 这类不依赖
+  `VideoEditProject` 的）和检查脚本同一批源文件编进一个小二进制，渲成 PNG 再看。两个坑：
+  - `.task` 不会在渲染前跑 —— 数据要在外面先取好（等 `WaveformStore` 读完）再渲；
+    按需取图 / 取原始采样的（缓存 + 通知重画）要**渲两遍**：第一遍登记请求，等一会儿再渲。
+  - `NSViewRepresentable`（比如 `instantHelp` 垫的那层定位视图）渲不出来，会画成一块**黄底
+    禁止号**的占位 —— 那是渲染器的限制，不是界面坏了。
+- **有人在用这台机器时，只用键盘驱动**：键盘 `postToPid` 只进目标进程、不动鼠标（⌘= 缩放、
+  空格播放都行），配合按窗口 ID 截图，可以不打扰人地看完静态画面和播放中的电平表。要拖要点
+  的（拖线、拖推子、⌥ 点）就留给人手测，或者先问一声再接管鼠标。
+- 工程可以用 App 自己的模型代码生成：把 `check-project-file.sh` 第一段 swiftc 清单里的源文件
+  编进一个小程序，造好 `TimelineState` 后 `VideoEditProjectIO.save` 出来，再经
+  `SRTFLOW_SMOKE_PROJECT` 打开 —— 比手写 JSON 稳（格式版本、MediaInfo 都是对的）。
+
 ## 六、收尾
 
 - 杀掉 SrtFlowDev 进程，删临时 .app。
