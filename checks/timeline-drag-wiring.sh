@@ -868,6 +868,19 @@ if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint\) -> MediaFileDrop
     || fail "文件落点的 plan 没按磁吸拼完之后的位置画框：磁吸开着时框在指针底下、素材却落到主轨末尾"
 fi
 
+# 4c) 素材类拖放（Finder 文件、音频库）**左边缘对齐指针**（2026-09-23 用户拍板）。
+#     素材往往很长，中点对齐时起点要退回半段时长：60 秒的视频拖到主轨末尾后面，
+#     起点退到末尾之前、撞上已有素材被抬轨，要落进主轨得把指针拖到末尾右边 30 秒
+#     开外。滤镜卡片时长短，仍按中点，不在这条里。
+if START_BODY="$(require_func 'func importFirstStart(anchor:' "$FILE_DROP")"; then
+  printf '%s\n' "$START_BODY" | grep -q '/ 2' \
+    && fail "importFirstStart 又按中点对齐了：长素材的起点会退回半段时长，拖到主轨末尾后面也落不进主轨"
+fi
+if AUDIO_PLAN="$(require_func 'private func plan(at location: CGPoint) -> AudioLibraryDropPlan?' Sources/SrtFlow/AudioLibraryDrag.swift)"; then
+  printf '%s\n' "$AUDIO_PLAN" | grep -q 'duration / 2' \
+    && fail "音频库落点又按中点对齐了：整首音乐的起点会退回一分多钟，拖到哪都落不到指针那儿"
+fi
+
 # 5) 落地不许回读那份 @State：@Binding 的写入不是同步可见的，回读会让落点晚
 #    一帧（同转场第 5 条）。落点只许从**这一拍的** info.location 算。
 if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then

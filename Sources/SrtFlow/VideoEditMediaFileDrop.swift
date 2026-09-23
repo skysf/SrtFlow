@@ -52,8 +52,12 @@ struct MediaFileImport: Equatable {
 
 /// 第一段素材的起点从哪来。
 enum MediaImportAnchor: Equatable {
-    /// 指针在时间轴上的位置：第一段的**中点**对齐它（拖放）。
-    /// 指针落在块中间比落在块左端更像「我要放在这儿」（同滤镜、音频库两套）。
+    /// 指针在时间轴上的位置：第一段的**起点**（左边缘）对齐它（拖放）。
+    ///
+    /// 2026-09-23 用户拍板从「中点对齐」改过来：素材往往很长，中点对齐时起点要退回
+    /// 半段时长 —— 60 秒的视频拖到主轨末尾后面两秒处，起点退到末尾之前 28 秒，撞上
+    /// 已有素材被抬到新轨上；要落进主轨得把指针拖到末尾右边 30 秒开外。剪映、Final
+    /// Cut、Premiere 都是左边缘对齐指针。音频库同一口径；滤镜卡片短，仍按中点。
     case pointer(Double)
     /// 第一段的**起点**就是它（⌘V 落播放头，同按 `+` 的口径）。
     case start(Double)
@@ -473,12 +477,12 @@ extension MediaFileDrag {
 @MainActor
 extension VideoEditProject {
 
-    /// 第一段素材的起点。**落点框和落地共用这一个** —— 拖放要把素材的中点对齐
-    /// 指针，⌘V 直接落在播放头上，两种锚点在这里收口，之后就是同一条路。
+    /// 第一段素材的起点。**落点框和落地共用这一个** —— 拖放对的是指针、⌘V 对的是
+    /// 播放头，两种锚点在这里收口（都是左边缘对齐），之后就是同一条路。
     func importFirstStart(anchor: MediaImportAnchor, firstDuration: Double) -> TimelineSnap.Result {
         let proposed: Double
         switch anchor {
-        case .pointer(let time): proposed = max(0, time - firstDuration / 2)
+        case .pointer(let time): proposed = max(0, time)
         case .start(let time): proposed = max(0, time)
         }
         return TimelineSnap.resolve(
