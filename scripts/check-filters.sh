@@ -68,6 +68,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditExportGraph.swift \
   Sources/SrtFlow/VideoEditExportAudioGain.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditAudioMeter.swift \
+  Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/BurnInWorkspace.swift \
   Sources/SrtFlow/MediaProbe.swift \

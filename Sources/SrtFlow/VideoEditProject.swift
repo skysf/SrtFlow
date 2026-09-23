@@ -403,6 +403,8 @@ final class VideoEditProject: ObservableObject {
 
     /// 预览播放器。0.05s 的回调间隔，字幕叠层和播放头才跟得上。
     let clock = PlayerClock(observationInterval: 0.05)
+    /// 轨道头推子里的电平表（音频 tap 按合成音轨挂，见 VideoEditAudioMeter.swift）。
+    let meters = AudioMeterEngine()
 
     /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
     @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
@@ -1471,7 +1473,7 @@ final class VideoEditProject: ObservableObject {
         // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
         // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
         guard !isRebuildingPreview else { return false }
-        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan)
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
         return true
     }
 
@@ -1489,7 +1491,7 @@ final class VideoEditProject: ObservableObject {
         lastLiveAudioPreview = now
         var preview = state
         mutate(&preview)
-        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: preview, plan: plan)
+        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: preview, plan: plan, meters: meters)
     }
 
     /// 不然每改一刀就跳回 0:00 没法干活。
@@ -1520,7 +1522,13 @@ final class VideoEditProject: ObservableObject {
             let time = self.clock.time
             let item = AVPlayerItem(asset: built.composition)
             item.videoComposition = built.videoComposition
-            item.audioMix = built.audioMix
+            // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
+            // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
+            // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。
+            meters.beginComposition()
+            item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
+                state: snapshot, plan: built.audioPlan, meters: meters
+            ) ?? built.audioMix
             // 变速片段保持音调，跟导出时 atempo 的听感一致。
             item.audioTimePitchAlgorithm = .spectral
             self.clock.attachItem(item)

@@ -26,6 +26,8 @@ struct TrackFaderView: View {
     let onLive: (Double) -> Void
     /// 松手 / ⌥ 点 / 双击：落一次。
     let onCommit: (Double) -> Void
+    /// 电平表从哪儿读（nil = 这一格不画电平条）。
+    var meter: TrackMeterSource?
 
     @State private var drag: DragState?
     @State private var lastClick: Date?
@@ -48,6 +50,10 @@ struct TrackFaderView: View {
                     .fill(Color.black.opacity(0.45))
                     .frame(height: 6)
                     .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+                if let meter {
+                    TrackMeterBars(source: meter, clock: meter.clock, width: width)
+                        .frame(width: width, height: 6)
+                }
                 // 0 dB 的刻度：一眼看出推子在不在原样。
                 Rectangle()
                     .fill(.white.opacity(0.35))
@@ -121,5 +127,81 @@ struct TrackFaderView: View {
                     lastClick = now
                 }
             }
+    }
+}
+
+// MARK: - 电平条（画在推子的槽里）
+
+/// 电平表从哪儿读：引擎、哪一条、播放时钟。
+struct TrackMeterSource {
+    let engine: AudioMeterEngine
+    let key: MeterKey
+    let clock: PlayerClock
+}
+
+/// 推子槽里的立体声电平条（上 L 下 R），与推子**同一把刻度**（旋钮在 −6 dB 时，
+/// −6 dB 的电平正好顶到旋钮下面）。绿 → 黄（−12 dB 起）→ 红（过 0 dBFS）；
+/// 一道细线是峰值保持；过过 0 dBFS 的话槽的 0 dB 以上那一截一直红着，下一次开播才熄。
+///
+/// 只在播放时按 30 帧/秒去读（`TimelineView` 停播即停），停播时电平条收起、红灯留着。
+struct TrackMeterBars: View {
+    let source: TrackMeterSource
+    @ObservedObject var clock: PlayerClock
+    let width: Double
+
+    static let green = Color(red: 0.25, green: 0.85, blue: 0.35)
+    static let yellow = Color(red: 0.98, green: 0.82, blue: 0.2)
+    static let red = Color(red: 1, green: 0.27, blue: 0.23)
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !clock.isPlaying)) { timeline in
+            let reading = clock.isPlaying
+                ? source.engine.reading(
+                    for: source.key, at: clock.player.currentTime().seconds,
+                    now: timeline.date.timeIntervalSinceReferenceDate
+                )
+                : MeterReading(left: AudioGain.minimumDB, right: AudioGain.minimumDB,
+                               hold: AudioGain.minimumDB, clipped: source.engine.isClipped(source.key))
+            Canvas { context, size in
+                draw(reading, in: &context, size: size)
+            }
+        }
+        // 红灯是「这一遍播下来爆没爆」：开播就熄掉上一遍的（总表那一条负责喊一声就够）。
+        .onChange(of: clock.isPlaying) { _, playing in
+            if playing, source.key == .master { source.engine.clearClips() }
+        }
+        .allowsHitTesting(false)
+    }
+
+    private func draw(_ reading: MeterReading, in context: inout GraphicsContext, size: CGSize) {
+        let height = Double(size.height)
+        let x0 = TrackFaderView.x(forDecibels: AudioGain.minimumDB, width: width)
+        let yellowX = TrackFaderView.x(forDecibels: -12, width: width)
+        let zeroX = TrackFaderView.x(forDecibels: 0, width: width)
+        let endX = TrackFaderView.x(forDecibels: AudioGain.maximumDB, width: width)
+
+        if reading.clipped {
+            let over = CGRect(x: zeroX, y: 0, width: max(0, endX - zeroX + TrackFaderView.knob / 2), height: height)
+            context.fill(Path(roundedRect: over, cornerRadius: height / 2), with: .color(Self.red.opacity(0.9)))
+        }
+        for (index, level) in [reading.left, reading.right].enumerated() where level > AudioGain.minimumDB + 0.5 {
+            let top = 1 + Double(index) * (height - 2) / 2
+            let barHeight = (height - 2) / 2 - 0.4
+            let levelX = TrackFaderView.x(forDecibels: level, width: width)
+            let pieces: [(from: Double, to: Double, color: Color)] = [
+                (x0, min(levelX, yellowX), Self.green),
+                (yellowX, min(levelX, zeroX), Self.yellow),
+                (zeroX, levelX, Self.red),
+            ]
+            for piece in pieces where piece.to > piece.from {
+                context.fill(Path(CGRect(x: piece.from, y: top, width: piece.to - piece.from, height: barHeight)),
+                             with: .color(piece.color))
+            }
+        }
+        if reading.hold > AudioGain.minimumDB + 0.5 {
+            let holdX = TrackFaderView.x(forDecibels: reading.hold, width: width)
+            context.fill(Path(CGRect(x: holdX - 0.5, y: 0.5, width: 1, height: height - 1)),
+                         with: .color(reading.hold > 0 ? Self.red : .white.opacity(0.85)))
+        }
     }
 }

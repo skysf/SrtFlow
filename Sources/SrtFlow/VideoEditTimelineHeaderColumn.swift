@@ -143,7 +143,10 @@ private struct TimelineHeaderRow: View {
                     isMaster: false,
                     isDimmed: row.isHidden,
                     onLive: { project.previewTrackVolume($0, for: slot) },
-                    onCommit: { project.setTrackVolume($0, for: slot) }
+                    onCommit: { project.setTrackVolume($0, for: slot) },
+                    meter: row.heightKey.map {
+                        TrackMeterSource(engine: project.meters, key: .track($0), clock: project.clock)
+                    }
                 )
                 .frame(height: TimelineHeaderMetrics.faderHeight)
             } else {
@@ -167,7 +170,8 @@ private struct TimelineHeaderRow: View {
                 isMaster: true,
                 isDimmed: false,
                 onLive: { project.previewMasterVolume($0) },
-                onCommit: { project.setMasterVolume($0) }
+                onCommit: { project.setMasterVolume($0) },
+                meter: TrackMeterSource(engine: project.meters, key: .master, clock: project.clock)
             )
             .frame(width: TimelineHeaderMetrics.faderWidth, height: TimelineHeaderMetrics.faderHeight)
             Color.clear.frame(width: TimelineHeaderMetrics.eyeWidth)

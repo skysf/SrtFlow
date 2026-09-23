@@ -578,6 +578,9 @@ func main() async {
     // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
     await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
 
+    // ---- 8. 电平表（checks/AudioFade/Meter.swift）----
+    await checkMeters(audioSource: audioSource, videoSource: videoSource)
+
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }
     finish(failures == 0 ? 0 : 1)
