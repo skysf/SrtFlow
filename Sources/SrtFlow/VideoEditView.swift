@@ -623,18 +623,28 @@ struct VideoEditView: View {
 
             Divider().frame(height: 16)
 
-            ToolbarIcon(icon: "minus.magnifyingglass", help: "Zoom out") {
-                project.setPixelsPerSecond(project.pixelsPerSecond / 1.4)
+            ToolbarIcon(icon: "minus.magnifyingglass", help: "Zoom out", shortcut: .command("-")) {
+                project.setPixelsPerSecond(project.pixelsPerSecond / VideoEditProject.zoomStep)
             }
-            Slider(value: $project.pixelsPerSecond, in: VideoEditProject.zoomRange)
-                .frame(width: 84)
+            // **对数刻度**：缩放区间 4…4800 有 1200 倍宽，线性滑杆上原来那一整段（4…120）
+            // 只占最左边 2%。按对数取值，每挪一段放大的倍数都一样。
+            Slider(value: zoomSliderBinding, in: log(VideoEditProject.zoomRange.lowerBound)...log(VideoEditProject.zoomRange.upperBound))
+                .frame(width: 96)
                 .controlSize(.mini)
-            ToolbarIcon(icon: "plus.magnifyingglass", help: "Zoom in") {
-                project.setPixelsPerSecond(project.pixelsPerSecond * 1.4)
+            ToolbarIcon(icon: "plus.magnifyingglass", help: "Zoom in", shortcut: .command("=")) {
+                project.setPixelsPerSecond(project.pixelsPerSecond * VideoEditProject.zoomStep)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+    }
+
+    /// 缩放滑杆读写的是 log(pps)；写入仍走唯一的缩放入口 `setPixelsPerSecond`。
+    private var zoomSliderBinding: Binding<Double> {
+        Binding(
+            get: { log(max(project.pixelsPerSecond, VideoEditProject.zoomRange.lowerBound)) },
+            set: { project.setPixelsPerSecond(exp($0)) }
+        )
     }
 
     private var addMenu: some View {

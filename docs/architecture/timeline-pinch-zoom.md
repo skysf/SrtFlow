@@ -39,7 +39,9 @@
 1. `swift build --arch arm64`（Rosetta 终端的架构坑见 `docs/build/build-and-packaging.md`），
    并用 `strings 二进制 | grep <新增字符串>` 确认测试包真含新代码。
 2. 注入 Ctrl+滚轮（可用公开 CGEvent API，流程见 `docs/testing/gui-smoke-testing.md`），
-   确认刻度/片段/缩放滑块三者同步变化，且到达 4–120 的边界钳制。
+   确认刻度/片段/缩放滑块三者同步变化，且到达 4–4800 的边界钳制（上限 2026-09-23 从
+   120 抬上来，数值与理由在 `VideoEditZoom`，超宽内容的绘制约束见
+   [波形与深度缩放](audio-waveform.md)）。缩放滑杆是**对数刻度**。
 3. 真实捏合公开 API 造不出来，最后一步让用户按一次，或起
    `log stream --predicate 'category == "timeline-zoom"'` 实时看
    （`Logger` subsystem 为 `com.srtflow.SrtFlow`；注意 **`log show` 事后查

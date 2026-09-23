@@ -546,6 +546,7 @@ struct VideoEditTimelineView: View {
             TimelinePinnedRuler(
                 pps: pps,
                 duration: project.duration,
+                frameRate: project.state.frameRate,
                 rowSpacing: rowSpacing,
                 playheadX: clock.time * pps,
                 geometry: scrollGeometry,

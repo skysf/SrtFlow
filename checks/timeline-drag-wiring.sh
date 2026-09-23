@@ -1009,6 +1009,17 @@ grep -q 'func mediaImportLandings' "$MEDIA_IMPORT" \
 #（docs/architecture/audio-waveform.md）。
 grep_code 'context.clipBoundingRect' "$WAVEFORM" \
   || fail "波形没按 clipBoundingRect 裁到可见范围：放大后每滚一下都要把整段重画一遍"
+grep_code 'context.clipBoundingRect' "$RULER" \
+  || fail "标尺没按 clipBoundingRect 裁到可见范围：放大后每滚一下都要把整条刻度重算一遍"
+grep_code 'context.clipBoundingRect' "$THUMBS" \
+  || fail "缩略图没按可见范围铺格子：放大之后一张图会被拉成一万多点宽的横缝"
+# 缩放滑杆是对数刻度（线性的话原来的整个区间挤在最左 2%），写入仍走唯一入口。
+grep_code 'Slider(value: zoomSliderBinding' Sources/SrtFlow/VideoEditView.swift \
+  || fail "缩放滑杆不是对数刻度的那个 binding 了"
+if BODY="$(awk '/private var zoomSliderBinding/,/^    \}$/' Sources/SrtFlow/VideoEditView.swift)"; then
+  printf '%s\n' "$BODY" | grep -q 'setPixelsPerSecond(exp(' \
+    || fail "缩放滑杆没走 setPixelsPerSecond（唯一的缩放入口）"
+fi
 # 波形的数据按文件读一次（多级峰值），不许退回「每段按范围读成固定几百根柱子」——
 # 那样放多大都是那几百根，放大只是把每根拉宽（用户报的「放到最大还是不够」）。
 grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \
@@ -1017,4 +1028,4 @@ grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：波形只画可见条带且走多级峰值 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

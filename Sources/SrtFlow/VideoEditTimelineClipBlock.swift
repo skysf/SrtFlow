@@ -177,7 +177,7 @@ struct ClipBlockView: View {
                 WaveformView(clip: clip, pps: pps, trackGain: trackGain)
                     .padding(.bottom, 2)
             } else if height > 28 {
-                ThumbnailStripView(clip: clip, height: max(10, height - 20 - inlineWaveformHeight))
+                ThumbnailStripView(clip: clip, height: max(10, height - 20 - inlineWaveformHeight), pps: pps)
                     .clipShape(RoundedRectangle(cornerRadius: 3))
                     .padding(.horizontal, 2)
                 if showsInlineWaveform {

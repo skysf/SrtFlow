@@ -326,8 +326,11 @@ final class VideoEditProject: ObservableObject {
     /// 鼠标走 100 点、块只走 50 点。
     @Published var pixelsPerSecond: Double = 24
 
-    /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份。
-    static let zoomRange: ClosedRange<Double> = 4...120
+    /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份（数值与理由见 `VideoEditZoom`）。
+    static let zoomRange = VideoEditZoom.range
+
+    /// 工具栏放大 / 缩小一下乘除多少。
+    static let zoomStep = VideoEditZoom.step
 
     /// 唯一的缩放入口：夹进 `zoomRange`，非法值原样丢弃。
     func setPixelsPerSecond(_ value: Double) {
