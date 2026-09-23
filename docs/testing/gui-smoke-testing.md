@@ -232,6 +232,23 @@
   编进一个小程序，造好 `TimelineState` 后 `VideoEditProjectIO.save` 出来，再经
   `SRTFLOW_SMOKE_PROJECT` 打开 —— 比手写 JSON 稳（格式版本、MediaInfo 都是对的）。
 
+## 五之三、界面上的东西一直不出来、CPU 0% 的时候（2026-09-23）
+
+可能是某一档 QoS 的线程被堵光了，死锁了（案例：
+[缩略图和波形全空](../bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md)）。
+
+- **看线程栈要用 arm64 的 sample**：`arch -arm64 /usr/bin/sample <pid> 1 -file out.txt`。
+  终端跑在 Rosetta 下时，直接敲 `sample` 用的是 x86_64 的版本，读不了 arm64 进程的线程
+  状态：刷一屏 `failed to get thread state`，call graph 是空的。`lldb -p` 也 attach 不上
+  （报 `debugserver is x86_64 binary running in translation`）。拿到栈之后，看
+  `com.apple.root.<qos>-qos.cooperative` 上有几条线程、都停在哪儿。
+- **判断是哪一档死了：心跳**。另起一条普通 `Thread`，每秒往 `.utility`、`.userInitiated`、
+  默认优先级各派一个 `Task`，再往 GCD 的 `.utility` 丢一个 block，各打一行日志。哪一档
+  不响，就是哪一档的线程被堵光了。心跳本身必须放在普通线程上：放进 Task 里，它自己也会被
+  饿死。
+- **日志打到 stderr，或者关掉 stdout 的缓冲**（`setvbuf(stdout, nil, _IONBF, 0)`）。进程挂死
+  后被 kill，缓冲里的 print 一行也出不来，看上去像「什么都没发生」。
+
 ## 六、收尾
 
 - 杀掉 SrtFlowDev 进程，删临时 .app。

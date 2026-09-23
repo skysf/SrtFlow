@@ -63,6 +63,32 @@ func readAll(_ url: URL) async -> (last: WaveformPeaks?, count: Int) {
 
 func near(_ a: Float, _ b: Float, _ tolerance: Float = 0.01) -> Bool { abs(a - b) <= tolerance }
 
+/// 死锁时 `await` 永远不回来，整个自检就挂在那儿 —— 挂住不是失败，CI 只会等到超时。
+/// 看门狗到点还没被解除就判红退出。它必须是**普通线程**：死锁的正是 Swift 并发的
+/// 线程池，放在池子里的看门狗自己也会被饿死。
+final class Watchdog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var disarmed = false
+
+    init(seconds: Double, _ message: String) {
+        Thread.detachNewThread { [self] in
+            Thread.sleep(forTimeInterval: seconds)
+            lock.lock()
+            let fire = !disarmed
+            lock.unlock()
+            guard fire else { return }
+            print("FAIL \(message)")
+            finish(1)
+        }
+    }
+
+    func disarm() {
+        lock.lock()
+        disarmed = true
+        lock.unlock()
+    }
+}
+
 func main() async {
     guard FileManager.default.isExecutableFile(atPath: ffmpegPath) else {
         print("找不到 ffmpeg：\(ffmpegPath)（跑 scripts/vendor-ffmpeg.sh，或设 SRTFLOW_FFMPEG）")
@@ -192,6 +218,53 @@ func main() async {
     try? Data("definitely not audio".utf8).write(to: bogus)
     let none = await readAll(bogus)
     check(none.last == nil && none.count == 0, "读不了的文件不交快照，流也要结束")
+
+    // ---- 7. 很多文件同时读（打开工程就是这样）：全部读完，不许把线程池堵死 ----
+    // 2026-09-23 事故：读 PCM 的阻塞循环跑在 Swift 并发的协作线程池里，同一档 QoS 下同时读的
+    // 文件一凑满 CPU 核数（8 核机器上 7 个没事、8 个就死锁），整档 QoS 从此什么都不跑 ——
+    // 打开 43 个素材的工程，波形和缩略图全空。上面几节一次只读一个文件，所以一直是绿的。
+    // 文件数取核数的两倍（至少 16），哪台机器都盖得过线程池的宽度；封顶 40 是因为下面还要
+    // 往原始采样块缓存里放同样多块，那边最多留 48 块。
+    let cores = ProcessInfo.processInfo.activeProcessorCount
+    let crowd = min(40, max(16, 2 * cores))
+    let seed = make("crowd.wav", exprs: "0.5*sin(2*PI*440*t)|0.25*sin(2*PI*440*t)", seconds: 0.5)
+    // 仓库按文件认：同一份内容拷成不同的文件，才是「不同的素材一起读」。
+    let crowdFiles: [URL] = (0..<crowd).map { index in
+        let copy = root.appendingPathComponent("crowd-\(index).wav")
+        try? FileManager.default.copyItem(at: seed, to: copy)
+        return copy
+    }
+    let overviewWatchdog = Watchdog(
+        seconds: 30,
+        "同时读 \(crowd) 个文件的波形（\(cores) 核），30 秒没读完：读取把线程池堵死了（MediaReadQueue 没接上？）"
+    )
+    let completed = await withTaskGroup(of: Bool.self) { group in
+        for url in crowdFiles {
+            group.addTask { await readAll(url).last?.isComplete == true }
+        }
+        var count = 0
+        for await ok in group where ok { count += 1 }
+        return count
+    }
+    overviewWatchdog.disarm()
+    check(completed == crowd, "同时读 \(crowd) 个文件，每个都读完（读完 \(completed) 个）")
+
+    // 深度放大的原始采样块同一个道理（在 userInitiated 那一档）：一次要这么多个文件的块。
+    let detailWatchdog = Watchdog(
+        seconds: 30,
+        "同时要 \(crowd) 个文件的原始采样块（\(cores) 核），30 秒没读完：读取把线程池堵死了（MediaReadQueue 没接上？）"
+    )
+    for url in crowdFiles {
+        detail.request(url: url, indices: 0...0, sampleRate: 48_000, channels: 2)
+    }
+    var tilesReady = 0
+    for _ in 0..<1000 {
+        tilesReady = crowdFiles.filter { detail.tile(url: $0, index: 0) != nil }.count
+        if tilesReady == crowd { break }
+        try? await Task.sleep(nanoseconds: 20_000_000)
+    }
+    detailWatchdog.disarm()
+    check(tilesReady == crowd, "同时要 \(crowd) 个文件的原始采样块，每块都读回来（读回 \(tilesReady) 块）")
 
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }
