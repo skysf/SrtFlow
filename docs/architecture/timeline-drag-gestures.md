@@ -551,6 +551,37 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 守卫：纯值几何 `scripts/check-timeline-snap.sh` §31；接线 `checks/timeline-drag-wiring.sh`
 「插入缝」一节。
 
+### 5i. 整条轨换位置：按住轨道头上下拖（2026-09-24）
+
+学 Logic：按住轨道头上下拖，整条轨（轨道头连同这一行的素材块）跟着指针走，其余轨实时滑开
+让位，松手就换到那个位置；调行高挪到了轨道头的下边缘。上层轨在上层轨之间挪、音频轨在音频轨
+之间挪，主轨固定在最底下。产品口径见[方案](../plans/2026-09-24-track-insert-and-reorder.md)，
+轨道头这一列上的全部动作见[视频轨对等化](video-tracks.md)。
+
+- **算法只有一份纯值**：`TimelineLaneReorder.resolve`（`VideoEditTimelineLaneOrder.swift`）给出
+  「落到第几个位置、被拖的那一行跟着指针挪多少（夹在这一组的上下沿之间）、其余每一行让多少」。
+  中线越过邻居的中线就换位；越过去的那些行整体让开「被拖那一行的高度 + 行距」，各行高度不同
+  也成立。拖到最顶 / 最底时夹紧之后两条中线正好重合，原来在下面的行用 `<=`、在上面的用 `<`，
+  才不会差一格。
+- **拖动中一个字都不写 `TimelineState`**（§0）：位移是视图状态 `LaneReorderSession`，松手才
+  `VideoEditProject.moveLane` → 一次 `perform`，一步撤销。挪的是整条 `EditLane`，颜色、推子、
+  隐藏状态在它身上，行高按它的身份记，全都跟着走。
+- **轨道头列和轨道行挂同一个位移**（`laneReorderOffset`）：只用 `.offset` / `.zIndex` /
+  `.transaction` 原语。被拖的那一行在 transaction 里去掉动画（§2 第 1 条），其余行在落点变了的
+  那一拍由 `withAnimation` 带着滑开。
+- **两个拖动都量在轨道头列那个不动的坐标系上**（`TimelineHeaderColumn.space`，§1 那条规则）：
+  换位时被拖的行自己跟着指针走；调行高时下边缘那一条跟着行高一起长 —— 以自己为参照的
+  translation 会被自己的位移抵掉一半（振荡 + 半速，裁切把手那个反馈回路）。
+- **纵向自动滚动**：拖到视口上下边缘时时间线跟着滚，被拖的轨按「指针走的 + 滚过的」一起挪，
+  滚动量在心跳回调里现读（§5b）。
+- **`onEnded` 不保证会来**：会话记着手势起点，起点变了就是新的一轮；视图消失时清掉。
+- **性能**：轨道头的行在时钟每跳一下时不重算，靠的是它的输入每次都「相等」。所以换位的手势
+  直接写在 `TimelineHeaderRow` 的 body 里、输入只加值（`LaneReorderContext` 可比较、滚动几何
+  只当引用拿着不订阅），不新增计数的修饰器，也不往输入里塞闭包 —— 守卫逐条钉着。
+
+守卫：纯值算法 `scripts/check-timeline-snap.sh` §32；接线 `checks/timeline-drag-wiring.sh`
+「整条轨换位置」一节；抓手光标 `checks/hover-pointer-style.sh`。
+
 ## 回归清单（改这些代码后过一遍）
 
 - 拖右把手 238pt（10s 的量，默认缩放）→ 时长正好少 10s，不是 5s。

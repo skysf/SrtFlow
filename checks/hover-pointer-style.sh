@@ -45,8 +45,8 @@ scan 'NSCursor'   "代码里还有 NSCursor（悬停指针一律 .pointerStyle(_
 # 光钉 NSCursor 会漏掉后者那种；实测 Sources/ 下 `.push()` 只有光标这一种用途。
 scan '\.push\(\)' "代码里还有 .push()（光标栈的老写法）"
 
-# 七处把手各自钉死：路径或样式写错 = 扫了个空文件还是绿的。
-echo "==> 钉住七处把手的指针样式"
+# 八处把手各自钉死：路径或样式写错 = 扫了个空文件还是绿的。
+echo "==> 钉住八处把手的指针样式"
 need() {   # need <文件> <正则> <人话>
     if [ ! -f "$1" ]; then echo "✗ 文件不在：$1"; fail=1; return; fi
     if ! code_of "$1" | grep -cE "$2" >/dev/null; then
@@ -60,6 +60,7 @@ need Sources/SrtFlow/VideoEditTimelineTextRow.swift        '\.pointerStyle\(\.co
 need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(\.columnResize\)' '片段裁切把手的 .columnResize'
 need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(project\.activeTool == \.split \? \.rectSelection : nil\)' '刀片十字（条件靠 nil 交回外层）'
 need Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift  '\.pointerStyle\(\.rowResize\)'    '轨道头调行高的 .rowResize'
+need Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift   '\.pointerStyle\(lane == nil \? nil : \(dragging \? \.grabActive : \.grabIdle\)\)' '轨道头换位的抓手（不能换位的行 nil 交回外层）'
 need Sources/SrtFlow/VideoEditPreviewTransform.swift       '\.pointerStyle\(handle\.pointerStyle\)' '预览变换把手接 handle.pointerStyle'
 need Sources/SrtFlow/VideoEditPreviewTransform.swift       'var pointerStyle: PointerStyle'  'FrameHandle 暴露 pointerStyle'
 

@@ -59,6 +59,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditTimelineSeams.swift \
+  Sources/SrtFlow/VideoEditTimelineLaneOrder.swift \
   Sources/SrtFlow/VideoEditTimelineMarquee.swift \
   Sources/SrtFlow/VideoEditTimelineScale.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \

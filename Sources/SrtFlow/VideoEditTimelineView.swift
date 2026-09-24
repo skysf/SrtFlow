@@ -21,6 +21,10 @@ import SrtFlowCore
 // - `VideoEditTimelineWaveform.swift`       波形条
 // - `VideoEditTimelinePinchZoom.swift`      捏合缩放
 // - `VideoEditTimelineDropRouter.swift`     时间线上唯一的拖放落点（文件 / 滤镜 / 音频库 / 转场）
+// - `VideoEditTimelineSeams.swift`          插入缝的几何与行的排布（纯值）
+// - `VideoEditTimelineInsertGap.swift`      插入缝的停顿计时、拉开、缝里那条线
+// - `VideoEditTimelineLaneOrder.swift`      整条轨换位置的落点算法（纯值）
+// - `VideoEditTimelineLaneReorder.swift`    整条轨换位置的会话与位移（手势在轨道头列里）
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -64,6 +68,8 @@ struct VideoEditTimelineView: View {
     @State var openSeam: TimelineSeam?
     /// 在缝上停够 0.2 秒才拉开的计时，三种拖动共用。
     @State var seamDwell = TimelineSeamDwell()
+    /// 按住轨道头拖整条轨换位置（§5i）。视图状态：轨道头列和轨道行按它挪同一段。
+    @State var laneReorder: LaneReorderSession?
     /// 轨道头上下拖调行高的基准。
     @State private var headerResizeBase: RowHeightDragState?
     /// 从转场库拖卡片进来时的落点框。**只是视图状态** —— 拖动过程中一个字都不
@@ -294,7 +300,10 @@ struct VideoEditTimelineView: View {
                 gapRowID: gapPlacement.rowID,
                 project: project,
                 geometry: scrollGeometry,
-                resizeBase: $headerResizeBase
+                resizeBase: $headerResizeBase,
+                reorder: $laneReorder,
+                autoScroller: autoScroller,
+                viewportHeight: viewportHeight
             )
             Divider()
             GeometryReader { viewport in
@@ -337,6 +346,7 @@ struct VideoEditTimelineView: View {
                     dragTargetRow = nil
                     seamDwell.cancel()
                     openSeam = nil
+                    laneReorder = nil
                     marquee = nil
                     // 手势的「起手标记」也要一起清。留着的话，视图回来之后
                     // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
@@ -412,6 +422,8 @@ struct VideoEditTimelineView: View {
                         .frame(height: row.height)
                         // 拉开的缝：垫在缝下面那一行上面（轨道头列垫同一行，§5h）。
                         .padding(.top, row.id == gap.rowID ? TimelineSeams.gapExtra : 0)
+                        // 整轨换位：和轨道头列挂同一个位移（§5i）。
+                        .laneReorderOffset(laneReorder, rowID: row.id)
                 }
             }
             .padding(.vertical, TimelineRowMetrics.inset)

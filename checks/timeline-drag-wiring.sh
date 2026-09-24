@@ -35,10 +35,13 @@ VOLUME_CURVE="Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift"
 # 插入缝（2026-09-24）：纯值的几何一个文件，视图侧的停顿计时 / 拉开一个文件。
 SEAMS="Sources/SrtFlow/VideoEditTimelineSeams.swift"
 INSERT_GAP="Sources/SrtFlow/VideoEditTimelineInsertGap.swift"
+# 整条轨换位置（2026-09-24）：纯值的落点算法一个文件，轨道头上的拖动接线一个文件。
+LANE_ORDER="Sources/SrtFlow/VideoEditTimelineLaneOrder.swift"
+LANE_REORDER="Sources/SrtFlow/VideoEditTimelineLaneReorder.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
   "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE" \
-  "$SEAMS" "$INSERT_GAP")
+  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -1186,7 +1189,77 @@ grep -q 'guard AudioLibraryDrag.pending != nil else { return }' "$AUDIO_DROP" \
 grep -q 'state.placeLibraryAudio(clip, laneIndex: laneIndex, insertAt: insertAt)' "$AUDIO_DROP" \
   || fail "addLibraryAudio 没走纯值的 placeLibraryAudio：落进缝的那条规则自检够不着"
 
+# ── 整条轨换位置：按住轨道头上下拖（2026-09-24，学 Logic）───────────────
+# 落到第几个位置、其余每一行让多少是纯值的 TimelineLaneReorder（自检
+# scripts/check-timeline-snap.sh §32）；这里钉接线。长期约束：§5i。
+if grep -qE '^import (SwiftUI|AppKit)' "$LANE_ORDER"; then
+  fail "$LANE_ORDER 引入了 SwiftUI/AppKit：换位的落点自检编不动它了（它必须保持纯值）"
+fi
+# 1) 轨道头的行在时钟每跳一下时**不重算**（2026-09-24 CI 实测），靠的是它的输入每次都
+#    「相等」。输入里有闭包、或者订阅了滚动量的话，每跳一下 / 每滚一帧整列行都会重算
+#    （docs/architecture/preview-perf-ratchet.md：只许降）。
+ROW_DECL="$(awk '/^private struct TimelineHeaderRow: View/,/var body: some View/' "$HEADER_COLUMN")"
+if [ -z "$ROW_DECL" ]; then
+  fail "找不到 TimelineHeaderRow（在 ${HEADER_COLUMN}），换位接线守卫失去目标"
+else
+  if grep -vE '^[[:space:]]*//' <<<"$ROW_DECL" | grep -cE '^[[:space:]]*(@[A-Za-z]+ )?(let|var) [A-Za-z]+: .*->|@escaping' >/dev/null; then
+    fail "TimelineHeaderRow 的输入里有闭包：它每跳一下都会重算（整列行 + 推子 + 提示），性能 ratchet 当场红"
+  fi
+  if grep -vE '^[[:space:]]*//' <<<"$ROW_DECL" | grep -c 'ObservedObject var scroll' >/dev/null; then
+    fail "TimelineHeaderRow 订阅了滚动量：滚动的每一帧整列行都会重算（滚动量只许在手势回调里现读）"
+  fi
+fi
+# 2) 两个拖动都量在轨道头列那个不动的坐标系上（§1）：换位时被拖的行跟着指针走，
+#    调行高时下边缘跟着行高长，以自己为参照的 translation 会被自己的位移污染。
+grep_code '\.coordinateSpace(name: Self\.space)' "$HEADER_COLUMN" \
+  || fail "轨道头列没挂自己的坐标系：换位 / 调行高量在了一个不存在的坐标系上"
+grep_code 'DragGesture(minimumDistance: 3, coordinateSpace: .named(TimelineHeaderColumn.space))' "$HEADER_COLUMN" \
+  || fail "换位的拖动没钉在轨道头列的坐标系上：被拖的行自己在挪，translation 会被它污染"
+grep_code 'DragGesture(minimumDistance: 2, coordinateSpace: .named(TimelineHeaderColumn.space))' "$ROW_HEIGHT_DRAG" \
+  || fail "调行高的拖动没钉在轨道头列的坐标系上：下边缘跟着行高长，translation 会被抵掉一半（振荡 + 半速）"
+# 3) 调行高只挂在下边缘那一条上：挂回整行的话，按住轨道头拖又变成调行高、换不了位置。
+if BODY="$(require_func 'private var resizeEdge' "$HEADER_COLUMN")"; then
+  grep -q 'RowHeightDragModifier(' <<<"$BODY" || fail "轨道头下边缘那一条没挂调行高"
+fi
+EDGE_USES="$(grep -vE '^[[:space:]]*//' "$HEADER_COLUMN" | grep -c 'RowHeightDragModifier(' || true)"
+[ "$EDGE_USES" -eq 1 ] \
+  || fail "轨道头列里有 ${EDGE_USES} 处 RowHeightDragModifier（应为 1：只挂在下边缘那一条上）"
+# 4) 拖动中只写视图状态，松手才落一次；落地走一次 perform（一步撤销）。
+GESTURE_BODY="$(awk '/private var reorderGesture: some Gesture/,/^    \}$/' "$HEADER_COLUMN")"
+if [ -z "$GESTURE_BODY" ]; then
+  fail "找不到 reorderGesture（在 ${HEADER_COLUMN}）：按住轨道头拖不会换位"
+else
+  CHANGED="$(awk '/\.onChanged/,/\.onEnded/' <<<"$GESTURE_BODY")"
+  for forbidden in 'moveLane' 'perform' 'liveApply'; do
+    grep -q "$forbidden" <<<"$CHANGED" \
+      && fail "换位拖动的 onChanged 里出现了 ${forbidden}：拖动中禁止写 TimelineState"
+  done
+  [ "$(grep -c 'project.moveLane(' <<<"$GESTURE_BODY")" -eq 1 ] \
+    || fail "换位松手没有正好一处 project.moveLane：要么落不下去，要么落两次"
+  grep -q 'autoScroller.stop()' <<<"$GESTURE_BODY" || fail "换位松手没停心跳：时间线会一直自己滚"
+  grep -q 'scroll.offsetY - current.originScrollY' <<<"$GESTURE_BODY" \
+    || fail "换位的自动滚动回调没补纵向滚动量：滚动时被拖的轨会离开指针"
+fi
+if BODY="$(require_func 'func moveLane(_ group: TimelineLaneGroup' "$LANE_REORDER")"; then
+  COUNT="$(printf '%s\n' "$BODY" | grep -c 'perform' || true)"
+  [ "$COUNT" -eq 1 ] || fail "VideoEditProject.moveLane 里有 ${COUNT} 处 perform，应当正好 1 处（一步撤销）"
+fi
+# 5) 轨道头列和轨道行挂**同一个**位移：只挂一边，拖着轨道头走、素材块留在原地。
+grep_code '\.laneReorderOffset(reorder, rowID: row\.id)' "$HEADER_COLUMN" \
+  || fail "轨道头列没挂换位的位移"
+grep_code '\.laneReorderOffset(laneReorder, rowID: row\.id)' "$VIEW" \
+  || fail "轨道行没挂换位的位移：拖着轨道头走，素材块留在原地"
+#    被拖的那一行不许带动画（§2 第 1 条：画出来的是「低通滤波后的鼠标」）。
+if BODY="$(require_func 'func laneReorderOffset(' "$LANE_REORDER")"; then
+  grep -q 'transaction.animation = nil' <<<"$BODY" \
+    || fail "被拖的那条轨没豁免让位动画：它会追着指针跑，手越快落后越多"
+fi
+# 6) onEnded 不保证会来：视图消失时会话要清掉，否则回来之后轨道还挪着。
+if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
+  grep -q 'laneReorder = nil' <<<"$BODY" || fail "onDisappear 没清换位会话"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

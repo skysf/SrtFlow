@@ -1794,6 +1794,82 @@ do {
     checkEqual(clamped.overlayTracks.count, 2, "越界的下标落到最上面")
 }
 
+// MARK: - 32. 整条轨换位置：落到第几个位置、其余每一行让多少（2026-09-24）
+//
+// 拖动中画出来的顺序和松手落地必须是同一份算法（TimelineLaneReorder.resolve）。
+
+do {
+    // 三条一样高的轨（行距 5）：上沿 0 / 59 / 118，中线 27 / 86 / 145。
+    let equal = [54.0, 54, 54]
+    let still = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 0)
+    checkEqual(still.destination, 0, "没动就还在原位")
+    checkEqual(still.offsets, [0, 0, 0], "没动谁都不让")
+
+    let one = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 60)
+    checkEqual(one.destination, 1, "中线越过下一条的中线：换到第二个")
+    checkEqual(one.offsets, [0, -59, 0], "被越过的那条往上让出一整行（高度 + 行距）")
+    checkClose(one.draggedOffset, 60, "被拖的那条跟着指针")
+
+    let short = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 58)
+    checkEqual(short.destination, 0, "还没越过邻居的中线：不换")
+
+    let bottom = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 500)
+    checkClose(bottom.draggedOffset, 118, "夹在这一组的下沿：不盖到主轨、字幕那些行上")
+    checkEqual(bottom.destination, 2, "拖到最底就是最后一个（夹紧后两条中线重合也要算越过）")
+    checkEqual(bottom.offsets, [0, -59, -59], "越过的两条都往上让")
+
+    let top = TimelineLaneReorder.resolve(heights: equal, dragged: 2, offset: -500)
+    checkClose(top.draggedOffset, -118, "夹在这一组的上沿")
+    checkEqual(top.destination, 0, "拖到最顶就是第一个（重合那一刻不能差一格）")
+    checkEqual(top.offsets, [59, 59, 0], "越过的两条都往下让")
+
+    let up = TimelineLaneReorder.resolve(heights: equal, dragged: 1, offset: -60)
+    checkEqual(up.destination, 0, "往上越过上一条的中线：换到第一个")
+    checkEqual(up.offsets, [59, 0, 0], "被越过的那条往下让")
+
+    // 高度不同：上沿 0 / 35 / 140。让出来的空位正好是被拖那一行的大小。
+    let mixed = [30.0, 100, 40]
+    checkEqual(TimelineLaneReorder.resolve(heights: mixed, dragged: 0, offset: 69).destination, 0,
+               "矮的往下拖，中线 84 还没到高的那条的中线 85")
+    let swapped = TimelineLaneReorder.resolve(heights: mixed, dragged: 0, offset: 71)
+    checkEqual(swapped.destination, 1, "越过了：换到第二个")
+    checkEqual(swapped.offsets, [0, -35, 0], "高的那条只往上让 矮的那条的高度 + 行距")
+}
+
+do {
+    // 上层轨的行是倒着排的：显示第 0 行 = 数组最后一个。
+    checkEqual(TimelineLaneGroup.overlay.arrayIndex(displayIndex: 0, count: 3), 2, "最上面一行是层级最高的那条")
+    checkEqual(TimelineLaneGroup.overlay.arrayIndex(displayIndex: 2, count: 3), 0, "最下面一行是最低一层")
+    checkEqual(TimelineLaneGroup.audio.arrayIndex(displayIndex: 1, count: 3), 1, "音频轨行和数组同序")
+    checkEqual(TimelineLaneGroup(.main), nil, "主轨不参与换位")
+    checkEqual(TimelineLaneGroup(.overlay(4)), .overlay, "上层轨一组")
+    checkEqual(TimelineLaneGroup(nil), nil, "非轨道行不参与换位")
+
+    // 把最上面那条上层轨（数组 2）拖到最下面（数组 0）：叠放顺序跟着变，轨的身份一个都不丢。
+    var state = TimelineState()
+    var high = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 3, volume: 0.5)
+    high.isHidden = true
+    let low = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 1)
+    let middle = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 2)
+    state.overlayTracks = [low, middle, high]
+    var moved = state
+    moved.moveLane(.overlay, from: 2, to: 0)
+    checkEqual(moved.overlayTracks.map(\.id), [high.id, low.id, middle.id], "最高那层挪到了最低")
+    checkEqual(moved.overlayTracks.first?.colorIndex, 3, "颜色跟着轨走")
+    checkClose(moved.overlayTracks.first?.volume ?? -1, 0.5, "推子跟着轨走")
+    checkEqual(moved.overlayTracks.first?.isHidden, true, "隐藏状态跟着轨走")
+
+    var same = state
+    same.moveLane(.overlay, from: 7, to: 0)
+    checkEqual(same, state, "越界的下标什么都不做")
+    var audio = TimelineState()
+    let a = EditLane(clips: [clip(start: 0, duration: 1)])
+    let b = EditLane(clips: [clip(start: 0, duration: 1)])
+    audio.audioTracks = [a, b]
+    audio.moveLane(.audio, from: 0, to: 1)
+    checkEqual(audio.audioTracks.map(\.id), [b.id, a.id], "音频轨换位")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

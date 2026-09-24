@@ -318,6 +318,7 @@
 "Adding…" = "Adding…";
 "Freezing…" = "Freezing…";
 "Drag up or down to resize this track" = "Drag up or down to resize this track";
+"Drag up or down to move this track" = "Drag up or down to move this track";
 
 "Hide or show subtitles" = "Hide or show subtitles";
 "Subtitle track is hidden — nothing will be burned." = "Subtitle track is hidden — nothing will be burned.";
