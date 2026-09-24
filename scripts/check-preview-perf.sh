@@ -93,42 +93,54 @@ Fifth line
 The last line
 SRT
 
-echo "==> 跑场景（每个场景两遍，两遍的计数必须一模一样）"
 RESULT_FILES=()
-for scenario in ${SCENARIOS}; do
-  for n in $(seq 1 "${RUNS_PER_SCENARIO}"); do
-    result="${OUT_DIR}/${scenario}-${n}.json"
-    log="${OUT_DIR}/${scenario}-${n}.log"
-    rm -f "${result}"
-    echo "    ${scenario} 第 ${n} 遍"
-    # -mainWindowSection：启动直接进 Edit Video（参数域覆盖 UserDefaults，不会写回去）。
-    SRTFLOW_BENCH_OUT="${result}" SRTFLOW_BENCH_MEDIA="${MEDIA}" SRTFLOW_BENCH_SCENARIO="${scenario}" \
-      SRTFLOW_SMOKE_MUTE=1 SRTFLOW_FFMPEG="${FFMPEG}" \
-      "${APP}" -mainWindowSection videoEdit -ApplePersistenceIgnoreState YES >"${log}" 2>&1 &
-    pid=$!
-    waited=0
-    while kill -0 "${pid}" 2>/dev/null; do
-      if [ "${waited}" -ge "${RUN_TIMEOUT}" ]; then
-        kill -9 "${pid}" 2>/dev/null || true
-        echo "✗ ${scenario} 第 ${n} 遍 ${RUN_TIMEOUT} 秒还没结束。App 日志最后 60 行：" >&2
-        tail -n 60 "${log}" >&2
-        exit 1
-      fi
-      sleep 1
-      waited=$((waited + 1))
-    done
-    status=0
-    wait "${pid}" || status=$?
-    if [ "${status}" -ne 0 ] || [ ! -s "${result}" ]; then
-      echo "✗ ${scenario} 第 ${n} 遍失败（退出码 ${status}）" >&2
-      if [ -s "${result}" ]; then cat "${result}" >&2; fi
-      echo "App 日志最后 60 行：" >&2
+# 起一遍真 App 跑一个场景，结果记进 RESULT_FILES。$1 场景名，$2 第几遍
+run_once() {
+  local scenario="$1" n="$2"
+  local result="${OUT_DIR}/${scenario}-${n}.json"
+  local log="${OUT_DIR}/${scenario}-${n}.log"
+  rm -f "${result}"
+  echo "    ${scenario} 第 ${n} 遍"
+  # -mainWindowSection：启动直接进 Edit Video（参数域覆盖 UserDefaults，不会写回去）。
+  SRTFLOW_BENCH_OUT="${result}" SRTFLOW_BENCH_MEDIA="${MEDIA}" SRTFLOW_BENCH_SCENARIO="${scenario}" \
+    SRTFLOW_SMOKE_MUTE=1 SRTFLOW_FFMPEG="${FFMPEG}" \
+    "${APP}" -mainWindowSection videoEdit -ApplePersistenceIgnoreState YES >"${log}" 2>&1 &
+  local pid=$!
+  local waited=0
+  while kill -0 "${pid}" 2>/dev/null; do
+    if [ "${waited}" -ge "${RUN_TIMEOUT}" ]; then
+      kill -9 "${pid}" 2>/dev/null || true
+      echo "✗ ${scenario} 第 ${n} 遍 ${RUN_TIMEOUT} 秒还没结束。App 日志最后 60 行：" >&2
       tail -n 60 "${log}" >&2
       exit 1
     fi
-    echo "      ${waited} 秒"
-    RESULT_FILES+=("${result}")
+    sleep 1
+    waited=$((waited + 1))
   done
+  local status=0
+  wait "${pid}" || status=$?
+  if [ "${status}" -ne 0 ] || [ ! -s "${result}" ]; then
+    echo "✗ ${scenario} 第 ${n} 遍失败（退出码 ${status}）" >&2
+    if [ -s "${result}" ]; then cat "${result}" >&2; fi
+    echo "App 日志最后 60 行：" >&2
+    tail -n 60 "${log}" >&2
+    exit 1
+  fi
+  echo "      ${waited} 秒"
+  RESULT_FILES+=("${result}")
+}
+
+echo "==> 跑场景（每个场景两遍；两遍不一样再跑第三遍，要有两遍一模一样）"
+for scenario in ${SCENARIOS}; do
+  for n in $(seq 1 "${RUNS_PER_SCENARIO}"); do
+    run_once "${scenario}" "${n}"
+  done
+  # CI 虚拟机上偶尔有系统层面的事件让某个视图多更新一两次（只会多、不会少）。
+  # 两遍不一样就再跑一遍，比对器从三遍里挑一模一样的那两遍（compare.swift 规则 1）。
+  if ! "${WORK}/compare" --same "${OUT_DIR}/${scenario}-1.json" "${OUT_DIR}/${scenario}-2.json"; then
+    echo "    ${scenario} 两遍计数不一样，跑第三遍"
+    run_once "${scenario}" 3
+  fi
 done
 
 # 这台 runner 的环境：基线是按它记的，换了镜像（系统 / Xcode）数字可能跟着变。

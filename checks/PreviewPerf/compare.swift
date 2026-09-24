@@ -5,8 +5,12 @@ import Foundation
 //
 // 规则（用户 2026-09-24 拍板：只许降不许涨，要加开销得先在别处省回同样多）：
 //
-// 1. 每个场景跑两遍，**计数必须一模一样**。不一样说明测试本身不稳（有东西在异步地
-//    落地），那是测试的问题，不许靠放宽基线绕过去。
+// 1. 每个场景跑两遍，**计数必须一模一样**；不一样就跑第三遍，三遍里要有两遍一模一样，
+//    用那两遍的数，另一遍当受了干扰（写进汇总页）。三遍两两都不一样，说明测试本身不稳，
+//    那是测试的问题，不许靠放宽基线绕过去。
+//    为什么允许一遍出局：CI 虚拟机上偶尔有系统层面的事件让某个视图多更新一两次（2026-09-24
+//    连跑样本里约六遍一次，只会多、不会少），它不是这段代码的活；要求「两遍精确一致」
+//    仍然挡得住真正的不确定。
 // 2. 计数和基线**逐项相等**才算过：多了是退步；少了是进步，但必须把新数写进基线
 //   （不然这次省下来的，下一个 PR 可以悄悄花回去）；多出来的项要登记，消失的项要删。
 // 3. 内存峰值有噪声（runner 之间差 2–5%），按容差比：超上限算退步，降得多只提示。
@@ -142,20 +146,23 @@ func judge(
 
     var measuredGated: [String: Int] = [:]
     var measuredMemory: [String: Double] = [:]
-    for pair in runs {
-        guard let first = pair.first else { continue }
-        // 规则 1：两遍必须一模一样。
-        for other in pair.dropFirst() where other.gated != first.gated {
-            let keys = Set(first.gated.keys).union(other.gated.keys).sorted()
-                .filter { first.gated[$0] != other.gated[$0] }
-                .map { "\($0) \(first.gated[$0].map(String.init) ?? "无") / \(other.gated[$0].map(String.init) ?? "无")" }
+    for scenarioRuns in runs {
+        guard let first = scenarioRuns.first else { continue }
+        // 规则 1：要有两遍一模一样。
+        guard let (agreeing, outliers) = agreeingPair(scenarioRuns) else {
             verdict.failures.append(
-                "场景 \(first.scenario) 跑两遍计数不一样（测试本身不稳，不是基线的问题）：" + keys.joined(separator: "；"))
+                "场景 \(first.scenario) 跑了 \(scenarioRuns.count) 遍，没有两遍计数一模一样（测试本身不稳，不是基线的问题）："
+                + differences(scenarioRuns[0], scenarioRuns[1]))
+            continue
         }
-        measuredGated.merge(first.gated) { a, _ in a }
-        for (key, _) in first.memory {
-            // 内存取两遍里大的那个：宁可严一点。
-            measuredMemory[key] = pair.compactMap { $0.memory[key] }.max()
+        for outlier in outliers {
+            verdict.notices.append(
+                "场景 \(first.scenario) 有一遍和另外两遍不一样，当受干扰的那遍扔掉：" + differences(agreeing[0], outlier))
+        }
+        measuredGated.merge(agreeing[0].gated) { a, _ in a }
+        for (key, _) in agreeing[0].memory {
+            // 内存取一致那两遍里大的那个：宁可严一点。
+            measuredMemory[key] = agreeing.compactMap { $0.memory[key] }.max()
         }
     }
     verdict.measured.gated = measuredGated
@@ -211,6 +218,25 @@ func judge(
     return verdict
 }
 
+/// 找出计数一模一样的两遍（按先后挑第一对），其余的是出局的那遍。一对都没有返回 nil。
+func agreeingPair(_ runs: [Run]) -> (agreeing: [Run], outliers: [Run])? {
+    for i in runs.indices {
+        for j in runs.indices where j > i && runs[i].gated == runs[j].gated {
+            let outliers = runs.indices.filter { $0 != i && $0 != j }.map { runs[$0] }
+            return ([runs[i], runs[j]], outliers)
+        }
+    }
+    return nil
+}
+
+/// 两遍之间不一样的项，「项 a / b」。
+func differences(_ a: Run, _ b: Run) -> String {
+    Set(a.gated.keys).union(b.gated.keys).sorted()
+        .filter { a.gated[$0] != b.gated[$0] }
+        .map { "\($0) \(a.gated[$0].map(String.init) ?? "无") / \(b.gated[$0].map(String.init) ?? "无")" }
+        .joined(separator: "；")
+}
+
 // MARK: - 自检
 
 func selfTest() -> Bool {
@@ -247,7 +273,20 @@ func selfTest() -> Bool {
 
     v = judge(baseline: base, previous: base, runs: [[run(same), run(["s.ticks.body": 99, "s.edits.composition.build": 2])]],
               fingerprint: "env A", touchesProductCode: true)
-    expect(!v.passed && v.failures.contains { $0.contains("跑两遍计数不一样") }, "两遍不一样要判红")
+    expect(!v.passed && v.failures.contains { $0.contains("没有两遍计数一模一样") }, "只跑了两遍、两遍不一样要判红")
+
+    let noisy = ["s.ticks.body": 102, "s.edits.composition.build": 2]
+    v = judge(baseline: base, previous: base, runs: [[run(same), run(noisy), run(same)]],
+              fingerprint: "env A", touchesProductCode: true)
+    expect(v.passed && v.notices.contains { $0.contains("当受干扰的那遍扔掉") },
+           "三遍里有两遍一模一样：用那两遍，出局的那遍只提示：\(v.failures)")
+    v = judge(baseline: base, previous: base, runs: [[run(noisy), run(same), run(same)]],
+              fingerprint: "env A", touchesProductCode: true)
+    expect(v.passed && v.measured.gated["s.ticks.body"] == 100, "第一遍出局时，数要取一致的那两遍")
+    v = judge(baseline: base, previous: base,
+              runs: [[run(same), run(noisy), run(["s.ticks.body": 104, "s.edits.composition.build": 2])]],
+              fingerprint: "env A", touchesProductCode: true)
+    expect(!v.passed && v.failures.contains { $0.contains("没有两遍计数一模一样") }, "三遍两两不同要判红")
 
     v = judge(baseline: base, previous: base, runs: [[run(same.merging(["s.ticks.canvas": 3]) { a, _ in a }),
                                                        run(same.merging(["s.ticks.canvas": 3]) { a, _ in a })]],
@@ -304,7 +343,7 @@ func markdownSummary(_ verdict: Verdict, baseline: Baseline, runs: [[Run]], fing
     for failure in verdict.failures { lines.append("- ✗ \(failure)") }
     for notice in verdict.notices { lines.append("- ℹ︎ \(notice)") }
     lines += ["", "| 计数项 | 基线 | 这次 |", "| --- | ---: | ---: |"]
-    let measured = runs.compactMap(\.first).reduce(into: [String: Int]()) { $0.merge($1.gated) { a, _ in a } }
+    let measured = verdict.measured.gated
     for key in Set(baseline.gated.keys).union(measured.keys).sorted() {
         let old = baseline.gated[key].map(String.init) ?? "—"
         let new = measured[key].map(String.init) ?? "—"
@@ -332,6 +371,19 @@ func markdownSummary(_ verdict: Verdict, baseline: Baseline, runs: [[Run]], fing
 func main() -> Int32 {
     var args = Array(CommandLine.arguments.dropFirst())
     if args == ["--self-test"] { return selfTest() ? 0 : 1 }
+    // 脚本用：这两遍的计数一样吗（不一样就再跑第三遍）。
+    if args.count == 3, args[0] == "--same" {
+        do {
+            let a = try Run(json: loadJSON(args[1]), file: args[1])
+            let b = try Run(json: loadJSON(args[2]), file: args[2])
+            if a.gated == b.gated { return 0 }
+            print("    两遍不一样：\(differences(a, b))")
+            return 1
+        } catch {
+            print("✗ \(error)")
+            return 2
+        }
+    }
 
     func take(_ flag: String) -> String? {
         guard let index = args.firstIndex(of: flag), index + 1 < args.count else { return nil }
