@@ -330,7 +330,7 @@ do {
 
 do {
     // 用户手打的那条命令：-c:v libx264 -crf 23 -preset slow -c:a copy
-    let base = FFmpegCommand(inputPath: "in.mp4", outputPath: "out.mp4", sourceHeight: 1080)
+    let base = FFmpegCommand(inputPath: "in.mp4", outputPath: "out.mp4", sourceWidth: 1920, sourceHeight: 1080)
     let args = FFmpegArgumentBuilder.arguments(for: base)
     func indexOf(_ flag: String, in list: [String]) -> Int? { list.firstIndex(of: flag) }
 
@@ -378,6 +378,7 @@ do {
     downscale.settings.resolution = .hd720
     checkEqual(FFmpegArgumentBuilder.filterChain(for: downscale), "scale=-2:720", "downscale 1080p→720p")
     var upscale = base
+    upscale.sourceWidth = 854
     upscale.sourceHeight = 480
     upscale.settings.resolution = .fhd1080
     check(FFmpegArgumentBuilder.filterChain(for: upscale) == nil, "never upscales a smaller source")
@@ -385,6 +386,33 @@ do {
     unknownHeight.sourceHeight = nil
     unknownHeight.settings.resolution = .hd720
     check(FFmpegArgumentBuilder.filterChain(for: unknownHeight) == nil, "skips scaling when source height unknown")
+    var unknownWidth = base
+    unknownWidth.sourceWidth = nil
+    unknownWidth.settings.resolution = .hd720
+    check(FFmpegArgumentBuilder.filterChain(for: unknownWidth) == nil, "skips scaling when source width unknown")
+
+    // 档位封的是短边（docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md）：
+    // 以前一律压高度，竖屏 1080×1920 选 1080p 被缩成约 608×1080。
+    var portrait = base
+    portrait.sourceWidth = 1080
+    portrait.sourceHeight = 1920
+    portrait.settings.resolution = .fhd1080
+    check(FFmpegArgumentBuilder.filterChain(for: portrait) == nil,
+          "a 1080×1920 portrait video already fits 1080p — must not be scaled")
+    portrait.settings.resolution = .hd720
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: portrait), "scale=720:-2",
+               "portrait 720p caps the width (short side): 1080×1920 → 720×1280")
+    var portrait4K = base
+    portrait4K.sourceWidth = 2160
+    portrait4K.sourceHeight = 3840
+    portrait4K.settings.resolution = .fhd1080
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: portrait4K), "scale=1080:-2",
+               "portrait 4K → 1080p caps the width")
+    var square = base
+    square.sourceWidth = 1080
+    square.sourceHeight = 1080
+    square.settings.resolution = .hd720
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: square), "scale=-2:720", "square 1080 → 720")
 
     // 帧率同样只降不升
     var dropFps = base

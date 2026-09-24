@@ -284,6 +284,7 @@ final class EncodeQueue: ObservableObject {
             hasAudio: info.hasAudio,
             audioCanCopy: info.audioCanCopyToMP4,
             useHardwareDecode: true,
+            sourceWidth: info.width,
             sourceHeight: info.height,
             sourceFrameRate: info.frameRate > 0 ? info.frameRate : nil
         )

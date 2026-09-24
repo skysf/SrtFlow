@@ -39,6 +39,9 @@ public struct FFmpegCommand: Hashable, Sendable {
     public var audioCanCopy: Bool
     /// 用 VideoToolbox 做硬件解码。失败时调用方会去掉这项重试一次。
     public var useHardwareDecode: Bool
+    /// 源画面的显示宽高（按旋转矩阵转正过，和 ffmpeg 自动转正后看到的一致）。
+    /// 分辨率档位封短边，得两个都知道才分得清横竖。
+    public var sourceWidth: Int?
     public var sourceHeight: Int?
     public var sourceFrameRate: Double?
     public var metadataTitle: String?
@@ -53,6 +56,7 @@ public struct FFmpegCommand: Hashable, Sendable {
         hasAudio: Bool = true,
         audioCanCopy: Bool = true,
         useHardwareDecode: Bool = true,
+        sourceWidth: Int? = nil,
         sourceHeight: Int? = nil,
         sourceFrameRate: Double? = nil,
         metadataTitle: String? = nil
@@ -66,6 +70,7 @@ public struct FFmpegCommand: Hashable, Sendable {
         self.hasAudio = hasAudio
         self.audioCanCopy = audioCanCopy
         self.useHardwareDecode = useHardwareDecode
+        self.sourceWidth = sourceWidth
         self.sourceHeight = sourceHeight
         self.sourceFrameRate = sourceFrameRate
         self.metadataTitle = metadataTitle
@@ -93,11 +98,16 @@ public enum FFmpegArgumentBuilder {
             }
         }
 
-        if let maxHeight = command.settings.resolution.maxHeight,
+        // 档位封的是**短边**：横屏压高、竖屏压宽。以前一律压高度，竖屏 1080×1920
+        // 选 1080p 会被缩成约 608×1080（docs/bugfixes/2026-09-24-resolution-cap-
+        // shrinks-portrait-video.md）。宽高缺一个就分不清横竖，那就不缩 —— 和
+        // 「不知道高度就不缩」同一个口径。
+        if let cap = command.settings.resolution.maxShortSide,
+           let sourceWidth = command.sourceWidth,
            let sourceHeight = command.sourceHeight,
-           sourceHeight > maxHeight {
-            // -2 让宽度按比例走且保持偶数，yuv420p 要求宽高都是偶数。
-            filters.append("scale=-2:\(maxHeight)")
+           min(sourceWidth, sourceHeight) > cap {
+            // -2 让另一边按比例走且保持偶数，yuv420p 要求宽高都是偶数。
+            filters.append(sourceWidth >= sourceHeight ? "scale=-2:\(cap)" : "scale=\(cap):-2")
         }
 
         if let burnIn = command.burnIn {

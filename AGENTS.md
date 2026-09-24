@@ -116,6 +116,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
+| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出） | [导出设置](docs/architecture/export-settings.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换 | [本地化](docs/architecture/localization.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
@@ -248,6 +249,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑与已知盲区。
 - [阻塞的媒体读取](docs/architecture/blocking-media-reads.md) — `copyNextSampleBuffer` 这类会卡住线程的读取不许进 Swift 并发的线程池（同一档 QoS 上卡满核数就整档死锁）、`MediaReadQueue` 的两种用法与宽度、唯一的例外（字幕生成逐窗口读）、什么样的阻塞会死锁。
+- [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、宽高收成偶数、各管线在哪一步缩。
 
 ## Bug 修复案例索引
 
@@ -311,6 +313,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-23 CI 说清单缺文件，其实不缺](docs/bugfixes/2026-09-23-grep-q-sigpipe-false-red.md) — pipefail 下 `printf | grep -q`：grep 命中就退出，printf 吃 SIGPIPE，整条管道判失败，命中反而报「缺」。内容过 64KB 必红、小内容看调度；一个脚本里早学到的「用 grep -c」没升格成检查，别处攒到 111 处。
 - [2026-09-23 打开工程后缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) — 读 PCM 的阻塞循环跑在 Swift 并发的协作线程池里，43 个文件一起读把 utility 整档堵到死锁（8 核上 7 个没事、8 个就死），取缩略图的 task 在同一档陪着死；原来的自检一次只读一个文件，所以一直绿。可能死锁的自检要带普通线程上的看门狗；Rosetta 终端里 `sample` 要加 `arch -arm64`。
 - [2026-09-23 一条轨上换了音频格式，从那儿起没声音、预览卡住](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) — 电平表的 tap 挂在合成音轨上，同一条合成音轨中途换源格式（采样率 / 声道 / 编码），tap 被重新 prepare 后再也不被调用：那条轨从此静音，从换格式之后起播播放器不走。修法是一条合成音轨只装一种格式。先离线读（不挂 tap）排除数据问题，再用静音的 AVPlayer 在命令行里跑实时管线定性；自检素材只有一种格式是这次的盲区。
+- [2026-09-24 压缩 / 烧录选 1080p，竖屏视频被缩成 608×1080](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md) — 档位名说的是短边，代码封的是高度；接口只收高度、表达不了横竖，自检素材又全是横屏。**缺的输入比写错的逻辑更难发现。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

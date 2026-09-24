@@ -321,6 +321,7 @@ struct BurnInView: View {
             softSubtitlePath: queue.attachSoftSubtitleTrack ? "soft.srt" : nil,
             hasAudio: item.info?.hasAudio ?? true,
             audioCanCopy: item.info?.audioCanCopyToMP4 ?? true,
+            sourceWidth: item.info?.width ?? 1920,
             sourceHeight: item.info?.height ?? 1080,
             sourceFrameRate: item.info?.frameRate
         )

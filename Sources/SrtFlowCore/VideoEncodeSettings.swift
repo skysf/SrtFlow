@@ -37,10 +37,16 @@ public enum EncodePreset: String, CaseIterable, Codable, Sendable {
 }
 
 /// 分辨率上限。只做下调，源本身更小时保持原样。
+///
+/// **档位封的是短边**：「1080p」对横屏是 1920×1080，对竖屏是 1080×1920 —— 数字
+/// 说的都是短边。以前封的是高度，竖屏 1080×1920 选 1080p 会被缩成约 608×1080
+/// （docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md）。
+/// 长期约束见 docs/architecture/export-settings.md。
 public enum ResolutionLimit: String, CaseIterable, Codable, Sendable {
     case original, uhd2160, qhd1440, fhd1080, hd720, sd480
 
-    public var maxHeight: Int? {
+    /// 短边上限；`original` 不封顶。
+    public var maxShortSide: Int? {
         switch self {
         case .original: return nil
         case .uhd2160: return 2160
