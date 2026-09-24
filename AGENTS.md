@@ -93,6 +93,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
 | 时间线捏合、滚动、移动、裁切、吸附、框选、点击落点、扫帧预览 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
+| 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 从 Finder 拖文件 / ⌘V 粘贴文件进时间线、导入落点 | [拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[外部拖入被内层落点独占](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)（结论已更正）、[拖动手势](docs/architecture/timeline-drag-gestures.md)（主轨保序、§5e-2 唯一落点）、[视频轨对等化](docs/architecture/video-tracks.md) |
@@ -228,6 +229,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   总表放标尺行、M/S 这轮不做）及理由，外加三个探针的实测地基（`aeval` 必须在 `adelay`
   之前、Canvas 只画 `clipBoundingRect`、音频 tap 看不到音量且不能每次换 mix 都新建）。
 - [导出面板改版：三行 + 高级](docs/plans/2026-09-24-export-panel.md) — 标题 / 导出至 / 分辨率摆在外面、其余收进「高级」，分辨率只降不升按短边、不再弹保存面板、撞名先提示再确认、记住设置加「恢复默认」；逐条拍过的板和理由。
+- [插进两条轨之间 + 整条轨换位置](docs/plans/2026-09-24-track-insert-and-reorder.md) — 拖素材块 / Finder 文件 /
+  音频库素材在缝上停 0.2 秒、缝拉开成 28pt 的窄缝再落进新轨（主轨下面不开缝、原轨只剩这一段时紧挨的两条缝不开）；
+  按住轨道头拖整条轨换位置（学 Logic，调行高挪到下边缘，其余轨实时滑开）；逐条拍过的板和理由。
 - [预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) — 为什么数「活」不数 CPU
   指令（托管 runner 读不到计数器、CPU 时间差两倍的探针实测）、不挂自托管 runner、不许拿画质换数字、
   只许降不许涨（要加开销先在别处省回来）等拍过的板。
@@ -240,7 +244,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
   框选（相交即选中、混选与「预览最多一套框」、整组一起移动），以及命中区必须盖在填满视口
-  之后、点非素材处移播放头、扫帧 peek 的唯一所有者、**整条时间线只许一个拖放落点**（§5e-2）。
+  之后、点非素材处移播放头、扫帧 peek 的唯一所有者、**整条时间线只许一个拖放落点**（§5e-2），
+  插入缝（停 0.2 秒拉开、行的位置一份纯值、纵向按指针判，§5h）与整条轨换位（§5i）。
 - [预览自由变换](docs/architecture/preview-free-transform.md) — `ClipPlacement` 与预览/导出同账。
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
@@ -251,7 +256,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [画面渐入渐出](docs/architecture/video-fades.md) — 渐变露出的是下一层、alpha 斜坡两条管线同账、与声音共用的夹紧规则。
 - [主轨转场：借余料与定格补足](docs/architecture/transition-handles.md) — 不挪用户片段、三种几何与容量、余料不够用首尾帧定格补足（2026-09-23 拍板）、定格字段只在渲染副本里且只许展开函数写、两条管线怎么做定格。
 - [画面段的入场 / 出场动画](docs/architecture/clip-animation.md) — 五种效果都落在三种斜坡上、效果与画面渐变共用一个槽（老工程零迁移）、铺满画布不露边的补偿、逐帧效果走预渲染的代价。
-- [视频轨对等化](docs/architecture/video-tracks.md) — 取消画中画、一轨一色、⌥ 点击穿透，以及尚未对齐的两项。
+- [视频轨对等化](docs/architecture/video-tracks.md) — 取消画中画、一轨一色、⌥ 点击穿透、轨道头这一列的动作（按住拖 = 整条轨换位置、拖下边缘 = 调行高），以及尚未对齐的两项。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）。
 - [滤镜](docs/architecture/filters.md) — 时间轴上的调色段、层号进模型（LUT 不可交换）、强度=表的线性插值、预览挂图层滤镜的实测地基（backgroundFilters 会污染整个窗口）、两条管线的四条对齐约束。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。

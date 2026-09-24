@@ -1572,6 +1572,304 @@ do {
           "格宽在同一个 2 的幂区间里变，网格不变")
 }
 
+// MARK: - 31. 插入缝：缝在哪、指针算不算在缝上、拉开之后每一行挪到哪（2026-09-24）
+//
+// docs/plans/2026-09-24-track-insert-and-reorder.md。这份几何画框、命中判定、轨道头列
+// 三处共用，任何一处各算一份就会「框在缝里、素材落到别的轨」或者轨道头错开一个缝宽。
+
+/// 标尺 + 两条上层轨 + 主轨 + 两条音频轨（轨道行默认高度）。
+/// 排出来：标尺 2…28、上层轨1 33…87、上层轨0 92…146、主轨 151…205、
+/// 音频0 210…244、音频1 249…283。
+let seamRows: [TimelineSeams.Row] = [
+    .init(slot: nil, height: 26, sitsAboveTracks: true),
+    .init(slot: .overlay(1), height: 54),
+    .init(slot: .overlay(0), height: 54),
+    .init(slot: .main, height: 54),
+    .init(slot: .audio(0), height: 34),
+    .init(slot: .audio(1), height: 34),
+]
+
+do {
+    let spans = TimelineSeams.layout(seamRows)
+    checkClose(spans[1].minY, 33, "排布和 VStack 一致：标尺之后第一条轨从 33 起")
+    checkClose(spans[5].maxY, 283, "最后一条音频轨止于 283")
+
+    let video = TimelineSeams.spots(audio: false, rows: seamRows)
+    checkEqual(video.map(\.seam), [.overlay(2), .overlay(1), .overlay(0)],
+               "视频缝从上往下：最上面、两条上层轨之间、最低一层上层轨下面")
+    checkClose(video[0].line, 30.5, "最上面那条缝在上层轨1 上方")
+    checkClose(video[1].line, 89.5, "中间那条缝在两条上层轨之间")
+    checkClose(video[2].line, 148.5, "最低那条缝紧贴主轨之上")
+    check(video[0].endsAbove && !video[0].endsBelow, "只有最上面那条视频缝向上没有边")
+    check(!video.contains { $0.rowBelow == 4 }, "主轨下面没有视频缝（用户拍板）")
+
+    let audio = TimelineSeams.spots(audio: true, rows: seamRows)
+    checkEqual(audio.map(\.seam), [.audio(0), .audio(1), .audio(2)], "音频缝：第一条上方、之间、最后一条下方")
+    checkClose(audio[0].line, 207.5, "第一条音频轨上方")
+    checkClose(audio[2].line, 285.5, "最后一条音频轨下方")
+    checkEqual(audio[2].rowBelow, seamRows.count, "最下面那条缝没有下一行")
+    check(audio[2].endsBelow && !audio[2].endsAbove, "只有最下面那条音频缝向下没有边")
+}
+
+do {
+    // 文字 / 形状行夹在上层轨和主轨之间：最低那条视频缝开在它们**上面**（新轨实际长在
+    // 那儿），不开在主轨正上方 —— 开在别处就是框说谎。
+    let rows: [TimelineSeams.Row] = [
+        .init(slot: nil, height: 26, sitsAboveTracks: true),
+        .init(slot: .overlay(0), height: 54),
+        .init(slot: nil, height: 26),   // 文字
+        .init(slot: nil, height: 26),   // 形状
+        .init(slot: .main, height: 54),
+    ]
+    let video = TimelineSeams.spots(audio: false, rows: rows)
+    checkEqual(video.map(\.rowBelow), [1, 2], "上层轨0 的上方和下方（下方就是文字行上面）")
+    check(!video.contains { $0.rowBelow == 4 }, "形状行和主轨之间没有缝")
+
+    // 一条上层轨都没有：唯一那条视频缝长在标尺 / 滤镜行下面，而不是主轨正上方。
+    let bare: [TimelineSeams.Row] = [
+        .init(slot: nil, height: 26, sitsAboveTracks: true),
+        .init(slot: nil, height: 26, sitsAboveTracks: true),   // 滤镜行
+        .init(slot: nil, height: 26),                           // 文字
+        .init(slot: .main, height: 54),
+    ]
+    let only = TimelineSeams.spots(audio: false, rows: bare)
+    checkEqual(only.map(\.seam), [.overlay(0)], "没有上层轨时只有一条视频缝")
+    checkEqual(only.first?.rowBelow, 2, "它在滤镜行下面、文字行上面")
+    let noAudio = TimelineSeams.spots(audio: true, rows: bare)
+    checkEqual(noAudio.map(\.rowBelow), [bare.count], "没有音频轨时唯一那条音频缝在最后一行下面")
+}
+
+do {
+    // 拉开之后：缝上面的行不动，缝下面的整体往下挪 gapExtra；缝的上下沿和排布对得上。
+    let gapBefore = TimelineSeams.gapBefore(.overlay(0), in: seamRows)
+    checkEqual(gapBefore, 3, "最低那条视频缝垫在主轨上面")
+    let open = TimelineSeams.layout(seamRows, gapBefore: gapBefore)
+    let closed = TimelineSeams.layout(seamRows)
+    checkClose(open[2].minY, closed[2].minY, "缝上面的行不动")
+    checkClose(open[3].minY - closed[3].minY, TimelineSeams.gapExtra, "缝下面的行下移一个 gapExtra")
+    checkClose(open[5].maxY - closed[5].maxY, TimelineSeams.gapExtra, "再往下的也一样")
+    let gap = TimelineSeams.openGap(.overlay(0), rows: seamRows)
+    checkClose(gap?.top ?? -1, 146, "缝的上沿 = 上面那一行的下沿")
+    checkClose(gap?.bottom ?? -1, open[3].minY, "缝的下沿 = 拉开之后下面那一行的上沿")
+    checkClose(TimelineSeams.gapHeight, 28, "窄缝：5pt 拉到 28pt（用户选的）")
+    checkClose(TimelineSeams.ghostY(gapTop: 146) + TimelineSeams.ghostHeight / 2,
+               146 + TimelineSeams.gapHeight / 2, "缩略框骑在缝正中")
+    // 最后一行下面那条缝没有行可垫：排布不变，缝在最后一行下面。
+    checkEqual(TimelineSeams.gapBefore(.audio(2), in: seamRows), seamRows.count, "底下那条缝垫在末尾")
+    checkClose(TimelineSeams.openGap(.audio(2), rows: seamRows)?.top ?? -1, 283, "它的上沿 = 最后一行的下沿")
+}
+
+do {
+    let all = TimelineSeams.spots(audio: false, rows: seamRows).map(\.seam)
+    func aim(_ y: Double, open: TimelineSeam? = nil, candidates: [TimelineSeam]? = nil,
+             openEnds: Bool = true) -> TimelineSeams.Aim {
+        TimelineSeams.aim(y: y, rows: seamRows, open: open, candidates: candidates ?? all, openEnds: openEnds)
+    }
+    // 关着：缝 5pt + 往上下两条轨里各伸 8pt。
+    checkEqual(aim(148.5), .near(.overlay(0)), "正压在缝上")
+    checkEqual(aim(138), .near(.overlay(0)), "伸进上面那条轨 8pt 仍算在缝上")
+    checkEqual(aim(137.9), .near(nil), "再往上就是「放进这条轨」")
+    checkEqual(aim(159.1), .near(nil), "往下伸进主轨超过 8pt 也一样")
+    checkEqual(aim(119), .near(nil), "轨道行的中间不是缝")
+    // 最上面那条视频缝：拖素材块时向上没有边（原来「拖出最上面 = 顶上新开一条」）。
+    checkEqual(aim(10), .near(.overlay(2)), "拖素材块：标尺上方也算最上面那条缝")
+    checkEqual(aim(10, openEnds: false), .near(nil), "拖文件 / 音频库：标尺上仍按默认轨落")
+    // 原地那两条缝被排除掉之后，压在它上面就什么都不是。
+    checkEqual(aim(148.5, candidates: [.overlay(2), .overlay(1)]), .near(nil), "排除掉的缝不认")
+
+    // 开着：缝拉开到 146…174，判定区再往外 reach + openSlack。
+    checkEqual(aim(160, open: .overlay(0)), .inOpenGap(.overlay(0)), "指针在拉开的缝里")
+    checkEqual(aim(174 + 12, open: .overlay(0)), .inOpenGap(.overlay(0)), "下沿往下 12pt 还不合上（防一开一合）")
+    checkEqual(aim(146 - 12, open: .overlay(0)), .inOpenGap(.overlay(0)), "上沿往上 12pt 也是")
+    checkEqual(aim(186.1, open: .overlay(0)), .near(nil), "离开之后按关着时的排布判：落在主轨上，不是缝")
+    checkEqual(aim(133.9, open: .overlay(0)), .near(nil), "往上离开同理")
+    checkEqual(aim(89.5, open: .overlay(0)), .near(.overlay(1)), "离开这条、压着另一条：换那条计时")
+    checkEqual(aim(-500, open: .overlay(2)), .inOpenGap(.overlay(2)), "最上面那条拉开后，往上拖多远都还在缝里")
+
+    // 音频：最下面那条缝向下没有边（原来「拖出最下面 = 底下新开一条」）。
+    let audioSeams = TimelineSeams.spots(audio: true, rows: seamRows).map(\.seam)
+    checkEqual(TimelineSeams.aim(y: 900, rows: seamRows, open: nil, candidates: audioSeams, openEnds: true),
+               .near(.audio(2)), "拖素材块：最后一行下面都算最下面那条音频缝")
+    checkEqual(TimelineSeams.aim(y: 900, rows: seamRows, open: nil, candidates: audioSeams, openEnds: false),
+               .near(nil), "拖文件 / 音频库：最后一行下面的空白仍按默认轨落")
+
+    // 缝还没拉开时的落点：同类行里离指针最近的那条（按关着时的排布）。
+    checkEqual(TimelineSeams.nearestTrackRow(y: 100, rows: seamRows, audio: false), 2, "视频：离上层轨0 最近")
+    checkEqual(TimelineSeams.nearestTrackRow(y: 186.1, rows: seamRows, audio: false), 3, "视频：主轨")
+    checkEqual(TimelineSeams.nearestTrackRow(y: 0, rows: seamRows, audio: true), 4, "音频：只在音频轨里挑")
+}
+
+do {
+    // 原地那两条缝：轨上只剩被拖的这一段时，紧挨着它的上下两条缝等于「原地换一条新轨」。
+    var state = TimelineState()
+    let only = clip(start: 0, duration: 5)
+    let a = clip(start: 0, duration: 5)
+    let b = clip(start: 10, duration: 5)
+    let m = clip(start: 0, duration: 5)
+    state.mainClips = [m]
+    state.overlayTracks = [EditLane(clips: [only]), EditLane(clips: [a, b])]
+    var voice = clip(start: 0, duration: 3)
+    voice.isAudioOnly = true
+    state.audioTracks = [EditLane(clips: [voice])]
+    checkEqual(TimelineSeams.noOpSeams(draggingClip: only.id, in: state), [.overlay(0), .overlay(1)],
+               "上层轨0 只有它：它上下两条缝不开")
+    checkEqual(TimelineSeams.noOpSeams(draggingClip: a.id, in: state), [],
+               "轨上还有别的段：挪走它不会清掉这条轨，缝照开")
+    checkEqual(TimelineSeams.noOpSeams(draggingClip: voice.id, in: state), [.audio(0), .audio(1)], "音频同理")
+    checkEqual(TimelineSeams.noOpSeams(draggingClip: m.id, in: state), [], "主轨永远不会被清掉，不受限")
+}
+
+do {
+    // 落进缝里：新开的轨插在缝的位置，其余轨的身份和顺序不变。
+    var state = TimelineState()
+    let m = clip(start: 2, duration: 4)
+    let a = clip(start: 0, duration: 5)
+    let b = clip(start: 0, duration: 5)
+    state.mainClips = [m]
+    let lane0 = EditLane(clips: [a])
+    let lane1 = EditLane(clips: [b])
+    state.overlayTracks = [lane0, lane1]
+
+    let run = performDrag(state, dragged: m.id, moving: [m.id], desiredDelta: 3, crossTrack: .insertOverlay(at: 1))
+    checkEqual(run.state.overlayTracks.count, 3, "多了一条上层轨")
+    checkEqual(run.state.overlayTracks.first?.id, lane0.id, "缝下面那条轨原样在下面")
+    checkEqual(run.state.overlayTracks.last?.id, lane1.id, "缝上面那条轨原样在上面")
+    checkEqual(run.state.overlayTracks.count == 3 ? run.state.overlayTracks[1].clips.map(\.id) : [],
+               [m.id], "新轨夹在两条之间，里面就是被拖的那段")
+    checkClose(run.state.clip(with: m.id)?.timelineStart ?? -1, 5, "横向照样按拖动的位移落")
+    check(run.state.mainClips.isEmpty, "主轨上那段被摘走了")
+
+    // 占位框不许说谎：预览的落点 = 松手后的落点（同 §26）。
+    guard let plan = ClipDragPlan.make(in: state, draggedID: m.id, movingIDs: [m.id],
+                                       candidates: [], magnetMain: false) else {
+        print("FAIL 造不出计划"); exit(1)
+    }
+    let resolution = plan.resolve(desiredDelta: 3, pixelsPerSecond: pps)
+    let ghost = state.crossTrackLandingSpan(plan: plan, delta: resolution.delta,
+                                            target: .insertOverlay(at: 1), magnet: false)
+    checkClose(ghost.start, run.state.clip(with: m.id)?.timelineStart ?? -1, "缝里的缩略框指哪儿，松手就落哪儿")
+}
+
+do {
+    // 从一条只有它自己的轨拖进别处的缝：源轨被清掉，新轨的下标按拖动开始时的排布算。
+    var state = TimelineState()
+    let solo = clip(start: 0, duration: 5)
+    let other = clip(start: 0, duration: 5)
+    let top = EditLane(clips: [other])
+    state.mainClips = [clip(start: 0, duration: 8)]
+    state.overlayTracks = [EditLane(clips: [solo]), top]
+    let run = performDrag(state, dragged: solo.id, moving: [solo.id], desiredDelta: 0,
+                          crossTrack: .insertOverlay(at: 2))
+    checkEqual(run.state.overlayTracks.count, 2, "源轨清掉、新轨加上，总数不变")
+    checkEqual(run.state.overlayTracks.first?.id, top.id, "原来在上面的那条轨现在是最低一层")
+    checkEqual(run.state.overlayTracks.last?.clips.map(\.id), [solo.id], "被拖的那段在最上面的新轨里")
+}
+
+do {
+    // 音频：插在两条音频轨之间；磁吸开着时主轨照常合拢，互不干扰。
+    var state = TimelineState()
+    var p = clip(start: 0, duration: 4)
+    p.isAudioOnly = true
+    var q = clip(start: 0, duration: 4)
+    q.isAudioOnly = true
+    var r = clip(start: 6, duration: 4)
+    r.isAudioOnly = true
+    let first = EditLane(clips: [p])
+    let second = EditLane(clips: [q, r])
+    state.mainClips = [clip(start: 0, duration: 5), clip(start: 5, duration: 5)]
+    state.audioTracks = [first, second]
+    let run = performDrag(state, dragged: r.id, moving: [r.id], desiredDelta: -2,
+                          magnetEnabled: true, crossTrack: .insertAudio(at: 1))
+    checkEqual(run.state.audioTracks.map(\.id).first, first.id, "上面那条不动")
+    checkEqual(run.state.audioTracks.map(\.id).last, second.id, "下面那条不动")
+    checkEqual(run.state.audioTracks.count == 3 ? run.state.audioTracks[1].clips.map(\.id) : [],
+               [r.id], "新的音频轨夹在两条之间")
+    checkClose(run.state.clip(with: r.id)?.timelineStart ?? -1, 4, "横向位移照常")
+
+    // insertLane 夹紧下标：越界的一律落到两头。
+    var clamped = TimelineState()
+    clamped.insertLane(audio: false, at: 99, clips: [clip(start: 0, duration: 1)])
+    let low = clamped.insertLane(audio: false, at: -3, clips: [clip(start: 0, duration: 1)])
+    checkEqual(clamped.overlayTracks.first?.id, low, "负下标落到最低一层")
+    checkEqual(clamped.overlayTracks.count, 2, "越界的下标落到最上面")
+}
+
+// MARK: - 32. 整条轨换位置：落到第几个位置、其余每一行让多少（2026-09-24）
+//
+// 拖动中画出来的顺序和松手落地必须是同一份算法（TimelineLaneReorder.resolve）。
+
+do {
+    // 三条一样高的轨（行距 5）：上沿 0 / 59 / 118，中线 27 / 86 / 145。
+    let equal = [54.0, 54, 54]
+    let still = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 0)
+    checkEqual(still.destination, 0, "没动就还在原位")
+    checkEqual(still.offsets, [0, 0, 0], "没动谁都不让")
+
+    let one = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 60)
+    checkEqual(one.destination, 1, "中线越过下一条的中线：换到第二个")
+    checkEqual(one.offsets, [0, -59, 0], "被越过的那条往上让出一整行（高度 + 行距）")
+    checkClose(one.draggedOffset, 60, "被拖的那条跟着指针")
+
+    let short = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 58)
+    checkEqual(short.destination, 0, "还没越过邻居的中线：不换")
+
+    let bottom = TimelineLaneReorder.resolve(heights: equal, dragged: 0, offset: 500)
+    checkClose(bottom.draggedOffset, 118, "夹在这一组的下沿：不盖到主轨、字幕那些行上")
+    checkEqual(bottom.destination, 2, "拖到最底就是最后一个（夹紧后两条中线重合也要算越过）")
+    checkEqual(bottom.offsets, [0, -59, -59], "越过的两条都往上让")
+
+    let top = TimelineLaneReorder.resolve(heights: equal, dragged: 2, offset: -500)
+    checkClose(top.draggedOffset, -118, "夹在这一组的上沿")
+    checkEqual(top.destination, 0, "拖到最顶就是第一个（重合那一刻不能差一格）")
+    checkEqual(top.offsets, [59, 59, 0], "越过的两条都往下让")
+
+    let up = TimelineLaneReorder.resolve(heights: equal, dragged: 1, offset: -60)
+    checkEqual(up.destination, 0, "往上越过上一条的中线：换到第一个")
+    checkEqual(up.offsets, [59, 0, 0], "被越过的那条往下让")
+
+    // 高度不同：上沿 0 / 35 / 140。让出来的空位正好是被拖那一行的大小。
+    let mixed = [30.0, 100, 40]
+    checkEqual(TimelineLaneReorder.resolve(heights: mixed, dragged: 0, offset: 69).destination, 0,
+               "矮的往下拖，中线 84 还没到高的那条的中线 85")
+    let swapped = TimelineLaneReorder.resolve(heights: mixed, dragged: 0, offset: 71)
+    checkEqual(swapped.destination, 1, "越过了：换到第二个")
+    checkEqual(swapped.offsets, [0, -35, 0], "高的那条只往上让 矮的那条的高度 + 行距")
+}
+
+do {
+    // 上层轨的行是倒着排的：显示第 0 行 = 数组最后一个。
+    checkEqual(TimelineLaneGroup.overlay.arrayIndex(displayIndex: 0, count: 3), 2, "最上面一行是层级最高的那条")
+    checkEqual(TimelineLaneGroup.overlay.arrayIndex(displayIndex: 2, count: 3), 0, "最下面一行是最低一层")
+    checkEqual(TimelineLaneGroup.audio.arrayIndex(displayIndex: 1, count: 3), 1, "音频轨行和数组同序")
+    checkEqual(TimelineLaneGroup(.main), nil, "主轨不参与换位")
+    checkEqual(TimelineLaneGroup(.overlay(4)), .overlay, "上层轨一组")
+    checkEqual(TimelineLaneGroup(nil), nil, "非轨道行不参与换位")
+
+    // 把最上面那条上层轨（数组 2）拖到最下面（数组 0）：叠放顺序跟着变，轨的身份一个都不丢。
+    var state = TimelineState()
+    var high = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 3, volume: 0.5)
+    high.isHidden = true
+    let low = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 1)
+    let middle = EditLane(clips: [clip(start: 0, duration: 5)], colorIndex: 2)
+    state.overlayTracks = [low, middle, high]
+    var moved = state
+    moved.moveLane(.overlay, from: 2, to: 0)
+    checkEqual(moved.overlayTracks.map(\.id), [high.id, low.id, middle.id], "最高那层挪到了最低")
+    checkEqual(moved.overlayTracks.first?.colorIndex, 3, "颜色跟着轨走")
+    checkClose(moved.overlayTracks.first?.volume ?? -1, 0.5, "推子跟着轨走")
+    checkEqual(moved.overlayTracks.first?.isHidden, true, "隐藏状态跟着轨走")
+
+    var same = state
+    same.moveLane(.overlay, from: 7, to: 0)
+    checkEqual(same, state, "越界的下标什么都不做")
+    var audio = TimelineState()
+    let a = EditLane(clips: [clip(start: 0, duration: 1)])
+    let b = EditLane(clips: [clip(start: 0, duration: 1)])
+    audio.audioTracks = [a, b]
+    audio.moveLane(.audio, from: 0, to: 1)
+    checkEqual(audio.audioTracks.map(\.id), [b.id, a.id], "音频轨换位")
+}
+
 // MARK: - 收尾
 
 print("TimelineSnap checks: \(checks) 项，失败 \(failures) 项")

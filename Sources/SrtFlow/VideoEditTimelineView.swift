@@ -21,6 +21,10 @@ import SrtFlowCore
 // - `VideoEditTimelineWaveform.swift`       波形条
 // - `VideoEditTimelinePinchZoom.swift`      捏合缩放
 // - `VideoEditTimelineDropRouter.swift`     时间线上唯一的拖放落点（文件 / 滤镜 / 音频库 / 转场）
+// - `VideoEditTimelineSeams.swift`          插入缝的几何与行的排布（纯值）
+// - `VideoEditTimelineInsertGap.swift`      插入缝的停顿计时、拉开、缝里那条线
+// - `VideoEditTimelineLaneOrder.swift`      整条轨换位置的落点算法（纯值）
+// - `VideoEditTimelineLaneReorder.swift`    整条轨换位置的会话与位移（手势在轨道头列里）
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -57,8 +61,15 @@ struct VideoEditTimelineView: View {
     @State var editingCue: EditingCue?
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
-    /// 垂直拖动瞄准的目标行（高亮它）。
+    /// 垂直拖动瞄准的目标行（高亮它）。落进拉开的缝时 id 是 "seam"。
     @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
+    /// 此刻拉开的那条插入缝（§5h）。**只是视图状态**：拖动中不写 `TimelineState`，
+    /// 行的位置全由 `TimelineSeams.layout` 按它算，轨道头列和轨道行垫同一段。
+    @State var openSeam: TimelineSeam?
+    /// 在缝上停够 0.2 秒才拉开的计时，三种拖动共用。
+    @State var seamDwell = TimelineSeamDwell()
+    /// 按住轨道头拖整条轨换位置（§5i）。视图状态：轨道头列和轨道行按它挪同一段。
+    @State var laneReorder: LaneReorderSession?
     /// 轨道头上下拖调行高的基准。
     @State private var headerResizeBase: RowHeightDragState?
     /// 从转场库拖卡片进来时的落点框。**只是视图状态** —— 拖动过程中一个字都不
@@ -180,9 +191,14 @@ struct VideoEditTimelineView: View {
             if isShapes { return .shapes }
             return nil
         }
+
+        /// 纯值排布用的这一行（`TimelineSeams`）。
+        var seamRow: TimelineSeams.Row {
+            TimelineSeams.Row(slot: slot, height: height, sitsAboveTracks: isRuler || filterLayer != nil)
+        }
     }
 
-    private var rows: [RowSpec] {
+    var rows: [RowSpec] {
         var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
         // 滤镜行在**最顶上**：它作用于下面全部画面，不参与「行的上下顺序就是
         // 叠放次序」那套视频轨语义，混进去只会让人以为它是一条能放素材的轨。
@@ -270,14 +286,10 @@ struct VideoEditTimelineView: View {
         var maxY: Double
     }
 
+    /// 此刻画出来的排布（缝开着就是拉开之后的）。位置只从 `TimelineSeams.layout` 来：
+    /// 画框、命中判定、轨道头列三处用同一份（§5h）。
     func rowLayouts() -> [RowLayout] {
-        var y = 2.0
-        var result: [RowLayout] = []
-        for spec in rows {
-            result.append(RowLayout(spec: spec, minY: y, midY: y + spec.height / 2, maxY: y + spec.height))
-            y += spec.height + rowSpacing
-        }
-        return result
+        rowLayouts(open: openSeam)
     }
 
     private var timeline: some View {
@@ -285,9 +297,13 @@ struct VideoEditTimelineView: View {
             TimelineHeaderColumn(
                 rows: rows,
                 rowSpacing: rowSpacing,
+                gapRowID: gapPlacement.rowID,
                 project: project,
                 geometry: scrollGeometry,
-                resizeBase: $headerResizeBase
+                resizeBase: $headerResizeBase,
+                reorder: $laneReorder,
+                autoScroller: autoScroller,
+                viewportHeight: viewportHeight
             )
             Divider()
             GeometryReader { viewport in
@@ -328,6 +344,9 @@ struct VideoEditTimelineView: View {
                     markerPeekTime = nil
                     clipDrag = nil
                     dragTargetRow = nil
+                    seamDwell.cancel()
+                    openSeam = nil
+                    laneReorder = nil
                     marquee = nil
                     // 手势的「起手标记」也要一起清。留着的话，视图回来之后
                     // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
@@ -342,17 +361,21 @@ struct VideoEditTimelineView: View {
     /// 文件头）。四套拖放各自的代理原样不动，由它按载荷分派；行布局只算一次，
     /// 四个代理共用同一份。
     private var timelineDropRouter: TimelineDropRouter {
-        let layouts = rowLayouts()
+        let specs = rows
+        let layouts = Self.layouts(of: specs, open: openSeam)
         let viewport = CGSize(width: viewportWidth, height: viewportHeight)
         let main = layouts.first { $0.spec.slot == .main && !$0.spec.isHidden }
         return TimelineDropRouter(
+            // 文件和音频库会拉开插入缝（§5h）：拿整份 `rows` 自己按缝开 / 关现算排布。
             files: MediaFileDropDelegate(
                 project: project,
                 pps: pps,
-                rowLayouts: layouts,
+                rows: specs,
                 geometry: scrollGeometry,
                 autoScroller: autoScroller,
                 viewport: viewport,
+                dwell: seamDwell,
+                openSeam: $openSeam,
                 preview: $mediaFileDrop
             ),
             filter: FilterDropDelegate(
@@ -367,10 +390,12 @@ struct VideoEditTimelineView: View {
             audio: AudioLibraryDropDelegate(
                 project: project,
                 pps: pps,
-                rowLayouts: layouts,
+                rows: specs,
                 geometry: scrollGeometry,
                 autoScroller: autoScroller,
                 viewport: viewport,
+                dwell: seamDwell,
+                openSeam: $openSeam,
                 preview: $audioLibraryDrop
             ),
             transition: TransitionDropDelegate(
@@ -386,17 +411,23 @@ struct VideoEditTimelineView: View {
         )
     }
 
-    var rowSpacing: Double { 5 }
+    var rowSpacing: Double { TimelineRowMetrics.spacing }
 
     private var scrolledContent: some View {
-        ZStack(alignment: .topLeading) {
+        let gap = gapPlacement
+        return ZStack(alignment: .topLeading) {
             VStack(alignment: .leading, spacing: rowSpacing) {
                 ForEach(rows) { row in
                     rowView(row)
                         .frame(height: row.height)
+                        // 拉开的缝：垫在缝下面那一行上面（轨道头列垫同一行，§5h）。
+                        .padding(.top, row.id == gap.rowID ? TimelineSeams.gapExtra : 0)
+                        // 整轨换位：和轨道头列挂同一个位移（§5i）。
+                        .laneReorderOffset(laneReorder, rowID: row.id)
                 }
             }
-            .padding(.vertical, 2)
+            .padding(.vertical, TimelineRowMetrics.inset)
+            .padding(.bottom, gap.atEnd ? TimelineSeams.gapExtra : 0)
 
             // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
             // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
@@ -453,28 +484,19 @@ struct VideoEditTimelineView: View {
             TimelineScrollViewAccessor(geometry: scrollGeometry, scroller: autoScroller)
                 .frame(width: 0, height: 0)
 
-            // 垂直拖动的目标行高亮：现有行描边，新轨画一条插入线。
-            if let target = dragTargetRow {
-                if let layout = rowLayouts().first(where: { $0.spec.id == target.id }) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .strokeBorder(Color.teal, lineWidth: 2)
-                        .frame(width: contentWidth, height: layout.spec.height)
-                        .offset(y: layout.minY)
-                        .allowsHitTesting(false)
-                } else {
-                    let y: Double = {
-                        let layouts = rowLayouts()
-                        if target.id == "new-top" {
-                            return (layouts.first { $0.spec.slot != nil }?.minY ?? 30) - 4
-                        }
-                        return (layouts.last?.maxY ?? 30) + 4
-                    }()
-                    RoundedRectangle(cornerRadius: 1.5)
-                        .fill(Color.teal)
-                        .frame(width: contentWidth, height: 3)
-                        .offset(y: y)
-                        .allowsHitTesting(false)
-                }
+            // 垂直拖动的目标行高亮：现有行描边。落进缝里的不描边 —— 缝里那条插入线
+            // （下面）和缩略框已经说清楚了。
+            if let target = dragTargetRow, target.target.insertion == nil,
+               let layout = rowLayouts().first(where: { $0.spec.id == target.id }) {
+                RoundedRectangle(cornerRadius: 4)
+                    .strokeBorder(Color.teal, lineWidth: 2)
+                    .frame(width: contentWidth, height: layout.spec.height)
+                    .offset(y: layout.minY)
+                    .allowsHitTesting(false)
+            }
+            // 拉开的缝里那条插入线：三种拖动（素材块 / 文件 / 音频库）都画这一条。
+            if let top = gap.top {
+                TimelineInsertLine(gapTop: top, width: contentWidth)
             }
 
             // 正在拉的选择框。画在播放头之下、块之上，不拦事件。

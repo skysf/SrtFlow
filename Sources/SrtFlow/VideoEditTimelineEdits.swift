@@ -242,15 +242,57 @@ extension TimelineState {
 
 /// 垂直拖动能落到的行。放在这里（而不是 `VideoEditProject` 里）是为了让跨轨落地
 /// 保持成纯值变换、自检够得着。
-enum TrackDropTarget: Equatable {
+enum TrackDropTarget: Hashable {
     case main
     case overlay(Int)
     case newOverlayTop
     case audio(Int)
     case newAudioBottom
+    /// **插在两条轨之间**新开一条上层视频轨（2026-09-24，缝拉开之后松手）。
+    /// 参数是新轨插进去之后在 `overlayTracks` 里的下标：0 = 最低一层（紧贴主轨之上），
+    /// `overlayTracks.count` = 最上面（和 `newOverlayTop` 同一个位置）。
+    /// 缝的几何在 `TimelineSeams`，产品口径见 docs/plans/2026-09-24-track-insert-and-reorder.md。
+    case insertOverlay(at: Int)
+    /// 同上，音频轨：0 = 第一条音频轨的上方，`audioTracks.count` = 最下面。
+    case insertAudio(at: Int)
+
+    /// 落进一条现有的轨。
+    init(_ slot: TrackSlot) {
+        switch slot {
+        case .main: self = .main
+        case .overlay(let index): self = .overlay(index)
+        case .audio(let index): self = .audio(index)
+        }
+    }
+
+    /// 这是不是「在缝里新开一条轨」；是的话给出哪一类、插在哪。
+    var insertion: (audio: Bool, index: Int)? {
+        switch self {
+        case .insertOverlay(let index): return (false, index)
+        case .insertAudio(let index): return (true, index)
+        default: return nil
+        }
+    }
 }
 
 extension TimelineState {
+
+    /// 新开一条轨装这几段，插在 `index`（夹进 `0…count`）。返回新轨的身份。
+    ///
+    /// 「插在两条轨之间」的三个落地入口（跨轨拖动、从 Finder 拖文件、音频库拖素材）
+    /// 共用这一个：插在哪、夹不夹、轨里按不按时间排，各写一份迟早分叉。
+    /// 色号不在这儿补 —— `perform` 收尾的 `assignMissingTrackColors` 统一补
+    ///（同一类里取最小的空号，别的轨一个都不换色）。
+    @discardableResult
+    mutating func insertLane(audio: Bool, at index: Int, clips: [EditClip]) -> UUID {
+        let lane = EditLane(clips: clips.sorted { $0.timelineStart < $1.timelineStart })
+        if audio {
+            audioTracks.insert(lane, at: min(max(0, index), audioTracks.count))
+        } else {
+            overlayTracks.insert(lane, at: min(max(0, index), overlayTracks.count))
+        }
+        return lane.id
+    }
 
     /// 把剪辑搬到另一条轨。行的上下顺序就是画面的叠放顺序。
     ///
@@ -314,6 +356,13 @@ extension TimelineState {
             }
         case .newAudioBottom:
             audioTracks.append(EditLane(clips: [moved]))
+        case .insertOverlay(let index):
+            // 下标按**拖动开始时的排布**算（源轨此刻还在，只是空了）：先插、收尾
+            // 再统一清空轨，编号才不会错位。源轨只剩这一段时，紧挨着它的两条缝
+            // 由 `TimelineSeams.noOpSeams` 挡掉，走不到这里。
+            insertLane(audio: false, at: index, clips: [moved])
+        case .insertAudio(let index):
+            insertLane(audio: true, at: index, clips: [moved])
         }
 
         // 挤开重叠（主轨磁吸时 packMain 会处理）。
@@ -410,7 +459,8 @@ extension TimelineState {
             laneClips = overlayTracks.indices.contains(index) ? overlayTracks[index].clips : []
         case .audio(let index):
             laneClips = audioTracks.indices.contains(index) ? audioTracks[index].clips : []
-        case .newOverlayTop, .newAudioBottom:
+        case .newOverlayTop, .newAudioBottom, .insertOverlay, .insertAudio:
+            // 新开的轨是空的：没有障碍，落点就是起点提案（夹在整组下界上）。
             laneClips = []
         }
         // applyDrag 落地时传的同一个下界（不许把整组顶过它）。
