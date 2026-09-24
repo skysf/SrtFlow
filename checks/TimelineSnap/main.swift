@@ -44,23 +44,11 @@ func clip(start: Double, duration: Double) -> EditClip {
 let pps = 24.0
 let threshold = TimelineSnap.thresholdPixels / pps
 
-// MARK: - 1. 起点吸附（老行为，别改坏）
+// MARK: - 1. 起点吸附（checks/TimelineSnap/SnapBasics.swift）
+checkSnapBasics()
 
-do {
-    let result = TimelineSnap.resolve(
-        proposedStart: 9.9, duration: 5, candidates: [0, 10, 30], pixelsPerSecond: pps
-    )
-    checkClose(result.start, 10, "起点离候选 0.1s，应当吸上去")
-    check(result.guides == [10], "吸上了就要亮那条线，得到 \(result.guides)")
-}
-
-do {
-    let result = TimelineSnap.resolve(
-        proposedStart: 9.0, duration: 5, candidates: [0, 10, 30], pixelsPerSecond: pps
-    )
-    checkClose(result.start, 9.0, "离候选 1s 远超阈值，不许吸")
-    check(result.guides.isEmpty, "没吸上就不该亮线，得到 \(result.guides)")
-}
+// MARK: - 1b. 裁切：一段的范围、链接组 / 选中的一组一起裁（checks/TimelineSnap/Trim.swift）
+checkTrim()
 
 // MARK: - 2. 终点也要参与（这一条守「右边缘贴左边缘没反应」的 bug）
 

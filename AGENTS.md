@@ -95,7 +95,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
-| 时间线捏合、滚动、移动、裁切、吸附、框选、点击落点、扫帧预览 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
+| 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附、框选、点击落点、扫帧预览 | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
@@ -372,6 +372,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 点一下选段卡半秒、拖块和滚动跟不上手](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md) — 时间线上每个块和每条音量线都 `@ObservedObject` 着整个工程，点选一段 73 个块全重算、61 条线全重画；块的输入带闭包、没 `Equatable`，拖动每一拍全部块跟着时间线重算。块只收值、自己比较、调用处套 `.equatable()`（守卫钉着）；body 次数降十倍、CPU 只降三分之一 —— 「一拍多少次」和「一次多贵」是两笔账。
 - [2026-09-24 点了标记按 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) — 单击就弹出带备注框的面板，备注框成了第一响应者把 ⌫ 吃掉；点别处关面板又把选择清了。改成单击只选中、双击弹面板、右键菜单（守卫钉着）。**点一下就弹带输入框的面板 = 交出键盘**；冒烟驱动的工程拷贝要放在 Downloads / Desktop / Documents 之外（TCC 每次重编都重新弹，App 卡在 `getxattr` 里像是工程没打开）。
 - [2026-09-24 改得勤就隔一会儿卡一下：自动保存每次重建书签](docs/bugfixes/2026-09-24-autosave-rebuilds-bookmarks-every-save.md) — 存盘给每个素材现建系统书签，57 个约 55ms、每 2 秒一次；缓存按「路径 + inode + 卷」认，同名换文件必须重建。
+- [2026-09-25 裁切不跟链接：视频裁短了，链接的音频留在原长](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md) — 挪、切、删都走 `linkedClipIDs`，唯独把手的裁切没走；裁的算法现在只有 `TimelineTrim` 一份，链接伙伴 / 选中的一组同一个量、谁先到头整组一起停。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 

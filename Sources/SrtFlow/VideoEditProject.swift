@@ -699,24 +699,14 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
+    /// 拖剪辑块的把手裁一边。链接开着时链接伙伴**一起裁**（和挪、切、删同一条链接语义），
+    /// 整组同一个量、谁先到头整组一起停（VideoEditTimelineTrim.swift）。
     func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        let ids = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
+        let members = ids.sorted { $0.uuidString < $1.uuidString }.map { TimelineTrim.Member(id: $0, kind: .clip) }
         beginLiveEdit()
         liveApply { state in
-            state.update(id) { clip in
-                if leading {
-                    let maxExtend = clip.sourceStart / clip.speed
-                    let maxShrink = clip.timelineDuration - 0.1
-                    let delta = min(max(deltaSeconds, -maxExtend), maxShrink)
-                    clip.sourceStart += delta * clip.speed
-                    clip.sourceDuration -= delta * clip.speed
-                    clip.timelineStart += delta
-                } else {
-                    let maxExtend = (clip.assetDuration - clip.sourceStart - clip.sourceDuration) / clip.speed
-                    let maxShrink = -(clip.timelineDuration - 0.1)
-                    let delta = min(max(deltaSeconds, maxShrink), maxExtend)
-                    clip.sourceDuration += delta * clip.speed
-                }
-            }
+            state.trimGroup(members, leading: leading, by: deltaSeconds)
         }
     }
 
@@ -1045,19 +1035,12 @@ final class VideoEditProject: ObservableObject {
         guard let targetID else { return }
         let ids = linkageEnabled ? state.linkedClipIDs(of: targetID) : [targetID]
 
+        // 裁的算法只有 TimelineTrim 一份：留右边 = 起点端往右裁到播放头，留左边 = 终点端往左裁到播放头。
         perform { state in
             for id in ids {
-                state.update(id) { clip in
-                    guard clip.contains(time: time) else { return }
-                    let cut = (time - clip.timelineStart) * clip.speed
-                    if keepRight {
-                        clip.sourceStart += cut
-                        clip.sourceDuration -= cut
-                        clip.timelineStart = time
-                    } else {
-                        clip.sourceDuration = cut
-                    }
-                }
+                guard let clip = state.clip(with: id), clip.contains(time: time) else { continue }
+                let member = TimelineTrim.Member(id: id, kind: .clip)
+                state.trim(member, leading: keepRight, by: keepRight ? time - clip.timelineStart : time - clip.timelineEnd)
             }
         }
     }
