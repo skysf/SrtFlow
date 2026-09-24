@@ -90,8 +90,12 @@ struct TextFrameBox: View {
             Circle()
                 .fill(Color.accentColor)
                 .frame(width: Self.handleSize + 2, height: Self.handleSize + 2)
-                .offset(y: -frame.height / 2 - Self.rotateHandleGap)
+                // 可点范围必须写在 `.offset` **之前**：`.offset` 只挪画面、不挪布局框，
+                // 写在它后面的 `contentShape` 按的是没挪过的框 —— 旋转区会留在文字
+                // 正中间（一个看不见的 22pt 圆），黄点本身反倒点不动。2026-09-24 用户
+                // 「想移动却变成旋转」就是它，守卫 checks/hit-shape-before-offset.sh。
                 .contentShape(Circle().inset(by: -6))
+                .offset(y: -frame.height / 2 - Self.rotateHandleGap)
                 .gesture(rotateGesture)
         }
         // 框线本身不拦事件：框比文字大一圈，点在文字旁边的空白不该开始拖。

@@ -48,7 +48,15 @@ enum TextRenderer {
     /// 选中框跟着动画飞的话根本拖不住（见 text-overlays.md 的不变量）。
     static func layoutFrame(_ overlay: TextOverlay, canvas: CGSize) -> CGRect {
         // 用**定版串**：数字滚动时位数会变，按当帧算的话选中框会跟着跳。
-        let layout = TextTypesetter.layout(overlay, canvas: canvas, text: overlay.settledText)
+        layoutFrame(
+            overlay, canvas: canvas,
+            layout: TextTypesetter.layout(overlay, canvas: canvas, text: overlay.settledText)
+        )
+    }
+
+    /// 同上，排版由调用方给 —— `TextHitGeometry` 一次排版既要框又要墨迹范围，
+    /// 别让它排两遍。传进来的**必须是定版串的排版**。
+    static func layoutFrame(_ overlay: TextOverlay, canvas: CGSize, layout: TextLayout) -> CGRect {
         let size = CGSize(
             width: layout.size.width,
             // 空文字的框高是 0，画面上就什么都点不着了；给一个按字号算的

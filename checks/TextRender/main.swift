@@ -31,17 +31,6 @@ import SrtFlowCore
 // 编译方式见 scripts/check-text-render.sh。长期约束见
 // docs/architecture/text-overlays.md。
 
-var failures = 0
-var checks = 0
-
-func check(_ condition: Bool, _ message: String, line: Int = #line) {
-    checks += 1
-    if !condition {
-        failures += 1
-        print("FAIL [line \(line)] \(message)")
-    }
-}
-
 let ffmpegPath = ProcessInfo.processInfo.environment["SRTFLOW_FFMPEG"]
     ?? FileManager.default.currentDirectoryPath + "/vendor/ffmpeg"
 
@@ -221,15 +210,6 @@ func planKeepingWorkspace(_ state: TimelineState, name: String) async -> VideoEd
 func pngCount(in workspace: URL, prefix: String) -> Int {
     let names = (try? FileManager.default.contentsOfDirectory(atPath: workspace.path)) ?? []
     return names.filter { $0.hasPrefix(prefix) && $0.hasSuffix(".png") }.count
-}
-
-func checkEqual<T: Equatable>(_ value: T, _ expected: T, _ message: String, line: Int = #line) {
-    check(value == expected, "\(message)（期望 \(expected)，实际 \(value)）", line: line)
-}
-
-func checkClose(_ value: Double, _ expected: Double, _ tolerance: Double, _ message: String, line: Int = #line) {
-    check(abs(value - expected) <= tolerance,
-          "\(message)（期望 \(expected) ±\(tolerance)，实际 \(value)）", line: line)
 }
 
 // MARK: - 从渲染图里挑探针点
@@ -860,6 +840,9 @@ func main() async {
     } else {
         check(false, "对焦的位图渲不出来")
     }
+
+    // MARK: 18 —— 预览上的可点范围（HitGeometry.swift）
+    checkHitGeometry()
 
     print("\(checks - failures)/\(checks) 通过")
     finish(failures == 0 ? 0 : 1)

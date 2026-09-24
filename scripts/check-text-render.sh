@@ -12,6 +12,8 @@
 #   3. 压在形状之上；
 #   4. 空文字不进导出；
 #   5. 位图是包络大小，不是整幅画布。
+# 另有一组纯值的（checks/TextRender/HitGeometry.swift）：预览上的可点范围 —— 看得见的
+# 都点得着、没选中时不按 80% 宽的整框判（2026-09-24）。
 #
 # 用法：
 #   scripts/check-text-render.sh
@@ -66,6 +68,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextModels.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
+  Sources/SrtFlow/VideoEditTextHitGeometry.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
@@ -86,6 +89,8 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/TextRender/main.swift \
+  checks/TextRender/Assertions.swift \
+  checks/TextRender/HitGeometry.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
