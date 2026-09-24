@@ -16,7 +16,14 @@
    - `SrtFlow_SrtFlow.bundle` 拷到 `Contents/Resources/` 和 `Contents/MacOS/`
      各一份（Bundle.module 两条查找路径都命中）
    - Info.plist 里 CFBundleExecutable/CFBundleName/CFBundleIdentifier 一并改掉
-   - `codesign --force --sign -` ad-hoc 签一下
+   - `codesign --force --deep --sign -` ad-hoc 签一下（不加 `--deep`，两份资源包会让签名
+     报 "In subcomponent"）
+   - **要验中文界面**：照 `build-app.sh` 再把资源包里的 `en.lproj`、`zh-hans.lproj` 平铺进
+     `Contents/Resources`（2026-09-24）。只拷 `.bundle` 的话 `Bundle.main` 里没有本地化
+     目录，应用内选什么语言都是英文。预设语言用
+     `defaults write <调试 bundle id> appLanguage zh-Hans`，**在系统语言是英文时验** ——
+     系统本身是中文会把「某处没跟上应用内语言」的问题整个盖住
+     （[sheet 不继承应用内语言](../bugfixes/2026-09-24-sheets-ignore-in-app-language.md)）。
 
 ## 二、环境变量钩子（不设即完全不生效，正式包可安全保留）
 
@@ -204,6 +211,28 @@
 被测的落点常常被别的落点盖着 —— 「代理式收不到外部拖入」这条错误结论就是这么测
 出来的（每次代理都被滤镜 / 音频库的落点挡在外面）。各格的实测结果见
 [案例](../bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)。
+
+## 四之五、不接管鼠标地驱动：AX 按坐标命中（2026-09-24）
+
+人在用这台机器时，拖要点的交互别抢鼠标。导出面板那一轮全程用辅助功能（AX）驱动，指针
+一下没动：
+
+- **菜单项**：System Events 的 `click menu item "Edit Video" of menu 1 of menu bar item "File"`
+  可靠（AX 动作，不动鼠标）。
+- **窗口里的控件**：System Events 可能拿不到窗口（`count of windows` 是 0，
+  `AXWindows` 返回的是应用元素本身）。改用 `AXUIElementCopyElementAtPosition(应用元素, x, y)`
+  —— 传**应用元素**而不是 system-wide，命中只在这个应用里找：窗口被别的应用盖住、甚至在
+  台前调度的侧边条里都照样命中（坐标用窗口的真实位置，不是缩略图的位置）。命中之后：
+  按钮 / 勾选框 / 单选 `AXPress`；弹出菜单先 `AXPress` 再在它的子元素里找 `AXMenuItem`
+  按标题 `AXPress`；Form 要滚就往上找 `AXScrollArea`，把竖直滚动条的 `AXValue` 设成 0…1；
+  文字框先设 `AXFocused`，再用 `postToPid` 发键盘事件打字（回车 36、Esc 53 同理）。
+  AX 描述里带着控件的当前值（弹出菜单现在选的哪项、勾选框 `v=1`），读状态不必截图。
+- **截图**：窗口用 PID 找（`pgrep -x SrtFlowDev`），**别按名字**：调试拷贝在 CGWindowList 里的
+  owner 名是「SrtFlow」，和常开着的正式版同名。sheet 是单独的窗口号，`screencapture -l`
+  拍它得到的是「父窗口 + sheet」的合成图，原点是父窗口的左上角 —— 换算坐标就用父窗口的。
+- **台前调度**：应用不在当前台前时，CGWindowList 报的是侧边条缩略图的位置和尺寸
+  （比如 582×375、x≈20），不是窗口真实大小；截图照样是全分辨率。
+- zsh 不会把 `$p` 按空格拆开：坐标要当两个参数传，别塞进一个变量里循环。
 
 ## 五、要真实窗口、但已经自动化了的检查
 
