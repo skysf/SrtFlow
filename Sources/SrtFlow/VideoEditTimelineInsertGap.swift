@@ -89,11 +89,16 @@ extension VideoEditTimelineView {
     /// 行距 spacing、缝下面那一行多垫 gapExtra）和它一一对应，画框、命中判定、轨道头列
     /// 三处因此永远对得上。
     func rowLayouts(open: TimelineSeam?) -> [RowLayout] {
-        let specs = rows
-        let seamRows = specs.map(\.seamRow)
+        Self.layouts(of: rows, open: open)
+    }
+
+    /// 同上，给拿着一份 `rows` 的拖放代理用（文件、音频库）：它们要在「缝开着」和
+    /// 「缝关着」两种排布之间现算，不能只拿渲染那一刻的那一份。
+    static func layouts(of rows: [RowSpec], open: TimelineSeam?) -> [RowLayout] {
+        let seamRows = rows.map(\.seamRow)
         let gapBefore = open.flatMap { TimelineSeams.gapBefore($0, in: seamRows) }
         let spans = TimelineSeams.layout(seamRows, gapBefore: gapBefore)
-        return zip(specs, spans).map { spec, span in
+        return zip(rows, spans).map { spec, span in
             RowLayout(spec: spec, minY: span.minY, midY: span.midY, maxY: span.maxY)
         }
     }

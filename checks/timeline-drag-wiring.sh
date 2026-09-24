@@ -904,7 +904,8 @@ START_CALLS="$(grep -rhE 'importFirstStart\(' Sources/SrtFlow --include='*.swift
 # 4b) 磁吸开着时，落点框画在拼完之后的位置：落地走 perform，perform 收尾会 packMain，
 #     落主轨的段被拼到故事线末尾。框照指针处画的话就是「框在这儿、素材落到那儿」。
 #     挪动本身在纯值的 landingsAfterMagnet 里（scripts/check-media-import.sh 对账）。
-if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint\) -> MediaFileDropPlan\?/,/^    \}/' "$FILE_DROP")"; then
+if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint, open: TimelineSeam\?\) -> MediaFileDropPlan\?/,/^    \}/' "$FILE_DROP")"; then
+  [ -n "$PLAN_BODY" ] || fail "找不到文件落点的 plan(at:open:)（在 ${FILE_DROP}）：接线守卫失去目标 —— 改名了就同步改这里"
   grep -q 'landingsAfterMagnet' <<<"$PLAN_BODY" \
     || fail "文件落点的 plan 没按磁吸拼完之后的位置画框：磁吸开着时框在指针底下、素材却落到主轨末尾"
 fi
@@ -917,7 +918,7 @@ if START_BODY="$(require_func 'func importFirstStart(anchor:' "$FILE_DROP")"; th
   grep -q '/ 2' <<<"$START_BODY" \
     && fail "importFirstStart 又按中点对齐了：长素材的起点会退回半段时长，拖到主轨末尾后面也落不进主轨"
 fi
-if AUDIO_PLAN="$(require_func 'private func plan(at location: CGPoint) -> AudioLibraryDropPlan?' Sources/SrtFlow/AudioLibraryDrag.swift)"; then
+if AUDIO_PLAN="$(require_func 'private func plan(at location: CGPoint, open: TimelineSeam?) -> AudioLibraryDropPlan?' Sources/SrtFlow/AudioLibraryDrag.swift)"; then
   grep -q 'duration / 2' <<<"$AUDIO_PLAN" \
     && fail "音频库落点又按中点对齐了：整首音乐的起点会退回一分多钟，拖到哪都落不到指针那儿"
 fi
@@ -927,16 +928,17 @@ fi
 if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
   grep -q 'info.location.x / pps' <<<"$DROP_BODY" \
     || fail "文件落点的 performDrop 没按这一拍的指针算时间：读 preview 会和画框那一拍脱节"
-  grep -q 'trackTarget(at: info.location)' <<<"$DROP_BODY" \
-    || fail "文件落点的 performDrop 没按这一拍的指针算目标轨"
-  grep -q 'defer { finish() }' <<<"$DROP_BODY" \
-    || fail "文件落点的 performDrop 没收尾（finish）：暂存留着，心跳也可能空转"
+  grep -q 'trackTarget(at: info.location, open: seamAim(at: info.location).open)' <<<"$DROP_BODY" \
+    || fail "文件落点的 performDrop 没按这一拍的指针（和此刻拉开的缝）算目标轨"
+  grep -q 'defer { finish(animated: false) }' <<<"$DROP_BODY" \
+    || fail "文件落点的 performDrop 没收尾（finish）：暂存留着，心跳也可能空转，缝也不合上"
 fi
 if EXIT_BODY="$(awk '/func dropExited\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  grep -q 'finish()' <<<"$EXIT_BODY" \
-    || fail "文件落点的 dropExited 没收尾（finish）：指针离开后框还挂着"
+  grep -q 'finish(animated: true)' <<<"$EXIT_BODY" \
+    || fail "文件落点的 dropExited 没收尾（finish）：指针离开后框还挂着，缝也不合上"
 fi
-if FINISH_BODY="$(awk '/private func finish\(\)/,/^    \}/' "$FILE_DROP")"; then
+if FINISH_BODY="$(awk '/private func finish\(animated: Bool\)/,/^    \}/' "$FILE_DROP")"; then
+  [ -n "$FINISH_BODY" ] || fail "找不到文件落点的 finish(animated:)：接线守卫失去目标"
   grep -q 'autoScroller.stop()' <<<"$FINISH_BODY" \
     || fail "finish 没停心跳：指针离开后时间线会一直自己滚"
   grep -q 'MediaFileDrag.reset()' <<<"$FINISH_BODY" \
@@ -1100,9 +1102,13 @@ if grep -qE '^import (SwiftUI|AppKit)' "$SEAMS"; then
   fail "$SEAMS 引入了 SwiftUI/AppKit：缝的几何自检编不动它了（它必须保持纯值）"
 fi
 # 1) 位置只有一份：rowLayouts 走 TimelineSeams.layout，轨道行和轨道头列按同一个常量排。
-if BODY="$(require_func 'func rowLayouts(open:' "$INSERT_GAP")"; then
+if BODY="$(require_func 'static func layouts(of rows:' "$INSERT_GAP")"; then
   grep -q 'TimelineSeams.layout(' <<<"$BODY" \
-    || fail "rowLayouts 没走 TimelineSeams.layout：命中判定和画出来的行会各排各的"
+    || fail "layouts(of:open:) 没走 TimelineSeams.layout：命中判定和画出来的行会各排各的"
+fi
+if BODY="$(require_func 'func rowLayouts(open:' "$INSERT_GAP")"; then
+  grep -q 'Self.layouts(of: rows, open: open)' <<<"$BODY" \
+    || fail "rowLayouts(open:) 没走 layouts(of:open:)：视图和拖放代理会各排各的"
 fi
 grep_code 'var rowSpacing: Double { TimelineRowMetrics.spacing }' "$VIEW" \
   || fail "轨道行的行距不是 TimelineRowMetrics.spacing：纯值排布和 VStack 会差出几个点"
@@ -1148,6 +1154,37 @@ if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
   grep -q 'seamDwell.cancel()' <<<"$BODY" || fail "onDisappear 没让停顿计时作废"
   grep -q 'openSeam = nil' <<<"$BODY" || fail "onDisappear 没把缝合上"
 fi
+# 6) 拖文件、拖音频库两套走同一条缝（方案第 1 条：三种拖动都会拉开），同一个停顿计时。
+AUDIO_DROP="Sources/SrtFlow/AudioLibraryDrag.swift"
+for f in "$FILE_DROP" "$AUDIO_DROP"; do
+  AIM="$(awk '/private func seamAim\(at location: CGPoint\)/,/^    \}/' "$f")"
+  if [ -z "$AIM" ]; then
+    fail "${f} 没有 seamAim：这一套拖放不会拉开插入缝"
+    continue
+  fi
+  grep -q 'TimelineSeams.aim(' <<<"$AIM" || fail "${f} 的 seamAim 没走 TimelineSeams.aim：缝的判据各写了一份"
+  grep -q 'openEnds: false' <<<"$AIM" \
+    || fail "${f} 的 seamAim 让两头外延了：标尺 / 滤镜行 / 最后一行下面的空白原来按默认轨落"
+  TRACK="$(awk '/private func track\(_ location: CGPoint\)/,/^    \}/' "$f")"
+  grep -q 'dwell.hover(' <<<"$TRACK" || fail "${f} 的 track 没走停顿计时：路过缝就会拉开"
+  # 停够那一刻按**刚拉开的那条缝**重画，不回读 openSeam（@Binding 的写入不是同步可见的）。
+  grep -q 'plan(at: last, open: seam)' <<<"$TRACK" \
+    || fail "${f} 停够之后没按刚拉开的缝重画落点框：框会画在缝关着时的位置"
+  FIN="$(awk '/private func finish\(animated: Bool\)/,/^    \}/' "$f")"
+  grep -q 'dwell.cancel()' <<<"$FIN" || fail "${f} 的 finish 没让停顿计时作废：拖出去之后缝还可能被拉开"
+  grep -q 'openSeam = nil' <<<"$FIN" || fail "${f} 的 finish 没把缝合上"
+done
+grep -q 'guard MediaFileDrag.pending != nil else { return }' "$FILE_DROP" \
+  || fail "文件落点停够之后没先看这一轮还在不在：松手后才到点的计时会把缝拉开"
+grep -q 'guard AudioLibraryDrag.pending != nil else { return }' "$AUDIO_DROP" \
+  || fail "音频库落点停够之后没先看这一轮还在不在：松手后才到点的计时会把缝拉开"
+[ "$(grep -c 'dwell: seamDwell' "$VIEW")" -eq 2 ] \
+  || fail "路由器没把同一个停顿计时交给文件和音频库两个代理"
+[ "$(grep -c 'openSeam: \$openSeam' "$VIEW")" -eq 2 ] \
+  || fail "路由器没把缝的状态交给文件和音频库两个代理：它们拉开的缝画不出来"
+# 音频库落进缝：落地走纯值的 placeLibraryAudio（insertAt），自检在 check-media-import.sh §9。
+grep -q 'state.placeLibraryAudio(clip, laneIndex: laneIndex, insertAt: insertAt)' "$AUDIO_DROP" \
+  || fail "addLibraryAudio 没走纯值的 placeLibraryAudio：落进缝的那条规则自检够不着"
 
 if [ "$FAILED" -ne 0 ]; then
   exit 1

@@ -187,16 +187,21 @@ struct MediaFileDropIndicator: View {
 ///
 /// 由 `TimelineDropRouter` 分派过来，**不直接挂到视图上**（时间线只许有那一个
 /// `.onDrop`，理由见路由器的文件头）。`DropInfo.location` 是滚动内容坐标，
-/// 和 `rowLayouts` 同一套，不用补滚动量。
+/// 和行的排布（`VideoEditTimelineView.layouts`）同一套，不用补滚动量。
 struct MediaFileDropDelegate: DropDelegate {
     let project: VideoEditProject
     let pps: Double
-    /// 每一行的纵向位置。指针落在哪一行 → 落进哪条轨。
-    let rowLayouts: [VideoEditTimelineView.RowLayout]
+    /// 每一行。指针落在哪一行 → 落进哪条轨；排布按 `TimelineSeams` 现算，缝开着、
+    /// 关着各是一份（§5h）。
+    let rows: [VideoEditTimelineView.RowSpec]
     /// 横向滚动量的唯一来源（§5b：现读，不缓存）。
     let geometry: TimelineScrollGeometry
     let autoScroller: TimelineAutoScroller
     let viewport: CGSize
+    /// 在缝上停够 0.2 秒才拉开（三种拖动共用这一个计时）。
+    let dwell: TimelineSeamDwell
+    /// 此刻拉开的插入缝（视图状态，§5h）。
+    @Binding var openSeam: TimelineSeam?
     @Binding var preview: MediaFileDropPlan?
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -223,7 +228,7 @@ struct MediaFileDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        MainActor.assumeIsolated { finish() }
+        MainActor.assumeIsolated { finish(animated: true) }
     }
 
     /// 松手。**落点这一拍就定死，和探测进度无关**：时间和目标轨只由指针决定，
@@ -232,11 +237,12 @@ struct MediaFileDropDelegate: DropDelegate {
     func performDrop(info: DropInfo) -> Bool {
         MainActor.assumeIsolated {
             let pending = MediaFileDrag.pending?.urls ?? []
-            defer { finish() }
+            // 落进了缝：新开的那条轨长在缝的位置上，缝不用动画合上。
+            defer { finish(animated: false) }
             // 落点只从**这一拍的指针**算，不回读 `preview`：`@Binding` 的写入不是
             // 同步可见的，回读会和画框那一拍脱节（同另外三套拖放）。
             let anchor = MediaImportAnchor.pointer(max(0, info.location.x / pps))
-            let target = trackTarget(at: info.location)
+            let target = trackTarget(at: info.location, open: seamAim(at: info.location).open)
             // 松手这一刻 `itemProviders` 一般是给得出来的；给不出来就退回进场时从拖放
             // 剪贴板读到的那一批，再不行就现读一次。**三条路都不通才放弃。**
             let providers = info.itemProviders(for: [.fileURL])
@@ -251,7 +257,7 @@ struct MediaFileDropDelegate: DropDelegate {
         }
     }
 
-    /// 指针到了 `location`：记下来、重画落点框、推一下自动滚动。
+    /// 指针到了 `location`：记下来、缝的开合与停顿计时、重画落点框、推一下自动滚动。
     ///
     /// **暂存为空就不画**（`plan` 返回 nil）：那是这一轮已经收尾了。别在这儿
     /// 「补探一次」—— SwiftUI 松手之后还会补发一拍 `dropUpdated`，补探会把落点框
@@ -259,17 +265,35 @@ struct MediaFileDropDelegate: DropDelegate {
     @MainActor
     private func track(_ location: CGPoint) {
         MediaFileDrag.lastLocation = location
+        let aim = seamAim(at: location)
+        if aim.open == nil, openSeam != nil {
+            withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
+        }
         // **用刚算出来的局部值**，不要回读 `preview`（理由同 `performDrop`）。
-        preview = plan(at: location)
+        preview = plan(at: location, open: aim.open)
+        dwell.hover(aim.dwell) { seam in
+            // 停够了：拉开这条缝，按指针最后停的位置重画落点框 —— 指针停着的时候
+            // `dropUpdated` 不一定再来一拍。
+            guard MediaFileDrag.pending != nil else { return }
+            withAnimation(TimelineSeamDwell.animation) { openSeam = seam }
+            if let last = MediaFileDrag.lastLocation { preview = plan(at: last, open: seam) }
+        }
         autoScroll(contentX: location.x, contentY: location.y)
     }
 
-    /// 拖出去，或者这一轮拖放结束。
+    /// 拖出去，或者这一轮拖放结束：框收掉、心跳停、暂存清空、计时作废、缝合上。
     @MainActor
-    private func finish() {
+    private func finish(animated: Bool) {
         preview = nil
         autoScroller.stop()
         MediaFileDrag.reset()
+        dwell.cancel()
+        guard openSeam != nil else { return }
+        if animated {
+            withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
+        } else {
+            openSeam = nil
+        }
     }
 
     // MARK: - 探测
@@ -304,7 +328,7 @@ struct MediaFileDropDelegate: DropDelegate {
             // 探完这一刻用户可能正好没动鼠标：`dropUpdated` 未必马上再来一拍，
             // 不补的话落点框会停在「一条线」上。按上一次的指针位置自己补画一次。
             if let location = MediaFileDrag.lastLocation {
-                preview = plan(at: location)
+                preview = plan(at: location, open: seamAim(at: location).open)
             }
         }
     }
@@ -312,17 +336,20 @@ struct MediaFileDropDelegate: DropDelegate {
     // MARK: - 落点
 
     /// 指针在这个位置时，这一批素材落在哪。
+    ///
+    /// `open` = 指针所在的那条拉开的缝（nil = 缝关着，或者这一拍就合上）。显式传进来，
+    /// 不回读 `openSeam`：停够时间那一刻刚写进去，`@Binding` 的写入不是同步可见的。
     @MainActor
-    private func plan(at location: CGPoint) -> MediaFileDropPlan? {
+    private func plan(at location: CGPoint, open: TimelineSeam?) -> MediaFileDropPlan? {
         // 没有暂存 = 这一轮已经收尾（见 `track`）；确知一个都用不了也不画
         // （`isUnusable` 的注释写了为什么只认「确知」）。其余一律给得出落点：
         // 最不济是一条插入线。
         guard let pending = MediaFileDrag.pending, !pending.isUnusable else { return nil }
         let pointerTime = max(0, location.x / pps)
-        let target = trackTarget(at: location)
+        let target = trackTarget(at: location, open: open)
         // 探测中那条插入线画在哪一行：指到了就是那一行，指不到就按这一批的第一段
         // 会去的那条默认轨（画面 → 主轨）。反正探完就换成真的落点框。
-        let pointerRow = rowGeometry(for: target ?? .main)
+        let pointerRow = rowGeometry(for: target ?? .main, open: open)
 
         guard !pending.isProbing, let first = pending.media.first else {
             // 探完了、只有字幕：字幕挂在工程上不占轨，没有落点可画（松手照样挂上）。
@@ -355,7 +382,7 @@ struct MediaFileDropDelegate: DropDelegate {
         }
         return MediaFileDropPlan(
             placements: landings.map { landing in
-                let row = rowGeometry(for: landing.target)
+                let row = rowGeometry(for: landing.target, open: open)
                 return MediaFileDropPlan.Placement(
                     start: landing.start,
                     duration: landing.duration,
@@ -371,15 +398,43 @@ struct MediaFileDropDelegate: DropDelegate {
         )
     }
 
+    /// 指针在不在拉开的缝里（`open`）、压着哪条关着的缝（`dwell`）。
+    ///
+    /// 认哪类缝看这一批文件里有什么（视频 / 图片 → 视频缝，声音 → 音频缝；URL 还没
+    /// 读到时两类都认）。两头**不**外延：标尺、滤镜行、最后一行下面的空白仍然按默认轨落，
+    /// 和原来一样（`TimelineSeams.aim` 的 `openEnds` 那条）。
+    @MainActor
+    private func seamAim(at location: CGPoint) -> (open: TimelineSeam?, dwell: TimelineSeam?) {
+        let urls = MediaFileDrag.pending?.urls ?? []
+        let wantsVideo = urls.isEmpty
+            || urls.contains { MediaFileTypes.isVideo($0) || MediaFileTypes.isImage($0) }
+        let wantsAudio = urls.isEmpty || urls.contains { VideoEditProject.looksLikeAudio($0) }
+        let seamRows = rows.map(\.seamRow)
+        let candidates = (wantsVideo ? TimelineSeams.spots(audio: false, rows: seamRows) : [])
+            + (wantsAudio ? TimelineSeams.spots(audio: true, rows: seamRows) : [])
+        switch TimelineSeams.aim(
+            y: location.y, rows: seamRows, open: openSeam,
+            candidates: candidates.map(\.seam), openEnds: false
+        ) {
+        case .inOpenGap(let seam): return (seam, nil)
+        case .near(let seam): return (nil, seam)
+        }
+    }
+
     /// 指针在哪一行 → 想落进哪条轨。
+    ///
+    /// 指针在拉开的缝里：就在缝的位置新开一条（`open.target`，§5h）。否则按**关着时**
+    /// 的排布找行 —— 缝开着而指针不在缝里，这一拍它就合上了。
     ///
     /// 指到标尺、字幕 / 形状 / 文字 / 滤镜行，或者指到一条**隐藏**的轨，都返回
     /// `nil` —— 横向照用指针的 x，纵向由 `mediaImportLandings` 退回这一类的默认轨
     /// （2026-09-22 用户拍板）。"类型不匹配"不用在这儿判：把 mp4 指到音频轨时
     /// 这里给的是 `.audio(n)`，而它不在画面梯子上，落点算法自己会退回主轨。
     @MainActor
-    private func trackTarget(at location: CGPoint) -> TrackDropTarget? {
-        let row = rowLayouts.first { location.y >= $0.minY && location.y <= $0.maxY }
+    private func trackTarget(at location: CGPoint, open: TimelineSeam?) -> TrackDropTarget? {
+        if let open { return open.target }
+        let layouts = VideoEditTimelineView.layouts(of: rows, open: nil)
+        let row = layouts.first { location.y >= $0.minY && location.y <= $0.maxY }
         guard let row, !row.spec.isHidden else { return nil }
         switch row.spec.slot {
         case .main: return .main
@@ -389,17 +444,22 @@ struct MediaFileDropDelegate: DropDelegate {
         }
     }
 
-    /// 一条轨的行画在哪。
+    /// 一条轨的行画在哪（`open` = 这一拍拉开的缝，行按拉开之后的排布画）。
     ///
-    /// 新开的轨还没有行，框画在它**将来会长出来**的位置上：最上面那条轨行的上方 /
-    /// 最下面那一行的下方，和跨轨拖动开新轨时的占位框（`crossTrackGhost`）**完全
-    /// 同一套几何**（`TimelineDropPlaceholder.newLaneY`）。
+    /// 落进缝里：框骑在缝正中（`TimelineSeams.ghostY`，和拖素材块同一份几何）。
     ///
-    /// 那儿画不下一整条轨高的框（标尺到 28、最上面那条轨行从 33 起），所以缩到
-    /// 22pt 骑在插入线上 —— 按 54pt 的视频行高去画，框会整个跑到视口外面，而
-    /// 「主轨占着、往上开一条新轨」恰恰是最常见的那一种落点。
+    /// 梯子「撞上就抬到最上面新开一条」「音频都放不下、最下面新开一条」这两种没有缝可开：
+    /// 框画在它**将来会长出来**的位置上 —— 最上面那条轨行的上方 / 最下面那一行的下方，
+    /// 缩到 22pt 骑在插入线上（`TimelineDropPlaceholder.newLaneY`）。按 54pt 的视频行高去画，
+    /// 框会整个跑到视口外面（标尺到 28、最上面那条轨行从 33 起），而「主轨占着、往上开
+    /// 一条新轨」恰恰是最常见的那一种落点。
     @MainActor
-    private func rowGeometry(for target: TrackDropTarget) -> (y: Double, height: Double) {
+    private func rowGeometry(for target: TrackDropTarget, open: TimelineSeam?) -> (y: Double, height: Double) {
+        if target.insertion != nil, let open,
+           let gap = TimelineSeams.openGap(open, rows: rows.map(\.seamRow)) {
+            return (TimelineSeams.ghostY(gapTop: gap.top), TimelineSeams.ghostHeight)
+        }
+        let layouts = VideoEditTimelineView.layouts(of: rows, open: open)
         let slot: TrackSlot?
         switch target {
         case .main: slot = .main
@@ -407,17 +467,17 @@ struct MediaFileDropDelegate: DropDelegate {
         case .audio(let index): slot = .audio(index)
         case .newOverlayTop, .newAudioBottom, .insertOverlay, .insertAudio: slot = nil
         }
-        if let slot, let row = rowLayouts.first(where: { $0.spec.slot == slot }) {
+        if let slot, let row = layouts.first(where: { $0.spec.slot == slot }) {
             return (row.minY, row.maxY - row.minY)
         }
         if case .newAudioBottom = target {
             return (
-                TimelineDropPlaceholder.newLaneY(below: rowLayouts.last?.maxY ?? 30),
+                TimelineDropPlaceholder.newLaneY(below: layouts.last?.maxY ?? 30),
                 TimelineDropPlaceholder.newLaneHeight
             )
         }
         // 新的上层视频轨，以及「指到的轨号已经不存在了」这种兜底。
-        let top = rowLayouts.first { $0.spec.slot != nil }?.minY ?? (rowLayouts.last?.maxY ?? 30)
+        let top = layouts.first { $0.spec.slot != nil }?.minY ?? (layouts.last?.maxY ?? 30)
         return (
             TimelineDropPlaceholder.newLaneY(above: top),
             TimelineDropPlaceholder.newLaneHeight
@@ -433,7 +493,8 @@ struct MediaFileDropDelegate: DropDelegate {
             pointer: CGPoint(x: viewportX, y: 0),
             viewport: CGSize(width: viewport.width, height: 0)
         ) {
-            preview = plan(at: CGPoint(x: viewportX + geometry.offsetX, y: contentY))
+            let point = CGPoint(x: viewportX + geometry.offsetX, y: contentY)
+            preview = plan(at: point, open: seamAim(at: point).open)
         }
     }
 }

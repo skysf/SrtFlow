@@ -83,6 +83,11 @@ extension TimelineState {
     ///    就是落点；都放不下就新开一条在最上面。
     /// 3. **纵向退回默认轨**：指针指着的行放不了这种素材（把 mp4 拖到音频轨、拖到
     ///    字幕行……），横向照用指针的 x，纵向从梯子最底下重新找。
+    ///
+    /// 2026-09-24 加的第四条：`preferred` 是**拉开的插入缝**（`.insertOverlay` /
+    /// `.insertAudio`）时，类型和这条缝对得上的段全部落进缝里新开的那**一条**轨，
+    /// 首尾相接（新轨是空的，撞不上）；类型对不上的按上面三条落（同第 3 条：横向照用
+    /// 指针，纵向退回这一类的默认轨）。见 docs/plans/2026-09-24-track-insert-and-reorder.md。
     func mediaImportLandings(
         _ items: [MediaImportItem],
         firstStart: Double,
@@ -93,14 +98,22 @@ extension TimelineState {
         // 否则三个文件会各自开一条新轨（它们都看到「最上面那条是空的」），
         // 或者两段挤进同一条轨的同一个空档。
         var busy = ladders.mapValues { $0.map { rung in occupiedSpans(on: rung) } }
+        // 缝不在梯子上：对不上类型的那些段，当作「没指到任何轨」。
+        let pointedTarget = preferred?.insertion == nil ? preferred : nil
 
         var result: [MediaImportLanding] = []
         var cursor = max(0, firstStart)
         for item in items {
             // 0 长度的段在时间线上是个点：选不中、拖不动、删不掉。给个下限。
             let duration = max(Self.minimumImportedDuration, item.duration)
+            if let preferred, preferred.insertion?.audio == item.isAudio {
+                // 落进拉开的缝：同一条新轨，首尾相接（`insertImported` 按落点只开一条）。
+                result.append(MediaImportLanding(start: cursor, duration: duration, target: preferred))
+                cursor += duration
+                continue
+            }
             guard let ladder = ladders[item.isAudio], !ladder.isEmpty else { continue }
-            let pointed = preferred.flatMap { wanted in ladder.firstIndex { $0 == wanted } }
+            let pointed = pointedTarget.flatMap { wanted in ladder.firstIndex { $0 == wanted } }
 
             // 试轨的顺序。
             //
@@ -210,6 +223,33 @@ extension TimelineState {
             var landed = landing
             if let clip = simulated.clip(with: placeholder.id) { landed.start = clip.timelineStart }
             return landed
+        }
+    }
+
+    /// 音频库素材落在哪条音频轨（拖放、按 `+` 共用）。
+    ///
+    /// - `insertAt`：拖放时指针在**拉开的插入缝**里 → 在缝的位置新开一条（2026-09-24）；
+    /// - `laneIndex`：指名的那条放得下就放那条 —— **放不下时不硬塞**，叠在别的块上会让
+    ///   两段同时出声，而用户看到的是一条轨上两个块重叠在一起；
+    /// - 其余交给 `place`：第一条放得下的，都放不下在最下面新开一条（和按 `+` 同一套）。
+    ///
+    /// 从 `VideoEditProject.addLibraryAudio` 挪出来的纯值版，自检够得着它
+    /// （`scripts/check-media-import.sh`）。
+    mutating func placeLibraryAudio(_ clip: EditClip, laneIndex: Int?, insertAt: Int?) {
+        if let insertAt {
+            insertLane(audio: true, at: insertAt, clips: [clip])
+            return
+        }
+        if let laneIndex, audioTracks.indices.contains(laneIndex),
+           !audioTracks[laneIndex].isHidden,
+           audioTracks[laneIndex].clips.allSatisfy({
+               $0.timelineStart >= clip.timelineEnd - 0.001
+                   || clip.timelineStart >= $0.timelineEnd - 0.001
+           }) {
+            audioTracks[laneIndex].clips.append(clip)
+            audioTracks[laneIndex].clips.sort { $0.timelineStart < $1.timelineStart }
+        } else {
+            _ = place(clip, intoAudio: true)
         }
     }
 

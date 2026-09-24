@@ -369,6 +369,92 @@ do {
     checkClose(shown.at(1)?.start ?? -1, 14, "第二段接在第一段后面 14")
 }
 
+// MARK: - 9. 拖进拉开的插入缝（2026-09-24，docs/plans/2026-09-24-track-insert-and-reorder.md）
+//
+// 类型和缝对得上的段全部落进缝里新开的那**一条**轨，首尾相接；对不上的照原来的规则落
+// （横向照用指针，纵向退回这一类的默认轨）。
+
+do {
+    // 两条上层轨之间的缝，一次拖进两个视频：同一条新轨，首尾相接，别的轨原样。
+    var state = TimelineState()
+    state.mainClips = [clip(start: 0, duration: 30)]
+    let low = EditLane(clips: [clip(start: 0, duration: 30)])
+    let high = EditLane(clips: [clip(start: 0, duration: 30)])
+    state.overlayTracks = [low, high]
+    let landings = state.mediaImportLandings([video(5), video(3)], firstStart: 4,
+                                             preferring: .insertOverlay(at: 1))
+    checkEqual(landings.map(\.target), [.insertOverlay(at: 1), .insertOverlay(at: 1)],
+               "两段都落进这条缝（不因为别的轨撞上就抬走）")
+    checkClose(landings.at(0)?.start ?? -1, 4, "第一段从指针处开始")
+    checkClose(landings.at(1)?.start ?? -1, 9, "第二段接在后面")
+
+    var next = state
+    let a = clip(start: 0, duration: 5)
+    let b = clip(start: 0, duration: 3)
+    next.insertImported([a, b], at: landings)
+    checkEqual(next.overlayTracks.count, 3, "只新开了**一条**轨")
+    checkEqual(next.overlayTracks.at(0)?.id, low.id, "缝下面那条轨原样在下面")
+    checkEqual(next.overlayTracks.at(2)?.id, high.id, "缝上面那条轨原样在上面")
+    checkEqual(next.overlayTracks.at(1)?.clips.map(\.id), [a.id, b.id], "两段都在缝里那条新轨上")
+    checkClose(next.clip(with: b.id)?.timelineStart ?? -1, 9, "落地的起点 = 落点算的起点")
+}
+
+do {
+    // 视频 + 音频一起拖进音频缝：音频进缝里的新轨；视频对不上，照原规则落主轨（放得下）。
+    var state = TimelineState()
+    let first = EditLane(clips: [audioClip(start: 0, duration: 20)])
+    let second = EditLane(clips: [audioClip(start: 0, duration: 20)])
+    state.audioTracks = [first, second]
+    let landings = state.mediaImportLandings([video(4), sound(6)], firstStart: 2,
+                                             preferring: .insertAudio(at: 1))
+    checkEqual(landings.at(0)?.target, .main, "视频对不上音频缝：退回画面梯子最底下（主轨放得下）")
+    checkEqual(landings.at(1)?.target, .insertAudio(at: 1), "音频进缝里的新轨")
+    checkClose(landings.at(1)?.start ?? -1, 6, "照样首尾相接（接在视频后面）")
+
+    var next = state
+    let v = clip(start: 0, duration: 4)
+    let s = audioClip(start: 0, duration: 6)
+    next.insertImported([v, s], at: landings)
+    checkEqual(next.audioTracks.map(\.id).first, first.id, "上面那条音频轨不动")
+    checkEqual(next.audioTracks.map(\.id).last, second.id, "下面那条音频轨不动")
+    checkEqual(next.audioTracks.at(1)?.clips.map(\.id), [s.id], "音频落在两条中间的新轨上")
+    checkEqual(next.mainClips.map(\.id), [v.id], "视频落在主轨")
+}
+
+do {
+    // 音频拖进**视频缝**：对不上，按音频的老规矩（指名的放不下就从头找，都放不下最下面新开）。
+    var state = TimelineState()
+    state.audioTracks = [EditLane(clips: [audioClip(start: 0, duration: 20)])]
+    let landings = state.mediaImportLandings([sound(5)], firstStart: 3, preferring: .insertOverlay(at: 0))
+    checkEqual(landings.at(0)?.target, .newAudioBottom, "唯一那条音频轨占着 → 最下面新开一条")
+}
+
+do {
+    // 音频库：缝里 → 在缝的位置新开；指名的放得下 → 那条；放不下 → `place`。
+    var state = TimelineState()
+    let top = EditLane(clips: [audioClip(start: 0, duration: 10)])
+    let bottom = EditLane(clips: [audioClip(start: 20, duration: 10)])
+    state.audioTracks = [top, bottom]
+
+    var inserted = state
+    let song = audioClip(start: 2, duration: 30)
+    inserted.placeLibraryAudio(song, laneIndex: nil, insertAt: 1)
+    checkEqual(inserted.audioTracks.count, 3, "拖进缝：多一条音频轨")
+    checkEqual(inserted.audioTracks.at(1)?.clips.map(\.id), [song.id], "新轨夹在两条之间")
+    checkEqual(inserted.audioTracks.at(2)?.id, bottom.id, "下面那条原样在下面")
+
+    var named = state
+    let short = audioClip(start: 12, duration: 5)
+    named.placeLibraryAudio(short, laneIndex: 0, insertAt: nil)
+    checkEqual(named.audioTracks.at(0)?.clips.last?.id, short.id, "指名的那条放得下：放那条")
+
+    var bumped = state
+    let clash = audioClip(start: 5, duration: 5)
+    bumped.placeLibraryAudio(clash, laneIndex: 0, insertAt: nil)
+    checkEqual(bumped.audioTracks.at(0)?.clips.count, 1, "指名的那条放不下：不硬塞")
+    checkEqual(bumped.audioTracks.at(1)?.clips.first?.id, clash.id, "交给 place：第二条放得下")
+}
+
 // MARK: - 收尾
 
 print("MediaImport checks: \(checks) 项，失败 \(failures) 项")

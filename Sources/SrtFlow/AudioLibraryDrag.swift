@@ -48,6 +48,8 @@ struct AudioLibraryDropPlan: Equatable {
     var duration: Double
     /// 落进第几条音频轨；`nil` = 指针不在任何音频轨上，交给 `place` 自己找。
     var laneIndex: Int?
+    /// 指针在拉开的插入缝里：在第几个位置新开一条音频轨（2026-09-24，§5h）。
+    var insertAt: Int?
     /// 落点框画在哪个 y 和多高。
     var rowY: Double
     var rowHeight: Double
@@ -71,9 +73,11 @@ extension VideoEditProject {
     ///
     /// `start` 为 nil 时落在播放头上（按 `+` 的口径），非 nil 是拖放算好的落点。
     /// `laneIndex` 同理：拖放指到了哪条轨就用哪条，指不到就让 `place` 自己找。
+    /// `insertAt`：拖放时指针在拉开的插入缝里，在那个位置新开一条（§5h）。
+    /// 落哪条的规则在纯值的 `TimelineState.placeLibraryAudio`（自检够得着）。
     func addLibraryAudio(
         url: URL, remoteKey: String, duration: Double,
-        at start: Double? = nil, laneIndex: Int? = nil
+        at start: Double? = nil, laneIndex: Int? = nil, insertAt: Int? = nil
     ) {
         let where_ = start ?? clock.time
         perform { state in
@@ -85,20 +89,7 @@ extension VideoEditProject {
                 audioAssetDuration: duration,
                 remoteKey: remoteKey
             )
-            // 指名了轨就落那条，但**放不下时不硬塞** —— 叠在别的块上会让两段
-            // 同时出声，而用户看到的是一条轨上两个块重叠在一起。退回 `place`
-            // 去找一条放得下的，和按 `+` 同一套规则。
-            if let laneIndex, state.audioTracks.indices.contains(laneIndex),
-               !state.audioTracks[laneIndex].isHidden,
-               state.audioTracks[laneIndex].clips.allSatisfy({
-                   $0.timelineStart >= clip.timelineEnd - 0.001
-                       || clip.timelineStart >= $0.timelineEnd - 0.001
-               }) {
-                state.audioTracks[laneIndex].clips.append(clip)
-                state.audioTracks[laneIndex].clips.sort { $0.timelineStart < $1.timelineStart }
-            } else {
-                _ = state.place(clip, intoAudio: true)
-            }
+            state.placeLibraryAudio(clip, laneIndex: laneIndex, insertAt: insertAt)
         }
     }
 
@@ -108,7 +99,7 @@ extension VideoEditProject {
     func dropLibraryAudio(_ item: AudioLibraryItem, plan: AudioLibraryDropPlan) {
         if let local = AudioLibraryCache.shared.localURL(for: item.id) {
             addLibraryAudio(url: local, remoteKey: item.id, duration: item.duration,
-                            at: plan.start, laneIndex: plan.laneIndex)
+                            at: plan.start, laneIndex: plan.laneIndex, insertAt: plan.insertAt)
             return
         }
         let generation = documentGeneration
@@ -120,7 +111,7 @@ extension VideoEditProject {
                 //（同 addVideos 那条代号守卫）。
                 guard self.isCurrentGeneration(generation) else { return }
                 self.addLibraryAudio(url: url, remoteKey: item.id, duration: item.duration,
-                                     at: plan.start, laneIndex: plan.laneIndex)
+                                     at: plan.start, laneIndex: plan.laneIndex, insertAt: plan.insertAt)
             } catch {
                 if self.isCurrentGeneration(generation) {
                     self.notice = error.localizedDescription
@@ -138,11 +129,16 @@ extension VideoEditProject {
 struct AudioLibraryDropDelegate: DropDelegate {
     let project: VideoEditProject
     let pps: Double
-    let rowLayouts: [VideoEditTimelineView.RowLayout]
+    /// 每一行。排布按 `TimelineSeams` 现算：缝开着、关着各是一份（§5h）。
+    let rows: [VideoEditTimelineView.RowSpec]
     /// 横向滚动量的唯一来源（现读，不缓存 —— 见 timeline-drag-gestures.md §5b）。
     let geometry: TimelineScrollGeometry
     let autoScroller: TimelineAutoScroller
     let viewport: CGSize
+    /// 在缝上停够 0.2 秒才拉开（三种拖动共用这一个计时）。
+    let dwell: TimelineSeamDwell
+    /// 此刻拉开的插入缝（视图状态，§5h）。
+    @Binding var openSeam: TimelineSeam?
     @Binding var preview: AudioLibraryDropPlan?
 
     func validateDrop(info: DropInfo) -> Bool {
@@ -150,15 +146,14 @@ struct AudioLibraryDropDelegate: DropDelegate {
     }
 
     func dropEntered(info: DropInfo) {
-        MainActor.assumeIsolated { preview = plan(at: info.location) }
+        MainActor.assumeIsolated { track(info.location) }
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         MainActor.assumeIsolated {
             // **用刚算出来的局部值判，不要回读 `preview`**：`@Binding` 的写入不是
             // 同步可见的，回读会让「能不能落」整整晚一帧（同滤镜、转场两条）。
-            let next = plan(at: info.location)
-            preview = next
+            let next = track(info.location)
             autoScroll(contentX: info.location.x, contentY: info.location.y)
             // `.forbidden`：不能用 `.cancel`，理由见 TimelineDropRouter.dropUpdated。
             return DropProposal(operation: next == nil ? .forbidden : .copy)
@@ -166,29 +161,79 @@ struct AudioLibraryDropDelegate: DropDelegate {
     }
 
     func dropExited(info: DropInfo) {
-        MainActor.assumeIsolated {
-            preview = nil
-            autoScroller.stop()
-        }
+        MainActor.assumeIsolated { finish(animated: true) }
     }
 
     func performDrop(info: DropInfo) -> Bool {
         MainActor.assumeIsolated {
+            // 落点只从这一拍的指针和此刻拉开的缝算，和画框那一拍同一个函数。
+            let landing = plan(at: info.location, open: seamAim(at: info.location).open)
             defer {
-                preview = nil
                 AudioLibraryDrag.pending = nil
-                autoScroller.stop()
+                // 落进了缝：新开的那条轨就长在缝的位置上，缝不用动画合上。
+                finish(animated: false)
             }
-            guard let item = AudioLibraryDrag.pending, let plan = plan(at: info.location) else {
-                return false
-            }
-            project.dropLibraryAudio(item, plan: plan)
+            guard let item = AudioLibraryDrag.pending, let landing else { return false }
+            project.dropLibraryAudio(item, plan: landing)
             return true
         }
     }
 
+    /// 指针到了 `location`：缝的开合、停顿计时、落点框。返回这一拍的落点（nil = 不能落）。
     @MainActor
-    private func plan(at location: CGPoint) -> AudioLibraryDropPlan? {
+    @discardableResult
+    private func track(_ location: CGPoint) -> AudioLibraryDropPlan? {
+        dwell.lastLocation = location
+        let aim = seamAim(at: location)
+        if aim.open == nil, openSeam != nil {
+            withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
+        }
+        let next = plan(at: location, open: aim.open)
+        preview = next
+        dwell.hover(aim.dwell) { seam in
+            // 停够了：拉开这条缝，按指针最后停的位置重画落点框 —— 指针停着的时候
+            // `dropUpdated` 不一定再来一拍。
+            guard AudioLibraryDrag.pending != nil else { return }
+            withAnimation(TimelineSeamDwell.animation) { openSeam = seam }
+            if let last = dwell.lastLocation { preview = plan(at: last, open: seam) }
+        }
+        return next
+    }
+
+    /// 拖出去 / 松手：框收掉、心跳停、计时作废、缝合上。
+    @MainActor
+    private func finish(animated: Bool) {
+        preview = nil
+        autoScroller.stop()
+        dwell.cancel()
+        guard openSeam != nil else { return }
+        if animated {
+            withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
+        } else {
+            openSeam = nil
+        }
+    }
+
+    /// 指针在不在拉开的缝里（`open`）、压着哪条关着的缝（`dwell`）。
+    ///
+    /// 只认音频缝；两头**不**外延：最后一行下面那片空白仍然交给 `place`，和原来一样
+    /// （`TimelineSeams.aim` 的 `openEnds` 那条）。
+    @MainActor
+    private func seamAim(at location: CGPoint) -> (open: TimelineSeam?, dwell: TimelineSeam?) {
+        let seamRows = rows.map(\.seamRow)
+        let candidates = TimelineSeams.spots(audio: true, rows: seamRows).map(\.seam)
+        switch TimelineSeams.aim(
+            y: location.y, rows: seamRows, open: openSeam, candidates: candidates, openEnds: false
+        ) {
+        case .inOpenGap(let seam): return (seam, nil)
+        case .near(let seam): return (nil, seam)
+        }
+    }
+
+    /// `open` = 指针所在的那条拉开的缝（nil = 缝关着，或者这一拍就合上）。显式传进来，
+    /// 不回读 `openSeam`：停够时间那一刻刚写进去，`@Binding` 的写入不是同步可见的。
+    @MainActor
+    private func plan(at location: CGPoint, open: TimelineSeam?) -> AudioLibraryDropPlan? {
         guard let item = AudioLibraryDrag.pending else { return nil }
         let duration = item.duration
         // **左边缘对齐指针**（2026-09-23 用户拍板，同从 Finder 拖文件）：整首音乐
@@ -201,16 +246,32 @@ struct AudioLibraryDropDelegate: DropDelegate {
             pixelsPerSecond: pps
         )
 
-        // 指针在哪一行 → 落进哪条音频轨。不在音频轨上（视频轨、标尺、滤镜行……）
-        // 就交给 `place` 自己找一条放得下的，和按 `+` 完全一致。
-        let row = rowLayouts.first { location.y >= $0.minY && location.y <= $0.maxY }
+        // 指针在拉开的缝里：在缝的位置新开一条音频轨，框骑在缝正中（§5h）。
+        if case .audio(let index) = open,
+           let gap = TimelineSeams.openGap(.audio(index), rows: rows.map(\.seamRow)) {
+            return AudioLibraryDropPlan(
+                start: resolved.start,
+                duration: duration,
+                laneIndex: nil,
+                insertAt: index,
+                rowY: TimelineSeams.ghostY(gapTop: gap.top),
+                rowHeight: TimelineSeams.ghostHeight,
+                guides: resolved.guides
+            )
+        }
+
+        // 缝关着（或者这一拍就合上）：按关着时的排布，指针在哪一行 → 落进哪条音频轨。
+        // 不在音频轨上（视频轨、标尺、滤镜行……）就交给 `place` 自己找一条放得下的，
+        // 和按 `+` 完全一致。
+        let layouts = VideoEditTimelineView.layouts(of: rows, open: nil)
+        let row = layouts.first { location.y >= $0.minY && location.y <= $0.maxY }
         let laneIndex: Int? = {
             if case .audio(let index) = row?.spec.slot { return index }
             return nil
         }()
         // 框画在指到的那条轨上；指不到就画在最下面那条音频轨下方（新轨会长在那儿，
         // 所以框先画在那儿是诚实的）—— 一条音频轨都没有时退回最后一行。
-        let fallback = rowLayouts.last { $0.spec.slot?.isAudio == true } ?? rowLayouts.last
+        let fallback = layouts.last { $0.spec.slot?.isAudio == true } ?? layouts.last
         let target = (laneIndex == nil ? fallback : row) ?? fallback
         guard let target else { return nil }
 
@@ -233,7 +294,8 @@ struct AudioLibraryDropDelegate: DropDelegate {
             pointer: CGPoint(x: viewportX, y: 0),
             viewport: CGSize(width: viewport.width, height: 0)
         ) {
-            preview = plan(at: CGPoint(x: viewportX + geometry.offsetX, y: contentY))
+            let point = CGPoint(x: viewportX + geometry.offsetX, y: contentY)
+            preview = plan(at: point, open: seamAim(at: point).open)
         }
     }
 }

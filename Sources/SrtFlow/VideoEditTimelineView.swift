@@ -351,17 +351,21 @@ struct VideoEditTimelineView: View {
     /// 文件头）。四套拖放各自的代理原样不动，由它按载荷分派；行布局只算一次，
     /// 四个代理共用同一份。
     private var timelineDropRouter: TimelineDropRouter {
-        let layouts = rowLayouts()
+        let specs = rows
+        let layouts = Self.layouts(of: specs, open: openSeam)
         let viewport = CGSize(width: viewportWidth, height: viewportHeight)
         let main = layouts.first { $0.spec.slot == .main && !$0.spec.isHidden }
         return TimelineDropRouter(
+            // 文件和音频库会拉开插入缝（§5h）：拿整份 `rows` 自己按缝开 / 关现算排布。
             files: MediaFileDropDelegate(
                 project: project,
                 pps: pps,
-                rowLayouts: layouts,
+                rows: specs,
                 geometry: scrollGeometry,
                 autoScroller: autoScroller,
                 viewport: viewport,
+                dwell: seamDwell,
+                openSeam: $openSeam,
                 preview: $mediaFileDrop
             ),
             filter: FilterDropDelegate(
@@ -376,10 +380,12 @@ struct VideoEditTimelineView: View {
             audio: AudioLibraryDropDelegate(
                 project: project,
                 pps: pps,
-                rowLayouts: layouts,
+                rows: specs,
                 geometry: scrollGeometry,
                 autoScroller: autoScroller,
                 viewport: viewport,
+                dwell: seamDwell,
+                openSeam: $openSeam,
                 preview: $audioLibraryDrop
             ),
             transition: TransitionDropDelegate(
