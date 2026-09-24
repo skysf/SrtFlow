@@ -16,6 +16,7 @@ import Foundation
 //   {"do": "scroll", "at": [x, y], "dx": 0, "dy": -40, "steps": 10}
 //   {"do": "key", "code": 0, "chars": "a", "flags": ["cmd"]}
 //   {"do": "hit", "at": [x, y]}                      日志里记下这一点命中的是哪个 NSView（排查用）
+//   {"do": "focus"}                                  日志里记下此刻的 key 窗口和第一响应者（排查按键被谁吃了）
 //   {"do": "perfReset"} / {"do": "perf", "label": "拖动"}   计数清零 / 记一份快照
 //   {"do": "state", "label": "拖完"}                 记下工程此刻的样子（选择、各段位置）
 //   {"do": "snapshot", "name": "after-drag"}         请外面拍一张窗口截图（见 SmokeDriver）
@@ -25,7 +26,7 @@ import Foundation
 
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
-        case wait, settle, window, seek, click, drag, scroll, key, hit
+        case wait, settle, window, seek, click, drag, scroll, key, hit, focus
         case perfReset, perf, state, snapshot, quit
     }
 

@@ -246,8 +246,11 @@
 指针一下不动，App 一直在后台，用户那边照常打字。
 
 ```bash
-cp <用户的工程> <scratchpad>/copy.srtflowproj        # 一定要拷贝：自动保存会改写它
-scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/copy.srtflowproj
+# 一定要拷贝（自动保存会改写它），而且要拷到 ~/Downloads、~/Desktop、~/Documents **之外**
+#（下面第 9 条）。copy-project.sh 连素材一起拷，并把工程里的路径、每段的 sourceURL 都改过去。
+scripts/gui-smoke/in-process/copy-project.sh <用户的工程> <scratchpad>/southpole
+scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpole/Edit.srtflowproj
+# 再跑一遍之前从模板复原工程文件：cp <scratchpad>/southpole/Edit.template.json <scratchpad>/southpole/Edit.srtflowproj
 ```
 
 - **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` /
@@ -286,6 +289,17 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/copy.sr
    直接交给窗口的，不受影响。
 7. **量性能时看 `event:project.willChange`**：`perf` 快照里这一项是两次快照之间工程发了几次
    「要变了」；订阅整个工程的视图每一次都得重算，所以「谁在白白叫醒大家」先看它。
+9. **工程和素材不能留在 TCC 保护的文件夹里**（`~/Downloads`、`~/Desktop`、`~/Documents`）：
+   `SrtFlowDev.app` 每次重编都是新签名，系统每次都重新弹「想访问下载文件夹」；人不点，
+   App 就卡在第一次访问那个文件的 `getxattr` 里（`sample` 看到 `bookmarkData` → `getxattr`
+   一动不动），脚本停在 `settle`、120 秒后报「条目=nil」，怎么看都像工程没打开。素材路径不止在
+   `media` 表里，每段还带 `file://` 形式的 `sourceURL`，所以别手改 —— 用 `copy-project.sh`。
+   看是不是这个：`osascript -e 'tell application "System Events" to tell process
+   "UserNotificationCenter" to get value of every static text of window 1'`。
+10. **`focus` 步骤**（`{"do": "focus"}`）把此刻的 key 窗口、第一响应者和可见窗口写进日志：验「面板
+   开没开」看有没有 `_NSPopoverWindow`。驱动里 App 不激活、key 窗口永远是 nil，所以「输入框把
+   按键吃了」这类要 key 窗口才有的现象它复现不了，只能按代码推。
+11. **`click` 的 `count: 2` 是双击**；单击后驱动会等过系统的双击间隔再往下走。
 8. **坐标要避开块上叠着的东西，从截图上裁一块放大再量**：音频块中下部压着音量线（命中带只有
    几 pt 宽），落在那儿拖的是线不是块；裁切把手选中时只有 5 pt 宽，差 1 pt 就点进了块里。
    `state` 里每段带 `transition`（接缝上的转场）和 `volumePoints`（音量线上的点），验这两样

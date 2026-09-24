@@ -122,6 +122,12 @@ enum SmokeDriver {
             try await events.key(code: step.code ?? 0, chars: step.chars ?? "", flags: SmokeEvents.flags(step.flags))
         case .hit:
             note(events.describeHit(at: try SmokeStep.point(step.at, "hit.at")))
+        case .focus:
+            // 排查「⌫ 被谁吃了」：编辑器的按键监听在第一响应者是 NSTextView 时让路。
+            let keyWindow = NSApp.keyWindow.map { "\(type(of: $0)) #\($0.windowNumber)" } ?? "nil"
+            let responder = NSApp.keyWindow?.firstResponder.map { "\(type(of: $0))" } ?? "nil"
+            let windows = NSApp.windows.filter(\.isVisible).map { "\(type(of: $0)) #\($0.windowNumber)" }
+            note("keyWindow=\(keyWindow) firstResponder=\(responder) 可见窗口=\(windows)")
         case .perfReset:
             PerfCounters.reset()
             perfStartedAt = PreviewBench.cpuTimeMs()
