@@ -118,7 +118,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
-| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、什么时候能重定基线）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) |
+| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面 | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
@@ -198,8 +198,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   类型系统认不出，拖放会被静默拒绝）：`checks/exported-types-declared.sh`。
 - 预览性能 ratchet（起真 App 按固定场景数「做了多少件活」，只许降不许涨）：
   `scripts/check-preview-perf.sh`。**CI 独有**：第 1 组里单独一步，要图形会话，**不在
-  `check-all.sh` 里**；check-all 只跑它的比对规则自检（`--self-test`）。每个视图、
-  `updateNSView`、Canvas 都接了计数：`checks/preview-perf-wiring.sh`。
+  `check-all.sh` 里**；check-all 只跑它的比对规则自检（`--self-test`）。偶尔会误报退步
+  （CI 虚拟机上的已知干扰），认法和处理见架构文档「已知的偶发误报」。每个视图、
+  `updateNSView`、Canvas 都接了计数：`checks/preview-perf-wiring.sh`；新写视图漏了计数，
+  跑 `checks/preview-perf-wiring.sh --fix` 自动补上。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
   所以漏一行等于那份文档不存在。
@@ -262,8 +264,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑、**sheet / popover 不继承应用内语言**与已知盲区。
 - [阻塞的媒体读取](docs/architecture/blocking-media-reads.md) — `copyNextSampleBuffer` 这类会卡住线程的读取不许进 Swift 并发的线程池（同一档 QoS 上卡满核数就整档死锁）、`MediaReadQueue` 的两种用法与宽度、唯一的例外（字幕生成逐窗口读）、什么样的阻塞会死锁。
 - [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md) — 量的是活不是 CPU、**每个视图 body
-  第一行计数**（守卫钉着）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、两遍必须一样、计数逐项
-  相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、盲区。
+  第一行计数**（守卫钉着，`--fix` 自动补）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、要有两遍
+  一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
+  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
