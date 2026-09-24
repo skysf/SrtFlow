@@ -214,27 +214,27 @@ struct SoundSceneControls: View {
         let scenes = ids.compactMap { project.state.clip(with: $0) }.map(\.soundScene)
         let choice = Self.choice(of: scenes)
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Text("Sound scene").font(.callout).fontWeight(.medium)
-                Spacer(minLength: 4)
-                Picker("", selection: choiceBinding(choice)) {
-                    if choice == .mixed {
-                        Text("Mixed").tag(SoundSceneChoice.mixed)
-                    }
-                    Text("None").tag(SoundSceneChoice.none)
-                    ForEach(SoundSceneGroup.allCases, id: \.self) { group in
-                        Section(LocalizedStringKey(group.title)) {
-                            ForEach(group.kinds, id: \.self) { kind in
-                                Text(LocalizedStringKey(kind.title)).tag(SoundSceneChoice.kind(kind))
-                            }
+            // 标题单独一行、菜单铺满下一行（同「转场」那一块）。**别让菜单和标题挤一行、也别给菜单
+            // `.fixedSize()`**：检查器只有 ~220pt 宽，「Sound scene」+ 按最长选项撑开的菜单塞不下，
+            // 整列被撑宽，右边一截（菜单上的选中项、「Mute」）被裁掉看不见 —— 2026-09-24 实机首测就是这样。
+            Text("Sound scene").font(.callout).fontWeight(.medium)
+            Picker("", selection: choiceBinding(choice)) {
+                if choice == .mixed {
+                    Text("Mixed").tag(SoundSceneChoice.mixed)
+                }
+                Text("None").tag(SoundSceneChoice.none)
+                ForEach(SoundSceneGroup.allCases, id: \.self) { group in
+                    Section(LocalizedStringKey(group.title)) {
+                        ForEach(group.kinds, id: \.self) { kind in
+                            Text(LocalizedStringKey(kind.title)).tag(SoundSceneChoice.kind(kind))
                         }
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .fixedSize()
-                .instantHelp("Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording.")
             }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .instantHelp("Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording.")
             if let caption {
                 Text(caption)
                     .font(.caption2)
