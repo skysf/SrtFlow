@@ -110,6 +110,7 @@ run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiri
 run_check "transition-handles-wiring（扫描守卫）" checks/transition-handles-wiring.sh
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
+run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
 # 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口
@@ -122,7 +123,7 @@ run_check "translation-preflight（翻译配对预检）" scripts/check-translat
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
-run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链）" scripts/check-export-frame-rate.sh
+run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh
 
 # ---- 第 3 组 ----
 shard 3

@@ -284,6 +284,7 @@ struct MainWindowView: View {
                 }
                 .padding(14)
                 .frame(width: 330)
+                .appLanguage()
             }
         } else if let runtime = toolchain.runtime {
             HStack(spacing: 5) {

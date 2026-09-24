@@ -119,6 +119,7 @@ extension VideoEditTimelineView {
                 )
                 .frame(width: 320)
                 .padding(12)
+                .appLanguage()
             }
         }
     }

@@ -48,7 +48,7 @@ struct AudioLibraryPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $showsCredits) {
-            AudioLibraryCreditsView(items: store.state.items, usedIDs: usedRemoteKeys)
+            AudioLibraryCreditsView(items: store.state.items, usedIDs: usedRemoteKeys).appLanguage()
         }
         .onAppear { store.loadIfNeeded() }
         .onDisappear {

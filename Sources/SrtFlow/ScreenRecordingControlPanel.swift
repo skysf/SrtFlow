@@ -64,7 +64,7 @@ final class ScreenRecordingControlPanel {
         // 「窗口还没进可分享列表」的竞态。
         panel.sharingType = .none
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: ControlPanelView(model: model))
+        panel.contentView = NSHostingView(rootView: ControlPanelView(model: model).appLanguage())
         positionAtTopCenter()
     }
 
