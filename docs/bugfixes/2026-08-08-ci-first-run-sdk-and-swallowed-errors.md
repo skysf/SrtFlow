@@ -56,3 +56,9 @@ freeze-frame、player-clock、export-frame-rate、still-clip-encode）；
   版本 —— 本地能编 ≠ runner 能编。
 - 「本地全绿」验证不了 workflow 本身：**首个 PR 就是 CI 的验收测试**，
   留出一轮修它的预算。
+
+## 后续（2026-09-24）
+
+CI 拆成 5 组、分到 5 台 runner 上并行之后，独立的完整编译只在第 1 组跑，其余几组的子脚本只编
+核心库。上面「顺带给 check-all 暖构建缓存」这一条不再成立。现状见
+[构建与打包「CI」一节](../build/build-and-packaging.md)。

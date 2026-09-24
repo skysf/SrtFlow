@@ -128,7 +128,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   [docs/build/audio-library-pipeline.md](docs/build/audio-library-pipeline.md)。
   脚本在 `scripts/audio-library/`，**不在 `check-all.sh` 里**（它制备素材，不是检查）。
 - 全部自动检查：`scripts/check-all.sh`。CI 在每个 PR 上运行同一入口：
-  `.github/workflows/checks.yml`。
+  `.github/workflows/checks.yml`，按 `--shard N --of 5` 分到 5 台免费的 macOS runner 上并行跑，
+  由一个叫 `check-all` 的汇总 job 给结论（分组、组数校验、汇总 job 为什么不能被跳过，见
+  [构建与打包「CI」一节](docs/build/build-and-packaging.md)）。新加检查要放进某个 `shard`。
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。

@@ -1,6 +1,11 @@
 # 每个 PR（以及合并进 main 后）跑全部自检：scripts/check-all.sh。
 # main 禁直推、必须走 PR —— 在这个闸口挂检查，「合并前必绿」就不靠自觉了。
 #
+# 仓库是公开的，GitHub 托管的 macOS runner 免费（免费档同时最多 5 台 macOS）。所以
+# check-all 按 `shard` 拆成 5 组，分到 5 台 runner 上并行跑，最后由一个叫 check-all 的
+# 汇总 job 给结论（ruleset protect-main 要求的就是这个名字）。分组、耗时与取舍见
+# docs/build/build-and-packaging.md「CI」一节。
+#
 # vendor/ffmpeg 不入库（见 .gitignore），按 vendor-ffmpeg.sh 的内容做缓存键：
 # 脚本没变（上游 URL/校验值没变）就复用缓存，变了才重新下载。
 name: checks
@@ -10,13 +15,26 @@ on:
   push:
     branches: [main]
 
+# 同一个 PR 又推了新提交，旧的那一轮直接取消：macOS runner 免费但同时只有 5 台，
+# 别让作废的一轮占着。main 上的每一次都跑完（按提交分组，不会互相取消）。
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  check-all:
+  shard:
+    name: shard ${{ matrix.shard }}/5
     # 必须 macos-26：字幕生成用了 macOS 26 的 SpeechAnalyzer API，
     # macos-15 镜像默认 Xcode 16（SDK 15）编不过完整 app target ——
     # 首跑 6 项齐红就是它（SrtFlowCore 不碰这些 API 所以核心检查过了）。
     runs-on: macos-26
-    timeout-minutes: 60
+    timeout-minutes: 30
+    strategy:
+      # 一组红了别的组照跑完：一次看全所有失败。
+      fail-fast: false
+      matrix:
+        # 组数改了要同步 scripts/check-all.sh 里的 `shard N` 声明 —— 对不上它会直接红。
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +43,7 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
+          sysctl -n hw.ncpu
 
       - name: Cache SwiftPM build products
         uses: actions/cache@v4
@@ -44,10 +63,27 @@ jobs:
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
         run: scripts/vendor-ffmpeg.sh
 
-      # 单独一步冷编译：编译错误在自己的步骤里完整可见，
-      # 也给后面的 check-all 暖好构建缓存。
-      - name: Build (cold compile, errors visible here)
+      # 只在第 1 组单独冷编一遍完整 App：编译错误在自己的步骤里完整可见。
+      # 其余几组的子脚本只编核心库（它们只要 SrtFlowCore 的模块和目标文件），
+      # 不必每台都花一分多钟编整个 App。
+      - name: Build app (cold compile, errors visible here)
+        if: matrix.shard == 1
         run: swift build --arch arm64
 
-      - name: Run all checks
-        run: scripts/check-all.sh
+      - name: Run checks (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
+        run: scripts/check-all.sh --shard ${{ matrix.shard }} --of ${{ strategy.job-total }}
+
+  check-all:
+    # ruleset protect-main 要求一个叫 check-all 的检查通过，由这里汇总 5 组的结果。
+    # 分组红了这里也必须跑出一个「失败」：不写 if 的话它会因为 needs 失败而被跳过，
+    # 而被跳过的必需检查会被 GitHub 当成通过 —— 红的 PR 也能合进去。
+    # 用 !cancelled() 而不是 always()：被新提交取消掉的那一轮不用再报一个假的失败。
+    needs: shard
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: All shards passed
+        run: |
+          echo "shards: ${{ needs.shard.result }}"
+          test "${{ needs.shard.result }}" = "success"
