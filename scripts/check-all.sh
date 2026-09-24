@@ -28,6 +28,11 @@ FAILED_NAMES=""
 run_check() {
   local name="$1"
   shift
+  # shell 写的检查一律交给 macOS 自带的 /bin/bash（3.2）跑：CI 上 `env bash` 找到的就是它，
+  # 本机 PATH 上常常是 Homebrew 的 5.x。两个版本的解析宽严不一样，只在本机跑 5.x 就会
+  # 「本机全绿、CI 当场红」（2026-09-23 blocking-media-reads 首跑，见
+  # docs/bugfixes/2026-08-06-build-version-and-shell-traps.md 陷阱 5）。
+  if [[ "$1" == *.sh ]]; then set -- /bin/bash "$@"; fi
   echo ""
   echo "━━━ ${name} ━━━"
   local started ended
@@ -53,6 +58,7 @@ run_check "shell-var-boundary（扫描守卫）" checks/shell-var-boundary.sh
 run_check "shell-pipe-grep-q（扫描守卫）" checks/shell-pipe-grep-q.sh
 run_check "exported-types-declared（扫描守卫）" checks/exported-types-declared.sh
 run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
+run_check "blocking-media-reads（扫描守卫）" checks/blocking-media-reads.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh
 run_check "docs-index-drift（扫描守卫）" checks/docs-index-drift.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
@@ -76,7 +82,7 @@ run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-scr
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链）" scripts/check-export-frame-rate.sh
 run_check "export-alpha-compositing（上层轨动画段 fill+matte）" scripts/check-export-alpha-compositing.sh
 run_check "audio-fade（渐入渐出 / 音量曲线 / 推子的真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
-run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1）" scripts/check-waveform.sh
+run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1 / 很多文件同时读）" scripts/check-waveform.sh
 run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh

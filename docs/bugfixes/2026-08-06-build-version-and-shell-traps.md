@@ -165,3 +165,35 @@ some_command | grep -c 'x' >/dev/null      # ✓ 查管道输出：-c 会把输�
 
 **防回归**：`checks/shell-pipe-grep-q.sh`（进了 `scripts/check-all.sh`）扫全部开着 pipefail
 的 `.sh`，管道接 `grep -q`（含 `-qE` / `-vq` / `--quiet`，`|` 在行尾换行的也算）就红。
+
+## 陷阱 5（2026-09-23）：本机的 bash 5 放过、CI 的 /bin/bash 3.2 解析错
+
+新写的 `checks/blocking-media-reads.sh` 本机跑了几遍都是绿的，PR 上的 CI 当场红：
+
+```
+checks/blocking-media-reads.sh: line 37: sigline: unbound variable
+```
+
+`sigline` 是脚本里一段 perl 的变量，不该被 shell 看见。写法是这样的：
+
+```bash
+HITS="$(find … | while IFS= read -r file; do
+  case " ${ALLOWED} " in *" ${file} "*) continue ;; esac   # ← 模式后面那个 `)`
+  perl -ne '… $sigline …' "${file}"
+done)"
+```
+
+**macOS 自带的 `/bin/bash` 是 3.2**，它在 `$( … )` 里遇到 case 模式的 `)` 时，会当成命令替换的
+结尾，后面的单引号从此全部错位，perl 里的 `$sigline` 被 shell 展开，`set -u` 当场退出。
+**本机 PATH 上是 Homebrew 的 bash 5.3**（`#!/usr/bin/env bash` 找到的是它），解析正确，
+一声不吭；CI 的 runner 上 `env bash` 找到的是 `/bin/bash` 3.2。用 `/bin/bash` 直接跑，本机
+立刻复现同一行报错。
+
+**改法**：别在 `$( … )` 里写 case（要写就用带左括号的 `(pattern)` 形式）；嵌在 shell 里的
+perl / awk 程序放进带引号的 heredoc（`read -r -d '' PROG <<'PERL' || true`），一个字都不经
+shell 展开，文件名用 perl 自己的 `$ARGV`，不要往单引号里拼。
+
+**防回归**：`scripts/check-all.sh` 的 `run_check` 把 `.sh` 写的检查一律交给 `/bin/bash`
+跑，本机和 CI 用同一个解析器 —— 不再有「本机绿、CI 红」的这一类。反向验证：把
+`blocking-media-reads.sh` 换回上面那种写法，本机 `check-all.sh` 里这一项就红，报错与 CI 逐字相同。
+写新的 shell 脚本时，单独调试也请用 `/bin/bash 脚本` 跑，别用 `./脚本`（走 PATH 上的 bash 5）。

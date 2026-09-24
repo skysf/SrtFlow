@@ -27,6 +27,9 @@ final class PlayerClock: ObservableObject {
     /// - Parameter observationInterval: 时间回调的间隔。烧字幕预览要靠它切换叠在
     ///   画面上的那句字幕，所以给得比字幕编辑器密一些。
     init(observationInterval: TimeInterval = 0.25) {
+        // GUI 冒烟的静音钩子：验播放时别往正在用机器的人耳朵里外放。
+        // 环境变量不设就完全不生效（docs/testing/gui-smoke-testing.md）。
+        if ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_MUTE"] != nil { player.volume = 0 }
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: observationInterval, preferredTimescale: 600),
             queue: .main

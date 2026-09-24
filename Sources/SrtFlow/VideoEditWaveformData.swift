@@ -214,11 +214,34 @@ actor WaveformStore {
 enum WaveformDecoder {
     /// 解完一块就交一次，最后一次 `isComplete == true`。读不了（没有音轨、
     /// 格式不认）时一次都不交。
+    ///
+    /// 这里只做异步的那部分（找音轨、看声道数）。**读 PCM 的循环是阻塞的，在
+    /// `MediaReadQueue.overview` 上跑，不许挪回这个 async 函数里**：打开工程时几十个
+    /// 文件一起读，会把 Swift 并发的线程池堵到死锁（2026-09-23 事故，见 `MediaReadQueue`）。
+    /// 读的途中攒出的快照经一条 AsyncStream 送回来，按先后交出去。
     static func decode(url: URL, publish: (WaveformPeaks) async -> Void) async {
         let asset = AVURLAsset(url: url)
-        guard let track = try? await asset.loadTracks(withMediaType: .audio).first,
-              let reader = try? AVAssetReader(asset: asset) else { return }
-        let sourceChannels = await sourceChannelCount(track)
+        guard let found = try? await asset.loadTracks(withMediaType: .audio).first else { return }
+        let sourceChannels = await sourceChannelCount(found)
+        // AVAssetTrack 没标 Sendable；它是只读的，交给读取线程之后这边不再碰。
+        nonisolated(unsafe) let track = found
+        let (snapshots, feed) = AsyncStream<WaveformPeaks>.makeStream()
+        MediaReadQueue.overview.addOperation {
+            read(asset: asset, track: track, sourceChannels: sourceChannels) { feed.yield($0) }
+            feed.finish()
+        }
+        for await snapshot in snapshots { await publish(snapshot) }
+    }
+
+    /// 把整条音轨阻塞地读完：读的途中隔一会儿 `emit` 一份已写完的块，读完再 `emit`
+    /// 完整的那份。**只在 `MediaReadQueue` 上调。**
+    private static func read(
+        asset: AVURLAsset,
+        track: AVAssetTrack,
+        sourceChannels: Int,
+        emit: (WaveformPeaks) -> Void
+    ) {
+        guard let reader = try? AVAssetReader(asset: asset) else { return }
         let channels = min(2, max(1, sourceChannels))
         var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
@@ -246,7 +269,6 @@ enum WaveformDecoder {
         var lastPublish = Date.distantPast
 
         while let buffer = output.copyNextSampleBuffer() {
-            if Task.isCancelled { reader.cancelReading(); return }
             if builder == nil {
                 guard let format = CMSampleBufferGetFormatDescription(buffer),
                       let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(format)?.pointee
@@ -274,7 +296,7 @@ enum WaveformDecoder {
             builder = current
             if Date().timeIntervalSince(lastPublish) > 0.25, !chunks.isEmpty {
                 lastPublish = Date()
-                await publish(WaveformPeaks(
+                emit(WaveformPeaks(
                     sampleRate: sampleRate, channelCount: current.channels,
                     chunks: chunks, isComplete: false
                 ))
@@ -282,7 +304,7 @@ enum WaveformDecoder {
         }
         guard reader.status == .completed, var current = builder else { return }
         if let tail = current.finishChunk() { chunks.append(tail) }
-        await publish(WaveformPeaks(
+        emit(WaveformPeaks(
             sampleRate: sampleRate, channelCount: current.channels, chunks: chunks, isComplete: true
         ))
     }

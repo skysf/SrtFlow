@@ -38,6 +38,8 @@
   跑的东西（素材重链接、格式版本迁移、音频库的 `remoteKey` 恢复）都只能人手点。
   工程文件可以手写，但 **`savedAt` 必须是 ISO8601 字符串**（reader 设了
   `dateDecodingStrategy = .iso8601`），给数字会被判成「不是 SrtFlow 的工程文件」。
+- `SRTFLOW_SMOKE_MUTE=1` —— 播放器静音（`AVPlayer.volume = 0`，2026-09-23 加）。验播放、
+  电平表时用：人就在机器前，突然外放出声不合适。只压播放器的输出，tap 和电平表照常工作。
 - 测试视频用 vendor/ffmpeg 现造：`-f lavfi -i testsrc2=... -c:v h264_videotoolbox`。
 
 ## 三、驱动与截图
@@ -231,6 +233,42 @@
 - 工程可以用 App 自己的模型代码生成：把 `check-project-file.sh` 第一段 swiftc 清单里的源文件
   编进一个小程序，造好 `TimelineState` 后 `VideoEditProjectIO.save` 出来，再经
   `SRTFLOW_SMOKE_PROJECT` 打开 —— 比手写 JSON 稳（格式版本、MediaInfo 都是对的）。
+
+## 五之三、界面上的东西一直不出来、CPU 0% 的时候（2026-09-23）
+
+可能是某一档 QoS 的线程被堵光了，死锁了（案例：
+[缩略图和波形全空](../bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md)）。
+
+- **看线程栈要用 arm64 的 sample**：`arch -arm64 /usr/bin/sample <pid> 1 -file out.txt`。
+  终端跑在 Rosetta 下时，直接敲 `sample` 用的是 x86_64 的版本，读不了 arm64 进程的线程
+  状态：刷一屏 `failed to get thread state`，call graph 是空的。`lldb -p` 也 attach 不上
+  （报 `debugserver is x86_64 binary running in translation`）。拿到栈之后，看
+  `com.apple.root.<qos>-qos.cooperative` 上有几条线程、都停在哪儿。
+- **判断是哪一档死了：心跳**。另起一条普通 `Thread`，每秒往 `.utility`、`.userInitiated`、
+  默认优先级各派一个 `Task`，再往 GCD 的 `.utility` 丢一个 block，各打一行日志。哪一档
+  不响，就是哪一档的线程被堵光了。心跳本身必须放在普通线程上：放进 Task 里，它自己也会被
+  饿死。
+- **日志打到 stderr，或者关掉 stdout 的缓冲**（`setvbuf(stdout, nil, _IONBF, 0)`）。进程挂死
+  后被 kill，缓冲里的 print 一行也出不来，看上去像「什么都没发生」。
+
+## 五之四、查实时播放（没声音、播不动），不出声
+
+案例：[一条轨上换了音频格式](../bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md)。
+
+- **先分清是数据错了还是实时管线出了事**：把生产的 `VideoEditCompositionBuilder` 和工程读取
+  编进一个小程序（源文件清单抄 `check-audio-fade.sh` 与 `check-project-file.sh` 两份的并集），
+  给用户的工程建合成，用 `AVAssetReaderAudioMixOutput` 逐条合成音轨离线读、按秒量 RMS。数据对，
+  就只剩实时那一段。
+- **实时管线在命令行里也跑得起来，而且可以静音**：同一个小程序里 `AVPlayer(playerItem:)`、
+  `player.volume = 0`、`RunLoop.main.run()`，挂上生产的 `AudioMeterEngine`（`makeAudioMix(…,
+  meters:)`），每秒读一次 `player.currentTime()` 和播放头处的 `rawPeak`。tap 照样被调，播放头照样
+  走（或者照样卡住）—— 不用开窗口、不抢鼠标、不出声。
+- 在真 App 里验播放时带上 `SRTFLOW_SMOKE_MUTE=1`（见第二节）再播。人就在机器前，突然外放出声
+  不合适。
+- 电平表的环默认只留约 1.4 秒（`AudioMeterEngine()` 的 2^16 帧）：**读表要在播放中、在播放头附近
+  读**。播完再回头读一整段，读到的只有最后一秒，其余都是 0，很容易误判成「没声音」。
+- `swiftc -O` 编 40 多个源文件要一分多钟，两份（修前 / 修后）一起编再跑，很容易超过工具的
+  超时 —— 别把「还在编译」当成「卡住了」，先 `ps` 看它的 CPU 时间在不在涨。
 
 ## 六、收尾
 

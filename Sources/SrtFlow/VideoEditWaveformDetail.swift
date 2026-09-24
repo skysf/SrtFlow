@@ -122,11 +122,30 @@ final class WaveformDetailCache: @unchecked Sendable {
     }
 
     /// 读一块：AVAssetReader 只读这一秒（压缩音频会从包边界起，所以时间戳按读出来的算）。
+    ///
+    /// 找音轨是异步的，在这儿做；**读采样的循环是阻塞的，交给 `MediaReadQueue.detail`**。
+    /// 放大时每个看得见的块都来要，十来个请求挤在协作线程池里，会把 userInitiated 这一整档
+    /// 堵到死锁（与总览解码同一个事故，见 `MediaReadQueue`）。
     private static func read(url: URL, index: Int, sampleRate: Double, channels: Int) async -> WaveformDetailTile? {
         guard sampleRate > 0 else { return nil }
         let asset = AVURLAsset(url: url)
-        guard let track = try? await asset.loadTracks(withMediaType: .audio).first,
-              let reader = try? AVAssetReader(asset: asset) else { return nil }
+        guard let found = try? await asset.loadTracks(withMediaType: .audio).first else { return nil }
+        // AVAssetTrack 没标 Sendable；它是只读的，交给读取线程之后这边不再碰。
+        nonisolated(unsafe) let track = found
+        return await MediaReadQueue.run(on: MediaReadQueue.detail) {
+            readTile(asset: asset, track: track, index: index, sampleRate: sampleRate, channels: channels)
+        }
+    }
+
+    /// 阻塞地读出第 `index` 块。**只在 `MediaReadQueue` 上调。**
+    private static func readTile(
+        asset: AVURLAsset,
+        track: AVAssetTrack,
+        index: Int,
+        sampleRate: Double,
+        channels: Int
+    ) -> WaveformDetailTile? {
+        guard let reader = try? AVAssetReader(asset: asset) else { return nil }
         var settings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 32,

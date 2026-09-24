@@ -234,10 +234,10 @@ enum VideoEditCompositionBuilder {
 
         let videoA = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         let videoB = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
-        let audioA = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
-        let audioB = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
         var videoCursors: [Double] = [0, 0]
-        var audioCursors: [Double] = [0, 0]
+        // 合成音轨按「哪条轨 × 源音频格式」按需开：一条合成音轨上换格式，电平表的 tap 会
+        // 从此不被调用，那条轨没声音、从换格式之后起播还会卡死（见 VideoEditCompositionAudioTracks.swift）。
+        let audioTracks = CompositionAudioTracks(composition: composition)
         // 音量斜坡不在这儿铺：这一趟只记「谁的声音进了哪条合成音轨」，
         // 铺斜坡统一交给 `makeAudioMix` —— 它同时也是「只改音量/渐变时不重建
         // 合成、只换 audioMix」那条快路径的实现，两条路共用一份才不会分叉。
@@ -285,10 +285,10 @@ enum VideoEditCompositionBuilder {
 
             // 声音
             if clip.hasAudio, !clip.isMuted,
-               let audioTrack = (slot == 0 ? audioA : audioB),
                let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
-               await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &audioCursors[slot]) {
-                audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: true)
+               let target = await audioTracks.slot(for: .main(slot: slot), source: sourceAudio),
+               await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor) {
+                audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: true)
             }
         }
 
@@ -376,11 +376,7 @@ enum VideoEditCompositionBuilder {
             guard let videoTrack = composition.addMutableTrack(
                 withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { continue }
-            let audioTrack = composition.addMutableTrack(
-                withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
-            )
             var videoCursor = 0.0
-            var audioCursor = 0.0
 
             for clip in ClipVisibility.visible(lane.clips)
                 .sorted(by: { $0.timelineStart < $1.timelineStart })
@@ -406,10 +402,10 @@ enum VideoEditCompositionBuilder {
                 ))
 
                 if clip.hasAudio, !clip.isMuted,
-                   let audioTrack,
                    let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
-                   await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &audioCursor) {
-                    audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: false)
+                   let target = await audioTracks.slot(for: .overlay(trackIndex), source: sourceAudio),
+                   await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor) {
+                    audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: false)
                 }
             }
         }
@@ -417,16 +413,14 @@ enum VideoEditCompositionBuilder {
         // MARK: 音频轨
 
         for lane in state.audioTracks where !lane.clips.isEmpty && !lane.isHidden {
-            guard let audioTrack = composition.addMutableTrack(
-                withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid
-            ) else { continue }
-            var cursor = 0.0
             for clip in ClipVisibility.visible(lane.clips)
                 .sorted(by: { $0.timelineStart < $1.timelineStart }) {
                 let sourceAsset = asset(for: clip.sourceURL)
-                guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first else { continue }
-                guard await insert(source: sourceAudio, clip: clip, into: audioTrack, cursor: &cursor) else { continue }
-                audioPlan.record(trackID: audioTrack.trackID, clipID: clip.id, isMainTrack: false)
+                guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
+                      let target = await audioTracks.slot(for: .lane(lane.id), source: sourceAudio),
+                      await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor)
+                else { continue }
+                audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: false)
             }
         }
 

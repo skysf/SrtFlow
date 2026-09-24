@@ -33,6 +33,7 @@ echo "==> 编译自检二进制"
 xcrun swiftc \
   -target "$TRIPLE" \
   -o "$OUT" \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
   Sources/SrtFlow/VideoEditWaveformDetail.swift \
   checks/Waveform/main.swift
