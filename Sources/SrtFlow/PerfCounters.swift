@@ -8,8 +8,9 @@ import os
 // 多少 CPU」，而是「做了多少件活」：哪个视图的 body 被重算了几次、合成重建了几次、
 // 开了几次素材文件。这些是精确的整数，同一份代码在哪台机器上跑都一样。
 //
-// **只有性能测试开着时才记账**（环境变量 `SRTFLOW_BENCH_OUT`，见 PreviewBench.swift）。
-// 平时每个埋点只读一个静态布尔值就返回：不加锁、不分配、不算类型名。
+// **只有性能测试或冒烟脚本开着时才记账**（环境变量 `SRTFLOW_BENCH_OUT` 见 PreviewBench.swift，
+// `SRTFLOW_SMOKE_SCRIPT` 见 SmokeDriver.swift）。平时每个埋点只读一个静态布尔值就返回：
+// 不加锁、不分配、不算类型名。
 
 enum PerfCounters {
     /// 性能测试的结果文件。设了它才跑测试、才记账。
@@ -17,9 +18,12 @@ enum PerfCounters {
     /// 键写在这里而不是 PreviewBench 里：好几个自检只编模型和合成构建器，
     /// 引用到 PreviewBench 就得把整个编辑器一起编进去。
     static let outputKey = "SRTFLOW_BENCH_OUT"
+    /// 进程内冒烟脚本（SmokeDriver.swift）。它的 `perf` 步骤也要读计数，所以设了它也记账。
+    static let smokeScriptKey = "SRTFLOW_SMOKE_SCRIPT"
 
-    /// 性能测试开着没有。进程启动时定下，之后不变。
+    /// 记不记账（性能测试或冒烟脚本开着）。进程启动时定下，之后不变。
     static let isEnabled = ProcessInfo.processInfo.environment[outputKey] != nil
+        || ProcessInfo.processInfo.environment[smokeScriptKey] != nil
 
     /// 视图的 body 被求值了一次。**每个** SwiftUI 视图和修饰器的 body 第一行都是
     /// `let _ = PerfCounters.body(Self.self)`（`checks/preview-perf-wiring.sh` 钉着）：

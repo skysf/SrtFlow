@@ -179,7 +179,10 @@ need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.c
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionAssetOpen\)' '开素材文件的计数'
 need Sources/SrtFlow/VideoEditAudioMeter.swift 'PerfCounters\.event\(\.meterTapCreate\)' '新建电平表 tap 的计数'
 need Sources/SrtFlow/VideoEditProject.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
-need Sources/SrtFlow/VideoEditView.swift 'PreviewBench\.startIfRequested\(project: project\)' '编辑器出现时启动性能测试的入口'
+# 编辑器出现时的开发钩子收在 DevHooks.editorAppeared 里（2026-09-24 从 VideoEditView 挪出去）：
+# 钉住两头 —— 视图调了钩子、钩子里启动了性能测试。
+need Sources/SrtFlow/VideoEditView.swift 'DevHooks\.editorAppeared\(project: project\)' '编辑器出现时调开发钩子'
+need Sources/SrtFlow/DevHooks.swift 'PreviewBench\.startIfRequested\(project: project\)' '开发钩子里启动性能测试的入口'
 # 后台读媒体的起止：少了它，测试会在缩略图 / 波形还没读完时就开始量，数时有时无。
 need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadBegan\(\)' '缩略图开始取图的登记'
 need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadEnded\(\)' '缩略图取完的登记'

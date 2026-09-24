@@ -182,6 +182,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `InstantTooltip.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 时间线吸附、框选命中与生产落点：`scripts/check-timeline-snap.sh`；拖动/框选
   接线扫描：`checks/timeline-drag-wiring.sh`。
+- **进程内 GUI 冒烟**（人在用这台机器时也能跑：不动鼠标、不抢前台，按步骤表点 / 拖 / 滚 / 按键，
+  结果里带选择、各段位置和每个视图重算了几次）：`scripts/gui-smoke/in-process/run.sh <步骤.json> [工程拷贝]`。
+  **要图形会话，不在 `check-all.sh` 里**；格式与坑见 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md)「四之六」。
 - 跨 App 的文件拖放重放（自带拖源，Finder 不吃合成事件）：
   `scripts/gui-smoke/external-file-drag/replay.sh`。**要图形会话，故意不在
   `check-all.sh` 里**，按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。

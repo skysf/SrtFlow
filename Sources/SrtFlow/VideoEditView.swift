@@ -85,31 +85,8 @@ struct VideoEditView: View {
             toolchain.resolveIfNeeded()
             project.undoManager = undoManager
             installEventMonitor()
-            // GUI 冒烟测试的导入钩子：环境变量不设就完全不生效。
-            // 可以用 : 分隔多个路径（PATH 惯例），addMedia 按类型分流 —— 想验
-            // 字幕相关的界面就再挂一个 .srt，否则拿不到「有字幕」的状态。
-            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_VIDEO"],
-               !smoke.isEmpty, project.state.isEmpty {
-                let urls = smoke.split(separator: ":")
-                    .map { URL(fileURLWithPath: String($0)) }
-                project.addMedia(urls: urls)
-            }
-            // 同一套钩子，打开一份**已存在的工程**。
-            //
-            // 为什么非要有它：音频库素材的重链接（`remoteKey` → 缓存 → R2）只在
-            // **打开工程**这条路径上跑，而那条路自动化进不去 —— 临时目录里 ad-hoc
-            // 签名的调试拷贝没在 LaunchServices 注册文档类型，命令行参数、
-            // `open -a`、AppleScript 的 `open` 三条路 2026-09-22 实测全部打不开它，
-            // 而 NSOpenPanel 的自动化本来就不可靠（见 gui-smoke-testing.md）。
-            // 没有这个钩子，「清掉缓存还找不找得回来」这条就永远只能靠人手点。
-            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_PROJECT"],
-               !smoke.isEmpty, project.state.isEmpty {
-                let url = URL(fileURLWithPath: smoke)
-                Task { await project.openProject(at: url) }
-            }
-            // 预览性能测试：只有 CI 上 scripts/check-preview-perf.sh 起的 App 才带
-            // `SRTFLOW_BENCH_OUT`，平时是空操作（PreviewBench.swift）。
-            PreviewBench.startIfRequested(project: project)
+            // GUI 冒烟 / 性能测试的环境变量钩子，不设就完全不生效（DevHooks.swift）。
+            DevHooks.editorAppeared(project: project)
         }
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }

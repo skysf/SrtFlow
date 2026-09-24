@@ -239,6 +239,49 @@
   （比如 582×375、x≈20），不是窗口真实大小；截图照样是全分辨率。
 - zsh 不会把 `$p` 按空格拆开：坐标要当两个参数传，别塞进一个变量里循环。
 
+## 四之六、进程内驱动：不动鼠标、不抢前台（2026-09-24）
+
+人在用这台机器（`ioreg -c IOHIDSystem` 的 `HIDIdleTime` 是 0 秒）时，CGEvent 注入会抢走真鼠标，
+`NSApp.activate` 会抢走键盘。这时用进程内驱动：App 按一份步骤表往**自己的窗口**里发合成事件，
+指针一下不动，App 一直在后台，用户那边照常打字。
+
+```bash
+cp <用户的工程> <scratchpad>/copy.srtflowproj        # 一定要拷贝：自动保存会改写它
+scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/copy.srtflowproj
+```
+
+- **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` /
+  `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`。
+  坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。
+- **结果**写在 `<步骤表名>.out.json`：`log`（每一步、窗口号、窗口实际大小）、`state`（每个 `state`
+  步骤记下的选择、每段位置、文字的位置和角度 —— 验「落在哪」读这里，比看截图准）、`perf`（两个
+  `perf` 之间每个视图重算了几次，冒烟时 `PerfCounters` 也记账）。
+- **截图**：App 没有录屏权限、拍不了自己；`snapshot` 写一个 `<名字>.request`，`run.sh` 在旁边
+  盯着、用终端的权限 `screencapture -l` 拍好再放它往下走。
+- run.sh 用 `open -g -n --env …` 起进程：`-g` 不抢前台，`--env` 把环境变量带进去（第二节那句
+  「`open` 不传 env」说的是不加 `--env` 的时候）。
+
+原理和踩过的坑（全是 2026-09-24 实测）：
+
+1. **窗口不是 key 时，AppKit 只把「第一下」交给肯收的视图**（`acceptsFirstMouse`），其余当成
+   「激活窗口」吞掉 —— 一个手势都收不到。假装 `isKeyWindow`、直接调 `mouseDown`、在根视图挂
+   `.allowsWindowActivationEvents(true)` 都不行：编辑器的几块面板（导航分栏的每一栏、时间线的
+   滚动区）各是一个 AppKit 视图，挂在根上的修饰器够不着它们。现在的做法是按下之前把**指针下那个
+   视图的类**的 `acceptsFirstMouse` 换成恒 true（`SmokeEvents.allowFirstMouse`，只在冒烟进程里）。
+   换完之后窗口始终不是 key、前台一直是用户的 App（`NSWorkspace.frontmostApplication` 实测）。
+   排查「这一点命中的是谁」用 `hit` 步骤，日志里会写出一路往上的视图类名和它收不收第一下。
+2. **多显示器时窗口会被夹窄**：主屏可用区域比要的窗口窄时，窗口被系统夹小，布局一变，写死的
+   坐标全偏（1400 宽在 1440 的主屏上实测被夹成 1197）。`window` 步骤把窗口摆在主屏、在日志里写
+   实际大小；1180×740 放得下。**坐标以同一个窗口大小下的截图为准**。
+3. **单击要等过系统的双击间隔**：同一个视图上还挂着双击手势时（时间线的块、预览上的文字），
+   SwiftUI 要先排除「这是双击的第一下」才落单击。`click` 已经等了 `doubleClickInterval + 0.15`
+   秒；等少了读到的是点之前的状态，会误判成「点了没反应」。
+4. **「⌘ 点 / ⇧ 点加选」驱不动**：鼠标事件直接交给窗口，不会成为 `NSApp.currentEvent`，而点选时
+   判加选读的就是它。要多选就用框选（`drag` 从空白处起手）或 ⌘A。
+5. **键盘事件投进事件队列**（`NSApp.postEvent`）：编辑器的本地按键监听（⌫、M、⌘A）只在
+   `NSApp.sendEvent` 那一关看得见事件。滚轮直接交给指针下的视图（走队列会按屏幕位置找窗口，
+   用户的窗口正好盖在上面时就送错了人）。
+
 ## 五、要真实窗口、但已经自动化了的检查
 
 有些检查**不需要人来操作**，只是需要一个图形会话（会建真实的 `NSWindow` /

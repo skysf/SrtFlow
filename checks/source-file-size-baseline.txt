@@ -17,7 +17,7 @@
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 629 Sources/SrtFlow/VideoEditTimelineEdits.swift
 777 Sources/SrtFlow/VideoEditTimelineView.swift
-982 Sources/SrtFlow/VideoEditView.swift
+959 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 1159 Sources/SrtFlowCoreChecks/main.swift
