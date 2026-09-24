@@ -12,9 +12,10 @@ import SwiftUI
 
 /// 滤镜块的尺寸。与形状/文字块同一档（26pt 的细行）。
 enum FilterBlockMetrics {
-    static let height: Double = 20
-    static let topInset: Double = 3
-    static let minimumWidth: Double = 24
+    // 和框选的命中判定共用常量（`TimelineMarquee`）：画多大就按多大判。
+    static let height: Double = TimelineMarquee.filterHeight
+    static let topInset: Double = TimelineMarquee.filterTopInset
+    static let minimumWidth: Double = TimelineMarquee.filterMinimumWidth
 }
 
 struct FilterBlockView: View, Equatable {
@@ -126,11 +127,15 @@ extension VideoEditTimelineView {
                 FilterBlockView(
                     filter: filter,
                     pps: pps,
-                    isSelected: project.selectedFilterID == filter.id,
+                    isSelected: isSelected(filter: filter.id),
                     // 滤镜和剪辑走**同一套**拖动会话（冻结候选、自由落点解析、
                     // 边缘自动滚动、松手落一次），理由同形状块。
                     dragOffset: dragOffset(movingID: filter.id),
-                    onSelect: { project.selectFilter(filter.id) },
+                    onSelect: {
+                        // ⌘/⇧ 点是加选（滤镜 2026-09-25 起可以多选）。
+                        let flags = NSApp.currentEvent?.modifierFlags ?? []
+                        project.selectFilter(filter.id, additive: flags.contains(.command) || flags.contains(.shift))
+                    },
                     onDragBegin: { beginFilterDrag(filter) },
                     onDragChange: { translation, pointerViewport in
                         updateClipDrag(translation: translation, pointerViewport: pointerViewport)

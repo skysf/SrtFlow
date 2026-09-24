@@ -76,7 +76,7 @@ extension VideoEditTimelineView {
     /// 互相盖住。
     func beginFilterDrag(_ filter: FilterClip) {
         project.clock.endPeek()
-        if project.selectedFilterID != filter.id {
+        if !project.selectedFilterIDs.contains(filter.id) {
             project.selectFilter(filter.id)
         }
         guard let plan = project.filterDragPlan(filterID: filter.id) else { return }
@@ -164,7 +164,7 @@ extension VideoEditTimelineView {
         case .shape, .text, .subtitleCue, .filter:
             // 这四类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
             // 和剪辑同一个 applyDrag（`commitFreeDrag`），位移只有一份。
-            // （滤镜段从不带伙伴：它进不了框选，所以成员表里只有它自己。）
+            // （滤镜段 2026-09-25 起也进框选 / ⌘A，伙伴规则和别的块一样。）
             // 文字块还带上目标行（§5j）：换行和横向位移在同一次 perform 里，一步撤销。
             project.commitFreeDrag(drag.plan, resolution: drag.resolution, textRow: textDropRow)
         case .clip:

@@ -100,6 +100,6 @@ extension VideoEditProject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 }

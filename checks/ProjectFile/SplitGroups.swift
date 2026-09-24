@@ -12,6 +12,7 @@ func runSplitOutGroups(root: URL) {
         ("素材书签缓存", checkMediaBookmarkCache),      // 30：BookmarkCache.swift
         ("数字等待", checkNumberDelay),               // 31：NumberDelay.swift
         ("文字行", checkTextRows),                    // 32：TextRows.swift
+        ("全选与滤镜多选", checkSelectAll),           // 33：SelectAll.swift
     ]
     for group in groups {
         do {

@@ -13,11 +13,11 @@
 616 Sources/SrtFlow/VideoEditInspector.swift
 717 Sources/SrtFlow/VideoEditMediaFileDrop.swift
 1413 Sources/SrtFlow/VideoEditModels.swift
-1498 Sources/SrtFlow/VideoEditProject.swift
+1473 Sources/SrtFlow/VideoEditProject.swift
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 629 Sources/SrtFlow/VideoEditTimelineEdits.swift
 743 Sources/SrtFlow/VideoEditTimelineView.swift
-959 Sources/SrtFlow/VideoEditView.swift
+909 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 1159 Sources/SrtFlowCoreChecks/main.swift

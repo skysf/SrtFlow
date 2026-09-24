@@ -39,12 +39,18 @@ enum TimelineMarquee {
     static let textTopInset: Double = 3
     static let textHeight: Double = 20
 
-    /// 框里能选中的四类东西。
+    /// 滤镜块的尺寸（画块的 `FilterBlockMetrics` 读这里，画和判共用一份）。
+    static let filterMinimumWidth: Double = 24
+    static let filterTopInset: Double = 3
+    static let filterHeight: Double = 20
+
+    /// 框里能选中的五类东西（滤镜段 2026-09-25 起也进框选）。
     enum Kind: Equatable {
         case clip
         case shape
         case text
         case subtitleCue
+        case filter
     }
 
     /// 一行里的一个可选中元素。
@@ -67,6 +73,7 @@ enum TimelineMarquee {
             case .shape: self.minimumWidth = TimelineMarquee.shapeMinimumWidth
             case .text: self.minimumWidth = TimelineMarquee.textMinimumWidth
             case .subtitleCue: self.minimumWidth = TimelineMarquee.cueMinimumWidth
+            case .filter: self.minimumWidth = TimelineMarquee.filterMinimumWidth
             }
         }
     }
@@ -94,8 +101,9 @@ enum TimelineMarquee {
         var shapes: Set<UUID> = []
         var texts: Set<UUID> = []
         var cues: Set<UUID> = []
+        var filters: Set<UUID> = []
 
-        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty }
+        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty && filters.isEmpty }
 
         /// 加选（⌘/⇧ 拖框）：在原有选择上并集。
         func union(_ other: Hit) -> Hit {
@@ -180,6 +188,7 @@ enum TimelineMarquee {
                 case .shape: hit.shapes.insert(item.id)
                 case .text: hit.texts.insert(item.id)
                 case .subtitleCue: hit.cues.insert(item.id)
+                case .filter: hit.filters.insert(item.id)
                 }
             }
         }

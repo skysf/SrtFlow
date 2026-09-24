@@ -87,7 +87,8 @@ extension VideoEditTimelineView {
             clips: session.hit.clips,
             shapes: session.hit.shapes,
             texts: session.hit.texts,
-            cues: session.hit.cues
+            cues: session.hit.cues,
+            filters: session.hit.filters
         )
     }
 
@@ -118,10 +119,13 @@ extension VideoEditTimelineView {
                 items = (cues ?? []).map {
                     TimelineMarquee.Item(id: $0.id, start: $0.start, end: $0.end, kind: .subtitleCue)
                 }
+            } else if let layer = spec.filterLayer {
+                // 滤镜段 2026-09-25 起也进框选（点选仍互斥，理由见 `EditSelection.filterIDs`）。
+                items = project.state.filters(onLayer: layer).map {
+                    TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .filter)
+                }
             } else {
-                // 标尺行（拖它是 scrub），以及**滤镜行** —— 滤镜段和标记、转场
-                // 同族，只点选不进框选（理由见 `EditSelection.filterID`），
-                // 所以这里不给它产出 item，框从上面扫过什么都不选。
+                // 标尺行（拖它是 scrub）：不给它产出 item，框从上面扫过什么都不选。
                 return nil
             }
             // 纵向按**画出来的**块算，不是整行：字幕/形状块在行内上下都留了白，
@@ -137,6 +141,9 @@ extension VideoEditTimelineView {
             } else if spec.subtitleKind != nil {
                 minY = layout.minY + TimelineMarquee.cueTopInset
                 maxY = minY + TimelineMarquee.cueHeight
+            } else if spec.filterLayer != nil {
+                minY = layout.minY + TimelineMarquee.filterTopInset
+                maxY = minY + TimelineMarquee.filterHeight
             } else {
                 minY = layout.minY
                 maxY = layout.maxY
@@ -165,6 +172,10 @@ extension VideoEditTimelineView {
 
     func isSelected(cue id: UUID) -> Bool {
         marquee?.hit.cues.contains(id) ?? project.selectedSubtitleCueIDs.contains(id)
+    }
+
+    func isSelected(filter id: UUID) -> Bool {
+        marquee?.hit.filters.contains(id) ?? project.selectedFilterIDs.contains(id)
     }
 
 }

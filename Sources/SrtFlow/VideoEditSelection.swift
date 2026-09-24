@@ -12,11 +12,15 @@ import Foundation
 // `sole*` —— 三类加起来只选中一个时才有主角，多选或混选一律不画框（和以前
 // 「多选剪辑时不画框」的行为一致）。所以「同时挂两套框」在类型层面仍然不可能。
 //
-// 二、标记、转场**和滤镜段**为什么仍然对所有人互斥：它们的互斥不是为了画框，是为了**删除键**。
+// 二、标记和转场为什么仍然对所有人互斥：它们的互斥不是为了画框，是为了**删除键**。
 // ⌫ 只有一个统一入口（`VideoEditProject.deleteSelected`），"选中的是标记" 和
 // "选中的是整段" 必须互斥，否则点了段上的标记再按 ⌫，删掉的会是整段素材。
 // 转场同理 —— 遮罩就压在两段片段之上，点它之前多半刚点过其中一段。
 // 框选也一样：`selectBox` 无论框到什么都把标记和转场的选择清掉。
+//
+// 滤镜段**点选**时和别的互斥（理由同上：它和它下面那条轨在时间线上上下相邻），但
+// 2026-09-25 起进框选和 ⌘A（用户拍板：所有能选中的都算）—— 那两种是明确的「重新指定
+// 一片」，一片里混着滤镜按 ⌫ 就是要一起删。
 //
 // 字段一律 `private(set)`，唯一的改法是下面几个 mutating 方法；而「非空就清掉
 // 其余各类」只在 `clearAll()` 里写一次。于是「加一类选择忘了清另一类」不靠人肉
@@ -37,19 +41,21 @@ struct EditSelection: Equatable {
     /// **不存缝下标**：拖动中磁吸会重排片段，下标当场就失效 —— 和
     /// `TransitionMaskView` 里「存下标不存片段」是同一条纪律的另一面。
     private(set) var transitionSeamID: UUID?
-    /// 选中的滤镜段。
+    /// 选中的滤镜段（可以多段：框选 / ⌘A / ⌘点，2026-09-25）。
     ///
-    /// 和标记、转场同一族：**只点选、不进框选**，因此也不算进 `count`。
-    /// 理由同那两类 —— ⌫ 只有 `deleteSelected` 一个入口，滤镜段和它下面的画面
+    /// **点选**时和别的互斥：⌫ 只有 `deleteSelected` 一个入口，滤镜段和它下面的画面
     /// 在时间线上是上下相邻的两行，点滤镜之前多半刚点过某一段素材；两个都留着
-    /// 的话按 ⌫ 删掉的会是整段素材。
-    private(set) var filterID: UUID?
+    /// 的话按 ⌫ 删掉的会是整段素材。框选和 ⌘A 是明确的「重新指定一片」，可以混。
+    private(set) var filterIDs: Set<UUID> = []
 
-    /// 前四类选中项的总数。标记和转场不算 —— 它们从不和别人共存。
-    var count: Int { clipIDs.count + shapeIDs.count + textIDs.count + subtitleCueIDs.count }
+    /// 只选中了一段滤镜时才有主角（检查器的滤镜区、库面板「点卡片 = 换种类」都认它）。
+    var soleFilterID: UUID? { filterIDs.count == 1 ? filterIDs.first : nil }
+
+    /// 五类选中项的总数。标记和转场不算 —— 它们从不和别人共存。
+    var count: Int { clipIDs.count + shapeIDs.count + textIDs.count + subtitleCueIDs.count + filterIDs.count }
 
     var isEmpty: Bool {
-        count == 0 && markerRef == nil && transitionSeamID == nil && filterID == nil
+        count == 0 && markerRef == nil && transitionSeamID == nil
     }
 
     // MARK: - 预览上那套框的归属
@@ -72,7 +78,7 @@ struct EditSelection: Equatable {
         subtitleCueIDs = []
         markerRef = nil
         transitionSeamID = nil
-        filterID = nil
+        filterIDs = []
     }
 
     /// 选剪辑：非空就清掉其余各类。
@@ -140,11 +146,16 @@ struct EditSelection: Equatable {
         transitionSeamID = id
     }
 
-    /// 选中一段滤镜：非 nil 就清掉其余各类。理由见 `filterID` 的说明。
-    mutating func selectFilter(_ id: UUID?) {
-        guard let id else { filterID = nil; return }
+    /// 选滤镜段：非空就清掉其余各类。理由见 `filterIDs` 的说明。
+    mutating func selectFilters(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { filterIDs = []; return }
         clearAll()
-        filterID = id
+        filterIDs = ids
+    }
+
+    /// 单选门面（点一下时间线上的滤镜段）。
+    mutating func selectFilter(_ id: UUID?) {
+        selectFilters(id.map { [$0] } ?? [])
     }
 
     // MARK: - 框选：四类一次落定
@@ -155,14 +166,16 @@ struct EditSelection: Equatable {
     /// 标记和转场无条件清掉，哪怕框是空的：框选是一次明确的「重新指定选中项」，
     /// 留着的话 ⌫ 会走进它们的分支，删掉一枚用户早就不看着的标记、或者清掉一条
     /// 没高亮的缝上的转场。
-    mutating func selectBox(clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>) {
+    mutating func selectBox(
+        clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>, filters: Set<UUID> = []
+    ) {
         clipIDs = clips
         shapeIDs = shapes
         textIDs = texts
         subtitleCueIDs = cues
+        filterIDs = filters
         markerRef = nil
         transitionSeamID = nil
-        filterID = nil
     }
 
     /// 七类一起清（点预览空白、切工程）。
@@ -218,7 +231,6 @@ struct EditSelection: Equatable {
     /// 选中的滤镜段已经不在了（删除、撤销掉「加滤镜」那一步）就摘掉。
     /// 同 `pruneMarker`：留着的话时间线上没有任何东西高亮，⌫ 却还有反应。
     mutating func pruneFilter(isValid: (UUID) -> Bool) {
-        guard let id = filterID, !isValid(id) else { return }
-        filterID = nil
+        filterIDs = filterIDs.filter(isValid)
     }
 }

@@ -84,7 +84,7 @@ final class VideoEditProject: ObservableObject {
     /// 选中的滤镜段还在不在（被删、撤销掉「加滤镜」那一步）。同样收在这个唯一
     /// 入口 —— 留着的话时间线上没有任何东西高亮，⌫ 却还会去删一段看不见的滤镜。
     private func pruneFilterSelection() {
-        guard selection.filterID != nil else { return }
+        guard !selection.filterIDs.isEmpty else { return }
         selection.pruneFilter { id in state.filters.contains { $0.id == id } }
     }
 
@@ -269,11 +269,19 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 点选一段滤镜。没有加选 —— 滤镜段和标记、转场同族，只点选、不进框选
-    ///（理由见 `EditSelection.filterID`）。选中态的 `@Published` 写在这个文件里，
-    /// 因为 `selection` 是 `private(set)`。
-    func selectFilter(_ id: UUID?) {
-        selection.selectFilter(id)
+    /// 点选一段滤镜：普通点是单选（和别的选择互斥，理由见 `EditSelection.filterIDs`），
+    /// ⌘/⇧点是加选或取消。写在这个文件里，因为 `selection` 是 `private(set)`。
+    func selectFilter(_ id: UUID?, additive: Bool = false) {
+        guard let id, additive else { selection.selectFilter(id); return }
+        var ids = selectedFilterIDs
+        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        selectedFilterIDs = ids
+    }
+
+    /// 选中的全部滤镜段（框选 / ⌘A / ⌘点可以一次选中多段，2026-09-25）。
+    var selectedFilterIDs: Set<UUID> {
+        get { selection.filterIDs }
+        set { selection.selectFilters(newValue) }
     }
 
     /// 鼠标框选落地：四类一次写完，**整轮框选只写这一次**。
@@ -281,8 +289,10 @@ final class VideoEditProject: ObservableObject {
     /// 拖框过程中的高亮全在视图层的 `@State` 里（见
     /// `VideoEditTimelineView.marquee`）—— 每一拍写这里会连带整个编辑器视图树
     /// 重建、重挂一次自动保存，框就会跟不上光标，和拖块那条约束是同一个理由。
-    func applyBoxSelection(clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>) {
-        selection.selectBox(clips: clips, shapes: shapes, texts: texts, cues: cues)
+    func applyBoxSelection(
+        clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>, filters: Set<UUID> = []
+    ) {
+        selection.selectBox(clips: clips, shapes: shapes, texts: texts, cues: cues, filters: filters)
     }
 
     /// 请求对这一段文字进入就地编辑（画面上直接打字）。
@@ -571,7 +581,7 @@ final class VideoEditProject: ObservableObject {
             movingIDs: movingIDs,
             candidates: snapCandidates(moving: movingIDs.union(companions.ids)),
             magnetMain: slot.isMain && magnetEnabled
-        )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+        )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
@@ -600,7 +610,7 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
@@ -629,38 +639,7 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
-    }
-
-    /// 跟着一起动的非剪辑伙伴：框选一起选中的形状和字幕 cue。
-    ///
-    /// 只在**被拖的那个本来就在选中集合里**时才有伙伴 —— 拖一个没选中的东西
-    /// 是「单选它再拖」，那时候整片选择已经被换掉了，不该再拉着旧的一片走。
-    func movingCompanions(
-        draggedID: UUID,
-        movingClipIDs: Set<UUID>
-    ) -> (
-        shapes: [(id: UUID, span: TimelineSpan)],
-        texts: [(id: UUID, span: TimelineSpan)],
-        cues: [(id: UUID, span: TimelineSpan)],
-        ids: Set<UUID>
-    ) {
-        let engaged = movingClipIDs.contains(draggedID)
-            || selectedShapeIDs.contains(draggedID)
-            || selectedTextIDs.contains(draggedID)
-            || selectedSubtitleCueIDs.contains(draggedID)
-        guard engaged else { return ([], [], [], []) }
-        let shapes = state.shapes
-            .filter { selectedShapeIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
-        let texts = state.textOverlays
-            .filter { selectedTextIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
-        let cues = (state.subtitle?.cues ?? [])
-            .filter { selectedSubtitleCueIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.start, end: $0.end)) }
-        let ids = Set(shapes.map(\.id)).union(texts.map(\.id)).union(cues.map(\.id))
-        return (shapes, texts, cues, ids)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 形状 / 文字 / 字幕 cue 起手的拖动落地：一步撤销。
@@ -707,7 +686,7 @@ final class VideoEditProject: ObservableObject {
         let members = TimelineTrim.members(
             anchor: anchor, selectedClips: selectedClipIDs, selectedShapes: selectedShapeIDs,
             selectedTexts: selectedTextIDs, selectedCues: selectedSubtitleCueIDs,
-            linkage: linkageEnabled, in: state
+            selectedFilters: selectedFilterIDs, linkage: linkageEnabled, in: state
         )
         beginLiveEdit()
         liveApply { state in
@@ -1077,12 +1056,6 @@ final class VideoEditProject: ObservableObject {
             setTransition(after: seamID, .none)
             return
         }
-        // 选中的是一段滤镜：⌫ 删它，别去碰它下面那条轨上的素材。互斥由
-        // `EditSelection` 保证（选滤镜时剪辑选择已经清了）。
-        if let filterID = selection.filterID {
-            deleteFilter(filterID)
-            return
-        }
         var clipIDs = selectedClipIDs
         if linkageEnabled {
             for id in selectedClipIDs { clipIDs.formUnion(state.linkedClipIDs(of: id)) }
@@ -1090,13 +1063,15 @@ final class VideoEditProject: ObservableObject {
         let shapeIDs = selectedShapeIDs
         let textIDs = selectedTextIDs
         let cueIDs = selectedSubtitleCueIDs
-        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty else { return }
+        let filterIDs = selectedFilterIDs   // 滤镜和别的一起删（框选 / ⌘A 混选的那一片）；空出的层收拢
+        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty || !filterIDs.isEmpty else { return }
         // 只删形状/文字/字幕时不重建预览：三者都不参与 AV 合成（叠层是 SwiftUI
         // 画的），白重建一次会让画面黑一下。
         perform(rebuildsPreview: !clipIDs.isEmpty) { state in
             for member in clipIDs { state.remove(member) }
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
             if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
+            if !filterIDs.isEmpty { state.filters.removeAll { filterIDs.contains($0.id) }; state.compactFilterLayers() }
             if !cueIDs.isEmpty, var original = state.subtitle {
                 // 两轨 + meta 同删，走和字幕面板一样的那份合同。
                 var companion = state.subtitleCompanion ?? SubtitleCompanion()

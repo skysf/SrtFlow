@@ -48,9 +48,7 @@ struct TimelineRowSpec: Identifiable, Equatable {
     /// 一条规则都不许在这儿写（空轨、隐藏轨那些边界都归它判）。
     var selectionRow: TimelineRowSelection.Row? {
         if isRuler { return nil }
-        // 滤镜行的轨道头点不出选择：滤镜是单选的（`EditSelection.filterID`），
-        // 「整行一起选」没地方放。点行头什么都不做，好过选中一批 ⌫ 删不掉的东西。
-        if filterLayer != nil { return nil }
+        if let filterLayer { return .filterLayer(filterLayer) }
         if let slot { return .track(slot) }
         if let subtitleKind { return .subtitle(subtitleKind) }
         if let textRow { return .textRow(textRow) }

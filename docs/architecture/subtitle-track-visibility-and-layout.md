@@ -79,6 +79,17 @@
 
 ## 选择模型：点选互斥 / 框选混选（剪辑 / 形状 / 字幕 cue）
 
+> **2026-09-25 起的两条补充（用户拍板）**：
+> - **⌘A 选中时间线上的一切**：剪辑（含隐藏轨上的）、形状、文字、数字、字幕 cue、滤镜段
+>   （`VideoEditProject.selectAllOnTimeline`，走框选那一个混选入口 `applyBoxSelection`）；标记和
+>   转场不单独选、跟着各自的段走。**⌘⇧A 取消全部选择**。两个键都接在 `VideoEditView.handleEvent`
+>   的本地监听里，排在「带修饰键一律放行」那道闸门之前，正在打字时仍让路（输入框里的 ⌘A 是全选文字）。
+>   磁吸开着时拖这一片，主轨不动（`draggingClipIDs` 的 magnetPinsMainTrack）。
+> - **滤镜段可以多选**：点选仍和别的互斥（`EditSelection.selectFilter`，理由不变 —— ⌫ 一个入口），
+>   但框选、⌘A、⌘点加选、滤镜行的行头都能一次选中多段（`filterIDs`）。只选中恰好一段时才有主角
+>   （`soleFilterID`：检查器的滤镜区、库面板「点卡片 = 换种类」认它）。混着滤镜的一片一起拖、一起裁、
+>   一起删（`deleteSelected` 同一次 perform，空出的层收拢）。
+
 > 2026-08-12 随鼠标框选调整：**点选**仍然三类互斥，**框选**可以一次选中三类。
 > 手势侧的约束见 [timeline-drag-gestures.md](timeline-drag-gestures.md) 的
 > 「框选」一节，这里只写选择模型本身。

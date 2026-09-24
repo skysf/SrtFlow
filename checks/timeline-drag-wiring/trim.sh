@@ -24,7 +24,8 @@ if BODY="$(require_func 'func liveTrim(anchor:' "$PROJECT")"; then
 fi
 if BODY="$(require_func 'static func members(' "$TRIM")"; then
   grep -q 'linkedClipIDs(of: id)' <<<"$BODY" || fail "名单没带上链接伙伴（linkedClipIDs）"
-  grep -q 'anchor.kind == .filter { return \[anchor\] }' <<<"$BODY" || fail "滤镜没有只裁自己（它和别的选择互斥）"
+  grep -q 'case .filter: anchored = selectedFilters.contains(anchor.id)' <<<"$BODY" \
+    || fail "拉选中的滤镜段没带上整个选择（滤镜 2026-09-25 起可以多选、进框选）"
 fi
 for entry in 'func liveTrim(_ id: UUID' 'func liveTrimShape('; do
   if BODY="$(require_func "$entry" "$PROJECT")"; then

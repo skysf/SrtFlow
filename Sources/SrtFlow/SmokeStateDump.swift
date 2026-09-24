@@ -54,7 +54,7 @@ enum SmokeStateDump {
                 "cues": selection.subtitleCueIDs.count,
                 "marker": selection.markerRef.map { short($0.markerID) } ?? "",
                 "transition": selection.transitionSeamID.map(short) ?? "",
-                "filter": selection.filterID.map(short) ?? "",
+                "filters": selection.filterIDs.map(short).sorted(),
             ],
             "clips": clips,
             "texts": texts,

@@ -111,7 +111,26 @@ func checkTrim() {
     let filterOnly = TimelineTrim.members(anchor: TimelineTrim.Member(id: filter.id, kind: .filter),
                                           selectedClips: sel.clips, selectedShapes: sel.shapes, selectedTexts: sel.texts,
                                           selectedCues: sel.cues, linkage: true, in: listed)
-    checkEqual(filterOnly.map(\.id), [filter.id], "滤镜单选：只裁自己")
+    checkEqual(filterOnly.map(\.id), [filter.id], "拉没选中的滤镜：只裁自己")
+    let filterAnchored = TimelineTrim.members(anchor: TimelineTrim.Member(id: filter.id, kind: .filter),
+                                              selectedClips: sel.clips, selectedShapes: [], selectedTexts: [],
+                                              selectedCues: [], selectedFilters: [filter.id], linkage: false, in: listed)
+    checkEqual(Set(filterAnchored.map(\.id)), [filter.id, video.id, other.id], "拉选中的滤镜（⌘A 那一片）：整个选择一起裁")
+    let withFilters = TimelineTrim.members(anchor: v, selectedClips: sel.clips, selectedShapes: [], selectedTexts: [],
+                                           selectedCues: [], selectedFilters: [filter.id], linkage: false, in: listed)
+    check(withFilters.contains(TimelineTrim.Member(id: filter.id, kind: .filter)), "从剪辑起手，选中的滤镜段也在名单里")
+
+    // ---- 框选：滤镜行也出 item，框到就选中 ----
+    let hit = TimelineMarquee.hits(
+        rect: CGRect(x: 0, y: 0, width: 100, height: 30),
+        rows: [TimelineMarquee.Row(minY: 3, maxY: 23, items: [
+            TimelineMarquee.Item(id: filter.id, start: 1, end: 3, kind: .filter),
+            TimelineMarquee.Item(id: other.id, start: 30, end: 33, kind: .filter),
+        ])],
+        pixelsPerSecond: 24
+    )
+    checkEqual(hit.filters, [filter.id], "框到的滤镜段进 hit.filters，框外的不进")
+    check(!hit.isEmpty, "只框到滤镜也不算空")
     checkEqual(whole, TimelineTrim.members(anchor: v, selectedClips: sel.clips, selectedShapes: sel.shapes,
                                             selectedTexts: sel.texts, selectedCues: sel.cues, linkage: true, in: listed),
                "同一份输入永远同一份名单（顺序固定）")

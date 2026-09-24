@@ -23,6 +23,8 @@ enum TimelineRowSelection {
         case track(TrackSlot)
         /// 文字行的行号（`TextOverlay.row`，进模型）。
         case textRow(Int)
+        /// 滤镜行的层号（`FilterClip.layer`）。滤镜 2026-09-25 起可以多选，行头点得出整层。
+        case filterLayer(Int)
         case shapes
         case subtitle(SubtitleRowKind)
     }
@@ -34,6 +36,7 @@ enum TimelineRowSelection {
         case shapes
         case texts
         case subtitleCues
+        case filters
     }
 
     struct Result {
@@ -52,6 +55,9 @@ enum TimelineRowSelection {
         case .track(let slot):
             guard !state.isLaneHidden(slot) else { return Result(category: .clips, ids: []) }
             return Result(category: .clips, ids: Set(state[track: slot].map(\.id)))
+
+        case .filterLayer(let layer):
+            return Result(category: .filters, ids: Set(state.filters(onLayer: layer).map(\.id)))
 
         case .textRow(let row):
             // 和 `RowSpec` 那边读的是同一个字段（`TextOverlay.row`），点第几行选中的

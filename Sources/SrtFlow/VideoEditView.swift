@@ -214,6 +214,18 @@ struct VideoEditView: View {
             // 快捷键：⌫ 把正在编辑的 cue 整条从轨上删掉，空格开播、V 切段的显隐。
             // 草稿随提交（回车/失焦）清空，不会长期挡住快捷键。
             if project.subtitleDraft != nil { return event }
+            // ⌘A 选中时间线上的一切、⌘⇧A 取消（2026-09-25 用户拍板）。放在修饰键那道闸门
+            // **前面**：带 ⌘ 的组合默认放行给系统，这两个是例外；正在打字时上面已经让路了
+            //（输入框里的 ⌘A 仍是全选文字）。按 keyCode 认（0 = A），不看输入法。
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            if event.keyCode == 0, modifiers == [.command] {
+                project.selectAllOnTimeline()
+                return nil
+            }
+            if event.keyCode == 0, modifiers == [.command, .shift] {
+                project.clearSelection()
+                return nil
+            }
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
@@ -729,68 +741,6 @@ struct VideoEditView: View {
 
 // MARK: - 工具栏的小件
 
-private struct ToolbarIcon: View {
-    let icon: String
-    let help: LocalizedStringKey
-    /// 快捷键：显示在提示右边的键帽，能挂等价符的顺手挂上。
-    let shortcut: HelpShortcut?
-    /// 这个动作正在后台跑：图标原地换成转圈。
-    let isBusy: Bool
-    let action: () -> Void
-
-    init(
-        icon: String, help: LocalizedStringKey, shortcut: HelpShortcut? = nil,
-        isBusy: Bool = false, action: @escaping () -> Void
-    ) {
-        self.icon = icon
-        self.help = help
-        self.shortcut = shortcut
-        self.isBusy = isBusy
-        self.action = action
-    }
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        Button(action: action) {
-            // 忙的时候原地换成转圈。**尺寸写在外层、和图标完全一样** ——
-            // 写在分支里的话两种内容的固有尺寸不同，工具栏会在转圈出现和消失时
-            // 各跳一下。
-            Group {
-                if isBusy {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: icon)
-                }
-            }
-            .frame(width: 20, height: 18)
-        }
-        .buttonStyle(.borderless)
-        .instantHelp(help, shortcut: shortcut)
-    }
-}
-
-private struct ToolbarToggle: View {
-    let icon: String
-    let help: LocalizedStringKey
-    var shortcut: HelpShortcut?
-    @Binding var isOn: Bool
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        Toggle(isOn: $isOn) {
-            Image(systemName: icon)
-                .frame(width: 20, height: 18)
-        }
-        .toggleStyle(.button)
-        .buttonStyle(.borderless)
-        .tint(.teal)
-        .instantHelp(help, shortcut: shortcut)
-    }
-}
-
-// MARK: - 形状叠层
-
-/// 画面上的形状：按归一化坐标画在预览框里，选中可拖动。
 private struct ShapeOverlayCanvas: View {
     @ObservedObject var project: VideoEditProject
     /// 必须直接订阅时钟（和 `ClipTransformCanvas` 同款）：形状的出没跟着

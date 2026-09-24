@@ -107,7 +107,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 主轨转场的容量、可用判定、借余料、首尾帧定格补足 | [主轨转场：借余料与定格补足](docs/architecture/transition-handles.md)、[转场预览有、成片没有](docs/bugfixes/2026-09-20-transition-preview-export-divergence.md) |
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待 | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序）、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
-| 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段 | [滤镜](docs/architecture/filters.md) |
+| 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
@@ -120,7 +120,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 定格、静帧、图片转视频 | [定格长期约束](docs/architecture/freeze-frame.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
-| 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
+| 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
@@ -268,7 +268,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
   框选（相交即选中、混选与「预览最多一套框」、整组一起移动），以及命中区必须盖在填满视口
   之后、点非素材处移播放头、扫帧 peek 的唯一所有者、**整条时间线只许一个拖放落点**（§5e-2），
-  插入缝（停 0.2 秒拉开、行的位置一份纯值、纵向按指针判，§5h）、整条轨换位（§5i）与文字块上下换行（§5j）。
+  插入缝（停 0.2 秒拉开、行的位置一份纯值、纵向按指针判，§5h）、整条轨换位（§5i）、文字块上下换行（§5j）、
+  框选框滤镜 / ⌘A 全选 / ⌘⇧A 取消（§3.5b）与多段一起裁（§3.6）。
 - [预览自由变换](docs/architecture/preview-free-transform.md) — `ClipPlacement` 与预览/导出同账。
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。

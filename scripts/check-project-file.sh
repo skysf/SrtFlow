@@ -88,6 +88,7 @@ xcrun swiftc \
   checks/ProjectFile/BookmarkCache.swift \
   checks/ProjectFile/NumberDelay.swift \
   checks/ProjectFile/TextRows.swift \
+  checks/ProjectFile/SelectAll.swift \
   checks/ProjectFile/SplitGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
@@ -170,6 +171,20 @@ require "⌫ 的按键守卫要问 EditSelection 自己（放行「只选中了�
   Sources/SrtFlow/VideoEditView.swift 'guard !project\.selection\.isEmpty'
 require "M 必须接上打标记" \
   Sources/SrtFlow/VideoEditView.swift 'addMarkerAtPlayhead\(\)'
+# ⌘A 全选 / ⌘⇧A 取消（2026-09-25 用户拍板）：接在同一个本地监听里，且要在「带修饰键一律放行」
+# 那道闸门之前；全选走框选的那一个混选入口（applyBoxSelection），滤镜也进框选。
+require "⌘A 必须接上全选（selectAllOnTimeline）" \
+  Sources/SrtFlow/VideoEditView.swift 'project\.selectAllOnTimeline\(\)'
+require "⌘⇧A 必须接上取消选择" \
+  Sources/SrtFlow/VideoEditView.swift 'modifiers == \[\.command, \.shift\]'
+require "全选走框选那一个混选入口" \
+  Sources/SrtFlow/VideoEditProject+Selection.swift 'applyBoxSelection\('
+require "框选把滤镜段也交给选择" \
+  Sources/SrtFlow/VideoEditTimelineMarqueeGesture.swift 'filters: session\.hit\.filters'
+require "滤镜块的选中态走 isSelected(filter:)（拖框中实时高亮、多选）" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'isSelected: isSelected\(filter: filter\.id\)'
+require "滤镜行的轨道头点得出整层" \
+  Sources/SrtFlow/VideoEditTimelineRowSpec.swift 'return \.filterLayer\(filterLayer\)'
 require "工具栏垃圾桶的置灰判据必须和 ⌫ 是同一个表达式" \
   Sources/SrtFlow/VideoEditView.swift '\.disabled\(project\.selection\.isEmpty\)'
 # 按钮亮不亮和真正会打在哪几段，必须是同一个函数算出来的。
