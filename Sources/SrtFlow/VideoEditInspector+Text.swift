@@ -59,8 +59,7 @@ extension VideoEditInspectorView {
             labelledSlider(
                 "Size",
                 value: liveStyleBinding(overlay, \.fontSize),
-                range: TextStyle.fontSizeRange,
-                format: { String(format: "%.0f", $0) }
+                range: TextStyle.fontSizeRange
             )
 
             // 对齐只在多行（含自动折行）时看得出差别，但不因此隐藏 ——
@@ -81,25 +80,24 @@ extension VideoEditInspectorView {
                 "Box width",
                 value: liveTextBinding(overlay, \.boxWidth),
                 range: TextOverlay.boxWidthRange,
-                format: { String(format: "%.0f%%", $0 * 100) }
+                scale: 100, unit: "%"
             )
             labelledSlider(
                 "Line height",
                 value: liveStyleBinding(overlay, \.lineSpacing),
                 range: TextStyle.lineSpacingRange,
-                format: { String(format: "%.2f×", $0) }
+                fractionDigits: 2, unit: "×"
             )
             labelledSlider(
                 "Tracking",
                 value: liveStyleBinding(overlay, \.letterSpacing),
-                range: TextStyle.letterSpacingRange,
-                format: { String(format: "%.0f", $0) }
+                range: TextStyle.letterSpacingRange
             )
             labelledSlider(
                 "Angle",
                 value: liveTextBinding(overlay, \.rotationDegrees),
                 range: -180...180,
-                format: { String(format: "%.0f°", $0) }
+                unit: "°"
             )
         }
 
@@ -117,11 +115,13 @@ extension VideoEditInspectorView {
             HStack {
                 Text("Shows for").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text(String(format: "%.1fs", overlay.duration))
-                    .font(.caption)
-                    .monospacedDigit()
-                Stepper("", value: textDurationBinding(overlay), in: 0.2...600, step: 0.5)
-                    .labelsHidden()
+                InspectorDurationField(
+                    value: textDurationBinding(overlay),
+                    onLiveChange: { seconds in
+                        project.liveUpdateTextOverlay(overlay.id) { $0.duration = seconds }
+                    },
+                    project: project
+                )
             }
             Text(placementHint(overlay))
                 .font(.caption2)

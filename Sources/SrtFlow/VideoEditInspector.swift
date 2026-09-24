@@ -304,35 +304,34 @@ struct VideoEditInspectorView: View {
             labelledSlider(
                 "Line width",
                 value: liveShapeBinding(shape, \.lineWidth),
-                range: 1...24,
-                format: { String(format: "%.0f", $0) }
+                range: 1...24
             )
             if shape.kind == .line {
                 labelledSlider(
                     "Length",
                     value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
                 labelledSlider(
                     "Angle",
                     value: liveShapeBinding(shape, \.rotationDegrees),
                     range: -90...90,
-                    format: { String(format: "%.0f°", $0) }
+                    unit: "°"
                 )
             } else {
                 labelledSlider(
                     shape.kind == .square ? "Side length" : "Width",
                     value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
                 if shape.kind == .rectangle {
                     labelledSlider(
                         "Height",
                         value: liveShapeBinding(shape, \.height),
                         range: 0.02...1,
-                        format: { String(format: "%.0f%%", $0 * 100) }
+                        scale: 100, unit: "%"
                     )
                 }
             }
@@ -344,11 +343,13 @@ struct VideoEditInspectorView: View {
             HStack {
                 Text("Shows for").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text(String(format: "%.1fs", shape.duration))
-                    .font(.caption)
-                    .monospacedDigit()
-                Stepper("", value: shapeDurationBinding(shape), in: 0.2...600, step: 0.5)
-                    .labelsHidden()
+                InspectorDurationField(
+                    value: shapeDurationBinding(shape),
+                    onLiveChange: { seconds in
+                        project.liveApply { $0.updateShape(shape.id) { $0.duration = seconds } }
+                    },
+                    project: project
+                )
             }
             Text("Drag the shape on the preview to place it; drag its block on the timeline to retime it.")
                 .font(.caption2)
@@ -365,31 +366,26 @@ struct VideoEditInspectorView: View {
         .instantHelp("Remove this shape from the timeline", shortcut: .plain("⌫"))
     }
 
+    /// 标题 + 滑杆 + 能打字的数值框（`InspectorSliderRow`，InspectorSliderRow.swift）。
     /// 扩展文件（VideoEditInspector+Text*.swift）也用它，所以不是 private。
-    /// - Parameter rebuildsPreview: 松手时要不要重建预览合成。默认 false ——
+    /// - Parameter rebuildsPreview: 松手 / 提交时要不要重建预览合成。默认 false ——
     ///   形状/文字这些叠层自己会跟着状态重画，重建只会让画面闪一下。
     ///   **画面段的属性要传 true**：它们的效果长在 AVFoundation 合成里，
     ///   不重建就永远看不到改动。
+    /// - Parameter scale: 模型值 × scale = 框里的数（0…1 的百分比传 100）。
     func labelledSlider(
         _ title: LocalizedStringKey,
         value: Binding<Double>,
         range: ClosedRange<Double>,
         rebuildsPreview: Bool = false,
-        format: @escaping (Double) -> String
+        scale: Double = 1,
+        fractionDigits: Int = 0,
+        unit: String = ""
     ) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
-            Slider(value: value, in: range, onEditingChanged: { editing in
-                if !editing { project.endLiveEdit(rebuildsPreview: rebuildsPreview) }
-            })
-            Text(format(value.wrappedValue))
-                .font(.caption)
-                .monospacedDigit()
-                .frame(width: 40, alignment: .trailing)
-        }
+        InspectorSliderRow(
+            title: title, value: value, range: range, rebuildsPreview: rebuildsPreview,
+            scale: scale, fractionDigits: fractionDigits, unit: unit, project: project
+        )
     }
 
     // MARK: - 滤镜
@@ -423,7 +419,7 @@ struct VideoEditInspectorView: View {
                 "Strength",
                 value: liveFilterStrengthBinding(filter),
                 range: 0...1,
-                format: { String(format: "%.0f", $0 * 100) }
+                scale: 100
             )
         }
 

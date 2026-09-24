@@ -80,3 +80,21 @@
   ±1px 步进吞回默认值。
 - 拖调按字段显示精度量化（整数字段整步进，Rotation 0.1），再夹进值域；
   非有限值不入状态。
+
+## 滑杆行和「Shows for」里的数值框（2026-09-24 用户拍板：所有滑杆行都能打字）
+
+- 检查器里每一行滑杆（`labelledSlider` → `InspectorSliderRow`）右边都是这个数值框，不再是只读的
+  数字标签：能打字、能点箭头、能按住拖调。百分比一类的行按 `scale` 换算（模型 0…1，框里 0…100），
+  单位（%、°、×）画在框后面。
+- 滑杆行的 `value` 是 **live 绑定**（每写一次都从手势起点的快照重放）。滑杆松手有 `endLiveEdit`；
+  打字提交和箭头**没有松手信号**，所以给数值框的绑定（`InspectorSliderRow.fieldBinding`）在 set 里
+  写完**立刻** `endLiveEdit` —— 一次提交一步撤销，快照不会挂着把下一次改动抹掉
+  （机制见 `checks/inspector-live-binding-wiring.sh` 文件头；那条守卫的规则 E 钉着这一点）。
+  框上的拖调走 `onScrub*` 四个回调：begin → `beginLiveEdit`、每拍经同一条 live 绑定写、end →
+  `endLiveEdit`、cancel → `cancelLiveEdit`，和滑杆一样整次一步。
+- 形状 / 文字的「Shows for」是 `InspectorDurationField`：打字和箭头走离散绑定（一次 `perform`），
+  拖调走调用方给的 live 写入、松手一步。
+- 一行的宽度预算：标签 68 + 6 + 滑杆 + 6 + 框 50 + 6 + 单位 10，放得进约 220pt 的窄栏
+  （[检查器的排版](inspector-layout.md)）；实机看过英文界面下文字那一组（Size / Box width /
+  Line height / Tracking / Angle / Offset / Blur）都完整。
+

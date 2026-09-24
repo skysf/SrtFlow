@@ -33,7 +33,7 @@ extension VideoEditInspectorView {
                     range: ClipPresetAnimation.intensityRange,
                     // 画面段的强度要重建合成才看得见（文字那边是叠层自己重画）。
                     rebuildsPreview: true,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
             }
 
@@ -226,7 +226,7 @@ extension VideoEditInspectorView {
                     value: liveMultiIntensityBinding(ids),
                     range: ClipPresetAnimation.intensityRange,
                     rebuildsPreview: true,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
             }
         }

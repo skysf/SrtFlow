@@ -44,7 +44,7 @@ extension VideoEditInspectorView {
                     "Intensity",
                     value: liveAnimationBinding(overlay, \.intensity),
                     range: TextAnimation.intensityRange,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
             }
             // 只在真选了对焦时才露出来：它对别的效果没有意义，
@@ -54,7 +54,7 @@ extension VideoEditInspectorView {
                     "Start at",
                     value: liveAnimationBinding(overlay, \.focusStartOpacity),
                     range: TextAnimation.focusStartOpacityRange,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
             }
 

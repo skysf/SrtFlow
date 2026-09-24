@@ -31,7 +31,7 @@ extension VideoEditInspectorView {
                             "Width",
                             value: liveStrokeWidthBinding(overlay, fallback: stroke.width),
                             range: TextStroke.widthRange,
-                            format: { String(format: "%.1f", $0) }
+                            fractionDigits: 1
                         )
                     }
                 }
@@ -49,20 +49,17 @@ extension VideoEditInspectorView {
                         labelledSlider(
                             "Offset X",
                             value: liveShadowBinding(overlay, \.offsetX, fallback: shadow.offsetX),
-                            range: TextShadow.offsetRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextShadow.offsetRange
                         )
                         labelledSlider(
                             "Offset Y",
                             value: liveShadowBinding(overlay, \.offsetY, fallback: shadow.offsetY),
-                            range: TextShadow.offsetRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextShadow.offsetRange
                         )
                         labelledSlider(
                             "Blur",
                             value: liveShadowBinding(overlay, \.blur, fallback: shadow.blur),
-                            range: TextShadow.blurRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextShadow.blurRange
                         )
                     }
                 }
@@ -80,20 +77,17 @@ extension VideoEditInspectorView {
                         labelledSlider(
                             "Corner",
                             value: liveBackgroundBinding(overlay, \.cornerRadius, fallback: background.cornerRadius),
-                            range: TextBackground.cornerRadiusRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextBackground.cornerRadiusRange
                         )
                         labelledSlider(
                             "Pad X",
                             value: liveBackgroundBinding(overlay, \.paddingX, fallback: background.paddingX),
-                            range: TextBackground.paddingRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextBackground.paddingRange
                         )
                         labelledSlider(
                             "Pad Y",
                             value: liveBackgroundBinding(overlay, \.paddingY, fallback: background.paddingY),
-                            range: TextBackground.paddingRange,
-                            format: { String(format: "%.0f", $0) }
+                            range: TextBackground.paddingRange
                         )
                     }
                 }
@@ -138,7 +132,7 @@ extension VideoEditInspectorView {
                     "Angle",
                     value: liveGradientAngleBinding(overlay, fallback: angle),
                     range: 0...360,
-                    format: { String(format: "%.0f°", $0) }
+                    unit: "°"
                 )
             }
         }
