@@ -16,7 +16,7 @@ import Foundation
 
 // MARK: - 数据
 
-struct Baseline: Equatable {
+struct Baseline: Equatable, Codable {
     var fingerprint: String
     var memoryTolerance: Double
     var gated: [String: Int]
@@ -39,8 +39,12 @@ struct Baseline: Equatable {
         self.init(fingerprint: fingerprint, memoryTolerance: tolerance, gated: gated, memory: memory)
     }
 
-    var json: [String: Any] {
-        ["fingerprint": fingerprint, "memoryTolerance": memoryTolerance, "gated": gated, "memory": memory]
+    /// 写成基线文件的样子。用 JSONEncoder 而不是 JSONSerialization：后者把 285.7 写成
+    /// 285.69999999999999，提交进仓库没法读。
+    func encoded() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        return try encoder.encode(self)
     }
 }
 
@@ -362,11 +366,9 @@ func main() -> Int32 {
         let verdict = judge(baseline: baseline, previous: previous, runs: runs,
                             fingerprint: fingerprint, touchesProductCode: touches == "1")
 
-        let proposed = try JSONSerialization.data(withJSONObject: verdict.proposed.json,
-                                                  options: [.prettyPrinted, .sortedKeys])
+        let proposed = try verdict.proposed.encoded()
         try proposed.write(to: URL(fileURLWithPath: proposedPath))
-        try JSONSerialization.data(withJSONObject: verdict.measured.json, options: [.prettyPrinted, .sortedKeys])
-            .write(to: URL(fileURLWithPath: measuredPath))
+        try verdict.measured.encoded().write(to: URL(fileURLWithPath: measuredPath))
         let summary = markdownSummary(verdict, baseline: baseline, runs: runs, fingerprint: fingerprint)
         if let summaryPath {
             let handle = FileHandle(forWritingAtPath: summaryPath)

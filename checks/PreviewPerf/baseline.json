@@ -1,10 +1,40 @@
 {
-  "fingerprint" : "bootstrap",
+  "fingerprint" : "macOS 26.6.2 (25G83) · Xcode 26.6 · VirtualMac2,1 · 3 CPU",
   "gated" : {
-
+    "basic.edits.audioMix.refresh" : 1,
+    "basic.edits.composition.assetOpen" : 1,
+    "basic.edits.composition.build" : 1,
+    "basic.edits.meters.tapCreate" : 1,
+    "basic.edits.player.itemAttach" : 1,
+    "basic.filters.frames" : 0,
+    "basic.idle.body" : 0,
+    "basic.idle.canvas" : 0,
+    "basic.idle.update" : 0,
+    "basic.ticks.body" : 3900,
+    "basic.ticks.canvas" : 240,
+    "basic.ticks.update" : 0,
+    "basic.video.compositionTracks" : 1,
+    "basic.video.layerFrames" : 115,
+    "basic.video.megapixelFrames" : 238,
+    "busy.edits.audioMix.refresh" : 1,
+    "busy.edits.composition.assetOpen" : 12,
+    "busy.edits.composition.build" : 2,
+    "busy.edits.meters.tapCreate" : 6,
+    "busy.edits.player.itemAttach" : 2,
+    "busy.filters.frames" : 144,
+    "busy.idle.body" : 0,
+    "busy.idle.canvas" : 0,
+    "busy.idle.update" : 0,
+    "busy.ticks.body" : 14213,
+    "busy.ticks.canvas" : 540,
+    "busy.ticks.update" : 1321,
+    "busy.video.compositionTracks" : 4,
+    "busy.video.layerFrames" : 1136,
+    "busy.video.megapixelFrames" : 1983
   },
   "memory" : {
-
+    "basic.memory.peakMB" : 128,
+    "busy.memory.peakMB" : 285.7
   },
   "memoryTolerance" : 0.1
 }
