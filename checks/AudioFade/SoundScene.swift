@@ -125,6 +125,23 @@ func checkSoundScenes(videoSource: URL) async {
               "电平表看得见段尾之后的余音（量的是 tap 处理完的声音）")
     }
 
+    // 来回换场景试听：换下来的效果链多挂一拍就放掉，不许一直攒到重建合成（失真链一条 ~8MB）。
+    let renderer = SceneTrackRenderer()
+    renderer.prepare(format: AudioStreamBasicDescription(
+        mSampleRate: 48_000, mFormatID: kAudioFormatLinearPCM,
+        mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
+        mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 2,
+        mBitsPerChannel: 32, mReserved: 0), maxFrames: 4096)
+    let flipped = UUID()
+    for round in 0..<20 {
+        let span = SceneTrackConfig.Span(clipID: flipped, start: 0, end: 1,
+                                         scene: SoundScene(kind: round.isMultiple(of: 2) ? .megaphone : .hall),
+                                         compensation: 1)
+        renderer.configure(SceneTrackConfig(spans: [span], gains: GainTable.Sampler(points: []), post: 1))
+    }
+    check(renderer.heldChainCount <= 2,
+          "来回换 20 次场景之后挂着的效果链不超过 2 条（在用的 + 多挂一拍的），实际 \(renderer.heldChainCount) 条")
+
     // 分割不改声音：余音越过段尾，切开的两半加起来就是没切的那一份（混响是线性的）。
     var split = hallState
     split.split(clipID: split.audioTracks[0].clips[0].id, at: 1.5)

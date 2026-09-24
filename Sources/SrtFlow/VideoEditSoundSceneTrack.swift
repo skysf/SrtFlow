@@ -60,8 +60,11 @@ final class SceneTrackRenderer: @unchecked Sendable {
         var tails: [UUID: Double] = [:]
         var format: AudioStreamBasicDescription?
         var maxFrames = 0
-        /// 换下来的链留到渲染器释放时才放：音频线程可能正拿着上一份配置在渲染。
-        var retired: [SceneChain] = []
+        /// 刚换下来的链**多挂一拍**：音频线程可能正拿着上一份配置在渲染。下一次换配置时才真正放掉
+        /// （放在主线程上，效果单元的释放不进音频线程）。换配置最快也隔 ~50ms（拖滑杆节流到 20 次 / 秒），
+        /// 一次回调远没有这么长；万一撞上，ARC 也保证链活到那次回调结束。以前是一直攒到重建合成才放，
+        /// 来回换场景试听时一条失真链就 ~8MB，越攒越多。
+        var retiring: [SceneChain] = []
     }
 
     private let shared = OSAllocatedUnfairLock(initialState: Shared())
@@ -74,12 +77,24 @@ final class SceneTrackRenderer: @unchecked Sendable {
     func configure(_ config: SceneTrackConfig) {
         let (format, maxFrames, existing) = shared.withLock { ($0.format, $0.maxFrames, $0.chains) }
         let built = Self.chains(for: config, reusing: existing, format: format, maxFrames: maxFrames)
-        shared.withLock { state in
-            state.retired += state.chains.values.filter { old in !built.chains.values.contains { $0 === old } }
+        let released = shared.withLock { state -> [SceneChain] in
+            let previous = Self.swapRetiring(&state, keeping: built.chains)
             state.chains = built.chains
             state.tails = built.tails
             state.config = config
+            return previous
         }
+        _ = released    // 出了这个作用域就在主线程上释放
+    }
+
+    /// 自检用：此刻挂着的效果链（在用的 + 多挂一拍的）。
+    var heldChainCount: Int { shared.withLock { $0.chains.count + $0.retiring.count } }
+
+    /// 把这次被换下来的链挂到 `retiring`，交回上一拍挂着的那一批（调用方在锁外放掉）。
+    private static func swapRetiring(_ state: inout Shared, keeping kept: [UUID: SceneChain]) -> [SceneChain] {
+        let previous = state.retiring
+        state.retiring = state.chains.values.filter { old in !kept.values.contains { $0 === old } }
+        return previous
     }
 
     /// tap 的 prepare：知道处理格式了（采样率、声道数随素材），链按这个格式建。
@@ -92,13 +107,15 @@ final class SceneTrackRenderer: @unchecked Sendable {
             for: config, reusing: same && oldMax >= maxFrames ? existing : [:],
             format: format, maxFrames: max(maxFrames, oldMax)
         )
-        shared.withLock { state in
-            state.retired += state.chains.values.filter { old in !built.chains.values.contains { $0 === old } }
+        let released = shared.withLock { state -> [SceneChain] in
+            let previous = Self.swapRetiring(&state, keeping: built.chains)
             state.chains = built.chains
             state.tails = built.tails
             state.format = format
             state.maxFrames = max(maxFrames, oldMax)
+            return previous
         }
+        _ = released
         let capacity = max(maxFrames, oldMax)
         gains = Array(repeating: 1, count: capacity)
         mix = Array(repeating: Array(repeating: 0, count: capacity), count: max(1, Int(format.mChannelsPerFrame)))

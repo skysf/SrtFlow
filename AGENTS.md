@@ -362,6 +362,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 本地化守卫不扫 `LabeledContent`，「File」一直没翻译](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) — 按调用名清单扫的守卫，清单外整类调用是**静默**的盲区；用到仓库里第一次出现的控件，先去守卫清单里查一眼。
 - [2026-09-24 主轨转场的地方，预览的声音掉下去一截](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) — 预览换 mix 的三个入口拿没展开的用户状态铺斜坡，接缝上最深掉 25 dB，成片是好的；自检只读 build 顺手产出的那份 mix，走不到生产入口。**两份结果互相比，比不出它们一起错**：第一版守卫撤掉修复照样绿，加上绝对期望才红。
 - [2026-09-24 选了声音场景却看不见选的是哪个](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) — 标题和锁死宽度的下拉挤一行，超过检查器窄栏，整列被撑宽、右边被裁（「Mute」只剩「Mu」）；先用独立探针排除了「带 Section 的菜单 Picker 不显示选中项」的猜测。自检全绿、实机一眼就看见 —— 界面改动交之前要在真窗口里看一眼。
+- [2026-09-24 来回换声音场景，换下来的效果链一直攒着不放](docs/bugfixes/2026-09-24-sound-scene-chains-pile-up.md) — 「等宿主释放再放」而宿主（tap）跟着整条合成活，等于不放；一条失真链 ~8MB。改成多挂一拍、下次换配置时放。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
