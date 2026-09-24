@@ -23,7 +23,7 @@
 1159 Sources/SrtFlowCoreChecks/main.swift
 625 checks/Filters/main.swift
 947 checks/PreviewComposition/main.swift
-2676 checks/ProjectFile/main.swift
+2656 checks/ProjectFile/main.swift
 851 checks/TextRender/main.swift
 1879 checks/TimelineSnap/main.swift
 708 checks/VideoFade/main.swift

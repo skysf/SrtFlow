@@ -126,11 +126,9 @@ struct MediaRecord: Codable, Sendable {
     init(url: URL, projectDirectory: URL?, previous: MediaRecord? = nil) {
         path = url.path
         fileName = url.lastPathComponent
-        let fresh = try? url.bookmarkData(
-            options: [],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
+        // 同一个文件（同一个 inode）这次会话里建过书签就用旧的：建书签很贵，自动保存
+        // 每次都重建的话主线程每次卡约 55ms（`MediaBookmarkCache`）。
+        let fresh = MediaBookmarkCache.bookmark(for: url)
         bookmark = fresh ?? previous?.bookmark
         // 相对路径纯粹是路径运算，文件在不在都算得出来，可以放心重算。
         relativePath = projectDirectory.flatMap { MediaRecord.relativePath(from: $0, to: url) }

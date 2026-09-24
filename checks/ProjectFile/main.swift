@@ -2645,29 +2645,9 @@ do {
 }
 
 
-// MARK: - 27. 轨道行高：一轨一个值、键绑身份不绑行号、存盘往返（checks/ProjectFile/RowHeights.swift）
+// MARK: - 27 起：拆到单独文件里的各组（清单和调用在 checks/ProjectFile/SplitGroups.swift）
 
-do {
-    try checkRowHeights(root: root)
-} catch {
-    check(false, "轨道行高那一组抛错：\(error)")
-}
-
-// MARK: - 28. 音量曲线与推子（checks/ProjectFile/VolumeCurve.swift）
-
-do {
-    try checkVolumeCurveAndMixer(root: root)
-} catch {
-    check(false, "音量曲线与推子那一组抛错：\(error)")
-}
-
-// MARK: - 29. 声音场景（checks/ProjectFile/SoundScene.swift）
-
-do {
-    try checkSoundScenes(root: root)
-} catch {
-    check(false, "声音场景那一组抛错：\(error)")
-}
+runSplitOutGroups(root: root)
 
 try? manager.removeItem(at: root)
 

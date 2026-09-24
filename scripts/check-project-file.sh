@@ -70,6 +70,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
+  Sources/SrtFlow/VideoEditMediaBookmarkCache.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \
   Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/VideoEditSelection.swift \
@@ -83,6 +84,8 @@ xcrun swiftc \
   checks/ProjectFile/VolumeCurve.swift \
   checks/ProjectFile/RowHeights.swift \
   checks/ProjectFile/SoundScene.swift \
+  checks/ProjectFile/BookmarkCache.swift \
+  checks/ProjectFile/SplitGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
