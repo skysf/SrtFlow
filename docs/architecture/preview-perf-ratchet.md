@@ -31,6 +31,9 @@ GitHub 托管的 macOS runner 是虚拟机（`VirtualMac2,1`，3 核），2026-0
 2. body 写成标准形式（`var body: some View {` 独占一行）。写成一行的话扫描守卫看不见它。
 3. 视图不许重名：计数按类型名记账，重名就串成一笔。
 
+`updateNSView` 不能省：反向验证时给按钮加 `.id(clock.time)`（每跳重建一次），body 次数
+纹丝不动（它本来就每跳重算），多出来的全在提示包着的 AppKit 视图的 `updateNSView` 上。
+
 漏插一个，那个视图每跳一下都在重算，账上也看不见，ratchet 就成了摆设。三条都由
 `checks/preview-perf-wiring.sh` 钉着（在 check-all 第 1 组）。**新写视图照抄第一条即可**，
 不用管它在不在编辑器里（规则按「全部视图」定，比按「编辑器里的视图」定好守）。
