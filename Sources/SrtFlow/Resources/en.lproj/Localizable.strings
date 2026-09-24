@@ -285,6 +285,7 @@
 "Square" = "Square";
 "Line width" = "Line width";
 "Length" = "Length";
+"File" = "File";
 "Angle" = "Angle";
 "Side length" = "Side length";
 "Width" = "Width";
@@ -401,7 +402,6 @@
 "Original VTT" = "Original VTT";
 "Translated SRT" = "Translated SRT";
 "Translated VTT" = "Translated VTT";
-"Export Subtitle Files…" = "Export Subtitle Files…";
 "Speech transcription doesn't support “%@” on this Mac." = "Speech transcription doesn't support “%@” on this Mac.";
 "No audible clips to transcribe." = "No audible clips to transcribe.";
 "“%@” has no audio track." = "“%@” has no audio track.";
@@ -498,7 +498,6 @@
 "Break the selected line in two" = "Break the selected line in two";
 "Delete the selected lines from every track" = "Delete the selected lines from every track";
 "Close the subtitle editor" = "Close the subtitle editor";
-"Write the subtitle tracks out as files" = "Write the subtitle tracks out as files";
 
 /* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 录屏：设置面板与控制条 */
@@ -615,7 +614,6 @@
 "Burn subtitles into the video" = "Burn subtitles into the video";
 "Every subtitle track is hidden — nothing will be burned." = "Every subtitle track is hidden — nothing will be burned.";
 "Translation didn’t start. Close the panel and try again." = "Translation didn’t start. Close the panel and try again.";
-"Output follows the project: %d×%d, %d fps." = "Output follows the project: %d×%d, %d fps.";
 "ffmpeg finished but produced no output file." = "ffmpeg finished but produced no output file.";
 "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing.";
 
@@ -833,3 +831,32 @@
 /* 轨道头推子（2026-09-23） */
 "Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB.";
 "Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB.";
+
+/* 导出面板改版（2026-09-24）：标题 / 导出至 / 分辨率 + 高级 */
+"Title" = "Title";
+"Export to" = "Export to";
+"Choose the folder to export into" = "Choose the folder to export into";
+"“%@” is already in this folder. Exporting will replace it." = "“%@” is already in this folder. Exporting will replace it.";
+"Replace “%@”?" = "Replace “%@”?";
+"A file with this name is already in “%@”. Replacing it overwrites its contents." = "A file with this name is already in “%@”. Replacing it overwrites its contents.";
+"Same as project (%d×%d)" = "Same as project (%d×%d)";
+"%@ (%d×%d)" = "%@ (%d×%d)";
+"%d fps" = "%d fps";
+"The frame rate follows the project" = "The frame rate follows the project";
+"Advanced" = "Advanced";
+"Show the advanced settings" = "Show the advanced settings";
+"Hide the advanced settings" = "Hide the advanced settings";
+"H.264 CRF %d" = "H.264 CRF %d";
+"Hardware, quality %d" = "Hardware, quality %d";
+"AAC %d kbps" = "AAC %d kbps";
+"Not optimised for web" = "Not optimised for web";
+"Metadata stripped" = "Metadata stripped";
+"Restore Defaults" = "Restore Defaults";
+"Put every advanced setting back to its default" = "Put every advanced setting back to its default";
+"AAC bitrate" = "AAC bitrate";
+"The timeline’s sound is mixed, so it is always encoded as AAC." = "The timeline’s sound is mixed, so it is always encoded as AAC.";
+"Saved into the export folder above, named after the title." = "Saved into the export folder above, named after the title.";
+"Export Subtitle Files" = "Export Subtitle Files";
+"Write the checked subtitle files into the export folder" = "Write the checked subtitle files into the export folder";
+"%d of these files are already in this folder. Exporting will replace them." = "%d of these files are already in this folder. Exporting will replace them.";
+"Replace %d subtitle files?" = "Replace %d subtitle files?";

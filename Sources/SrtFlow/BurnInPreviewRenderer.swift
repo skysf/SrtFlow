@@ -88,6 +88,7 @@ final class BurnInPreviewRenderer: ObservableObject {
             outputPath: outputURL.lastPathComponent,
             mode: .stillFrame(atSeconds: request.timeSeconds),
             burnIn: workspace.paths,
+            sourceWidth: request.info.width,
             sourceHeight: request.info.height
         )
         // 预览要的是「字幕长什么样」，缩放和降帧对这个没有影响，跳过它们，

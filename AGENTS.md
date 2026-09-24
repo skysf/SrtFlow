@@ -116,8 +116,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
+| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
-| 任何界面文案、翻译、字符串表、应用内语言切换 | [本地化](docs/architecture/localization.md) |
+| 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
 ## 构建与检查入口
@@ -156,7 +157,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   不许把线程池堵死（看门狗判红）：`scripts/check-waveform.sh`。
 - 读采样的阻塞循环（`copyNextSampleBuffer`）不许写在 async 函数里（会占住 Swift 并发
   线程池的线程，文件一多整档 QoS 死锁）：`checks/blocking-media-reads.sh`。
-- 生产导出帧率：`scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
+- 生产导出帧率与分辨率（真跑导出：数帧、读成片尺寸 —— 只降不升、按短边、像素是方的）：
+  `scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
 - 定格时间线变换：`scripts/check-freeze-frame.sh`。
 - 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
@@ -189,6 +191,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 开着 pipefail 的 shell 脚本里，管道末端不许用 `grep -q`（命中就退出，上游吃 SIGPIPE，
   整条管道判失败 → 时灵时不灵的假红；查变量用 `<<<`，查管道用 `grep -c … >/dev/null`）：
   `checks/shell-pipe-grep-q.sh`。
+- 每个 sheet / popover 的内容、每个自建的 `NSHostingView` 都必须套 `.appLanguage()`（SwiftUI
+  不把应用内语言带进 sheet / popover）：`checks/presented-views-app-language.sh`。
 - 代码里每个 `UTType(exportedAs:)` 都必须在 `packaging/Info.plist` 里声明（没声明的
   类型系统认不出，拖放会被静默拒绝）：`checks/exported-types-declared.sh`。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
@@ -216,6 +220,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   用户授权「按体验最丝滑的方式定」之后拍的全部板（曲线属于段、推子属于轨、常显贴线操作、
   总表放标尺行、M/S 这轮不做）及理由，外加三个探针的实测地基（`aeval` 必须在 `adelay`
   之前、Canvas 只画 `clipBoundingRect`、音频 tap 看不到音量且不能每次换 mix 都新建）。
+- [导出面板改版：三行 + 高级](docs/plans/2026-09-24-export-panel.md) — 标题 / 导出至 / 分辨率摆在外面、其余收进「高级」，分辨率只降不升按短边、不再弹保存面板、撞名先提示再确认、记住设置加「恢复默认」；逐条拍过的板和理由。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -246,8 +251,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、布局、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
 - [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、标记对所有选择互斥、命中区分层。
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
-- [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑与已知盲区。
+- [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑、**sheet / popover 不继承应用内语言**与已知盲区。
 - [阻塞的媒体读取](docs/architecture/blocking-media-reads.md) — `copyNextSampleBuffer` 这类会卡住线程的读取不许进 Swift 并发的线程池（同一档 QoS 上卡满核数就整档死锁）、`MediaReadQueue` 的两种用法与宽度、唯一的例外（字幕生成逐窗口读）、什么样的阻塞会死锁。
+- [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
 
@@ -311,6 +317,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-23 CI 说清单缺文件，其实不缺](docs/bugfixes/2026-09-23-grep-q-sigpipe-false-red.md) — pipefail 下 `printf | grep -q`：grep 命中就退出，printf 吃 SIGPIPE，整条管道判失败，命中反而报「缺」。内容过 64KB 必红、小内容看调度；一个脚本里早学到的「用 grep -c」没升格成检查，别处攒到 111 处。
 - [2026-09-23 打开工程后缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) — 读 PCM 的阻塞循环跑在 Swift 并发的协作线程池里，43 个文件一起读把 utility 整档堵到死锁（8 核上 7 个没事、8 个就死），取缩略图的 task 在同一档陪着死；原来的自检一次只读一个文件，所以一直绿。可能死锁的自检要带普通线程上的看门狗；Rosetta 终端里 `sample` 要加 `arch -arm64`。
 - [2026-09-23 一条轨上换了音频格式，从那儿起没声音、预览卡住](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) — 电平表的 tap 挂在合成音轨上，同一条合成音轨中途换源格式（采样率 / 声道 / 编码），tap 被重新 prepare 后再也不被调用：那条轨从此静音，从换格式之后起播播放器不走。修法是一条合成音轨只装一种格式。先离线读（不挂 tap）排除数据问题，再用静音的 AVPlayer 在命令行里跑实时管线定性；自检素材只有一种格式是这次的盲区。
+- [2026-09-24 压缩 / 烧录选 1080p，竖屏视频被缩成 608×1080](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md) — 档位名说的是短边，代码封的是高度；接口只收高度、表达不了横竖，自检素材又全是横屏。**缺的输入比写错的逻辑更难发现。**
+- [2026-09-24 应用里选了简体中文，所有 sheet 和 popover 却还是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md) — SwiftUI 不把 `\.locale` 带进 sheet / popover（探针实测），只有 `L10n` 那几句是中文、于是半中半英；系统本身是中文时整个被盖住。每个新宿主都要自己套 `.appLanguage()`，守卫钉着。
+- [2026-09-24 剪辑导出面板说「音频原样复制」，其实每次都重新编码](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) — 共用的设置界面按控件加开关，只修到被点名的分辨率 / 帧率，音频那一栏没人对照过管线。改成按管线声明自己消费什么。
+- [2026-09-24 本地化守卫不扫 `LabeledContent`，「File」一直没翻译](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) — 按调用名清单扫的守卫，清单外整类调用是**静默**的盲区；用到仓库里第一次出现的控件，先去守卫清单里查一眼。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

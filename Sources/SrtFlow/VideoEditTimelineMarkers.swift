@@ -133,6 +133,7 @@ struct ClipMarkerStrip: View {
                         project.deleteMarker(ref(marker))
                     }
                 )
+                .appLanguage()
             }
     }
 

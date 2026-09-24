@@ -20,9 +20,11 @@
 
 `scripts/check-localization-coverage.sh` 扫全部源码，第一个实参是
 `LocalizedStringKey` 的调用一个不落：`Text` / `Label` / `Button` / `Toggle` /
-`Picker` / `TextField` / `Section` / `Stepper` / `Menu` / `Link` /
+`Picker` / `TextField` / `Section` / `Stepper` / `Menu` / `Link` / `LabeledContent` /
 `confirmationDialog` / `.alert` / `.navigationTitle` / `LocalizedStringKey(…)` /
 `instantHelp` / `ToolbarIcon(help:)`，外加代码里查表的 `L10n(…)`。
+（`LabeledContent` 是 2026-09-24 才补进来的：录屏设置页早就在用，漏掉的那段时间里
+「File」一直没翻译，见 [案例](../bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md)。）
 还包括经参数转交的（`ToolbarIcon(help:)`、`LabeledSlider(label:)`）和
 `String(localized:)`。**新增 SwiftUI 控件类型、或新开一个转交文案的参数标签时，
 要往守卫的清单里补一行**，漏一个就是漏一类文案 —— `help:` 和 `label:` 都是这么
@@ -95,7 +97,7 @@
 或给它加 `@_disfavoredOverload`（系统 `.help` 的做法）。**只留一个重载也行**。
 不要指望「非泛型更特化所以会赢」—— 实测不会。
 
-## 三、应用内切换语言的两个坑
+## 三、应用内切换语言的三个坑
 
 1. **SwiftPM 会把本地化目录名转小写**（`zh-Hans.lproj` → `zh-hans.lproj`），而
    `Bundle.path(forResource:ofType:)` 区分大小写。直接拿语言代码去查会落空、
@@ -103,6 +105,14 @@
    不区分大小写的匹配。
 2. **菜单栏、文件选择面板这些 AppKit 部件只认启动时的 `AppleLanguages`**，切完要
    重启才一致。界面上据此提示（`AppLanguageStore.needsRestartForMenus`）。
+3. **sheet、popover、自建的 `NSHostingView` 不继承应用内语言，每一个都要自己套
+   `.appLanguage()`。** 语言是在两个场景的根上用 `.appLanguage()` 注入 `\.locale` 的，
+   而 SwiftUI 不把 `\.locale` 带进 sheet 和 popover（2026-09-24 macOS 26 探针实测：
+   窗口里 zh-Hans，它弹出的 sheet 和 popover 里都是 en_US）；自建的宿主视图是新的根。
+   漏套的表现是「系统英文、应用选中文」时那张面板里写死的文案全是英文，只有 `L10n(…)`
+   那几句是中文（[案例](../bugfixes/2026-09-24-sheets-ignore-in-app-language.md)）。
+   `checks/presented-views-app-language.sh` 钉着：每个 `.sheet(` / `.popover(` 的内容、
+   每个 `NSHostingView(` / `NSHostingController(` 的参数里都要有 `appLanguage()`。
 
 ## 四、加新文案的流程
 
@@ -113,6 +123,7 @@
 
 ## 五、人工回归清单
 
-- 切到简体中文，走一遍这次改动的界面：不该有英文残留。
+- 切到简体中文，走一遍这次改动的界面：不该有英文残留。**要在系统语言是英文时做** ——
+  系统本身是中文的话，查表退回系统语言也是中文，sheet 不继承语言这类问题整个被盖住。
 - 显示路径、素材名、用户输入的地方保持原样，不被当成键翻译。
 - 切换语言后重启一次，菜单栏也跟着变。

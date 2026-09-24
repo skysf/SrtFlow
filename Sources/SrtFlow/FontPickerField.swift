@@ -34,7 +34,7 @@ struct FontPickerField: View {
             }
             .instantHelp("Pick the typeface for burned-in subtitles")
             .popover(isPresented: $isPresented, arrowEdge: .trailing) {
-                FontBrowser(fontName: $fontName, catalog: catalog)
+                FontBrowser(fontName: $fontName, catalog: catalog).appLanguage()
             }
         }
     }

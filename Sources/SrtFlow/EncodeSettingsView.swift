@@ -1,123 +1,177 @@
 import SwiftUI
 import SrtFlowCore
 
-/// 压缩、烧字幕、剪辑导出共用的一套导出设置。
+/// 压缩、烧字幕两个工具的导出设置（一整张 Form）。
 struct EncodeSettingsView: View {
     @Binding var settings: VideoEncodeSettings
-    /// 分辨率/帧率两个控件是否显示。
-    ///
-    /// 压缩与烧字幕真的消费这两个值（它们是「只降不升」的上限）；**Video Edit
-    /// 导出不消费** —— 那条管线按工程画布尺寸和工程帧率自己建滤镜图。以前照样
-    /// 把控件显示出来，等于给了用户一个不存在的控制承诺（计划 §3.3 点名）。
-    /// 剪辑导出传 false，改为在外面显示工程的固定输出规格。
-    var showsScalingLimits = true
 
     var body: some View {
         Form {
-            Section("Video") {
-                Picker("Encoder", selection: $settings.encoder) {
-                    Text("H.264 CRF — best size").tag(VideoEncoder.softwareCRF)
-                    Text("Hardware — fastest").tag(VideoEncoder.hardware)
-                }
-                .pickerStyle(.radioGroup)
+            EncodeSettingsSections(settings: $settings, pipeline: .sourceFile)
+        }
+        .formStyle(.grouped)
+    }
+}
 
-                switch settings.encoder {
-                case .softwareCRF:
-                    qualityRow(
-                        label: "Quality (CRF)",
-                        value: Binding(
-                            get: { Double(settings.crf) },
-                            set: { settings.crf = Int($0.rounded()) }
-                        ),
-                        range: Double(VideoEncodeSettings.crfRange.lowerBound)...Double(VideoEncodeSettings.crfRange.upperBound),
-                        readout: "\(settings.crf)",
-                        // CRF 越小画质越好，滑杆往右走应该是「更小的文件」。
-                        lowLabel: "Better quality",
-                        highLabel: "Smaller file",
-                        caption: LocalizedStringKey(settings.crfDescription)
-                    )
+/// 编码设置的那几组 Section。压缩 / 烧录包一层 Form 直接用（`EncodeSettingsView`）；
+/// 剪辑导出把它们嵌进自己的 Form，收在「高级」里（`VideoEditExportSheet`）。
+///
+/// **只放这条管线真消费的设置**（docs/architecture/export-settings.md）：显示一个
+/// 管线不吃的控件，就是给了用户一个不存在的控制承诺 —— 剪辑导出的分辨率/帧率
+/// 上限（计划 §3.3）和「音频原样复制」都这么错过。
+struct EncodeSettingsSections: View {
+    enum Pipeline {
+        /// 压缩 / 烧录：一个源文件进、一个出。分辨率和帧率是「只降不升」的上限，
+        /// 声音能原样复制。
+        case sourceFile
+        /// 剪辑导出：多段合成。尺寸跟工程画布走（缩小的选项在面板外面），帧率跟
+        /// 工程走；声音要重新混音，所以总是编码成 AAC，没有「原样复制」。
+        case timeline
+        /// 剪辑导出里只选了声音：出 .m4a，只有 AAC 码率这一项有用 —— 画面编码和
+        /// 「网页串流 / 元数据」那条纯音频管线一个都不看（VideoEditExportGraph）。
+        case timelineAudioOnly
+    }
 
-                    Picker("Preset", selection: $settings.preset) {
-                        ForEach(EncodePreset.allCases, id: \.self) { preset in
-                            Text(preset.displayName).tag(preset)
-                        }
+    @Binding var settings: VideoEncodeSettings
+    let pipeline: Pipeline
+
+    var body: some View {
+        if pipeline != .timelineAudioOnly {
+            videoSection
+        }
+        audioSection
+        if pipeline != .timelineAudioOnly {
+            outputSection
+        }
+    }
+
+    private var videoSection: some View {
+        Section("Video") {
+            Picker("Encoder", selection: $settings.encoder) {
+                Text("H.264 CRF — best size").tag(VideoEncoder.softwareCRF)
+                Text("Hardware — fastest").tag(VideoEncoder.hardware)
+            }
+            .pickerStyle(.radioGroup)
+
+            switch settings.encoder {
+            case .softwareCRF:
+                qualityRow(
+                    label: "Quality (CRF)",
+                    value: Binding(
+                        get: { Double(settings.crf) },
+                        set: { settings.crf = Int($0.rounded()) }
+                    ),
+                    range: Double(VideoEncodeSettings.crfRange.lowerBound)...Double(VideoEncodeSettings.crfRange.upperBound),
+                    readout: "\(settings.crf)",
+                    // CRF 越小画质越好，滑杆往右走应该是「更小的文件」。
+                    lowLabel: "Better quality",
+                    highLabel: "Smaller file",
+                    caption: LocalizedStringKey(settings.crfDescription)
+                )
+
+                Picker("Preset", selection: $settings.preset) {
+                    ForEach(EncodePreset.allCases, id: \.self) { preset in
+                        Text(preset.displayName).tag(preset)
                     }
-                    Text("Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                case .hardware:
-                    qualityRow(
-                        label: "Quality",
-                        value: Binding(
-                            get: { Double(settings.hardwareQuality) },
-                            set: { settings.hardwareQuality = Int($0.rounded()) }
-                        ),
-                        range: Double(VideoEncodeSettings.hardwareQualityRange.lowerBound)...Double(VideoEncodeSettings.hardwareQualityRange.upperBound),
-                        readout: "\(settings.hardwareQuality)",
-                        lowLabel: "Smaller file",
-                        highLabel: "Better quality",
-                        caption: "Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder."
-                    )
                 }
+                Text("Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
-                if showsScalingLimits {
-                    Picker("Resolution", selection: $settings.resolution) {
-                        ForEach(ResolutionLimit.allCases, id: \.self) { option in
-                            // displayName 是普通 String，Text(String) 不查本地化表，
-                            // 必须显式包一层 LocalizedStringKey。
-                            Text(LocalizedStringKey(option.displayName)).tag(option)
-                        }
-                    }
-                    Picker("Frame rate", selection: $settings.frameRate) {
-                        ForEach(FrameRateLimit.allCases, id: \.self) { option in
-                            Text(LocalizedStringKey(option.displayName)).tag(option)
-                        }
-                    }
-                    Text("Resolution and frame rate are only ever lowered, never raised.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            case .hardware:
+                qualityRow(
+                    label: "Quality",
+                    value: Binding(
+                        get: { Double(settings.hardwareQuality) },
+                        set: { settings.hardwareQuality = Int($0.rounded()) }
+                    ),
+                    range: Double(VideoEncodeSettings.hardwareQualityRange.lowerBound)...Double(VideoEncodeSettings.hardwareQualityRange.upperBound),
+                    readout: "\(settings.hardwareQuality)",
+                    lowLabel: "Smaller file",
+                    highLabel: "Better quality",
+                    caption: "Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder."
+                )
             }
 
-            Section("Audio") {
+            if pipeline == .sourceFile {
+                Picker("Resolution", selection: $settings.resolution) {
+                    ForEach(ResolutionLimit.allCases, id: \.self) { option in
+                        // displayName 是普通 String，Text(String) 不查本地化表，
+                        // 必须显式包一层 LocalizedStringKey。
+                        Text(LocalizedStringKey(option.displayName)).tag(option)
+                    }
+                }
+                Picker("Frame rate", selection: $settings.frameRate) {
+                    ForEach(FrameRateLimit.allCases, id: \.self) { option in
+                        Text(LocalizedStringKey(option.displayName)).tag(option)
+                    }
+                }
+                Text("Resolution and frame rate are only ever lowered, never raised.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var audioSection: some View {
+        Section("Audio") {
+            switch pipeline {
+            case .sourceFile:
                 Picker("Audio", selection: $settings.audio.mode) {
                     ForEach(AudioHandling.Mode.allCases, id: \.self) { mode in
                         Text(LocalizedStringKey(mode.displayName)).tag(mode)
                     }
                 }
                 if settings.audio.mode == .aac {
-                    Picker("Bitrate", selection: $settings.audio.kbps) {
-                        ForEach(AudioHandling.availableBitrates, id: \.self) { rate in
-                            Text("\(rate) kbps").tag(rate)
-                        }
-                    }
+                    bitratePicker(Text("Bitrate"))
                 } else {
                     Text("Audio is copied untouched, so nothing is lost. Sources that mp4 cannot carry (PCM, AC-3) fall back to AAC automatically.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            }
-
-            Section("Output") {
-                Toggle("Optimise for web streaming", isOn: $settings.fastStart)
-                    .instantHelp("Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound.")
-                Text("Moves the index to the front of the file so it can start playing before it finishes downloading.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Toggle("Strip source metadata", isOn: $settings.stripMetadata)
-                    .instantHelp("Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched.")
-                Text("Drops the tags the source file carries — camera model, shooting date, location, chapters.")
+            case .timeline, .timelineAudioOnly:
+                // 滤镜图里声音总是 `-c:a aac`（VideoEditExportGraph），`audio.mode`
+                // 根本不看。以前这里照样摆着「原样复制，不损失音质」，是假话
+                //（docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md）。
+                bitratePicker(Text("AAC bitrate"))
+                Text("The timeline’s sound is mixed, so it is always encoded as AAC.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .formStyle(.grouped)
+    }
+
+    private var outputSection: some View {
+        Section("Output") {
+            Toggle("Optimise for web streaming", isOn: $settings.fastStart)
+                .instantHelp("Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound.")
+            Text("Moves the index to the front of the file so it can start playing before it finishes downloading.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Toggle("Strip source metadata", isOn: $settings.stripMetadata)
+                .instantHelp("Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched.")
+            Text("Drops the tags the source file carries — camera model, shooting date, location, chapters.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// 标签收 `Text` 而不是 `LocalizedStringKey`：调用点写成 `Text("…")`，本地化守卫
+    /// 才看得见这条文案（经参数转交的键它扫不到）。
+    private func bitratePicker(_ label: Text) -> some View {
+        Picker(selection: $settings.audio.kbps) {
+            ForEach(AudioHandling.availableBitrates, id: \.self) { rate in
+                Text("\(rate) kbps").tag(rate)
+            }
+        } label: {
+            label
+        }
     }
 
     private func qualityRow(

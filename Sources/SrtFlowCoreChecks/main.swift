@@ -330,7 +330,7 @@ do {
 
 do {
     // 用户手打的那条命令：-c:v libx264 -crf 23 -preset slow -c:a copy
-    let base = FFmpegCommand(inputPath: "in.mp4", outputPath: "out.mp4", sourceHeight: 1080)
+    let base = FFmpegCommand(inputPath: "in.mp4", outputPath: "out.mp4", sourceWidth: 1920, sourceHeight: 1080)
     let args = FFmpegArgumentBuilder.arguments(for: base)
     func indexOf(_ flag: String, in list: [String]) -> Int? { list.firstIndex(of: flag) }
 
@@ -378,6 +378,7 @@ do {
     downscale.settings.resolution = .hd720
     checkEqual(FFmpegArgumentBuilder.filterChain(for: downscale), "scale=-2:720", "downscale 1080p→720p")
     var upscale = base
+    upscale.sourceWidth = 854
     upscale.sourceHeight = 480
     upscale.settings.resolution = .fhd1080
     check(FFmpegArgumentBuilder.filterChain(for: upscale) == nil, "never upscales a smaller source")
@@ -385,6 +386,33 @@ do {
     unknownHeight.sourceHeight = nil
     unknownHeight.settings.resolution = .hd720
     check(FFmpegArgumentBuilder.filterChain(for: unknownHeight) == nil, "skips scaling when source height unknown")
+    var unknownWidth = base
+    unknownWidth.sourceWidth = nil
+    unknownWidth.settings.resolution = .hd720
+    check(FFmpegArgumentBuilder.filterChain(for: unknownWidth) == nil, "skips scaling when source width unknown")
+
+    // 档位封的是短边（docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md）：
+    // 以前一律压高度，竖屏 1080×1920 选 1080p 被缩成约 608×1080。
+    var portrait = base
+    portrait.sourceWidth = 1080
+    portrait.sourceHeight = 1920
+    portrait.settings.resolution = .fhd1080
+    check(FFmpegArgumentBuilder.filterChain(for: portrait) == nil,
+          "a 1080×1920 portrait video already fits 1080p — must not be scaled")
+    portrait.settings.resolution = .hd720
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: portrait), "scale=720:-2",
+               "portrait 720p caps the width (short side): 1080×1920 → 720×1280")
+    var portrait4K = base
+    portrait4K.sourceWidth = 2160
+    portrait4K.sourceHeight = 3840
+    portrait4K.settings.resolution = .fhd1080
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: portrait4K), "scale=1080:-2",
+               "portrait 4K → 1080p caps the width")
+    var square = base
+    square.sourceWidth = 1080
+    square.sourceHeight = 1080
+    square.settings.resolution = .hd720
+    checkEqual(FFmpegArgumentBuilder.filterChain(for: square), "scale=-2:720", "square 1080 → 720")
 
     // 帧率同样只降不升
     var dropFps = base
@@ -446,6 +474,54 @@ do {
     check(metadataArgs.contains("-map_metadata"), "strips metadata when asked")
     check(metadataArgs.contains("title=My Video"), "writes title metadata")
     check(!metadataArgs.contains("+faststart"), "faststart can be turned off")
+}
+
+// MARK: - 分辨率档位：按短边封顶（剪辑导出用 cappedSize 算出确切尺寸）
+
+do {
+    func size(_ limit: ResolutionLimit, _ width: Int, _ height: Int) -> String {
+        guard let capped = limit.cappedSize(width: width, height: height) else { return "nil" }
+        return "\(capped.width)x\(capped.height)"
+    }
+    checkEqual(size(.hd720, 1920, 1080), "1280x720", "16:9 1080p → 720p")
+    checkEqual(size(.hd720, 1080, 1920), "720x1280", "9:16 caps the width (short side)")
+    checkEqual(size(.fhd1080, 1920, 1080), "nil", "already 1080p: no scaling")
+    checkEqual(size(.fhd1080, 1080, 1920), "nil", "portrait 1080p already fits 1080p")
+    checkEqual(size(.fhd1080, 3840, 2160), "1920x1080", "4K → 1080p")
+    checkEqual(size(.sd480, 1000, 562), "854x480", "odd aspect: the long side rounds to even")
+    checkEqual(size(.fhd1080, 3024, 1964), "1662x1080", "Retina screen recording → 1080p")
+    checkEqual(size(.hd720, 1080, 1080), "720x720", "square")
+    checkEqual(size(.original, 3840, 2160), "nil", "original never scales")
+    checkEqual(size(.hd720, 0, 0), "nil", "degenerate size is ignored")
+
+    checkEqual(ResolutionLimit.downscaleOptions(width: 1920, height: 1080), [.hd720, .sd480],
+               "a 1080p canvas offers 720p and 480p")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 1080, height: 1920), [.hd720, .sd480],
+               "a portrait canvas is judged by its short side too")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 3840, height: 2160), [.qhd1440, .fhd1080, .hd720, .sd480],
+               "4K offers every tier below it, largest first")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 854, height: 480), [ResolutionLimit](),
+               "a 480p canvas has nothing lower")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 5120, height: 2880).first, .uhd2160,
+               "5K offers 2160p first")
+}
+
+// MARK: - 导出面板：标题 → 文件名主干
+
+do {
+    func stem(_ title: String, _ ext: String = "mp4") -> String {
+        ExportFileName.stem(from: title, droppingExtension: ext, fallback: "L12")
+    }
+    checkEqual(stem("  Lesson 12  "), "Lesson 12", "trims surrounding whitespace")
+    checkEqual(stem("a/b:c"), "a-b-c", "path separators become dashes")
+    checkEqual(stem(".hidden"), "hidden", "a leading dot would hide the file")
+    checkEqual(stem("L12.mp4"), "L12", "drops the extension the user typed")
+    checkEqual(stem("L12.MP4"), "L12", "extension match ignores case")
+    checkEqual(stem("L12.mov"), "L12.mov", "a different extension is part of the name")
+    checkEqual(stem("L12.mp4", "m4a"), "L12.mp4", "only the export's own extension is dropped")
+    checkEqual(stem(""), "L12", "empty title falls back")
+    checkEqual(stem("   "), "L12", "blank title falls back")
+    checkEqual(stem(".mp4"), "L12", "nothing left after cleaning falls back")
 }
 
 // MARK: - 进度解析
@@ -985,17 +1061,18 @@ do {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    // 冲突追加 -2/-3。
+    // 同名：导出面板先提示、再确认，确认之后原子地整份替换（2026-09-24 起；
+    // 以前是追加 -2/-3，重导几次就堆出一串，见 docs/architecture/export-settings.md）。
     try Data("x".utf8).write(to: dir.appendingPathComponent("movie.srt"))
-    let next = SubtitleExportPlanner.availableURL(directory: dir, fileName: "movie.srt")
-    checkEqual(next.lastPathComponent, "movie-2.srt", "冲突：追加 -2")
+    let replaced = dir.appendingPathComponent("movie.en.srt")
+    try Data("old".utf8).write(to: replaced)
 
     // 写盘 → 回读校验 → 能再解析。
-    let written = try SubtitleExportPlanner.writeValidated(original, format: .srt, to: next)
+    let written = try SubtitleExportPlanner.writeValidated(original, format: .srt, to: replaced)
     let parsed = SubtitleParser.parse(
-        try String(contentsOf: written, encoding: .utf8), format: .srt, filename: "movie-2.srt"
+        try String(contentsOf: written, encoding: .utf8), format: .srt, filename: "movie.en.srt"
     )
-    checkEqual(parsed.cues.count, 2, "写盘：SRT 回读 cue 数一致")
+    checkEqual(parsed.cues.count, 2, "写盘：同名旧文件被整份替换，SRT 回读 cue 数一致")
     checkEqual(parsed.cues.first?.text, "hello", "写盘：内容无损")
 
     let vtt = try SubtitleExportPlanner.writeValidated(

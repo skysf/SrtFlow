@@ -285,6 +285,7 @@
 "Square" = "正方形";
 "Line width" = "线宽";
 "Length" = "长度";
+"File" = "文件";
 "Angle" = "角度";
 "Side length" = "边长";
 "Width" = "宽度";
@@ -401,7 +402,6 @@
 "Original VTT" = "原文 VTT";
 "Translated SRT" = "译文 SRT";
 "Translated VTT" = "译文 VTT";
-"Export Subtitle Files…" = "导出字幕文件…";
 "Speech transcription doesn't support “%@” on this Mac." = "这台 Mac 的语音转写不支持「%@」。";
 "No audible clips to transcribe." = "没有能听见声音的片段可转写。";
 "“%@” has no audio track." = "「%@」没有音轨。";
@@ -498,7 +498,6 @@
 "Break the selected line in two" = "把选中的这一条拆成两条";
 "Delete the selected lines from every track" = "从所有轨上删除选中的这些条";
 "Close the subtitle editor" = "关闭字幕编辑器";
-"Write the subtitle tracks out as files" = "把字幕轨导出成文件";
 
 /* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
 /* 录屏：设置面板与控制条 */
@@ -615,7 +614,6 @@
 "Burn subtitles into the video" = "把字幕烧录进视频";
 "Every subtitle track is hidden — nothing will be burned." = "所有字幕轨都隐藏了 —— 不会烧录任何字幕。";
 "Translation didn’t start. Close the panel and try again." = "翻译没有启动。关掉面板再试一次。";
-"Output follows the project: %d×%d, %d fps." = "导出跟随工程设置：%d×%d、%d fps。";
 "ffmpeg finished but produced no output file." = "ffmpeg 跑完了，但没有产出文件。";
 "These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "这些图片片段还没准备好：%@。等它们完成；如果图片丢了，就重新链接。";
 
@@ -833,3 +831,32 @@
 /* 轨道头推子（2026-09-23） */
 "Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "总音量。拖动调节（按住 ⇧ 细调）；⌥ 点或双击回到 0 dB。";
 "Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "这条轨的音量。拖动调节（按住 ⇧ 细调）；⌥ 点或双击回到 0 dB。";
+
+/* 导出面板改版（2026-09-24）：标题 / 导出至 / 分辨率 + 高级 */
+"Title" = "标题";
+"Export to" = "导出至";
+"Choose the folder to export into" = "选择导出到哪个文件夹";
+"“%@” is already in this folder. Exporting will replace it." = "这个文件夹里已经有「%@」了，导出会替换它。";
+"Replace “%@”?" = "替换「%@」？";
+"A file with this name is already in “%@”. Replacing it overwrites its contents." = "「%@」里已经有同名文件，替换会覆盖它的内容。";
+"Same as project (%d×%d)" = "跟随工程（%d×%d）";
+"%@ (%d×%d)" = "%@（%d×%d）";
+"%d fps" = "%d fps";
+"The frame rate follows the project" = "帧率跟随工程设置";
+"Advanced" = "高级";
+"Show the advanced settings" = "展开高级设置";
+"Hide the advanced settings" = "收起高级设置";
+"H.264 CRF %d" = "H.264 CRF %d";
+"Hardware, quality %d" = "硬件编码，质量 %d";
+"AAC %d kbps" = "AAC %d kbps";
+"Not optimised for web" = "未针对网络播放优化";
+"Metadata stripped" = "已剥除元数据";
+"Restore Defaults" = "恢复默认设置";
+"Put every advanced setting back to its default" = "把高级设置全部恢复成默认值";
+"AAC bitrate" = "AAC 码率";
+"The timeline’s sound is mixed, so it is always encoded as AAC." = "时间线上的声音要重新混音，所以总是编码成 AAC。";
+"Saved into the export folder above, named after the title." = "存进上面的导出文件夹，按标题命名。";
+"Export Subtitle Files" = "导出字幕文件";
+"Write the checked subtitle files into the export folder" = "把勾选的字幕文件写进导出文件夹";
+"%d of these files are already in this folder. Exporting will replace them." = "其中 %d 个文件这个文件夹里已经有了，导出会替换它们。";
+"Replace %d subtitle files?" = "替换 %d 个字幕文件？";

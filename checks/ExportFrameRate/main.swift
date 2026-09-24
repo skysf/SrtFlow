@@ -13,6 +13,9 @@ import SrtFlowCore
 // 第二组用例守**主轨拼接链**（硬切 concat 与转场 xfade 混排的两种顺序），
 // 见文件后半段和 docs/architecture/project-frame-rate.md 的约束 6。
 //
+// 第三组守**导出分辨率**（只降不升、按短边、像素是方的），见文件末尾和
+// docs/architecture/export-settings.md。
+//
 // 编译方式见 scripts/check-export-frame-rate.sh。
 
 var failures = 0
@@ -95,6 +98,25 @@ func frameCount(_ url: URL) -> Int {
             return Int(line.dropFirst("frame=".count).trimmingCharacters(in: .whitespaces))
         }
     return frames.last ?? -1
+}
+
+/// 成片画面轨的像素尺寸和像素宽高比（mp4 里 `pasp` 盒子写的那个；没写就是 1）。
+func videoGeometry(_ url: URL) async -> (width: Int, height: Int, pixelAspect: Double)? {
+    let asset = AVURLAsset(url: url)
+    guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+          let size = try? await track.load(.naturalSize),
+          let format = try? await track.load(.formatDescriptions).first
+    else { return nil }
+    var pixelAspect = 1.0
+    if let ratio = CMFormatDescriptionGetExtension(
+        format, extensionKey: kCMFormatDescriptionExtension_PixelAspectRatio
+    ) as? [String: Any],
+       let horizontal = ratio[kCMFormatDescriptionKey_PixelAspectRatioHorizontalSpacing as String] as? NSNumber,
+       let vertical = ratio[kCMFormatDescriptionKey_PixelAspectRatioVerticalSpacing as String] as? NSNumber,
+       vertical.doubleValue > 0 {
+        pixelAspect = horizontal.doubleValue / vertical.doubleValue
+    }
+    return (Int(size.width.rounded()), Int(size.height.rounded()), pixelAspect)
 }
 
 func main() async {
@@ -287,6 +309,72 @@ func main() async {
         let produced = frameCount(plan.tempOutput)
         check(abs(produced - 84) <= 2,
               "转场 \(transition.rawValue) 应出约 84 帧（实得 \(produced)）")
+    }
+
+    // MARK: 导出分辨率：只降不升、按短边、像素是方的
+    //
+    // 画布照工程尺寸画完，最后整幅缩到导出分辨率（VideoEditExportGraph 末尾）。
+    // 档位封的是短边：9:16 选 720p 是 720×1280，不是 406×720
+    // （docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md）。
+    // 最后一条用奇怪比例的 Auto 画布：取偶数让宽高比差一丝，scale 会改 SAR 去补，
+    // 不压回 1 的话播放器按非方形像素显示 —— 守的是 `setsar=1`。
+    struct ResolutionCase {
+        var name: String
+        var canvas: CanvasRatio
+        var autoSize: CGSize = CGSize(width: 320, height: 180)
+        var limit: ResolutionLimit
+        var expected: (width: Int, height: Int)
+    }
+    let resolutionCases = [
+        ResolutionCase(name: "16:9 选 720p", canvas: .wide16x9, limit: .hd720, expected: (1280, 720)),
+        ResolutionCase(name: "9:16 选 720p", canvas: .tall9x16, limit: .hd720, expected: (720, 1280)),
+        ResolutionCase(name: "16:9 跟随工程", canvas: .wide16x9, limit: .original, expected: (1920, 1080)),
+        ResolutionCase(name: "16:9 选 1080p（不用缩）", canvas: .wide16x9, limit: .fhd1080, expected: (1920, 1080)),
+        ResolutionCase(
+            name: "Auto 1000×562 选 480p", canvas: .auto,
+            autoSize: CGSize(width: 1000, height: 562), limit: .sd480, expected: (854, 480)
+        ),
+    ]
+    for item in resolutionCases {
+        var state = TimelineState()
+        state.frameRate = .fps24
+        state.canvasRatio = item.canvas
+        let sized = MediaInfo(
+            duration: 2, displaySize: item.autoSize, frameRate: 10,
+            videoCodec: "h264", audioCodec: nil, hasAudio: false,
+            audioCanCopyToMP4: false, fileBytes: 1
+        )
+        state.mainClips = [EditClip(sourceURL: src, sourceDuration: 2, timelineStart: 0, info: sized)]
+        var settings = VideoEncodeSettings()
+        settings.preset = .veryfast
+        settings.resolution = item.limit
+        let output = root.appendingPathComponent("resolution-\(item.expected.width)x\(item.expected.height).mp4")
+        let plan: VideoEditExportGraph.Plan
+        do {
+            plan = try await VideoEditExportGraph.plan(
+                state: state,
+                settings: settings,
+                subtitleStyle: BurnInStyle(name: "check"),
+                subtitleFontURL: nil,
+                output: output
+            )
+        } catch {
+            check(false, "\(item.name) 的 plan() 失败：\(error)")
+            continue
+        }
+        defer { try? FileManager.default.removeItem(at: plan.workspace) }
+
+        let (code, out) = run(ffmpegPath, plan.arguments)
+        check(code == 0, "\(item.name) 的 ffmpeg 执行失败：\(out.suffix(300))")
+        guard code == 0 else { continue }
+        guard let geometry = await videoGeometry(plan.tempOutput) else {
+            check(false, "\(item.name)：读不出成片的画面尺寸")
+            continue
+        }
+        check(geometry.width == item.expected.width && geometry.height == item.expected.height,
+              "\(item.name) 应出 \(item.expected.width)×\(item.expected.height)（实得 \(geometry.width)×\(geometry.height)）")
+        check(abs(geometry.pixelAspect - 1) < 0.000_1,
+              "\(item.name) 的像素应当是方的（实得像素宽高比 \(geometry.pixelAspect)）")
     }
 
     print("\(checks) checks, \(failures) failures")

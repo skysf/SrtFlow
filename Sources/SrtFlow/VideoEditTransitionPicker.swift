@@ -40,6 +40,7 @@ struct TransitionPickerButton: View {
                 isEnabled: isEnabled
             )
             .frame(width: 340, height: 420)
+            .appLanguage()
         }
     }
 }

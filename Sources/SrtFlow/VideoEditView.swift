@@ -121,10 +121,10 @@ struct VideoEditView: View {
             project.deleteSelected()
         }
         .sheet(isPresented: $showsExportSheet) {
-            VideoEditExportSheet(project: project, exporter: exporter)
+            VideoEditExportSheet(project: project, exporter: exporter).appLanguage()
         }
         .sheet(isPresented: $showsSubtitlePanel) {
-            SubtitleGenPanel(project: project)
+            SubtitleGenPanel(project: project).appLanguage()
         }
         // 录制设置页 = `state == .configuring` 的投影。会话一旦被撤销
         // （Quit、失败、取消），页自己就关了。
@@ -132,7 +132,7 @@ struct VideoEditView: View {
             get: { recordingCoordinator.state == .configuring },
             set: { if !$0 { recordingCoordinator.cancelConfiguring() } }
         )) {
-            ScreenRecordingSetupView(project: project)
+            ScreenRecordingSetupView(project: project).appLanguage()
         }
         // partial 结果：**工程锁还在**，用户必须先处置（计划 §11.4）。
         .sheet(item: Binding(
@@ -142,6 +142,7 @@ struct VideoEditView: View {
             ScreenRecordingPartialSheet(result: item.result) { shouldImport in
                 Task { await recordingCoordinator.resolvePartial(import: shouldImport) }
             }
+            .appLanguage()
         }
         // 崩溃恢复：启动时发现上次的残留。三选一，「保留」绝不删文件。
         .sheet(item: Binding(
@@ -151,6 +152,7 @@ struct VideoEditView: View {
             ScreenRecordingRecoverySheet(recovery: recovery) { decision in
                 Task { await recordingCoordinator.resolveRecovery(decision) }
             }
+            .appLanguage()
         }
         .task {
             // 启动恢复：只处理 manifest 点名的精确路径，禁止 glob。

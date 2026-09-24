@@ -137,6 +137,7 @@ struct CompressView: View {
             settings: queue.settings,
             hasAudio: sample?.info?.hasAudio ?? true,
             audioCanCopy: sample?.info?.audioCanCopyToMP4 ?? true,
+            sourceWidth: sample?.info?.width ?? 1920,
             sourceHeight: sample?.info?.height ?? 1080,
             sourceFrameRate: sample?.info?.frameRate
         )

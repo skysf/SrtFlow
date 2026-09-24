@@ -88,7 +88,7 @@ struct TextFontPicker: View {
             }
             .instantHelp("Pick the typeface for this text")
             .popover(isPresented: $isPresented, arrowEdge: .leading) {
-                browser
+                browser.appLanguage()
             }
         }
         .onAppear { catalog.loadIfNeeded() }
