@@ -1,6 +1,7 @@
 import AppKit
 import AVFoundation
 import Darwin
+import os
 
 // 预览性能测试（docs/architecture/preview-perf-ratchet.md）。
 //
@@ -39,6 +40,10 @@ enum PreviewBench {
     /// 这一段作废重量（`measureSteadily`）。
     private static var windowEvents = 0
     private static var windowObservers: [NSObjectProtocol] = []
+    /// 诊断：这一段里进程收到的通知，按名字计数（只报不卡）。CI 虚拟机上偶发的干扰不发
+    /// 窗口 / App 通知（2026-09-24：检查器的数值框和时间线缩放桥接偶尔多更新一轮），比对器
+    /// 拿出局那遍和一致那遍的通知一比，就知道是谁。
+    nonisolated private static let notificationLog = OSAllocatedUnfairLock(initialState: [String: Int]())
 
     /// 编辑器出现时调（VideoEditView.onAppear）。没设 `SRTFLOW_BENCH_OUT` 就什么都不做。
     static func startIfRequested(project: VideoEditProject) {
@@ -78,6 +83,7 @@ enum PreviewBench {
             throw Failure("没有可见的窗口 —— 这台机器没有图形会话？")
         }
         watchWindow(window)
+        watchAllNotifications()
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
         let size = CGSize(width: min(windowSize.width, visible.width), height: min(windowSize.height, visible.height))
         window.setFrame(NSRect(origin: visible.origin, size: size), display: true)
@@ -163,6 +169,7 @@ enum PreviewBench {
             "memory": ["\(name).memory.peakMB": peakFootprintMB()],
             "report": report,
             "breakdown": breakdown,
+            "notifications": phaseNotifications,
         ]
     }
 
@@ -174,18 +181,36 @@ enum PreviewBench {
         var wallMs: Double
         /// 量到一半窗口动过、作废重量了几次（只报不卡）。
         var retries = 0
+        /// 这一段收到的通知（诊断用，只报不卡）。
+        var notifications: [String: Int] = [:]
     }
 
     private static func measure(_ body: () async throws -> Void) async throws -> Phase {
         PerfCounters.reset()
+        notificationLog.withLock { $0.removeAll() }
         let cpu = cpuTimeMs()
         let wall = Date()
         try await body()
         return Phase(
             counts: PerfCounters.snapshot(),
             cpuMs: cpuTimeMs() - cpu,
-            wallMs: Date().timeIntervalSince(wall) * 1000
+            wallMs: Date().timeIntervalSince(wall) * 1000,
+            notifications: notificationLog.withLock { $0 }
         )
+    }
+
+    /// 记下进程收到的每一个通知（本进程的和系统广播的），`measure` 按段清零、取走。
+    private static func watchAllNotifications() {
+        windowObservers.append(NotificationCenter.default.addObserver(forName: nil, object: nil, queue: nil) { note in
+            let name = note.name.rawValue
+            notificationLog.withLock { $0[name, default: 0] += 1 }
+        })
+        windowObservers.append(DistributedNotificationCenter.default().addObserver(
+            forName: nil, object: nil, queue: nil
+        ) { note in
+            let name = "distributed:" + note.name.rawValue
+            notificationLog.withLock { $0[name, default: 0] += 1 }
+        })
     }
 
     /// 量一段；量的过程中窗口或 App 的状态变过（移动、改尺寸、key、激活），这一段作废
@@ -248,7 +273,11 @@ enum PreviewBench {
         report["\(prefix).wallMs"] = phase.wallMs.rounded()
         if phase.retries > 0 { report["\(prefix).retries"] = Double(phase.retries) }
         breakdown[prefix] = phase.counts
+        phaseNotifications[prefix] = phase.notifications
     }
+
+    /// 各段收到的通知（`record` 记，结果文件的 `notifications` 字段）。
+    private static var phaseNotifications: [String: [String: Int]] = [:]
 
     /// 等预览落定：不在重建、不在导入、播放条目就绪、后台没有在读的缩略图 / 波形，
     /// 而且计数连续 `quietFor` 秒没动过。

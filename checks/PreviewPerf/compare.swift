@@ -59,6 +59,8 @@ struct Run {
     var memory: [String: Double]
     var report: [String: Double]
     var breakdown: [String: [String: Int]]
+    /// 各段收到的通知（诊断用）：出局的那遍和一致的那遍一比，看是谁在干扰。
+    var notifications: [String: [String: Int]] = [:]
 
     init(json: [String: Any], file: String) throws {
         if let error = json["error"] as? String {
@@ -74,6 +76,7 @@ struct Run {
         self.memory = memory
         self.report = json["report"] as? [String: Double] ?? [:]
         self.breakdown = json["breakdown"] as? [String: [String: Int]] ?? [:]
+        self.notifications = json["notifications"] as? [String: [String: Int]] ?? [:]
     }
 
     init(scenario: String, gated: [String: Int], memory: [String: Double]) {
@@ -156,8 +159,10 @@ func judge(
             continue
         }
         for outlier in outliers {
+            let clues = notificationDifferences(agreeing[0], outlier)
             verdict.notices.append(
-                "场景 \(first.scenario) 有一遍和另外两遍不一样，当受干扰的那遍扔掉：" + differences(agreeing[0], outlier))
+                "场景 \(first.scenario) 有一遍和另外两遍不一样，当受干扰的那遍扔掉：" + differences(agreeing[0], outlier)
+                + (clues.isEmpty ? "" : "。那一遍多收 / 少收的通知：" + clues))
         }
         measuredGated.merge(agreeing[0].gated) { a, _ in a }
         for (key, _) in agreeing[0].memory {
@@ -235,6 +240,30 @@ func differences(_ a: Run, _ b: Run) -> String {
         .filter { a.gated[$0] != b.gated[$0] }
         .map { "\($0) \(a.gated[$0].map(String.init) ?? "无") / \(b.gated[$0].map(String.init) ?? "无")" }
         .joined(separator: "；")
+}
+
+/// 计数不一样的那几段里，出局那遍（b）比一致那遍（a）多收 / 少收的通知，按差值大小取前 12 个。
+func notificationDifferences(_ a: Run, _ b: Run) -> String {
+    var parts: [String] = []
+    for phase in Set(a.breakdown.keys).union(b.breakdown.keys).sorted()
+    where a.breakdown[phase] != b.breakdown[phase] {
+        let left = a.notifications[phase] ?? [:]
+        let right = b.notifications[phase] ?? [:]
+        var deltas: [(name: String, delta: Int)] = []
+        for name in Set(left.keys).union(right.keys) {
+            let delta = (right[name] ?? 0) - (left[name] ?? 0)
+            if delta != 0 { deltas.append((name, delta)) }
+        }
+        deltas.sort { lhs, rhs in
+            abs(lhs.delta) != abs(rhs.delta) ? abs(lhs.delta) > abs(rhs.delta) : lhs.name < rhs.name
+        }
+        let shown: [String] = deltas.prefix(12).map { item in
+            let sign = item.delta > 0 ? "+" : ""
+            return "\(item.name) \(sign)\(item.delta)"
+        }
+        if !shown.isEmpty { parts.append("[\(phase)] " + shown.joined(separator: "，")) }
+    }
+    return parts.joined(separator: "；")
 }
 
 // MARK: - 自检
