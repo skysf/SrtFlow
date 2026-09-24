@@ -46,6 +46,8 @@ extension VideoEditTimelineView {
                     // 形状不参与 AV 合成，收尾不用重建预览（同 updateShape）。
                     onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
+                // 按值比较：拖动每动一下时间线都重算，没变的块别跟着重算（见 `ClipBlockContext`）。
+                .equatable()
             }
         }
     }
@@ -54,7 +56,7 @@ extension VideoEditTimelineView {
 
 // MARK: - 形状块
 
-private struct ShapeBlockView: View {
+private struct ShapeBlockView: View, Equatable {
     let shape: ShapeAnnotation
     let pps: Double
     let isSelected: Bool
@@ -75,6 +77,13 @@ private struct ShapeBlockView: View {
     @State private var isTrimming = false
 
     private var width: Double { max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps) }
+
+    /// 按值比较，只比画面用得到的输入（同 `ClipBlockView`）。闭包比不了、也不用比：
+    /// 它们捕获的是时间线视图，读的是它的 `@State` 和工程对象，永远是最新的。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.shape == rhs.shape && lhs.pps == rhs.pps && lhs.isSelected == rhs.isSelected
+            && lhs.dragOffset == rhs.dragOffset && lhs.canTrim == rhs.canTrim
+    }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)

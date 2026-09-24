@@ -7,9 +7,10 @@ import SrtFlowCore
 
 // MARK: - 时间线这一族文件的分工
 //
-// 这个文件只留「骨架」：行模型（`RowSpec` / `rowLayouts`）、轨道头列、滚动容器、
+// 这个文件只留「骨架」：行的排列（`rows` / `rowLayouts`）、轨道头列、滚动容器、
 // 轨道行、播放头。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
 //
+// - `VideoEditTimelineRowSpec.swift`        一行的描述（`TimelineRowSpec`，纯值）
 // - `VideoEditTimelineMarqueeGesture.swift` 框选接线
 // - `VideoEditTimelineDragWiring.swift`     四类块共用的拖动接线
 // - `VideoEditTimelineClipBlock.swift`      剪辑块
@@ -154,49 +155,9 @@ struct VideoEditTimelineView: View {
 
     // MARK: - 时间线
 
-    /// 行的描述，轨道头列和滚动区共用，保证两边行高对得上。
-    struct RowSpec: Identifiable {
-        var id: String
-        var icon: String
-        var height: Double
-        var slot: TrackSlot?
-        /// 这一行的行高存在哪（nil = 这一行的高度不可调）。键是轨道身份不是
-        /// 行号，见 `TimelineRowHeights`。
-        var heightKey: TimelineRowHeightKey?
-        var isRuler = false
-        var isShapes = false
-        /// 文字行的层号（nil = 不是文字行）。重叠的文字自动多分一层，
-        /// 层号由 `TextOverlayStacking` 算出来，不进模型。
-        var textLevel: Int?
-        /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
-        var subtitleKind: SubtitleRowKind?
-        /// 滤镜行的层号（nil = 不是滤镜行）。**和文字行不同，层号进模型**
-        ///（`FilterClip.layer`）—— LUT 不可交换，现算的层号会在拖动别的段时
-        /// 重排，画面跟着变。
-        var filterLayer: Int?
-        /// 整轨隐藏中（灰显，不可编辑）。
-        var isHidden = false
-
-        /// 轨道头点一下要选中谁；nil = 这一行没有可选的东西（标尺）。
-        /// 判据本体在 `TimelineRowSelection` —— 这里只做「行 → 身份」的翻译，
-        /// 一条规则都不许在这儿写（空轨、隐藏轨那些边界都归它判）。
-        var selectionRow: TimelineRowSelection.Row? {
-            if isRuler { return nil }
-            // 滤镜行的轨道头点不出选择：滤镜是单选的（`EditSelection.filterID`），
-            // 「整行一起选」没地方放。点行头什么都不做，好过选中一批 ⌫ 删不掉的东西。
-            if filterLayer != nil { return nil }
-            if let slot { return .track(slot) }
-            if let subtitleKind { return .subtitle(subtitleKind) }
-            if let textLevel { return .textLevel(textLevel) }
-            if isShapes { return .shapes }
-            return nil
-        }
-
-        /// 纯值排布用的这一行（`TimelineSeams`）。
-        var seamRow: TimelineSeams.Row {
-            TimelineSeams.Row(slot: slot, height: height, sitsAboveTracks: isRuler || filterLayer != nil)
-        }
-    }
+    /// 行的描述（`TimelineRowSpec`，VideoEditTimelineRowSpec.swift）。别的文件按
+    /// `VideoEditTimelineView.RowSpec` 叫它，名字留着。
+    typealias RowSpec = TimelineRowSpec
 
     var rows: [RowSpec] {
         var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
@@ -577,6 +538,7 @@ struct VideoEditTimelineView: View {
                     seekFromTimeline(time: time, precise: precise)
                 }
             )
+            .equatable()
         } else if let layer = row.filterLayer {
             filterRow(layer: layer)
         } else if row.isShapes {
@@ -597,6 +559,7 @@ struct VideoEditTimelineView: View {
             RoundedRectangle(cornerRadius: 4)
                 .fill(.quaternary.opacity(0.35))
                 .frame(width: contentWidth)
+            let context = ClipBlockContext(slot: slot, project: project)
             ForEach(project.state[track: slot]) { clip in
                 ClipBlockView(
                     clip: clip,
@@ -605,6 +568,7 @@ struct VideoEditTimelineView: View {
                     pps: pps,
                     isSelected: isSelected(clip: clip.id),
                     dragOffset: dragOffset(for: clip),
+                    context: context,
                     project: project,
                     onDragBegin: { beginClipDrag(clip, slot: slot) },
                     onDragChange: { translation, pointerViewport in
@@ -619,6 +583,8 @@ struct VideoEditTimelineView: View {
                     },
                     onMarkerPeek: { markerPeek($0) }
                 )
+                // 按值比较：只有画面用得到的输入变了才重算（见 `ClipBlockContext`）。
+                .equatable()
             }
             // 隐藏的轨：灰显、去色、点不动。
             .opacity(hidden ? 0.35 : 1)

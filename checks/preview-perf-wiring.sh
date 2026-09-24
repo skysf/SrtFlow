@@ -189,6 +189,56 @@ need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.background
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadBegan\(\)' '波形开始解码的登记'
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadEnded\(\)' '波形解码完的登记'
 
+echo "==> 时间线上的块：不订阅工程、按值比较"
+# 块订阅整个工程（@ObservedObject var project）的话，工程里任何一处变化 —— 点选一段 ——
+# 都让全部块重算、全部音量线重画；块的输入里带闭包，SwiftUI 比不出「没变」，时间线
+# 每重算一次（拖动每动一下）全部块也都跟着重算。所以块只收算好的值（`ClipBlockContext`）、
+# 自己实现 `==`、调用处套 `.equatable()`。三条都钉住：
+# docs/architecture/preview-perf-ratchet.md「时间线上的块」，案例
+# docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md。
+# 格式：<块所在文件>|<视图名>|<构造它的文件>
+for spec in \
+  'Sources/SrtFlow/VideoEditTimelineClipBlock.swift|ClipBlockView|Sources/SrtFlow/VideoEditTimelineView.swift' \
+  'Sources/SrtFlow/VideoEditTimelineTextRow.swift|TextBlockView|Sources/SrtFlow/VideoEditTimelineTextRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineShapeRow.swift|ShapeBlockView|Sources/SrtFlow/VideoEditTimelineShapeRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineFilterRow.swift|FilterBlockView|Sources/SrtFlow/VideoEditTimelineFilterRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift|SubtitleCueBlockView|Sources/SrtFlow/VideoEditTimelineSubtitleRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineRuler.swift|TimelinePinnedRuler|Sources/SrtFlow/VideoEditTimelineView.swift' \
+  'Sources/SrtFlow/VideoEditTransitionPicker.swift|TransitionCard|Sources/SrtFlow/VideoEditTransitionPicker.swift'; do
+  IFS='|' read -r file view host <<<"$spec"
+  if [ ! -f "$file" ] || [ ! -f "$host" ]; then echo "✗ 文件不在：$file / $host"; fail=1; continue; fi
+  if ! grep -cE "struct ${view}: View, Equatable" "$file" >/dev/null; then
+    echo "✗ ${view} 没有按值比较（要写成 struct ${view}: View, Equatable 并自己实现 ==）"; fail=1
+  fi
+  if grep -cE '@ObservedObject var project' "$file" >/dev/null; then
+    echo "✗ ${file} 里有块订阅了整个工程（@ObservedObject var project）：点选一段全部块都要重算"; fail=1
+  fi
+  # 构造处必须紧跟 .equatable()：找到「行首是 视图名(」的那一行，跳过到它同缩进的收尾 )
+  #（尾随闭包 `) {` 也算），之后（可以隔着注释、尾随闭包和别的修饰器）必须出现 .equatable()，
+  # 别的语句先来了就算没套。
+  sites="$(grep -cE "^[[:space:]]*${view}\(" "$host" || true)"
+  wrapped="$(awk -v view="$view" '
+    $0 ~ "^[[:space:]]*" view "\\(" { indent = match($0, /[^ ]/) - 1; call = 1; closed = 0; next }
+    call && !closed { if (match($0, /[^ ]/) - 1 == indent && $0 ~ /^[[:space:]]*\)/) closed = 1; next }
+    call && closed {
+      if ($0 ~ /^[[:space:]]*\/\//) next
+      if ($0 ~ /\.equatable\(\)/) { ok++; call = 0; next }
+      if ($0 ~ /^[[:space:]]*\./) next
+      # 尾随闭包的内容（更深的缩进）和它同缩进的收尾 } 都还是这一个构造表达式。
+      if (match($0, /[^ ]/) - 1 > indent) next
+      if (match($0, /[^ ]/) - 1 == indent && $0 ~ /^[[:space:]]*\}/) next
+      call = 0
+    }
+    END { print ok + 0 }' "$host")"
+  if [ "$sites" -lt 1 ] || [ "$wrapped" -ne "$sites" ]; then
+    echo "✗ ${host} 里 ${view}( 有 ${sites} 处，套了 .equatable() 的只有 ${wrapped} 处：没套的那处每次时间线重算都跟着重算"; fail=1
+  fi
+done
+# 音量线不是独立块（挂在剪辑块的波形上），但同样不许订阅工程：61 条线一起重画就是它。
+if grep -cE '@ObservedObject var project' Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift >/dev/null; then
+  echo "✗ 音量线订阅了整个工程：点选一段每条线都重画"; fail=1
+fi
+
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"
   echo "All checks passed"

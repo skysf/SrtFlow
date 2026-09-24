@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import SrtFlowCore
 
 // MARK: - 剪辑块
 //
@@ -11,8 +12,36 @@ import SwiftUI
 
 // MARK: - 剪辑块
 
+/// 块上要画的、来自工程的那几个值：由时间线（它订阅工程）算好传进来。
+///
+/// **块自己不订阅工程。** 订阅的话，工程里任何一处变化都让全部块重算一遍 ——
+/// 2026-09-24 在用户 70 多段的工程上实测：点选一段，73 个块全部重算、61 条音量线
+/// 全部重画，一次点击吃掉约 0.6 秒 CPU；拖一段文字，每动一下又是全部块重算一遍。
+/// 现在块按值比较（`ClipBlockView` 的 `==`），画面用得到的输入没变就不重算。
+/// 块里再读工程的值，一律先加到这里来。
+struct ClipBlockContext: Equatable {
+    /// 所在那条轨的颜色（`TimelineState.trackColorIndex`）。
+    var colorIndex: Int
+    /// 所在那条轨的推子：波形画「听到的声音」，推子也乘进去。
+    var trackGain: Double
+    var activeTool: TimelineTool
+    /// 关键帧菱形按工程帧率判「是不是同一帧」。
+    var frameRate: ProjectFrameRate
+
+    @MainActor
+    init(slot: TrackSlot, project: VideoEditProject) {
+        colorIndex = project.state.trackColorIndex(for: slot)
+        trackGain = project.state.trackVolume(for: slot)
+        activeTool = project.activeTool
+        frameRate = project.state.frameRate
+    }
+}
+
 /// 一段素材的块：视频带缩略图条和名字，音频画波形，选中描白框。
-struct ClipBlockView: View {
+///
+/// 调用方要套 `.equatable()`：块的输入里有闭包，SwiftUI 比不出闭包「没变」，不套的话
+/// 时间线每重算一次（拖动每动一下），全部块都跟着重算。
+struct ClipBlockView: View, Equatable {
     let clip: EditClip
     let slot: TrackSlot
     let height: Double
@@ -21,7 +50,9 @@ struct ClipBlockView: View {
     /// 拖动中的渲染位移（秒）。nil = 没在被拖。被拖的块和跟着它动的伙伴都拿它
     /// 画位置 —— 拖动期间模型一个字都不改，所以 `timelineStart` 是拖前那个值。
     let dragOffset: Double?
-    @ObservedObject var project: VideoEditProject
+    let context: ClipBlockContext
+    /// 只拿来**调动作**（选中、切、打标记、右键菜单），不订阅 —— 见 `ClipBlockContext`。
+    let project: VideoEditProject
     let onDragBegin: () -> Void
     /// (手势总位移, 指针在滚动视口里的位置)。位移的垂直分量用来跨轨，指针位置
     /// 用来判断到没到视口边缘（两轴的自动滚动）。都在视口坐标系里量，
@@ -59,8 +90,15 @@ struct ClipBlockView: View {
         return min(64, max(12, (height - 20) * 0.4))
     }
 
-    /// 这段所在那条轨的推子：波形画「听到的声音」，推子也乘进去。
-    private var trackGain: Double { project.state.trackVolume(for: slot) }
+    private var trackGain: Double { context.trackGain }
+
+    /// 只比画面用得到的输入。闭包比不了、也不用比：它们捕获的是时间线视图，读的是它的
+    /// `@State` 和工程对象，永远是最新的；`project` 是同一个对象。
+    nonisolated static func == (lhs: ClipBlockView, rhs: ClipBlockView) -> Bool {
+        lhs.clip == rhs.clip && lhs.slot == rhs.slot && lhs.height == rhs.height
+            && lhs.pps == rhs.pps && lhs.isSelected == rhs.isSelected
+            && lhs.dragOffset == rhs.dragOffset && lhs.context == rhs.context
+    }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
@@ -84,7 +122,7 @@ struct ClipBlockView: View {
         }
         .frame(width: width, height: height)
         .onTapGesture(coordinateSpace: .local) { location in
-            if project.activeTool == .split {
+            if context.activeTool == .split {
                 // 刀片：点哪儿切哪儿。链接组的处理和 ⌘B 一致。
                 project.splitClip(clip.id, at: clip.timelineStart + min(max(0, location.x), width) / pps)
             } else {
@@ -94,11 +132,11 @@ struct ClipBlockView: View {
         }
         // 分割模式下移动手势整个停掉（.subviews 保留上面的点击）：
         // 只 guard 回调的话，4pt 的手抖仍会被手势吃掉，本该落下的那一刀就没了。
-        .gesture(moveGesture, including: project.activeTool == .split ? .subviews : .all)
+        .gesture(moveGesture, including: context.activeTool == .split ? .subviews : .all)
         .overlay(alignment: .bottomLeading) { keyframeMarkers }
         // 刀片工具悬在块上给十字光标，一眼知道现在点下去是切。
         // nil = 这一处不接管指针，交回外层。
-        .pointerStyle(project.activeTool == .split ? .rectSelection : nil)
+        .pointerStyle(context.activeTool == .split ? .rectSelection : nil)
         // 标记必须排在裁切把手**之前** —— 排在后面的话，贴着块两端的标记会盖住
         // 把手，那一端就再也裁不动了。（悬到帽子上时容器的扫帧会让位给它，
         // 仲裁在 VideoEditTimelineView.markerPeek。）
@@ -129,7 +167,7 @@ struct ClipBlockView: View {
     private var fillStyle: Color {
         // 纯音频段被拖到视频轨上（少见但允许）时按音频色走：颜色跟的是
         // 「这块是什么」，块上画的也是波形。
-        let index = project.state.trackColorIndex(for: slot)
+        let index = context.colorIndex
         if isAudioRow || clip.isAudioOnly { return TrackPalette.clipFill(audio: index) }
         return TrackPalette.clipFill(video: index)
     }
@@ -181,7 +219,9 @@ struct ClipBlockView: View {
             if clip.isAudioOnly || isAudioRow {
                 WaveformView(clip: clip, pps: pps, trackGain: trackGain)
                     // 音量线画在波形上、贴着线操作（它自己的命中区只是线那一条窄带）。
-                    .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
+                    .overlay {
+                        VolumeCurveOverlay(clip: clip, pps: pps, activeTool: context.activeTool, project: project)
+                    }
                     .padding(.bottom, 2)
             } else if height > 28 {
                 ThumbnailStripView(clip: clip, height: max(10, height - 20 - inlineWaveformHeight), pps: pps)
@@ -189,7 +229,9 @@ struct ClipBlockView: View {
                     .padding(.horizontal, 2)
                 if showsInlineWaveform {
                     WaveformView(clip: clip, pps: pps, trackGain: trackGain)
-                        .overlay { VolumeCurveOverlay(clip: clip, pps: pps, project: project) }
+                        .overlay {
+                            VolumeCurveOverlay(clip: clip, pps: pps, activeTool: context.activeTool, project: project)
+                        }
                         .frame(height: inlineWaveformHeight - 2)
                         .padding(.bottom, 2)
                 }
@@ -229,7 +271,7 @@ struct ClipBlockView: View {
                 ForEach(
                     Array(animation.allKeyTimes(
                         tolerance: KeyframeTrack.sourceTolerance(
-                            frameRate: project.state.frameRate, speed: clip.speed
+                            frameRate: context.frameRate, speed: clip.speed
                         )
                     ).enumerated()),
                     id: \.offset
@@ -262,7 +304,7 @@ struct ClipBlockView: View {
                 project: project,
                 onHoverMarker: markerHover
             )
-            .allowsHitTesting(project.activeTool == .select)
+            .allowsHitTesting(context.activeTool == .select)
         }
     }
 
@@ -281,7 +323,7 @@ struct ClipBlockView: View {
     private func trimHandle(leading: Bool) -> some View {
         // 块太窄时不给裁切把手，不然根本点不到移动区。
         // 分割模式下彻底不给：把手压着块的两端，边缘那一刀会变成裁切。
-        if width > 26, project.activeTool == .select {
+        if width > 26, context.activeTool == .select {
             Rectangle()
                 .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
                 .frame(width: isSelected ? 5 : 8)

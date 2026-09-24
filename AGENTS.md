@@ -125,7 +125,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
-| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面 | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) |
+| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项** | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不订阅工程、按值比较 + `.equatable()`**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
@@ -218,7 +218,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `check-all.sh` 里**；check-all 只跑它的比对规则自检（`--self-test`）。偶尔会误报退步
   （CI 虚拟机上的已知干扰），认法和处理见架构文档「已知的偶发误报」。每个视图、
   `updateNSView`、Canvas 都接了计数：`checks/preview-perf-wiring.sh`；新写视图漏了计数，
-  跑 `checks/preview-perf-wiring.sh --fix` 自动补上。
+  跑 `checks/preview-perf-wiring.sh --fix` 自动补上。同一个守卫最后一节钉着**时间线上的块不许
+  订阅工程、必须 `Equatable` 且构造处套 `.equatable()`**。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
   所以漏一行等于那份文档不存在。
@@ -296,7 +297,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md) — 量的是活不是 CPU、**每个视图 body
   第一行计数**（守卫钉着，`--fix` 自动补）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、要有两遍
   一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
-  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区。
+  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
@@ -368,6 +369,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 主轨转场的地方，预览的声音掉下去一截](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) — 预览换 mix 的三个入口拿没展开的用户状态铺斜坡，接缝上最深掉 25 dB，成片是好的；自检只读 build 顺手产出的那份 mix，走不到生产入口。**两份结果互相比，比不出它们一起错**：第一版守卫撤掉修复照样绿，加上绝对期望才红。
 - [2026-09-24 选了声音场景却看不见选的是哪个](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) — 标题和锁死宽度的下拉挤一行，超过检查器窄栏，整列被撑宽、右边被裁（「Mute」只剩「Mu」）；先用独立探针排除了「带 Section 的菜单 Picker 不显示选中项」的猜测。自检全绿、实机一眼就看见 —— 界面改动交之前要在真窗口里看一眼。
 - [2026-09-24 来回换声音场景，换下来的效果链一直攒着不放](docs/bugfixes/2026-09-24-sound-scene-chains-pile-up.md) — 「等宿主释放再放」而宿主（tap）跟着整条合成活，等于不放；一条失真链 ~8MB。改成多挂一拍、下次换配置时放。
+- [2026-09-24 点一下选段卡半秒、拖块和滚动跟不上手](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md) — 时间线上每个块和每条音量线都 `@ObservedObject` 着整个工程，点选一段 73 个块全重算、61 条线全重画；块的输入带闭包、没 `Equatable`，拖动每一拍全部块跟着时间线重算。块只收值、自己比较、调用处套 `.equatable()`（守卫钉着）；body 次数降十倍、CPU 只降三分之一 —— 「一拍多少次」和「一次多贵」是两笔账。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 

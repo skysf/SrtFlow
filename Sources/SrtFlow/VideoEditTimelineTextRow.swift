@@ -8,7 +8,7 @@ import SwiftUI
 // 与 `ShapeBlockView` 逐行同构，包括「拖动中只是渲染偏移、松手才写模型」
 // 这条硬约束（理由见 `VideoEditProject.commitDrag`）。
 
-struct TextBlockView: View {
+struct TextBlockView: View, Equatable {
     let overlay: TextOverlay
     let pps: Double
     let isSelected: Bool
@@ -30,6 +30,13 @@ struct TextBlockView: View {
     @State private var isMoving = false
 
     private var width: Double { max(TimelineMarquee.textMinimumWidth, overlay.duration * pps) }
+
+    /// 按值比较，只比画面用得到的输入（同 `ClipBlockView`）。闭包比不了、也不用比：
+    /// 它们捕获的是时间线视图，读的是它的 `@State` 和工程对象，永远是最新的。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.overlay == rhs.overlay && lhs.pps == rhs.pps && lhs.isSelected == rhs.isSelected
+            && lhs.dragOffset == rhs.dragOffset && lhs.canTrim == rhs.canTrim
+    }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
@@ -157,6 +164,8 @@ extension VideoEditTimelineView {
                     // 文字不参与 AV 合成，收尾不用重建预览（同 updateTextOverlay）。
                     onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
                 )
+                // 按值比较：拖动每动一下时间线都重算，没变的块别跟着重算（见 `ClipBlockContext`）。
+                .equatable()
             }
         }
     }

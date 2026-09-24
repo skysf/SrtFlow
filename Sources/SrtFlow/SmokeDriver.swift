@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - 进程内的 GUI 冒烟驱动：不接管鼠标、不抢焦点
@@ -40,6 +41,11 @@ enum SmokeDriver {
     private static var cpu: [String: Double] = [:]
     private static var states: [String: Any] = [:]
     private static var perfStartedAt = 0.0
+    /// 工程发了几次「要变了」（`objectWillChange`）：订阅整个工程的视图每一次都要重算，
+    /// 所以这个数往往比 body 次数更能说明「谁在白白叫醒大家」。`perf` 快照里记成
+    /// `event:project.willChange`。
+    private static var projectChanges = 0
+    private static var projectChangeWatch: AnyCancellable?
 
     /// 编辑器出现时调（`DevHooks.editorAppeared`）。没设脚本就什么都不做。
     static func startIfRequested(project: VideoEditProject) {
@@ -61,6 +67,11 @@ enum SmokeDriver {
                     throw SmokeScriptError("没有可见的窗口")
                 }
                 note("窗口号 \(window.windowNumber)")
+                // 真鼠标从这个窗口上穿过去：人还在用这台机器，指针扫过这个窗口的话，悬停扫帧、
+                // 提示这些都会被真事件叫醒，量出来的数就不是脚本的了（2026-09-24 一次拖动多出
+                // 两千多次重算，就是这么来的）。合成事件是直接交给窗口的，不受影响。
+                window.ignoresMouseEvents = true
+                projectChangeWatch = project.objectWillChange.sink { _ in projectChanges += 1 }
                 for (index, step) in steps.enumerated() {
                     note("第 \(index + 1) 步：\(step.action.rawValue)")
                     if try await run(step, project: project, window: window, output: output) { break }
@@ -114,9 +125,12 @@ enum SmokeDriver {
         case .perfReset:
             PerfCounters.reset()
             perfStartedAt = PreviewBench.cpuTimeMs()
+            projectChanges = 0
         case .perf:
             let label = step.label ?? "perf\(perf.count + 1)"
-            perf[label] = PerfCounters.snapshot()
+            var counts = PerfCounters.snapshot()
+            counts["event:project.willChange"] = projectChanges
+            perf[label] = counts
             cpu[label] = (PreviewBench.cpuTimeMs() - perfStartedAt).rounded()
         case .state:
             states[step.label ?? "state\(states.count + 1)"] = SmokeStateDump.make(project)

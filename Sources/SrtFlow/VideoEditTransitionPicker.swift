@@ -108,10 +108,14 @@ struct TransitionPickerGrid: View {
                                 isSelected: kind == selection,
                                 isEnabled: isEnabled(kind),
                                 tail: tailFrame,
-                                head: headFrame
+                                head: headFrame,
+                                seamID: outgoingClip?.id
                             ) {
                                 onPick(kind)
                             }
+                            // 按值比较：库面板跟着工程和时钟重算（点选一段、播放每一跳），
+                            // 卡片没变就别跟着重算（2026-09-24 实测一次点选 33 次）。
+                            .equatable()
                         }
                     }
                 }
@@ -186,7 +190,7 @@ private enum TransitionGroup: CaseIterable, Identifiable {
 
 /// 单张卡片：16:9 小样 + 名字。悬停时循环演示，不悬停停在中点定格
 /// （推移/擦除是对半分屏、压黑/闪白是纯色 —— 静止画面本身就在说明效果）。
-private struct TransitionCard: View {
+private struct TransitionCard: View, Equatable {
     let kind: ClipTransition
     let isSelected: Bool
     /// 这条缝上做不出来的种类压暗并拦掉点击。小样照画 —— 卡片的第一用途是
@@ -194,7 +198,16 @@ private struct TransitionCard: View {
     let isEnabled: Bool
     let tail: CGImage?
     let head: CGImage?
+    /// 这张卡对着哪条缝（出场段的 id）。画面用不到，只参与比较：换了一条缝就换一张新卡，
+    /// 不让旧卡连同旧的 `action` 留下来（虽然眼下两个宿主的 `onPick` 都是点的那一刻才去找目标）。
+    let seamID: UUID?
     let action: () -> Void
+
+    /// 只比画面用得到的输入和目标缝。演示帧是取出来的图，同一张就是同一个对象；闭包比不了。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.kind == rhs.kind && lhs.isSelected == rhs.isSelected && lhs.isEnabled == rhs.isEnabled
+            && lhs.tail === rhs.tail && lhs.head === rhs.head && lhs.seamID == rhs.seamID
+    }
 
     @State private var hovering = false
 
