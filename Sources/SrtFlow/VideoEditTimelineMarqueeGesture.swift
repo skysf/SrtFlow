@@ -106,8 +106,8 @@ extension VideoEditTimelineView {
                 items = project.state.shapes.map {
                     TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .shape)
                 }
-            } else if let level = spec.textLevel {
-                items = textOverlays(atLevel: level).map {
+            } else if let row = spec.textRow {
+                items = project.state.textOverlays(onRow: row).map {
                     TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .text)
                 }
             } else if let kind = spec.subtitleKind {
@@ -131,7 +131,7 @@ extension VideoEditTimelineView {
             if spec.isShapes {
                 minY = layout.minY + TimelineMarquee.shapeTopInset
                 maxY = minY + TimelineMarquee.shapeHeight
-            } else if spec.textLevel != nil {
+            } else if spec.textRow != nil {
                 minY = layout.minY + TimelineMarquee.textTopInset
                 maxY = minY + TimelineMarquee.textHeight
             } else if spec.subtitleKind != nil {

@@ -18,8 +18,7 @@ func checkNumberDelay(root: URL) throws {
         prefix: "", suffix: "", style: .count, duration: 2
     )
     state.textOverlays = [overlay]
-    check(state.requiresFormatVersion13 && !state.requiresFormatVersion21,
-          "没设等待的数字元件是 v13 数据、不是 v21 数据")
+    check(state.requiresFormatVersion13, "数字元件是 v13 数据（v21 是因为行号，见第 32 组）")
 
     let plainFile = dir.appendingPathComponent("no-delay.srtflowproj")
     try VideoEditProjectIO.save(state, to: plainFile)

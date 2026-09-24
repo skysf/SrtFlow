@@ -38,6 +38,7 @@ enum SmokeStateDump {
                 "centerY": round3(overlay.centerY),
                 "rotation": round3(overlay.rotationDegrees),
                 "fontSize": round3(overlay.style.fontSize),
+                "row": overlay.row,
             ]
         }
         let filters: [[String: Any]] = state.filters.map { filter in

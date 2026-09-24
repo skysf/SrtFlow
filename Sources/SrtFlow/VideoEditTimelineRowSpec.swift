@@ -9,6 +9,14 @@ import Foundation
 // 从 VideoEditTimelineView.swift 拆出来（那个文件超过 600 行、只许降）。那边留了
 // `typealias RowSpec = TimelineRowSpec`，别的文件照旧按 `VideoEditTimelineView.RowSpec` 叫它。
 
+/// 一行画出来之后在滚动内容里的位置（`VideoEditTimelineView.rowLayouts`）。
+struct TimelineRowLayout {
+    var spec: TimelineRowSpec
+    var minY: Double
+    var midY: Double
+    var maxY: Double
+}
+
 /// 行的描述，轨道头列和滚动区共用，保证两边行高对得上。
 ///
 /// `Equatable` 不是摆设：轨道头列拿的是一整份行数组，比不出「没变」的话，拖动每动一下
@@ -23,9 +31,9 @@ struct TimelineRowSpec: Identifiable, Equatable {
     var heightKey: TimelineRowHeightKey?
     var isRuler = false
     var isShapes = false
-    /// 文字行的层号（nil = 不是文字行）。重叠的文字自动多分一层，
-    /// 层号由 `TextOverlayStacking` 算出来，不进模型。
-    var textLevel: Int?
+    /// 文字行的行号（nil = 不是文字行）。**进模型**（`TextOverlay.row`，0 = 最下面
+    /// 那条文字行），行序就是画面上的叠放序（VideoEditTextRows.swift）。
+    var textRow: Int?
     /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
     var subtitleKind: SubtitleRowKind?
     /// 滤镜行的层号（nil = 不是滤镜行）。**和文字行不同，层号进模型**
@@ -45,7 +53,7 @@ struct TimelineRowSpec: Identifiable, Equatable {
         if filterLayer != nil { return nil }
         if let slot { return .track(slot) }
         if let subtitleKind { return .subtitle(subtitleKind) }
-        if let textLevel { return .textLevel(textLevel) }
+        if let textRow { return .textRow(textRow) }
         if isShapes { return .shapes }
         return nil
     }

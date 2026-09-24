@@ -64,6 +64,8 @@ struct VideoEditTimelineView: View {
     @State private var lastFollowTime: Double = -1
     /// 垂直拖动瞄准的目标行（高亮它）。落进拉开的缝时 id 是 "seam"。
     @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
+    /// 拖文字块时的目标行（`textRowCount` = 顶上新开一行）。只是视图状态，松手才写模型。
+    @State var textDropRow: Int?
     /// 此刻拉开的那条插入缝（§5h）。**只是视图状态**：拖动中不写 `TimelineState`，
     /// 行的位置全由 `TimelineSeams.layout` 按它算，轨道头列和轨道行垫同一段。
     @State var openSeam: TimelineSeam?
@@ -184,10 +186,11 @@ struct VideoEditTimelineView: View {
                 isHidden: project.state.overlayTracks[index].isHidden
             ))
         }
-        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序，而文字压在形状之上。
-        for level in (0..<TextOverlayStacking.levelCount(for: project.state.textOverlays)).reversed() {
+        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序（行号大的在上、画在上面），
+        // 而文字压在形状之上。
+        for row in (0..<project.state.textRowCount).reversed() {
             result.append(RowSpec(
-                id: "text-\(level)", icon: "textformat", height: 26, slot: nil, textLevel: level
+                id: "text-\(row)", icon: "textformat", height: 26, slot: nil, textRow: row
             ))
         }
         if !project.state.shapes.isEmpty {
@@ -240,12 +243,7 @@ struct VideoEditTimelineView: View {
     }
 
     /// 每行的纵向位置（垂直拖动找目标行用），和 VStack 的排布严格一致。
-    struct RowLayout {
-        var spec: RowSpec
-        var minY: Double
-        var midY: Double
-        var maxY: Double
-    }
+    typealias RowLayout = TimelineRowLayout
 
     /// 此刻画出来的排布（缝开着就是拉开之后的）。位置只从 `TimelineSeams.layout` 来：
     /// 画框、命中判定、轨道头列三处用同一份（§5h）。
@@ -305,6 +303,7 @@ struct VideoEditTimelineView: View {
                     markerPeekTime = nil
                     clipDrag = nil
                     dragTargetRow = nil
+                    textDropRow = nil
                     seamDwell.cancel()
                     openSeam = nil
                     laneReorder = nil
@@ -455,6 +454,7 @@ struct VideoEditTimelineView: View {
                     .offset(y: layout.minY)
                     .allowsHitTesting(false)
             }
+            TextRowDropIndicator(row: textDropRow, layouts: rowLayouts(), width: contentWidth)  // 文字换行的目标（§5j）
             // 拉开的缝里那条插入线：三种拖动（素材块 / 文件 / 音频库）都画这一条。
             if let top = gap.top {
                 TimelineInsertLine(gapTop: top, width: contentWidth)
@@ -543,8 +543,8 @@ struct VideoEditTimelineView: View {
             filterRow(layer: layer)
         } else if row.isShapes {
             shapesRow
-        } else if let level = row.textLevel {
-            textRow(level: level)
+        } else if let textRow = row.textRow {
+            self.textRow(row: textRow)
         } else if let kind = row.subtitleKind {
             subtitleRow(kind: kind)
         } else if let slot = row.slot {

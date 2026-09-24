@@ -161,7 +161,7 @@ enum VideoEditExportGraph {
         // 文字 → 包络大小的透明 PNG（**不是**整幅画布，理由见 TextOverlayExport）。
         // 画面由 `TextRenderer.render` 出，和预览是同一个函数。
         let textFiles = try TextOverlayExport.renderFiles(
-            state.textOverlays, canvas: renderSize,
+            state.textOverlaysInStackingOrder, canvas: renderSize,  // 叠放序同预览：行号小的先贴
             frameRate: state.frameRate, into: workspace
         )
 

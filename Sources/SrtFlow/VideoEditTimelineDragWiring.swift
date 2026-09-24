@@ -131,6 +131,11 @@ extension VideoEditTimelineView {
     /// 按这一拍的指针定纵向目标：高亮哪条轨、压在哪条缝上（停够 0.2 秒拉开）、
     /// 开着的缝该不该合上（§5h）。只写视图状态，一个字都不写 `TimelineState`（§0）。
     func aimVertically(_ drag: ClipDragSession) {
+        // 文字块只在文字行之间上下换行（§5j），不进缝、不换轨。
+        if drag.subject == .text {
+            textDropRow = textRowTarget(for: drag)
+            return
+        }
         let aim = verticalAim(for: drag, dy: drag.translation.height)
         if !aim.inOpenGap, openSeam != nil {
             withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
@@ -150,6 +155,7 @@ extension VideoEditTimelineView {
         defer {
             clipDrag = nil
             dragTargetRow = nil
+            textDropRow = nil
             // 缝跟着这一轮一起收：落进了缝，新开的那条轨就长在缝的位置上；没落进去就合上。
             openSeam = nil
         }
@@ -159,7 +165,8 @@ extension VideoEditTimelineView {
             // 这四类自己不跨轨、不插空，但同一组里可能挂着剪辑 —— 落地仍走
             // 和剪辑同一个 applyDrag（`commitFreeDrag`），位移只有一份。
             // （滤镜段从不带伙伴：它进不了框选，所以成员表里只有它自己。）
-            project.commitFreeDrag(drag.plan, resolution: drag.resolution)
+            // 文字块还带上目标行（§5j）：换行和横向位移在同一次 perform 里，一步撤销。
+            project.commitFreeDrag(drag.plan, resolution: drag.resolution, textRow: textDropRow)
         case .clip:
             // 水平平移、跨轨搬运、磁吸插空都在 commitDrag 的**同一次 perform**
             // 里，所以是一步撤销，也不会出现「视频换了轨、链接音频留在旧时刻」。
@@ -220,6 +227,23 @@ extension VideoEditTimelineView {
     ///
     /// 最上面那条视频缝以上、最下面那条音频缝以下都算那条缝 —— 原来「拖出最上面 = 顶上
     /// 新开一条」「拖出最下面 = 底下新开一条」的老手感，现在也要先停一下、缝拉开了才落。
+    /// 拖文字块时指针落在哪一行（§5j）。判定是纯值的（`TextRows.dropTarget`），这里只把
+    /// **画出来的**文字行（含现读的纵向滚动量，§5c）喂进去。18pt 门槛同 `verticalAim`。
+    func textRowTarget(for drag: ClipDragSession) -> Int? {
+        guard abs(drag.translation.height) > 18,
+              let overlay = project.state.textOverlays.first(where: { $0.id == drag.draggedID }) else {
+            return nil
+        }
+        let y = drag.pointerViewport.y + scrollGeometry.offsetY
+        let textRows = rowLayouts(open: nil).compactMap { layout -> (row: Int, minY: Double, maxY: Double)? in
+            guard let row = layout.spec.textRow else { return nil }
+            return (row, layout.minY, layout.maxY)
+        }
+        return TextRows.dropTarget(
+            y: y, rows: textRows, rowCount: project.state.textRowCount, current: overlay.row
+        )
+    }
+
     func verticalAim(for drag: ClipDragSession, dy: Double) -> VerticalAim {
         guard abs(dy) > 18 else { return VerticalAim() }
         // 形状只在自己那一行里横向移动，没有跨轨这回事。

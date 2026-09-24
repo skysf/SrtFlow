@@ -92,11 +92,27 @@
 表的话，苹方这种最常用的中文字体会从列表里消失，而它明明画得出来。所以另有
 `TextFontCatalogStore`（`CTFontManagerCopyAvailableFontFamilyNames`）。
 
-## 时间线上的分层
+## 时间线上的行（2026-09-24 用户拍板：行号进模型）
 
-文字行会因为**时间重叠**而长出多行：两段文字同时出现在画面上时挤在一行里根本
-分不清谁是谁。层号只是显示用的，不进模型、不存盘，完全由
-`TextOverlayStacking.levels` 按开始时间贪心算出来（每段放进第一条放得下的层）。
+`TextOverlay.row`：0 = 最下面那条文字行（紧挨形状行），越大越靠上。**行序就是画面上的
+叠放序**：行号大的画在上面，同一行按数组顺序；预览叠层（`visibleTextOverlays`）和导出
+（`VideoEditExportGraph`）都按 `TimelineState.textOverlaysInStackingOrder` 这一份序。
+规矩都在 `VideoEditTextRows.swift`：
+
+| 事 | 规矩 |
+| --- | --- |
+| 新加文字 / 数字 | 永远在最上面**新开一行**（`row = textRowCount`）：新字压在所有旧字之上 |
+| 上下拖 | 指针落在哪一行就去哪一行；那一行在这段时间被占了就**往上找第一条空行**；比最上面那一行还高 = 顶上新开一行；文字行以下 = 留在原行（`TextRows.dropTarget` 判、`settleTextRow` 落，和横向位移同一次 `perform`） |
+| 横向拖 | 落点在自己那一行被占了，同样往上找空行（文字自己没有障碍，不会被挡住不许动） |
+| 删 / 换行之后 | 空行收拢（`compactTextRows`）：只改编号不改上下，画面不跳 |
+| 存盘 | `row` 无条件落盘，有文字就是 **v21** 数据（旧版丢了行号，重叠的字按时间重排、谁压谁就变了） |
+| 老工程 | 没有 `row` 键：载入时 `normalizeTextRows` 按当年的自动排布补（`TextOverlayStacking` 只剩这一个用途；当年贪心层 0 就画在最下面那条文字行，行号照抄，屏幕上一行不挪）；个别缺的当 0；负数收口 |
+| 形状 | 不动：还是一行，允许重叠 |
+
+「同一行不重叠」是**落点**的规矩，不是硬约束：裁切把两段拉到相交时照样各画各的。
+
+以前的做法（2026-09-24 之前）：层号按时间重叠现算、不存盘。问题是现算的层号会在拖别的段
+时重排，而画面上谁压谁跟着变 —— 用户没法把某段字固定压在另一段上面。
 
 文字块用**固定的中性色**（`TrackPalette.textBlock`），不跟轨道色表走：文字不是
 一条轨，给它一个轨道色会让人以为时间线上多了条视频轨。
@@ -371,7 +387,10 @@ N 倍，但标题就几十个字，而且**只在动画进行中**才走这条�
 | --- | --- |
 | 成片里的字与渲染图**逐点重合**（位置 + 形状 + 落点取整）、时间区间、层序、登记与落盘同生共死、位图是包络 | `scripts/check-text-render.sh` |
 | 动画：**模型给的不透明度 = 成片量到的值**（缓动写错在中点差 0.375，远超容差）、只逐帧渲动画段、循环段只渲一个周期、逐帧都不被裁、打字机墨迹单调不减 | `scripts/check-text-render.sh` 第 5–10 组 |
-| 数字：无区域依赖的格式化、数值递增终点精确落在终值、老虎机每一位收口且个位比高位转得多、行程封顶、等长数字串一样宽、滚动期间尺寸落点不变、头部逐帧算上滚动窗口 | `scripts/check-text-render.sh` 第 11–16 组 |
+| 数字：无区域依赖的格式化、数值递增终点精确落在终值、老虎机每一位收口且个位比高位转得多、行程封顶、等长数字串一样宽、滚动期间尺寸落点不变、头部逐帧算上等待 + 滚动窗口、等待期间停在起始值 | `scripts/check-text-render.sh` 第 11–16b 组（`checks/TextRender/NumberDelay.swift`） |
+| 文字行：叠放序 = 行号（数组顺序无关），成片里第 1 行贴在第 0 行之后 | `scripts/check-text-render.sh` 第 16c 组（`checks/TextRender/TextRows.swift`） |
+| 文字行的模型：存盘往返、v21、换行往上找空行 / 顶上新开、收拢、老工程迁移、上下拖的落点 | `scripts/check-project-file.sh` 第 32 组（`checks/ProjectFile/TextRows.swift`） |
+| 换行的接线：目标行只是视图状态、松手和横向位移同一次 perform、行 / 框选 / 行头点选都读 `row` | `checks/timeline-drag-wiring.sh`（`checks/timeline-drag-wiring/text-rows.sh`） |
 | 对焦：终点精确收口、曲线接近匀速（中点落在两端正中）、出场继续放大、起手不透明度两头、逐帧不被裁、只做入场时包络不白扩 | `scripts/check-text-render.sh` 第 17 组 |
 | 预览上的可点范围：渲染图里看得见的像素全落在可点范围里（含两行大行距，量的是 y 轴翻没翻对）、短字不按整框判且跟着对齐走、空文字 = 整框、底板整块都算、数字按定版串 | `scripts/check-text-render.sh` 第 18 组（`checks/TextRender/HitGeometry.swift`） |
 | 把手（以及全部源码）的 `.contentShape` 不写在 `.offset` / `.rotationEffect` / `.scaleEffect` 之后 | `checks/hit-shape-before-offset.sh` |

@@ -66,6 +66,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextNumber.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextRows.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextHitGeometry.swift \
@@ -92,6 +93,7 @@ xcrun swiftc \
   checks/TextRender/Assertions.swift \
   checks/TextRender/HitGeometry.swift \
   checks/TextRender/NumberDelay.swift \
+  checks/TextRender/TextRows.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

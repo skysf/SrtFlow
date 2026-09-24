@@ -603,29 +603,6 @@ final class VideoEditProject: ObservableObject {
         ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
     }
 
-    /// 文字块的拖动会话。与形状那条**逐字同构** —— 文字行允许重叠（重叠了就
-    /// 自动多分一层，见 `TextOverlayStacking`），所以自己没有障碍；跟着走的
-    /// 剪辑各自带上本轨的障碍。
-    func textDragPlan(textID id: UUID) -> ClipDragPlan? {
-        guard let overlay = state.textOverlays.first(where: { $0.id == id }) else { return nil }
-        let span = TimelineSpan(start: overlay.timelineStart, end: overlay.timelineEnd)
-        let clipIDs = state.draggingClipIDs(
-            seed: selectedTextIDs.contains(id) ? selectedClipIDs : [],
-            linkage: linkageEnabled,
-            magnetPinsMainTrack: magnetEnabled
-        )
-        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
-        let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .text)]
-            + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
-        return ClipDragPlan(
-            draggedID: id,
-            draggedSpan: span,
-            members: members,
-            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
-            magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
-    }
-
     /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
     /// 自己没有障碍；跟着走的剪辑各自带上本轨的障碍。
     ///
@@ -659,7 +636,7 @@ final class VideoEditProject: ObservableObject {
     ///
     /// 只在**被拖的那个本来就在选中集合里**时才有伙伴 —— 拖一个没选中的东西
     /// 是「单选它再拖」，那时候整片选择已经被换掉了，不该再拉着旧的一片走。
-    private func movingCompanions(
+    func movingCompanions(
         draggedID: UUID,
         movingClipIDs: Set<UUID>
     ) -> (
@@ -694,13 +671,14 @@ final class VideoEditProject: ObservableObject {
     ///
     /// `magnet` 仍要如实传全局开关：这一组里可能挂着剪辑，而 `perform` 之后
     /// 无论如何都会重排主轨，`applyDrag` 里同步排一次，产物才等于最终状态。
-    func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
+    func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution, textRow: Int? = nil) {
         // 形状、文字和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里
         // 没有剪辑就别白重建一次预览 —— 那会让画面黑一下。
         let hasClip = plan.members.contains { $0.kind == .clip }
         let magnet = magnetEnabled
         perform(rebuildsPreview: hasClip) { state in
             state.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: magnet)
+            state.settleTextRow(plan, preferring: textRow)
         }
     }
 
@@ -1126,7 +1104,7 @@ final class VideoEditProject: ObservableObject {
         perform(rebuildsPreview: !clipIDs.isEmpty) { state in
             for member in clipIDs { state.remove(member) }
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
-            if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) } }
+            if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
             if !cueIDs.isEmpty, var original = state.subtitle {
                 // 两轨 + meta 同删，走和字幕面板一样的那份合同。
                 var companion = state.subtitleCompanion ?? SubtitleCompanion()

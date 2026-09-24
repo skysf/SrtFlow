@@ -55,6 +55,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextNumber.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextRows.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
@@ -86,6 +87,7 @@ xcrun swiftc \
   checks/ProjectFile/SoundScene.swift \
   checks/ProjectFile/BookmarkCache.swift \
   checks/ProjectFile/NumberDelay.swift \
+  checks/ProjectFile/TextRows.swift \
   checks/ProjectFile/SplitGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

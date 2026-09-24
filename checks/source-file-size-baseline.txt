@@ -13,7 +13,7 @@
 616 Sources/SrtFlow/VideoEditInspector.swift
 717 Sources/SrtFlow/VideoEditMediaFileDrop.swift
 1413 Sources/SrtFlow/VideoEditModels.swift
-1540 Sources/SrtFlow/VideoEditProject.swift
+1518 Sources/SrtFlow/VideoEditProject.swift
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 629 Sources/SrtFlow/VideoEditTimelineEdits.swift
 743 Sources/SrtFlow/VideoEditTimelineView.swift
@@ -24,7 +24,7 @@
 625 checks/Filters/main.swift
 947 checks/PreviewComposition/main.swift
 2656 checks/ProjectFile/main.swift
-835 checks/TextRender/main.swift
+749 checks/TextRender/main.swift
 1879 checks/TimelineSnap/main.swift
 708 checks/VideoFade/main.swift
-1015 checks/timeline-drag-wiring.sh
+996 checks/timeline-drag-wiring.sh

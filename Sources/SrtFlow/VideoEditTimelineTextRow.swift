@@ -108,26 +108,19 @@ struct TextBlockView: View, Equatable {
 
 // MARK: - 文字行
 //
-// 行本体和块放在一起：层号由重叠关系算出来，不进模型。
+// 行本体和块放在一起。行号进模型（`TextOverlay.row`，VideoEditTextRows.swift）：
+// 这一行画的就是 `row` 等于它的那些文字。
 
 extension VideoEditTimelineView {
 
     // MARK: - 文字行
 
-    /// 这一层上的文字。层号纯显示用，由时间重叠关系算出来。
-    func textOverlays(atLevel level: Int) -> [TextOverlay] {
-        let levels = project.textOverlayLevels
-        return project.state.textOverlays.enumerated()
-            .filter { levels.indices.contains($0.offset) && levels[$0.offset] == level }
-            .map(\.element)
-    }
-
-    func textRow(level: Int) -> some View {
+    func textRow(row: Int) -> some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: 4)
                 .fill(.quaternary.opacity(0.25))
                 .frame(width: contentWidth)
-            ForEach(textOverlays(atLevel: level)) { overlay in
+            ForEach(project.state.textOverlays(onRow: row)) { overlay in
                 TextBlockView(
                     overlay: overlay,
                     pps: pps,

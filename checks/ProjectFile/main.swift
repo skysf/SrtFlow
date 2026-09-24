@@ -2290,8 +2290,8 @@ do {
         ShapeAnnotation(kind: .line, timelineStart: 6, width: 0.4)
     ]
     // 两段**时间上重叠**的文字 → 必然分成两层，点一行只能选到那一层的。
-    let textLow = TextOverlay(text: "上", timelineStart: 0, duration: 4)
-    let textHigh = TextOverlay(text: "下", timelineStart: 1, duration: 4)
+    let textLow = TextOverlay(text: "上", timelineStart: 0, duration: 4, row: 1)   // 行号进模型（第 32 组）
+    let textHigh = TextOverlay(text: "下", timelineStart: 1, duration: 4, row: 0)
     state.textOverlays = [textLow, textHigh]
     let cueA = SubtitleCue(index: 1, start: 0, end: 2, text: "hello")
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
@@ -2316,15 +2316,15 @@ do {
     let shapes = TimelineRowSelection.ids(for: .shapes, in: state)
     checkEqual(shapes.ids, Set(state.shapes.map(\.id)), "形状行选中全部形状")
     check(shapes.category == .shapes, "形状行只产出形状这一类")
-    let level0 = TimelineRowSelection.ids(for: .textLevel(0), in: state)
-    let level1 = TimelineRowSelection.ids(for: .textLevel(1), in: state)
+    let level0 = TimelineRowSelection.ids(for: .textRow(0), in: state)
+    let level1 = TimelineRowSelection.ids(for: .textRow(1), in: state)
     check(level0.category == .texts, "文字行只产出文字这一类")
-    checkEqual(level0.ids.count, 1, "重叠的两段文字分在两层，一层只有一段")
-    checkEqual(level1.ids.count, 1, "另一层也只有一段")
-    checkEqual(level0.ids.union(level1.ids), [textLow.id, textHigh.id], "两层加起来是全部文字")
-    check(level0.ids.isDisjoint(with: level1.ids), "两层不许选到同一段文字")
-    checkEqual(TimelineRowSelection.ids(for: .textLevel(9), in: state).ids, [],
-               "不存在的层是空，不是崩")
+    checkEqual(level0.ids, [textHigh.id], "点第 0 行选中的是行号为 0 的那段")
+    checkEqual(level1.ids, [textLow.id], "点第 1 行选中的是行号为 1 的那段")
+    checkEqual(level0.ids.union(level1.ids), [textLow.id, textHigh.id], "两行加起来是全部文字")
+    check(level0.ids.isDisjoint(with: level1.ids), "两行不许选到同一段文字")
+    checkEqual(TimelineRowSelection.ids(for: .textRow(9), in: state).ids, [],
+               "不存在的行是空，不是崩")
 
     // ── 字幕行：两轨镜像（同 ID），各自的眼睛各自判 ──
     let original = TimelineRowSelection.ids(for: .subtitle(.original), in: state)

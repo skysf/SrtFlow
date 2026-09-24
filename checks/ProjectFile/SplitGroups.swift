@@ -11,6 +11,7 @@ func runSplitOutGroups(root: URL) {
         ("声音场景", checkSoundScenes),                // 29：SoundScene.swift
         ("素材书签缓存", checkMediaBookmarkCache),      // 30：BookmarkCache.swift
         ("数字等待", checkNumberDelay),               // 31：NumberDelay.swift
+        ("文字行", checkTextRows),                    // 32：TextRows.swift
     ]
     for group in groups {
         do {
