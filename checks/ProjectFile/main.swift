@@ -1985,24 +1985,10 @@ do {
     let previewSeam = AudioFadeWindow.previewMainTrack(
         clip: seam, transitionBefore: 0.5, transitionAfter: 0.8
     )
-    checkEqual(previewSeam.fadeIn, 0.5, "预览里有转场的边换成转场时长（交叉淡变就是靠它实现的）")
+    checkEqual(previewSeam.fadeIn, 0.5, "有转场的边换成转场时长（交叉淡变就是靠它实现的）")
     checkEqual(previewSeam.fadeOut, 0.8, "另一边同理")
-
-    let exportSeam = AudioFadeWindow.exportMainTrack(
-        clip: seam, hasTransitionBefore: true, hasTransitionAfter: false
-    )
-    checkEqual(exportSeam.fadeIn, 0, "导出里有转场的边归 acrossfade 管，段内不能再淡一次")
-    checkEqual(exportSeam.fadeOut, 1, "没转场的那边照常用用户设的值")
-
-    // ---- afade 参数：淡出起点按时间线长度算 ----
-    let segments = AudioFadeWindow(fadeIn: 1, fadeOut: 2).afadeSegments(timelineDuration: 5)
-    checkEqual(segments.count, 2, "两端都设了就出两条 afade")
-    checkEqual(segments.first?.type, "in", "第一条是淡入")
-    checkEqual(segments.first?.start, 0, "淡入永远从 0 开始")
-    checkEqual(segments.last?.type, "out", "第二条是淡出")
-    checkEqual(segments.last?.start, 3, "淡出起点 = 时间线长度 - 淡出时长")
-    checkEqual(AudioFadeWindow.none.afadeSegments(timelineDuration: 5).count, 0,
-               "没设渐变就一条 afade 都不加（别往滤镜图里塞 d=0）")
+    // 以前这里还有导出那一份（`exportMainTrack` / `afadeSegments`）。2026-09-24 起成片的声音就是
+    // 这份混音离线读出来的（ExportAudioMixdown），导出那一份连同 ffmpeg 的 afade 一起退役了。
 
     // ---- 存盘往返 + 版本登记（按需，同 v4/v8）----
     var saveState = timeline(mainMedia: [media])

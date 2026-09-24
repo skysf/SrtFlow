@@ -62,8 +62,11 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
-  Sources/SrtFlow/VideoEditExportAudioGain.swift \
+  Sources/SrtFlow/VideoEditExportFilterScript.swift \
+  Sources/SrtFlow/VideoEditExportMixdown.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
@@ -72,6 +75,7 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/AudioFade/main.swift \
+  checks/AudioFade/Envelope.swift \
   checks/AudioFade/VolumeCurve.swift \
   checks/AudioFade/Meter.swift \
   checks/AudioFade/LiveMix.swift \

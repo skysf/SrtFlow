@@ -48,7 +48,8 @@ echo "✓ 转场借余料接线守卫通过（两条渲染管线都接上了）"
 #   ① 定格字段**只许展开函数写**：用户的工程里它恒为 0。别处一写，它就会跟着
 #      工程、撤销栈、剪贴板到处走，而存盘又不存它 —— 预览和成片各说各话。
 #   ② 两条管线都要**消费**它：预览按真素材范围插、两头插定格帧；导出按真素材
-#      范围截、两头 `tpad` / 补静音。漏一条，那条管线的定格那一截就是黑的。
+#      范围截、两头 `tpad`（声音是预览那份混音，定格那两截的静音已经在里面）。
+#      漏一条，那条管线的定格那一截就是黑的。
 HANDLES="Sources/SrtFlow/VideoEditTransitionHandles.swift"
 BUILDER="Sources/SrtFlow/VideoEditCompositionBuilder.swift"
 GRAPH="Sources/SrtFlow/VideoEditExportGraph.swift"
@@ -67,12 +68,13 @@ for needle in 'clip.renderSourceStart' 'clip.renderSourceDuration' 'await insert
     grep -qF "${needle}" "${BUILDER}" \
         || { echo "  ✗ 预览合成没用 ${needle}：定格那一截会插成素材之外的画面或空段" >&2; FAILED=1; }
 done
-for needle in 'Self.holdSteps(video: clip)' 'Self.holdSteps(audio: clip)' 'let start = clip.renderSourceStart'; do
+for needle in 'Self.holdSteps(video: clip)' 'let start = clip.renderSourceStart'; do
     grep -qF "${needle}" "${GRAPH}" \
-        || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的 / 没声音对不上" >&2; FAILED=1; }
+        || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的" >&2; FAILED=1; }
 done
-# **铺音量的 makeAudioMix 必须自己展开**：预览换 mix 的三个入口传进来的是用户那一份状态，
-# 照着没展开的几何铺斜坡，转场接缝上的声音就会掉下去一截
+# 声音：成片的声音自 2026-09-24 起就是预览那份混音（ExportAudioMixdown），定格那两截的静音
+# 在预览合成里（留空段），导出图不再自己补。**铺音量的 makeAudioMix 必须自己展开**：三个预览
+# 入口传进来的是用户那一份状态，照着没展开的几何铺斜坡，转场接缝上的声音就会掉下去一截
 #（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
 MIX_BODY="$(awk '/static func makeAudioMix\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${BUILDER}")"
 grep -qF "${CALL}" <<<"${MIX_BODY}" \

@@ -61,7 +61,7 @@
 | | 画面 | 声音 |
 | --- | --- | --- |
 | 预览合成 | 按真素材范围插；两头各插**一帧**再 `scaleTimeRange` 拉长成定格（`insertHold`） | 定格那两截留空段 |
-| 导出图 | 按真素材范围 `trim`，变速和 `fps` 之后接 `tpad=start_mode=clone` / `stop_mode=clone` | `adelay` 垫在前、`apad` 补在后 |
+| 导出图 | 按真素材范围 `trim`，变速和 `fps` 之后接 `tpad=start_mode=clone` / `stop_mode=clone` | 成片的声音就是预览那份混音（[成片的声音](export-audio-mixdown.md)），定格那两截的空段已经在里面；2026-09-24 之前是 `adelay` 垫在前、`apad` 补在后 |
 | 预渲染中间片 | 走预览合成那一套，定格自然带进中间片 | 声音不走中间片 |
 
 两条硬约束（`checks/transition-handles-wiring.sh` 中段钉着）：

@@ -1,7 +1,8 @@
 # 音量曲线：画在段上的音量自动化
 
-> 2026-09-23 落地。改 `VideoEditVolumeCurve.swift`、`addCurveRamps`、
-> `VideoEditExportAudioGain.swift`、时间线上的曲线手势之前必读。
+> 2026-09-23 落地。改 `VideoEditVolumeCurve.swift`、`addCurveRamps`、时间线上的曲线手势之前必读。
+> 2026-09-24 起成片的声音就是预览这份混音离线读出来的（[成片的声音](export-audio-mixdown.md)），
+> 导出那一侧的 `aeval` 实现随之退役，第二节里它的那几条留作历史说明。
 > 方案与产品决策见 [声音编辑方案](../plans/2026-09-23-audio-mixing.md)；
 > 同一条音量链上的另外两环见 [声音：音量与渐入渐出](audio-fades.md)、[推子与电平表](audio-mixer.md)。
 
@@ -22,13 +23,13 @@
   留在它身上的曲线就再也听不见了。
 - 工程格式 **v19**，按需写键（见 [工程文件](video-edit-project-file.md)）。
 
-## 二、两条管线：同一张折线表
+## 二、折线表（成片就是预览这一份）
 
-曲线在数学上是 dB 直线，两条管线都只会画「幅度线性」的斜坡，所以要切成弦。
-**`VolumeCurveSampling.breakpoints(for:)` 是唯一的切法**，预览和导出吃同一张表：
+曲线在数学上是 dB 直线，AVFoundation 只会画「幅度线性」的斜坡，所以要切成弦。
+**`VolumeCurveSampling.breakpoints(for:)` 是唯一的切法**：
 
 - 每根弦最多跨 1.5 dB，误差 ≈ (0.1151·Δ)²/8 ≈ 0.03 dB（自检钉着 < 0.05 dB）。
-- 预览和导出之间**没有**这 0.03 dB —— 两边是同一条折线。
+- 预览和成片之间**没有**这 0.03 dB —— 成片就是预览那份混音读出来的。
 - 表里的时刻是**离段起点的时间线秒**；增益含静音，不含渐变和推子（那两样调用方乘）。
 
 ### 预览（`VideoEditCompositionBuilder.addCurveRamps`）
@@ -40,9 +41,9 @@
 - 相邻两点落在同一个 1/600 秒格子里就并掉（零长斜坡 AVFoundation 不认）。
 - 只改曲线属于「只换 audioMix」（`differsOnlyInAudioMix` 已经把它抹平），画面不闪。
 
-### 导出（`ExportAudioGain.gainSteps`）
+### 导出（已退役，2026-09-24）
 
-画了曲线的段在链上多一个 `aeval=exprs='val(ch)*(树)':c=same`，树是折线表的**平衡 if 树**，
+成片改读预览混音之前，导出在 ffmpeg 滤镜链上另算一份（`ExportAudioGain.gainSteps`）：画了曲线的段在链上多一个 `aeval=exprs='val(ch)*(树)':c=same`，树是折线表的**平衡 if 树**，
 叶子是每段的一次式。2026-09-23 用随包的 ffmpeg 8.1 实测定下的几条：
 
 1. **放在 `atempo` 之后、`adelay`（含主轨首尾定格的 `holdSteps`）之前。** `t` 在
@@ -60,7 +61,9 @@
 6. 滤镜图超过 256KB 改走 `-/filter_complex <文件>`（`filterComplexArguments`）：
    macOS 的 ARG_MAX 是 1MB 且整条命令行加环境变量共用，每段一棵树攒起来能顶到。
 
-没画曲线的段仍是 `volume=`；推子都在 0 dB 时参数与改动前**逐字节相同**。
+没画曲线的段是 `volume=`。这整套（以及第 6 条之外的五条规矩）只为让 ffmpeg 模仿 AVFoundation 而存在，
+成片改读预览混音之后一并删掉；第 6 条的「滤镜图太大改走文件」对画面的滤镜图仍然有用，
+留在 `ExportFilterScript`（`VideoEditExportFilterScript.swift`）。
 
 ## 三、界面：常显，贴着线操作（Final Cut 式）
 
@@ -94,12 +97,12 @@
 | 检查 | 守什么 |
 | --- | --- |
 | `scripts/check-project-file.sh`（第 28 组） | 插值 / 夹紧、加点不改声音、删点固化、挪点不越过邻点、拖一段线动哪几个点、平移不叠加、折线误差 < 0.05 dB、变速、分割连续、分离音频带着走、存盘按需写键与 v19、改坏的 JSON 夹回来 |
-| `scripts/check-audio-fade.sh`（第 7 组） | **两条生产管线的真实包络**：音频轨曲线 × 推子、去掉曲线的反例对照、2 倍速、主轨接缝后首帧定格的时间轴、曲线段的钉点、快路径与重建等价 |
+| `scripts/check-audio-fade.sh`（第 7 组） | **真实包络**（预览与成片）：音频轨曲线 × 推子、去掉曲线的反例对照、2 倍速、主轨接缝后首帧定格的时间轴、曲线段的钉点、快路径与重建等价 |
 | `scripts/check-project-file.sh`（第 28 组，几何） | y ↔ dB 往返、上下留边、拖出去夹住、折点只画段内的点、抓点半径 |
 | `scripts/check-project-file.sh`（第 28 组，命中区与拖点） | 每个圆心 / 圆内 / 折点都按得中、离线 20pt 按不中（并集，不是 append）；拖点是相对位移：没挪不动、竖着拖时间一丝不动、⇧ 钉住时间、越不过邻点 |
 | `checks/timeline-drag-wiring.sh`（音量线一节） | 命中区是窄带且走 `hitPath`、拖点走 `dragging` 不直接 `moveVolumePoint`、拖动中只走 `previewAudioLive` 不写 state、松手走 `commitVolumeEdit`、刀片模式让路、音频块和视频块两处都挂 |
 
-2026-09-23 反向验证（各自确认守卫会红）：导出去掉 `renderHoldHead` 那一减 → 7c 红 2 项；
+2026-09-23 反向验证（各自确认守卫会红；前两条针对的导出实现已于 2026-09-24 退役）：导出去掉 `renderHoldHead` 那一减 → 7c 红 2 项；
 预览不乘推子 → 7a 预览红 5 项；导出不乘推子 → 7a 导出红 5 项；命中区换回 append →
 第 28 组红 15 项；视图换回「append + 按指针绝对位置搬点」→ 接线守卫红 3 项（[案例](../bugfixes/2026-09-23-volume-curve-points-unclickable.md)）。
 

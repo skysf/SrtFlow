@@ -1530,8 +1530,8 @@ final class VideoEditProject: ObservableObject {
             item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
                 state: snapshot, plan: built.audioPlan, meters: meters
             ) ?? built.audioMix
-            // 变速片段保持音调，跟导出时 atempo 的听感一致。
-            item.audioTimePitchAlgorithm = .spectral
+            // 变速片段保持音调：和成片的离线混音同一个算法（成片的声音就是这份混音读出来的）。
+            item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
             self.clock.attachItem(item)
             self.clock.seek(to: min(time, snapshot.duration), precise: true)
             if wasPlaying { self.clock.player.play() }

@@ -60,6 +60,8 @@ enum VideoEditExportGraph {
         output: URL,
         cancellation: ExportCancellationToken? = nil
     ) async throws -> Plan {
+        // 混音要的是**用户那一份**：它走预览合成（`build` 自己排序、展开），展开只许一次。
+        let requested = state
         // 主轨的黑场补齐和 xfade 链都按数组顺序算，乱序输入会算出负时长的
         // 黑场/错位的转场。与预览合成同款防御（见 CompositionBuilder.build）。
         var state = state
@@ -183,55 +185,30 @@ enum VideoEditExportGraph {
             return "\(prefix)\(labelCounter)"
         }
 
-        /// 渐入渐出的 `afade` 段（逗号结尾，没设渐变时是空串）。
-        /// 必须插在 `atempo` **之后**：`afade` 的 st 走链上的当前时间轴，
-        /// 变速之后才等于时间线时间（判据见 AudioFadeWindow.afadeSegments）。
-        func afadeSteps(_ fades: AudioFadeWindow, timelineDuration: Double) -> String {
-            fades.afadeSegments(timelineDuration: timelineDuration)
-                .map { "afade=t=\($0.type):st=\(fmt($0.start)):d=\(fmt($0.duration))," }
-                .joined()
+        // MARK: 声音：离线读出预览那份混音
+        //
+        // 成片的声音**不在这张图里搭**：和预览同一份合成 + audioMix，由 ExportAudioMixdown 读成
+        // 一个正好 `total` 秒的 raw 文件，这里只把它当一路输入接上去、编成 AAC。音量、渐变、曲线、
+        // 推子、转场的交叉淡变、首尾定格的静音都已经在里面了（docs/architecture/export-audio-mixdown.md）。
+        // 一个出声的段都没有时垫一路静音：成片照旧总有一条音轨。
+        let mixdownFile = workspace.appendingPathComponent("audio-mixdown.f32")
+        switch try await ExportAudioMixdown.render(
+            state: requested, duration: total, to: mixdownFile, cancellation: cancellation
+        ) {
+        case .written:
+            inputArguments += ExportAudioMixdown.inputArguments(mixdownFile)
+        case .silent:
+            inputArguments += ["-f", "lavfi", "-t", fmt(total), "-i", "anullsrc=r=48000:cl=stereo"]
         }
-
-        /// 一段音频剪辑的滤镜链（裁剪、变速、音量、渐入渐出、落到时间线位置）。
-        /// 上层视频轨和音频轨都走这里 —— 两者都没有轨内转场，用户设的渐变直接生效。
-        ///
-        /// 增益那一步（音量或音量曲线 × 轨道推子 × 总推子）放在 `adelay` 之前：
-        /// 曲线走 `aeval`，而它在 `adelay` 垫的静音里读不到可靠的时间
-        ///（见 VideoEditExportAudioGain.swift）。
-        func audioChain(for clip: EditClip, source: Int, label: String) -> String {
-            let end = clip.sourceStart + clip.sourceDuration
-            let delay = Int((clip.timelineStart * 1000).rounded())
-            return "[\(source):a]atrim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
-                "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
-                ExportAudioGain.gainSteps(
-                    for: clip,
-                    gainScale: state.trackVolume(containingClip: clip.id) * state.masterVolume
-                ) +
-                afadeSteps(clip.audioFades, timelineDuration: clip.timelineDuration) +
-                "adelay=\(delay)|\(delay),aresample=48000," +
-                "aformat=sample_fmts=fltp:channel_layouts=stereo[\(label)]"
-        }
+        let audioMap = "\(inputs.count):a"
+        inputs.append(mixdownFile.path)
 
         // MARK: 纯音频：只选了声音，出一个音频文件
 
         if !hasVisual {
-            var labels: [String] = []
-            for clip in audioClips {
-                let label = nextLabel("ta")
-                filters.append(audioChain(for: clip, source: input(for: clip.sourceURL), label: label))
-                labels.append(label)
-            }
-            var audioOut = labels[0]
-            if labels.count > 1 {
-                let mixed = nextLabel("a")
-                let all = labels.map { "[\($0)]" }.joined()
-                filters.append("\(all)amix=inputs=\(labels.count):duration=longest:normalize=0[\(mixed)]")
-                audioOut = mixed
-            }
             var args: [String] = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1"]
             args += inputArguments
-            args += try ExportAudioGain.filterComplexArguments(filters.joined(separator: ";"), workspace: workspace)
-            args += ["-map", "[\(audioOut)]", "-c:a", "aac", "-b:a", "\(settings.audio.kbps)k"]
+            args += ["-map", audioMap, "-c:a", "aac", "-b:a", "\(settings.audio.kbps)k"]
             args += ["-t", fmt(total)]
             args.append(tempOutput.path)
             workspaceOwnershipTransferred = true
@@ -318,25 +295,23 @@ enum VideoEditExportGraph {
             }
         }
 
-        // MARK: 每节的视频/音频流
+        // MARK: 每节的画面流
 
-        var segmentLabels: [(video: String, audio: String, duration: Double)] = []
+        var segmentLabels: [(video: String, duration: Double)] = []
         for (segmentIndex, segment) in segments.enumerated() {
             let vLabel = nextLabel("v")
-            let aLabel = nextLabel("a")
             if let clip = segment.clip {
                 let source = input(for: clip.sourceURL)
                 // 真正从素材里取的那一段。转场余料不够时，渲染副本在两头多记了
                 // 一截**定格**（`renderHoldHead` / `renderHoldTail`），那两截不在
-                // 素材里：先按真素材截，变速之后再用 `tpad` 复制首尾帧、声音补
-                // 静音把它们接回去 —— 和预览合成那边「插一帧再拉长」同一笔账。
+                // 素材里：先按真素材截，变速之后再用 `tpad` 复制首尾帧把它们接回去
+                // —— 和预览合成那边「插一帧再拉长」同一笔账（定格那两截的静音在混音里）。
                 let start = clip.renderSourceStart
                 let end = start + clip.renderSourceDuration
                 let videoHolds = Self.holdSteps(video: clip)
-                let audioHolds = Self.holdSteps(audio: clip)
                 if case .main(let intermediate) = prerendered[clip.id] {
                     // 关键帧动画的段：中间片就是压平好的整段画面（黑底、画布
-                    // 尺寸、0 起点、时长=段长），直接进拼接链。声音仍走原素材。
+                    // 尺寸、0 起点、时长=段长），直接进拼接链。
                     let preSource = input(for: intermediate)
                     filters.append(
                         "[\(preSource):v]fps=\(fps),setsar=1,format=yuv420p[\(vLabel)]"
@@ -378,58 +353,22 @@ enum VideoEditExportGraph {
                         "pad=\(width):\(height):(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p[\(vLabel)]"
                     )
                 }
-                if clip.hasAudio, !clip.isMuted {
-                    // 转场那条边归 acrossfade 管（下面的拼接链），段内只做
-                    // 没有转场的那一边 —— 两边都做就是接缝处衰减两遍。
-                    let fades = AudioFadeWindow.exportMainTrack(
-                        clip: clip,
-                        hasTransitionBefore: segmentIndex > 0
-                            && segments[segmentIndex - 1].transition != .none,
-                        hasTransitionAfter: segment.transition != .none
-                    )
-                    // 增益（音量或曲线 × 推子）放在首尾定格**之前**：定格的静音是
-                    // `adelay` 垫的，`aeval` 在那一截里读不到可靠的时间。链上的第 0 秒
-                    // 因此是段的第 `renderHoldHead` 秒，曲线的时间轴要跟着减掉它
-                    //（减漏了整条曲线错后一截，check-audio-fade 第 7c 组钉着）。
-                    filters.append(
-                        "[\(source):a]atrim=start=\(fmt(start)):end=\(fmt(end))," +
-                        "asetpts=PTS-STARTPTS,\(atempoChain(clip.speed))" +
-                        ExportAudioGain.gainSteps(
-                            for: clip,
-                            gainScale: state.mainVolume * state.masterVolume,
-                            timeOffset: clip.renderHoldHead
-                        ) +
-                        "\(audioHolds)" +
-                        afadeSteps(fades, timelineDuration: segment.duration) +
-                        "aresample=48000," +
-                        "aformat=sample_fmts=fltp:channel_layouts=stereo[\(aLabel)]"
-                    )
-                } else {
-                    filters.append(
-                        "anullsrc=r=48000:cl=stereo,atrim=0:\(fmt(segment.duration))[\(aLabel)]"
-                    )
-                }
             } else {
                 filters.append(
                     "color=black:s=\(width)x\(height):r=\(fps):d=\(fmt(segment.duration)),format=yuv420p[\(vLabel)]"
                 )
-                filters.append(
-                    "anullsrc=r=48000:cl=stereo,atrim=0:\(fmt(segment.duration))[\(aLabel)]"
-                )
             }
-            segmentLabels.append((vLabel, aLabel, segment.duration))
+            segmentLabels.append((vLabel, segment.duration))
         }
 
-        // MARK: 顺次拼接：硬切用 concat，转场用 xfade + acrossfade
+        // MARK: 顺次拼接：硬切用 concat，转场用 xfade
 
         var video = segmentLabels[0].video
-        var audio = segmentLabels[0].audio
         var accumulated = segmentLabels[0].duration
         for index in 1..<segmentLabels.count {
             let next = segmentLabels[index]
             let boundary = segments[index - 1]
             let outV = nextLabel("v")
-            let outA = nextLabel("a")
             if boundary.transition != .none, let xfade = boundary.transition.xfadeName {
                 let d = boundary.transitionDuration
                 let offset = accumulated - d
@@ -447,22 +386,16 @@ enum VideoEditExportGraph {
                 filters.append(
                     "[\(leftTB)][\(rightTB)]xfade=transition=\(xfade):duration=\(fmt(d)):offset=\(fmt(offset))[\(outV)]"
                 )
-                filters.append(
-                    "[\(audio)][\(next.audio)]acrossfade=d=\(fmt(d)):c1=tri:c2=tri[\(outA)]"
-                )
                 accumulated = accumulated + next.duration - d
             } else {
                 filters.append("[\(video)][\(next.video)]concat=n=2:v=1:a=0[\(outV)]")
-                filters.append("[\(audio)][\(next.audio)]concat=n=2:v=0:a=1[\(outA)]")
                 accumulated += next.duration
             }
             video = outV
-            audio = outA
         }
 
         // MARK: 上层视频轨
 
-        var mixInputs: [String] = []
         for lane in overlayLanes {
             for clip in lane.clips where !clip.needsStillConversion {
                 let source = input(for: clip.sourceURL)
@@ -543,30 +476,7 @@ enum VideoEditExportGraph {
                     "enable='between(t,\(fmt(clip.timelineStart)),\(fmt(clip.timelineEnd)))'[\(outV)]"
                 )
                 video = outV
-
-                if clip.hasAudio, !clip.isMuted {
-                    let aLabel = nextLabel("oa")
-                    filters.append(audioChain(for: clip, source: source, label: aLabel))
-                    mixInputs.append(aLabel)
-                }
             }
-        }
-
-        // MARK: 音频轨
-
-        for clip in audioClips {
-            let aLabel = nextLabel("ta")
-            filters.append(audioChain(for: clip, source: input(for: clip.sourceURL), label: aLabel))
-            mixInputs.append(aLabel)
-        }
-
-        if !mixInputs.isEmpty {
-            let outA = nextLabel("a")
-            let all = ([audio] + mixInputs).map { "[\($0)]" }.joined()
-            filters.append(
-                "\(all)amix=inputs=\(mixInputs.count + 1):duration=longest:normalize=0[\(outA)]"
-            )
-            audio = outA
         }
 
         // MARK: 滤镜（调色）
@@ -707,8 +617,8 @@ enum VideoEditExportGraph {
 
         var args: [String] = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1"]
         args += inputArguments
-        args += try ExportAudioGain.filterComplexArguments(filters.joined(separator: ";"), workspace: workspace)
-        args += ["-map", "[\(video)]", "-map", "[\(audio)]"]
+        args += try ExportFilterScript.arguments(filters.joined(separator: ";"), workspace: workspace)
+        args += ["-map", "[\(video)]", "-map", audioMap]
 
         switch settings.encoder {
         case .softwareCRF:
@@ -808,37 +718,6 @@ enum VideoEditExportGraph {
             options.append("stop_mode=clone:stop_duration=\(fmt(clip.renderHoldTail))")
         }
         return options.isEmpty ? "" : "tpad=" + options.joined(separator: ":") + ","
-    }
-
-    /// 首尾定格对应的声音：定格那两截是静音（前面 `adelay` 垫、后面 `apad` 补）。
-    /// 同样接在变速之后；没有定格时是空串，有的话自带结尾逗号。
-    static func holdSteps(audio clip: EditClip) -> String {
-        var steps = ""
-        if clip.renderHoldHead > 0.0005 {
-            let delay = Int((clip.renderHoldHead * 1000).rounded())
-            steps += "adelay=\(delay)|\(delay),"
-        }
-        if clip.renderHoldTail > 0.0005 {
-            steps += "apad=pad_dur=\(fmt(clip.renderHoldTail)),"
-        }
-        return steps
-    }
-
-    /// atempo 只吃 0.5–2，之外的倍速拆成一串。返回内容自带结尾逗号。
-    static func atempoChain(_ speed: Double) -> String {
-        var remaining = speed
-        guard abs(remaining - 1) > 0.001 else { return "" }
-        var factors: [Double] = []
-        while remaining > 2.0 {
-            factors.append(2)
-            remaining /= 2
-        }
-        while remaining < 0.5 {
-            factors.append(0.5)
-            remaining /= 0.5
-        }
-        factors.append(remaining)
-        return factors.map { "atempo=\(fmt($0))" }.joined(separator: ",") + ","
     }
 
 }

@@ -280,6 +280,7 @@
 "Increase by 1" = "增加 1";
 "Decrease by 1" = "减少 1";
 "Could not prepare the animated clip %@ for export." = "动画片段 %@ 导出预渲染失败。";
+"Could not mix the timeline’s sound for export." = "导出时没能把时间线的声音混出来。";
 "Line" = "线条";
 "Rectangle" = "长方形";
 "Square" = "正方形";

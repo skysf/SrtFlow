@@ -109,7 +109,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出 | [画面文字](docs/architecture/text-overlays.md) |
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段 | [滤镜](docs/architecture/filters.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
-| 音量、dB、渐入渐出、音频滤镜链、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
+| 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
+| 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方 | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
 | 波形显示、深度缩放（缩放上限、标尺刻度、缩略图、超宽内容的绘制） | [波形与深度缩放](docs/architecture/audio-waveform.md)、[捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md) §5、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md) |
 | `AVAssetReader` 读采样（`copyNextSampleBuffer`），以及在 async 函数 / `Task` 里做任何会卡住线程的事（等信号量、同步 IO、等子进程） | [阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) |
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表、预览合成里声音怎么排到合成音轨上 | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节第 7 条：一条合成音轨只装一种源格式）、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
@@ -160,6 +161,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   tap 的真实混音，对账轨道表 / 总表 / 红灯）：`scripts/check-audio-fade.sh`。
 - 波形数据（多级峰值、原始采样块）逐采样对账，以及**很多文件同时读**必须全部读完、
   不许把线程池堵死（看门狗判红）：`scripts/check-waveform.sh`。
+- 成片的声音只有一条管线（导出图里不许出现声音滤镜，混音读的是预览那份合成 + audioMix，
+  变速的保音调算法是同一个常量）：`checks/export-audio-single-pipeline.sh`。
 - 读采样的阻塞循环（`copyNextSampleBuffer`）不许写在 async 函数里（会占住 Swift 并发
   线程池的线程，文件一多整档 QoS 死锁）：`checks/blocking-media-reads.sh`。
 - 生产导出帧率与分辨率（真跑导出：数帧、读成片尺寸 —— 只降不升、按短边、像素是方的）：
@@ -237,6 +240,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [插进两条轨之间 + 整条轨换位置](docs/plans/2026-09-24-track-insert-and-reorder.md) — 拖素材块 / Finder 文件 /
   音频库素材在缝上停 0.2 秒、缝拉开成 28pt 的窄缝再落进新轨（主轨下面不开缝、原轨只剩这一段时紧挨的两条缝不开）；
   按住轨道头拖整条轨换位置（学 Logic，调行高挪到下边缘，其余轨实时滑开）；逐条拍过的板和理由。
+- [声音场景 + 成片声音改从预览混音读](docs/plans/2026-09-24-sound-scenes.md) — 选中有声音的段时给它套
+  「喇叭 / 室内 / 室外」九个场景（海边不做：没有海浪声就和室外一样）、2–3 个通俗滑杆、余音越过段尾、效果排在段增益之后；
+  先把成片的声音改成离线读预览那份混音（用户：「两遍效率很低」），之后声音功能都只做一遍。
 - [预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) — 为什么数「活」不数 CPU
   指令（托管 runner 读不到计数器、CPU 时间差两倍的探针实测）、不挂自托管 runner、不许拿画质换数字、
   只许降不许涨（要加开销先在别处省回来）等拍过的板。
@@ -258,6 +264,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
 - [声音：音量与渐入渐出](docs/architecture/audio-fades.md) — 唯一夹紧点、转场仲裁、dB 换算、只换 audioMix 的快路径。
+- [成片的声音](docs/architecture/export-audio-mixdown.md) — 成片的声音就是预览那份混音离线读出来的（导出图里不许有声音滤镜）、读用户那一份状态（展开只许一次）、正好画面那么长、f32 中间文件、`MediaReadQueue.export`、和以前的成片比变了什么（单声道响 3 dB、变速换成预览的算法）。
 - [音量曲线](docs/architecture/audio-volume-curve.md) — 曲线属于段（dB、锚源时间、有点时取代 `volume`）、编辑动作本身不改声音、两条管线同一张折线表、导出 `aeval` 平衡树的六条实测约束（放在 `adelay` 之前并减掉首帧定格、最右叶子必须是常数、全精度数字、超大图走文件）。
 - [波形与深度缩放](docs/architecture/audio-waveform.md) — 一个文件读一次的三层精度（多级峰值 / 按需原始采样块 / 顶替）、粗级是 min/max 不是平均、画「听到的声音」且爆音涂红、**Canvas 只画 `clipBoundingRect`**（超宽内容的实测地基）。
 - [推子与电平表](docs/architecture/audio-mixer.md) — 三级增益一条账（段 × 渐变 × 轨道推子 × 总推子）、推子是常数直接乘进每一段、只动推子走快路径；电平表的七条实测约束（tap 看不到音量要自己乘同一张增益表、**tap 必须跟着合成活否则换 mix 卡 0.6 秒**、按绝对位置累加、提前 280ms、过滤空转回调、**一条合成音轨只装一种源格式否则 tap 死掉、那条轨没声音、播放器可能不走**）。

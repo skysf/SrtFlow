@@ -1,12 +1,16 @@
-# 声音：音量、渐入渐出与两条管线的同账
+# 声音：音量与渐入渐出
 
 > 2026-08-11 落地渐入渐出，2026-08-12 补 dB 显示与「只换 audioMix」快路径。
 > 改 `VideoEditAudioFade.swift`、`addVolumeRamps`、`makeAudioMix`、导出图里
 > 任何音频滤镜链之前必读。
 >
 > 2026-09-23 起同一条链上又多了两环：段上的[音量曲线](audio-volume-curve.md)（有点时取代
-> `volume`）和轨道 / 总[推子](audio-mixer.md)（常数，乘进每一段）。下面「两条管线同账」
-> 「只换 audioMix」「提前钉音量」三条对它们一样成立，实现各自写在那两份文档里。
+> `volume`）和轨道 / 总[推子](audio-mixer.md)（常数，乘进每一段）。下面「只换 audioMix」
+> 「提前钉音量」两条对它们一样成立，实现各自写在那两份文档里。
+>
+> **2026-09-24 起成片的声音就是预览这份混音离线读出来的**
+> （[成片的声音](export-audio-mixdown.md)）：导出不再有 ffmpeg 的 `afade` / `acrossfade` 那一份，
+> 下面凡是讲「导出那一侧」的条目都已退役，留着是为了说明当初为什么那样写。
 
 ## 长期约束
 
@@ -14,15 +18,15 @@
    `fadeOutDuration` 存的是用户在时间线上看到的长度。变速只改源与时间线的
    换算关系，不该逼用户重算渐变 —— 2 倍速的段设 1 秒渐入，就是时间线上的 1 秒。
 
-2. **生效值只有一个夹紧点：`EditClip.audioFades`。** 预览
-   （`AVMutableAudioMixInputParameters.setVolumeRamp`）和导出（ffmpeg `afade`）
-   都必须从它取，任何一侧都不许再自己夹一遍。
+2. **生效值只有一个夹紧点：`EditClip.audioFades`。** 预览的斜坡
+   （`AVMutableAudioMixInputParameters.setVolumeRamp`）从它取，调用点不许再自己夹一遍
+   （成片就是这份混音；2026-09-24 之前导出的 ffmpeg `afade` 也从它取）。
 
    夹紧的实现自 2026-09-17 起和**画面渐变共用一份**：`FadeWindow.clamped`
    （`VideoEditFadeWindow.swift`）。`AudioFadeWindow` 是 `FadeWindow` 的
-   typealias，声音专属的只剩 `previewMainTrack` / `exportMainTrack` /
-   `afadeSegments`。两边的产品语义逐字相同（「这一段的开头/结尾渐变多久」），
-   抄第二份一定会在下面这三条边界上分叉。三重收口缺一不可：
+   typealias，声音专属的只剩 `previewMainTrack`（导出那边的 `exportMainTrack` /
+   `afadeSegments` 2026-09-24 随导出声音链一起退役）。两边的产品语义逐字相同
+   （「这一段的开头/结尾渐变多久」），抄第二份一定会在下面这三条边界上分叉。三重收口缺一不可：
 
    - 非有限值和负数归零（数值框和工程文件都可能喂进 NaN）；
    - 各自不超过段长；
@@ -35,10 +39,9 @@
    NaN，不按当时的段长截断。写入时就截短的话，用户把段拉短再拉长，渐变再也
    回不来了 —— 而这一步在用户眼里只是「撤销了裁剪」。
 
-4. **曲线两边都必须是线性。** `afade` 的默认 `curve=tri` 就是线性，与
-   `setVolumeRamp` 的线性斜坡逐样本一致。任何一侧改成等功率/对数曲线，
-   立刻就是「预览听着对、成片不对」。`check-audio-fade.sh` 的「渐入中点 =
-   半音量」那条断言钉的就是这个。
+4. **渐变曲线是线性的**（`setVolumeRamp` 的线性斜坡）。`check-audio-fade.sh` 的「渐入中点 =
+   半音量」那条断言钉着 —— 改成等功率 / 对数曲线是产品决定，要先改那条断言。
+   （2026-09-24 之前这条讲的是「两边都线性」：导出的 `afade` 默认 `curve=tri` 恰好也是线性。）
 
 5. **转场那条边归转场管。** 主轨接缝上有转场时，转场自己就在做交叉淡变，
    用户设的渐变在那一边**不生效**：
@@ -47,19 +50,17 @@
      声音断了一下」。
    - 不取较长者：那会静默改写用户设的值，而转场时长本来就是他另外调过的。
 
-   仲裁写在 `AudioFadeWindow.previewMainTrack` / `exportMainTrack` 两个函数里
-   （画面那边只需要「抑制」一个口径，原因见
-   [video-fades](video-fades.md)），
-   **两者的差别是这块最容易写错的地方**：
+   仲裁写在 `AudioFadeWindow.previewMainTrack`：转场那条边换成**转场时长本身** —— 交叉淡变
+   就是靠这条斜坡实现的（A/B 两条合成音轨一条淡出、一条淡入）。画面那边只需要「抑制」一个口径，
+   原因见 [video-fades](video-fades.md)。
 
-   | | 转场那条边 | 为什么 |
-   | --- | --- | --- |
-   | 预览 | 换成**转场时长本身** | 预览没有 `acrossfade`，交叉淡变就是靠这条斜坡实现的 |
-   | 导出 | 换成 **0** | 导出的交叉淡变由段与段之间的 `acrossfade` 做，段内再加一条就是衰减两遍 |
+   2026-09-24 之前导出有自己的一份（`exportMainTrack`：转场那条边换成 **0**，因为导出的交叉淡变
+   由段与段之间的 `acrossfade` 做），两份的差别曾是这块最容易写错的地方；成片改读预览混音之后
+   只剩上面这一份。**斜坡照着展开过转场的几何铺**：`makeAudioMix` 自己展开（三个预览入口传的
+   是用户那一份状态，[案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)）。
 
-6. **`afade` 必须插在 `atempo` 之后**，且 `st` 用**时间线长度**算。`afade` 读的
-   是它在滤镜链上看到的时间轴，而链上 `atempo` 已经跑过。拿源长度算淡出起点，
-   2 倍速的段会在一半处就开始淡出，甚至整个落到段外（尾巴根本不淡）。
+6. （已退役，2026-09-24）导出的 `afade` 必须插在 `atempo` 之后、`st` 用时间线长度算 —— 导出
+   不再搭声音滤镜链之后，这条随之作废。预览这一侧的斜坡本来就铺在时间线秒上。
 
 7. **预览侧：每条合成音轨从时间 0 起就必须有确定的音量。**
    `AVMutableAudioMixInputParameters` 的第一条斜坡之前音量默认是 **1.0**，而
@@ -90,11 +91,11 @@
    `getVolumeRamp(for:...)`，注意它在查询点早于第一个设定点时**照样返回
    `true`**，要看返回的 `timeRange.start` 而不是返回值。
 
-   **ffmpeg 那侧没有这个问题**（`afade` 逐样本算增益），所以这条修复只在预览
-   管线里。两条管线在增益语义上不等价，别拿一侧的结论推另一侧。
+   成片现在就是这份混音离线读出来的，离线读同样有 ~17ms 的平滑窗口 —— 这条规矩从此
+   **同时保护预览和成片**（2026-09-24 之前导出走 ffmpeg 的 `afade`，逐样本算增益，没有这个问题）。
 
 8. **界面必须说出被抑制的那条边。** 主轨接缝上有转场时，检查器要显示一行说明
-   （`VideoEditInspector.fadeNote`），判据与合成/导出同一个来源
+   （`VideoEditInspector.fadeNote`），判据与合成同一个来源
    `transitionOverlap`。用户设了却听不出差别，不解释就是「功能坏了」。
 
 ## 音量：存线性，显示 dB
@@ -152,8 +153,8 @@ dB 只是界面换算，换算只有 `AudioGain` 一份。这样老工程照读�
 
 | 检查 | 守什么 |
 | --- | --- |
-| `scripts/check-audio-fade.sh` | **两条生产管线的真实音量包络**：导出走真实 `plan()` + 真跑 ffmpeg + 解码量 RMS；预览走真实 `build()` + `AVAssetReaderAudioMixOutput` 量 RMS。含变速用例、转场仲裁用例、**段从非零位置起的渐入起点峰值**用例，每组都带「同一时间线去掉渐变」的反例对照 |
-| `scripts/check-project-file.sh` | 夹紧规则（含按比例收、NaN、变速）、`afadeSegments` 参数、存盘往返、v9 登记与按需写键、v8 老文件缺键按 0 读、**dB 换算的往返与边界** |
+| `scripts/check-audio-fade.sh` | **真实音量包络**：导出走真实 `plan()` + 真跑 ffmpeg + 解码量 RMS；预览走真实 `build()` + `AVAssetReaderAudioMixOutput` 量 RMS。含变速用例、转场接缝用例（成片与预览逐窗一致；第 6b 组：预览三个入口用的那份 mix 在要展开的缝上符合绝对期望）、**段从非零位置起的渐入起点峰值**用例，每组都带「同一时间线去掉渐变」的反例对照 |
+| `scripts/check-project-file.sh` | 夹紧规则（含按比例收、NaN、变速）、转场那条边的仲裁、存盘往返、v9 登记与按需写键、v8 老文件缺键按 0 读、**dB 换算的往返与边界** |
 | `scripts/check-audio-fade.sh`（第 5 组） | **快路径与整条重建等价**：同一份音量/渐变改动，`makeAudioMix` 出来的包络与重建出来的逐点一致；以及 `differsOnlyInAudioMix` 对挪位置/裁剪/静音都要判否 |
 
 反例对照不是可选的：只断言「开头很轻」的话，素材本身若是静音起头，断言照样绿。
@@ -166,7 +167,8 @@ dB 只是界面换算，换算只有 `AudioGain` 一份。这样老工程照读�
 - **段起点必须有一组落在非零、非 600 时基整格的位置上**（用例里是 1.3337s）。
   全从 0 开始的用例恰好避开了唯一会触发增益跳变的场景。
 
-三次反向验证（2026-08-11 落地时做的，各自确认守卫真的变红）：
+三次反向验证（2026-08-11 落地时做的，各自确认守卫真的变红；1、3 两条针对的导出滤镜链已于
+2026-09-24 退役，新的反向验证见 [成片的声音](export-audio-mixdown.md)）：
 
 1. 导出的 `afadeSteps` 返回空串 → 12 项红（全部导出断言 + 接缝计数）。
 2. `addVolumeRamps` 忽略 `fades` → 10 项红（全部预览断言）。
