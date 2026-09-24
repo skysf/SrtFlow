@@ -52,6 +52,7 @@ struct CenterGuideLines: View {
     var showHorizontal: Bool
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             if showVertical {
                 Rectangle()

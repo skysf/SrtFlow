@@ -39,6 +39,7 @@ struct AudioLibraryPanel: View {
     @State private var showsClearConfirm = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             searchField
             if !allTags.isEmpty { tagFilter }
@@ -305,6 +306,7 @@ private struct AudioLibraryRow: View {
     private var isDownloading: Bool { cache.isDownloading(item.id) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(alignment: .top, spacing: 8) {
             auditionButton
             VStack(alignment: .leading, spacing: 2) {

@@ -10,6 +10,7 @@ struct VideoEditInspectorView: View {
     var onExport: () -> Void = {}
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if let seam = project.selectedTransitionSeam {

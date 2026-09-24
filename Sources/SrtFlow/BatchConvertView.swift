@@ -48,6 +48,7 @@ struct BatchConvertView: View {
     @ObservedObject private var model = BatchConvertModel.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 12) {
             fileList
 

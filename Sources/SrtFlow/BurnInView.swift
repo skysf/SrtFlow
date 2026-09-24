@@ -35,6 +35,7 @@ struct BurnInView: View {
     @State private var isPreviewExpanded = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         // 放大的预览必须用 overlay 而不是 ZStack 的兄弟节点：ZStack 的尺寸取各子项
         // 的最大值，而放大预览里那个 GeometryReader 是「有多少要多少」，会一路把
         // 窗口撑大（实测一点放大窗口就从 760 高变成 1838）。overlay 的尺寸跟着
@@ -516,6 +517,7 @@ private struct BurnInRow: View {
     let onPickSubtitle: () -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 8) {
                 statusIcon

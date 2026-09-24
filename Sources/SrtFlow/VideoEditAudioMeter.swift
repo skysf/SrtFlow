@@ -231,6 +231,7 @@ final class AudioMeterEngine: @unchecked Sendable {
                 context.configure(key: key, sampler: sampler, master: master)
                 return tap
             }
+            PerfCounters.event(.meterTapCreate)
             let context = TapContext(engine: self)
             context.configure(key: key, sampler: sampler, master: master)
             guard let tap = context.makeTap() else { return nil }

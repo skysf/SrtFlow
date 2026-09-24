@@ -94,6 +94,7 @@ private struct InstantHelpModifier: ViewModifier {
     @State private var anchor = TooltipAnchorBox()
 
     func body(content: Content) -> some View {
+        let _ = PerfCounters.body(Self.self)
         withShortcut(content)
             // 用 background 不用 overlay：overlay 铺在控件上面，会切走 SwiftUI
             // 侧的手势区域。
@@ -152,6 +153,7 @@ private struct TooltipAnchorLayer: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context: Context) {
+        PerfCounters.update(Self.self)
         box.view = view
     }
 
@@ -307,6 +309,7 @@ private struct TooltipContent: View {
     let shortcut: String?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 6) {
             label
                 .font(.system(size: 11))

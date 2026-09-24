@@ -77,6 +77,7 @@ private struct ShapeBlockView: View {
     private var width: Double { max(TimelineMarquee.shapeMinimumWidth, shape.duration * pps) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 3) {
             Image(systemName: shape.kind.icon)
                 .font(.system(size: 8))

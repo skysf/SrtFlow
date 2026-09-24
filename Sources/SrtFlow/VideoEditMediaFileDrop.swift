@@ -158,6 +158,7 @@ struct MediaFileDropIndicator: View {
     let fullWidth: Double
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             if plan.isProbing {
                 RoundedRectangle(cornerRadius: 4)

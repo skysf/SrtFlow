@@ -38,6 +38,7 @@ struct SubtitleFrameCanvas: View {
     private var frameRect: CGRect { geometry.frameRect }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             ResizableFrameBox(
                 rect: frameRect,

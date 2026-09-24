@@ -20,6 +20,7 @@ struct ScreenRecordingSetupView: View {
     @State private var selectedMicrophoneID: String = ""
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Record Screen").font(.headline)
@@ -186,6 +187,7 @@ struct ScreenRecordingPartialSheet: View {
     let onDecide: (Bool) -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 12) {
             Label("Recording is incomplete", systemImage: "exclamationmark.triangle")
                 .font(.headline)
@@ -226,6 +228,7 @@ struct ScreenRecordingRecoverySheet: View {
     let onDecide: (RecoveryDecision) -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 12) {
             Label(
                 recovery.kind == .microphoneOnly

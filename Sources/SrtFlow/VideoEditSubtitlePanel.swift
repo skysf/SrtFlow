@@ -41,6 +41,7 @@ struct VideoEditSubtitlePanel: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 0) {
             header
             Divider()

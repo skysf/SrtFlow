@@ -135,6 +135,7 @@ private struct AppLanguageModifier: ViewModifier {
     @ObservedObject private var store = AppLanguageStore.shared
 
     func body(content: Content) -> some View {
+        let _ = PerfCounters.body(Self.self)
         if let locale = store.language.locale {
             content.environment(\.locale, locale)
         } else {
@@ -149,6 +150,7 @@ struct AppLanguagePicker: View {
     var showsLabel = true
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Picker(selection: $store.language) {
             ForEach(AppLanguage.allCases) { option in
                 Text(option.displayName).tag(option)

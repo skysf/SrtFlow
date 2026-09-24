@@ -272,6 +272,7 @@ struct TimelineDropPlaceholder: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         RoundedRectangle(cornerRadius: 4)
             .fill(Color.teal.opacity(0.18))
             .overlay(

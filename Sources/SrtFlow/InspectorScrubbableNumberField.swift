@@ -33,6 +33,7 @@ struct InspectorScrubbableNumberField: View {
     private static let gap: Double = 2
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         // resizeLeftRight 光标由 AppKit 字段自己的 cursor rect 提供（只盖数字
         // 区，不盖箭头，编辑态自动回文本光标），这里不做任何 push/pop。
         HStack(spacing: Self.gap) {
@@ -113,6 +114,7 @@ private struct ScrubbableNumberFieldRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ScrubbableNumberField, context: Context) {
+        PerfCounters.update(Self.self)
         updateCallbacks(nsView)
         updateFormat(nsView)
         // 编辑中或拖调中都别用外部值覆盖：编辑中会打断正在输入的文字，

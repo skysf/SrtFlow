@@ -86,6 +86,7 @@ struct TextOverlayCanvas: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             // 底噪：不拦事件，否则点画面空白就再也选不中底下的剪辑了。
             Color.clear.allowsHitTesting(false)

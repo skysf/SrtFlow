@@ -63,6 +63,7 @@ struct ClipBlockView: View {
     private var trackGain: Double { project.state.trackVolume(for: slot) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             // 单独隐藏的段（V）：灰显去色，但**不关命中** —— 它还得点得中、拖得动、
             // 能再按一次 V 放出来（整轨隐藏那边才是「灰显且不可编辑」，合同见

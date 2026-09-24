@@ -229,6 +229,7 @@ struct TranslationHostView: View {
     @ObservedObject private var coordinator = TranslationJobCoordinator.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         // 零尺寸但常驻视图树：translationTask 的宿主。
         // job 在**同一次 body 求值**里被捕获进 action：这次 action 拿到的
         // session 就绑定这个 jobID，configuration 换代后旧 action 迟到也

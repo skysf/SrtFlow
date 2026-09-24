@@ -110,6 +110,7 @@ struct VideoEditTimelineView: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         if project.state.isEmpty {
             emptyState
         } else {

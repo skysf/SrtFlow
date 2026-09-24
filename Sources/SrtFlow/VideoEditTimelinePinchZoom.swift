@@ -32,6 +32,7 @@ struct TimelineMagnificationBridge: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: TimelineZoomReferenceView, context: Context) {
+        PerfCounters.update(Self.self)
         context.coordinator.pixelsPerSecond = $pixelsPerSecond
         context.coordinator.referenceView = nsView
     }

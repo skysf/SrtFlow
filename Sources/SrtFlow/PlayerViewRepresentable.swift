@@ -30,6 +30,7 @@ struct PlayerViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
+        PerfCounters.update(Self.self)
         if nsView.player !== player { nsView.player = player }
         if nsView.controlsStyle != controlsStyle { nsView.controlsStyle = controlsStyle }
         // 每秒会被调二十次（时钟 0.05s 一跳），所以「挂的还是不是上次那套」

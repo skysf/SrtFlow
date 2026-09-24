@@ -28,6 +28,7 @@ struct RowHeightDragModifier: ViewModifier {
     @Binding var session: RowHeightDragState?
 
     func body(content: Content) -> some View {
+        let _ = PerfCounters.body(Self.self)
         if let key, kind.heightRange != nil {
             content
                 .gesture(

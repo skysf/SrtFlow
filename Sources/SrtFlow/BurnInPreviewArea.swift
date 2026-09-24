@@ -84,6 +84,7 @@ struct BurnInPreviewArea: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 8) {
             header
             videoBox
@@ -379,6 +380,7 @@ struct BurnInSubtitleOverlay: View {
     ]
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: alignment) {
             Color.clear
             block
@@ -550,6 +552,7 @@ private struct MarginGuideOverlay: View {
     private var edgeInset: Double { Double(style.marginVertical) * scale }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             verticalGuide(at: sideInset, label: "\(style.marginHorizontal)", labelOnRight: true)
             verticalGuide(at: boxSize.width - sideInset, label: "\(style.marginHorizontal)", labelOnRight: false)
@@ -597,6 +600,7 @@ private struct GuideLabel: View {
     let text: String
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Text(text)
             .font(.caption2)
             .monospacedDigit()

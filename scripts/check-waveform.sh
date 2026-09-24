@@ -35,6 +35,7 @@ xcrun swiftc \
   -wmo \
   -o "$OUT" \
   Sources/SrtFlow/MediaReadQueue.swift \
+  Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
   Sources/SrtFlow/VideoEditWaveformDetail.swift \
   checks/Waveform/main.swift

@@ -12,6 +12,7 @@ struct SubtitleGenPanel: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 0) {
             HStack {
                 Text("Subtitles").font(.headline)
@@ -67,6 +68,7 @@ private struct SubtitleGenPanelContent: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 12) {
             // 这里曾经有一个「Preview track（原文/译文/双语）」选择器。
             // 已删除（2026-08-09 用户拍板）：一个语言一条字幕轨，显示什么由
@@ -235,6 +237,7 @@ private struct TranscriptionSection: View {
     @State private var showsReplaceConfirm = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 8) {
             Text("Generate from audio").font(.subheadline).bold()
 

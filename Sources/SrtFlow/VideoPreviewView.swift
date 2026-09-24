@@ -34,10 +34,7 @@ final class PlayerClock: ObservableObject {
             forInterval: CMTime(seconds: observationInterval, preferredTimescale: 600),
             queue: .main
         ) { [weak self] cmTime in
-            guard let self else { return }
-            // 悬停预览期间播放器在别处扫帧，这些回调不能写回播放头 ——
-            // 否则播放头还是会被悬停拖走，peek 就白做了。
-            if self.peekTime == nil { self.time = cmTime.seconds }
+            self?.observePlaybackTime(cmTime.seconds)
         }
         // 播放/暂停按钮要跟着实际状态走：播到片尾时 rate 会自己变 0，
         // 光靠自己按下去的那一下记状态会不准。
@@ -49,6 +46,17 @@ final class PlayerClock: ObservableObject {
                 DispatchQueue.main.async { self?.isPlaying = playing }
             }
         }
+    }
+
+    /// 播放器报来一次播放时间（播放时每 `observationInterval` 一次）。
+    ///
+    /// 单独成一个方法是为了性能测试：它的「时钟连跳」要走和真播放**同一段**
+    /// 代码（PreviewBench.swift），不能另写一份直接改 `time`。
+    func observePlaybackTime(_ seconds: TimeInterval) {
+        PerfCounters.event(.clockTick)
+        // 悬停预览期间播放器在别处扫帧，这些回调不能写回播放头 ——
+        // 否则播放头还是会被悬停拖走，peek 就白做了。
+        if peekTime == nil { time = seconds }
     }
 
     deinit {
@@ -70,6 +78,7 @@ final class PlayerClock: ObservableObject {
     /// 换上一个现成的条目（时间线合成不是 URL，`attach(url:)` 用不上）。
     /// 播放头交给调用方自己恢复。
     func attachItem(_ item: AVPlayerItem) {
+        PerfCounters.event(.playerItemAttach)
         pendingScrubTarget = nil
         peekTime = nil
         player.replaceCurrentItem(with: item)

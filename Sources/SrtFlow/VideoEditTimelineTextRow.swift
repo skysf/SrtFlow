@@ -32,6 +32,7 @@ struct TextBlockView: View {
     private var width: Double { max(TimelineMarquee.textMinimumWidth, overlay.duration * pps) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 3) {
             Image(systemName: "textformat")
                 .font(.system(size: 8))

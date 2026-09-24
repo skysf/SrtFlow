@@ -64,6 +64,7 @@ struct TextFrameBox: View {
     private var center: CGPoint { CGPoint(x: frame.midX, y: frame.midY) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack {
             Rectangle()
                 .strokeBorder(Color.accentColor, lineWidth: 1)

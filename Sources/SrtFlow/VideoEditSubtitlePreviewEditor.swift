@@ -39,6 +39,7 @@ struct SubtitlePreviewEditLayer: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             hotspot
             if let editingCueID, let cue = cue(editingCueID) {

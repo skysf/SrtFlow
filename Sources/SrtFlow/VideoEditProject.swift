@@ -1473,6 +1473,7 @@ final class VideoEditProject: ObservableObject {
         // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
         // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
         guard !isRebuildingPreview else { return false }
+        PerfCounters.event(.audioMixRefresh)
         item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
         return true
     }

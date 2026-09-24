@@ -86,6 +86,7 @@ struct MainWindowView: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         NavigationSplitView(columnVisibility: $state.sidebarVisibility) {
             sidebar
         } detail: {
@@ -380,6 +381,7 @@ private struct SidebarToolRow: View {
     let isCompact: Bool
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 6) {
             // SwiftUI 没有 `AnyLabelStyle`，样式擦不了类型，只能分两支写。
             if isCompact {

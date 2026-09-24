@@ -43,6 +43,7 @@ struct ClipTransformCanvas: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             Color.clear
                 .contentShape(Rectangle())
@@ -221,6 +222,7 @@ struct ResizableFrameBox: View {
     private let minSide: Double = 14
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         frameContent
             .frame(width: bounds.width, height: bounds.height, alignment: .topLeading)
             .rotationEffect(
@@ -372,6 +374,7 @@ private struct TapLocationModifier: ViewModifier {
     let onTap: ((CGPoint) -> Void)?
 
     func body(content: Content) -> some View {
+        let _ = PerfCounters.body(Self.self)
         if let onTap {
             content.onTapGesture(coordinateSpace: .named(space)) { onTap($0) }
         } else {

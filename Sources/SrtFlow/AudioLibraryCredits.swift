@@ -28,6 +28,7 @@ struct AudioLibraryCreditsView: View {
     private var usedItems: [AudioLibraryItem] { sorted.filter { usedIDs.contains($0.id) } }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             header
             Divider()

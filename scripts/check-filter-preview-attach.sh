@@ -36,6 +36,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditFilterLUT.swift \

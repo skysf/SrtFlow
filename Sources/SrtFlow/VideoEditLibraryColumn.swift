@@ -49,6 +49,7 @@ struct LibraryColumn: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             Picker("", selection: tab) {
                 ForEach(Tab.allCases) { item in

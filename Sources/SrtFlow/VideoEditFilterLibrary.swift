@@ -97,6 +97,7 @@ struct FilterLibraryPanel: View {
     @StateObject private var thumbnails = FilterThumbnailStore()
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             if let note = emptyNote {
                 Text(note)
@@ -173,6 +174,7 @@ struct FilterPickerGrid: View {
     private let columns = [GridItem(.adaptive(minimum: 76, maximum: 120), spacing: 8)]
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Group {
             if scrolls {
                 ScrollView { cards }
@@ -218,6 +220,7 @@ private struct FilterCard: View {
     @State private var hovering = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 3) {
             ZStack(alignment: .bottomTrailing) {
                 preview

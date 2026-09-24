@@ -35,7 +35,9 @@ struct WaveformView: View {
     static let stereoSplitHeight = 40.0
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Canvas { [detailRevision] context, size in
+            PerfCounters.canvas(Self.self)
             _ = detailRevision
             guard let peaks, peaks.sampleRate > 0, pps > 0 else { return }
             WaveformPainter(

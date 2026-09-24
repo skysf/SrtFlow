@@ -65,6 +65,7 @@ struct SubtitleEditPanel: View {
     @State private var saveError: String?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 0) {
             header
             Divider()
@@ -372,6 +373,7 @@ struct SubtitleEditPanel: View {
 struct CurrentCueHighlight: ViewModifier {
     let isCurrent: Bool
     func body(content: Content) -> some View {
+        let _ = PerfCounters.body(Self.self)
         content
             .fontWeight(isCurrent ? .semibold : .regular)
             .foregroundStyle(isCurrent ? Color.accentColor : Color.primary)
@@ -390,6 +392,7 @@ struct TimecodeField: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         TextField("", text: $text)
             .focused($focused)
             .onSubmit { commit() }
