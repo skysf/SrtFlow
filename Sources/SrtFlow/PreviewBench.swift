@@ -20,7 +20,8 @@ enum PreviewBench {
         init(_ description: String) { self.description = description }
     }
 
-    /// 时钟连跳的次数和间隔：和播放时一样每 0.05 秒一跳，跳 3 秒。
+    /// 时钟连跳的次数和步长：每跳一下播放时间前进 0.05 秒（和播放时一样），跳 60 下。
+    /// 跳之间不按固定间隔，而是等界面停下来（见 `run`）。
     static let tickCount = 60
     static let tickInterval = 0.05
 
@@ -85,26 +86,34 @@ enum PreviewBench {
         record(idle, as: "\(name).idle", into: &gated, &report, &breakdown)
 
         // 时钟连跳：走真播放同一个入口（observePlaybackTime），播放器本身停着 ——
-        // 量的是「时钟跳一下，界面要重算多少东西」，和机器快慢无关。
+        // 量的是「时钟跳一下，界面要重算多少东西」。
+        //
+        // **每跳一下都等界面完全停下来再跳下一下**，不能按固定间隔跳：有些重绘跟着屏幕
+        // 刷新走，一跳的更新要是拖过了下一跳（CI 上 busy 场景一跳就要吃约 58ms CPU），
+        // 两跳会并成一次刷新，数就随机器快慢变了 —— 2026-09-24 首跑两遍标尺重算
+        // 55 / 59 次，就是按 50ms 固定间隔跳的。
         let ticks = try await measure {
             for step in 1...tickCount {
                 project.clock.observePlaybackTime(scenario.tickStart + Double(step) * tickInterval)
-                try await Task.sleep(for: .seconds(tickInterval))
+                try await settle(project, quietFor: 0.12, timeout: 30)
             }
-            try await settle(project, quietFor: 0.5, timeout: 30)
         }
         guard ticks.counts["event:\(PerfCounters.Event.clockTick.rawValue)"] == tickCount else {
             throw Failure("时钟连跳记到的次数不对：\(ticks.counts) —— 计数没接上，数字不可信")
         }
         record(ticks, as: "\(name).ticks", into: &gated, &report, &breakdown)
 
-        // 改几刀：重建合成、开素材、换播放条目、建 tap 各几次。
+        // 改几刀：重建合成、开素材、换播放条目、建 tap 各几次 —— 这些卡住。
+        // 这一段的 body / Canvas 次数**只报不卡**：一刀下去是防抖、建合成、换条目、seek
+        // 一串异步的事，中间刷几次屏看时机（首跑两遍差 1–9 次），固定不下来。
         let edits = try await measure {
             try await scenario.edits(on: project) {
                 try await settle(project, quietFor: 0.6, timeout: 30)
             }
         }
-        record(edits, as: "\(name).edits", into: &gated, &report, &breakdown)
+        var editWork: [String: Int] = [:]
+        record(edits, as: "\(name).edits", into: &editWork, &report, &breakdown)
+        for (key, value) in editWork { report[key] = Double(value) }
         for event in [PerfCounters.Event.compositionBuild, .compositionAssetOpen, .playerItemAttach,
                       .meterTapCreate, .audioMixRefresh] {
             gated["\(name).edits.\(event.rawValue)"] = edits.counts["event:\(event.rawValue)"] ?? 0
