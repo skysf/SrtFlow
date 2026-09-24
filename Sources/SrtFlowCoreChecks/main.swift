@@ -476,6 +476,36 @@ do {
     check(!metadataArgs.contains("+faststart"), "faststart can be turned off")
 }
 
+// MARK: - 分辨率档位：按短边封顶（剪辑导出用 cappedSize 算出确切尺寸）
+
+do {
+    func size(_ limit: ResolutionLimit, _ width: Int, _ height: Int) -> String {
+        guard let capped = limit.cappedSize(width: width, height: height) else { return "nil" }
+        return "\(capped.width)x\(capped.height)"
+    }
+    checkEqual(size(.hd720, 1920, 1080), "1280x720", "16:9 1080p → 720p")
+    checkEqual(size(.hd720, 1080, 1920), "720x1280", "9:16 caps the width (short side)")
+    checkEqual(size(.fhd1080, 1920, 1080), "nil", "already 1080p: no scaling")
+    checkEqual(size(.fhd1080, 1080, 1920), "nil", "portrait 1080p already fits 1080p")
+    checkEqual(size(.fhd1080, 3840, 2160), "1920x1080", "4K → 1080p")
+    checkEqual(size(.sd480, 1000, 562), "854x480", "odd aspect: the long side rounds to even")
+    checkEqual(size(.fhd1080, 3024, 1964), "1662x1080", "Retina screen recording → 1080p")
+    checkEqual(size(.hd720, 1080, 1080), "720x720", "square")
+    checkEqual(size(.original, 3840, 2160), "nil", "original never scales")
+    checkEqual(size(.hd720, 0, 0), "nil", "degenerate size is ignored")
+
+    checkEqual(ResolutionLimit.downscaleOptions(width: 1920, height: 1080), [.hd720, .sd480],
+               "a 1080p canvas offers 720p and 480p")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 1080, height: 1920), [.hd720, .sd480],
+               "a portrait canvas is judged by its short side too")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 3840, height: 2160), [.qhd1440, .fhd1080, .hd720, .sd480],
+               "4K offers every tier below it, largest first")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 854, height: 480), [ResolutionLimit](),
+               "a 480p canvas has nothing lower")
+    checkEqual(ResolutionLimit.downscaleOptions(width: 5120, height: 2880).first, .uhd2160,
+               "5K offers 2160p first")
+}
+
 // MARK: - 进度解析
 
 do {

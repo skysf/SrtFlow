@@ -24,8 +24,27 @@
 —— ASS 写的是 `PlayResY=1080` 加 `ScaledBorderAndShadow: yes`，libass 把这块虚拟
 画布等比缩放到实际分辨率（`BurnInStyle.swift`）。
 
+### 剪辑导出：画完再缩，放在滤镜图最后
+
+画布、文字、形状、字幕全按工程尺寸画完，最后整幅 `scale=W:H,setsar=1`
+（`VideoEditExportGraph` 末尾；W×H 由 `ResolutionLimit.cappedSize` 算出确切像素）。
+
+1. **为什么不学压缩工具先缩再烧字幕**：剪辑导出的承诺是「预览看到什么、导出就是
+   什么」。最后整幅缩小，成片严格等于全尺寸那一版的缩小版；先缩再烧，字幕就是在
+   另一个分辨率下重新排的，得再证明一遍它和预览对得上。换来的清晰度在 720p 上差别
+   很小。
+2. **`setsar=1` 不能省**：取偶数会让宽高比差一丝（1000×562 → 854×480），scale 会
+   改 SAR 去补（实测 1.000108），播放器照着它按非方形像素显示。
+3. **画布本身不变，只降不升**：画布的固定比例都是 1080 级（`CanvasRatio.fixedSize`，
+   16:9 就是 1920×1080）。想要「16:9 出 4K」是另一件事 —— 画布、文字、形状、变换、
+   预渲染都得按新尺寸重建，没做。
+4. 能选的档位：「跟随工程」加上 `ResolutionLimit.downscaleOptions` 给出的、短边比
+   画布小的那几档。
+
 ## 回归矩阵
 
 | 检查 | 守什么 |
 | --- | --- |
 | `SrtFlowCoreChecks`（ffmpeg 参数构建一节） | 压缩 / 烧录：横屏、竖屏、正方形各自压哪一边，只降不升，宽高缺一个不缩 |
+| `SrtFlowCoreChecks`（分辨率档位一节） | `cappedSize` 的确切像素（竖屏、奇怪比例取偶数）、`downscaleOptions` 给哪几档 |
+| `scripts/check-export-frame-rate.sh`（第三组） | 剪辑导出**真跑一遍**读成片尺寸：16:9 / 9:16 选 720p、跟随工程、档位不小于画布时不缩；奇怪比例下像素是方的（守 `setsar=1`） |

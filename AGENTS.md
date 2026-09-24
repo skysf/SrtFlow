@@ -157,7 +157,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   不许把线程池堵死（看门狗判红）：`scripts/check-waveform.sh`。
 - 读采样的阻塞循环（`copyNextSampleBuffer`）不许写在 async 函数里（会占住 Swift 并发
   线程池的线程，文件一多整档 QoS 死锁）：`checks/blocking-media-reads.sh`。
-- 生产导出帧率：`scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
+- 生产导出帧率与分辨率（真跑导出：数帧、读成片尺寸 —— 只降不升、按短边、像素是方的）：
+  `scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
 - 定格时间线变换：`scripts/check-freeze-frame.sh`。
 - 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。

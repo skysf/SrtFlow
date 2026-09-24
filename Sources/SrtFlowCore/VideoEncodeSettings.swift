@@ -57,6 +57,26 @@ public enum ResolutionLimit: String, CaseIterable, Codable, Sendable {
         }
     }
 
+    /// 按短边封顶后的输出尺寸：等比，长边收成偶数（档位本身都是偶数）。
+    /// 不用缩 —— 不封顶，或短边本来就不超过上限 —— 时返回 nil：只降不升。
+    public func cappedSize(width: Int, height: Int) -> (width: Int, height: Int)? {
+        guard let cap = maxShortSide, width > 0, height > 0 else { return nil }
+        let short = min(width, height)
+        guard short > cap else { return nil }
+        let long = Double(max(width, height)) * Double(cap) / Double(short)
+        let evenLong = max(2, Int((long / 2).rounded()) * 2)
+        return width >= height ? (evenLong, cap) : (cap, evenLong)
+    }
+
+    /// 一块 width×height 的画面能往下选的档位：短边严格小于它的那几档，从大到小。
+    /// 不含 `original` —— 「跟随原尺寸」由调用方自己放在第一个。
+    public static func downscaleOptions(width: Int, height: Int) -> [ResolutionLimit] {
+        allCases.filter { limit in
+            guard let cap = limit.maxShortSide else { return false }
+            return cap < min(width, height)
+        }
+    }
+
     public var displayName: String {
         switch self {
         case .original: return "Original"

@@ -690,6 +690,19 @@ enum VideoEditExportGraph {
             video = outV
         }
 
+        // MARK: 缩小到导出分辨率（只降不升，放在最后）
+        //
+        // 画布、文字、形状、字幕全按工程尺寸画完，最后整幅等比缩小：成片就是
+        // 全尺寸那一版缩小，预览看到什么、导出就是什么。压缩工具是先缩再烧字幕
+        // （为了字幕更清晰），这里不学它 —— 理由见 docs/architecture/export-settings.md。
+        // `setsar=1`：取偶数会让宽高比差一丝，scale 会改 SAR 去补，播放器照着
+        // 那个 SAR 显示就是非方形像素。
+        if let target = settings.resolution.cappedSize(width: width, height: height) {
+            let outV = nextLabel("v")
+            filters.append("[\(video)]scale=\(target.width):\(target.height),setsar=1[\(outV)]")
+            video = outV
+        }
+
         // MARK: 组装参数
 
         var args: [String] = ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-progress", "pipe:1"]
