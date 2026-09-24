@@ -107,12 +107,14 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
     /// 这段内容需要逐帧渲染吗（动画或数字滚动）。
     var needsPerFrameRendering: Bool { !animation.isEmpty || number != nil }
 
-    /// 头部需要逐帧的那一截：入场动画和数字滚动谁长听谁的。
+    /// 头部需要逐帧的那一截：入场动画和数字「等待 + 滚动」谁长听谁的。
     ///
     /// 数字滚完之前画面每一帧都在变，哪怕入场动画早就结束了 ——
-    /// 只按入场时长切段的话，滚动的后半截会被冻成一张静止图。
+    /// 只按入场时长切段的话，滚动的后半截会被冻成一张静止图。等待也算在头里：
+    /// 等待期间画面虽然不变，但滚动在它之后，只按滚动时长切的话数字会在等待
+    /// 结束那一刻被冻住。
     func animatedHead(window: FadeWindow) -> Double {
-        max(window.fadeIn, number.map { min($0.duration, duration) } ?? 0)
+        max(window.fadeIn, number.map { min($0.settleTime, duration) } ?? 0)
     }
 
     /// 时间线块上显示的名字。空的时候给个占位，否则块上是一片空白。

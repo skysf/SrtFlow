@@ -727,6 +727,8 @@
 "Odometer" = "老虎机";
 "Count up changes the whole number; Odometer rolls each digit on its own wheel" = "数值递增让整个数字连续变化；老虎机让每一位在自己的数字带上滚";
 "Roll for" = "滚动时长";
+"Delay" = "等待";
+"Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting" = "段开始后先等这么久再开始滚动；等待期间显示起始值";
 "Decimals" = "小数位";
 "Thousands" = "千分位";
 "Group thousands with commas" = "用逗号按三位分组";

@@ -91,6 +91,7 @@ xcrun swiftc \
   checks/TextRender/main.swift \
   checks/TextRender/Assertions.swift \
   checks/TextRender/HitGeometry.swift \
+  checks/TextRender/NumberDelay.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

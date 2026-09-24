@@ -291,6 +291,18 @@ extension TimelineState {
     /// 按同一判据跳过）。合同见 docs/architecture/sound-scenes.md。
     var requiresFormatVersion20: Bool { hasSoundScenes }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v21-only 持久数据。
+    ///
+    /// **登记清单（新增 v21-only 字段必须同步补进来）：**
+    /// 1. `NumberRoll.delay` —— 数字元件先等几秒再滚（**按需写入**：0 不落键）。
+    ///
+    /// 为什么要升版本：等待**直接决定成片**（数字什么时候开始动）。只认 v20 的旧版
+    /// 打开后等待消失、数字从段起点就开始滚，随手编辑触发自动保存即永久丢失。
+    /// 按 v8 的**按需**写法：没设过等待的工程不是 v21 数据。
+    var requiresFormatVersion21: Bool {
+        textOverlays.contains { ($0.number?.delay ?? 0) > 0 }
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

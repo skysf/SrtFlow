@@ -727,6 +727,8 @@
 "Odometer" = "Odometer";
 "Count up changes the whole number; Odometer rolls each digit on its own wheel" = "Count up changes the whole number; Odometer rolls each digit on its own wheel";
 "Roll for" = "Roll for";
+"Delay" = "Delay";
+"Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting" = "Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting";
 "Decimals" = "Decimals";
 "Thousands" = "Thousands";
 "Group thousands with commas" = "Group thousands with commas";

@@ -51,6 +51,26 @@ extension VideoEditInspectorView {
                 Spacer(minLength: 0)
             }
 
+            // 等待：从段起点算，先停在起始值上几秒再开始滚（2026-09-24 用户拍板）。
+            let liveDelay = liveNumberBinding(overlay, \.delay)
+            HStack(spacing: 6) {
+                Text("Delay").font(.caption).foregroundStyle(.secondary)
+                    .frame(width: 56, alignment: .leading)
+                InspectorScrubbableNumberField(
+                    value: numberBinding(overlay, \.delay),
+                    range: NumberRoll.delayRange,
+                    fractionDigits: 1,
+                    width: 58,
+                    onScrubBegin: { project.beginLiveEdit() },
+                    onScrubChanged: { liveDelay.wrappedValue = $0 },
+                    onScrubEnd: { project.endLiveEdit(rebuildsPreview: false) },
+                    onScrubCancel: { project.cancelLiveEdit() }
+                )
+                Text("s").font(.caption2).foregroundStyle(.tertiary)
+                Spacer(minLength: 0)
+            }
+            .instantHelp("Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting")
+
             HStack(spacing: 6) {
                 Text("Decimals").font(.caption).foregroundStyle(.secondary)
                     .frame(width: 56, alignment: .leading)

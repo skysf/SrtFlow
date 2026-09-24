@@ -604,27 +604,8 @@ func main() async {
     check((inkCounts.last ?? 0) > (inkCounts.first ?? 0) * 2,
           "打字机结束时的墨迹要明显多于开头，实际 \(inkCounts)")
 
-    // MARK: 11 —— 数字格式化：无区域依赖、定点、千分位
-    //
-    // 成片是文件：同一份工程在不同区域设置的机器上必须渲出一模一样的画面。
-    // 所以格式化是自己写死的，不走 `NumberFormatter`。
-
-    checkEqual(NumberRoll.format(1234567, fractionDigits: 0, groupsThousands: true),
-               "1,234,567", "千分位按三位分组")
-    checkEqual(NumberRoll.format(1234567, fractionDigits: 0, groupsThousands: false),
-               "1234567", "关掉千分位就不分组")
-    checkEqual(NumberRoll.format(1234.5, fractionDigits: 2, groupsThousands: true),
-               "1,234.50", "小数位不足要补零")
-    checkEqual(NumberRoll.format(-42.125, fractionDigits: 2, groupsThousands: true),
-               "-42.13", "负数与四舍五入")
-    checkEqual(NumberRoll.format(999.999, fractionDigits: 2, groupsThousands: true),
-               "1,000.00", "进位要带着整数部分一起进（不能出 999.100）")
-    checkEqual(NumberRoll.format(0, fractionDigits: 0, groupsThousands: true),
-               "0", "零")
-    checkEqual(NumberRoll.format(1000, fractionDigits: 0, groupsThousands: true),
-               "1,000", "刚好四位时也要分组")
-    checkEqual(NumberRoll.format(100, fractionDigits: 0, groupsThousands: true),
-               "100", "三位不分组")
+    // MARK: 11 —— 数字格式化（checks/TextRender/NumberDelay.swift）
+    checkNumberFormatting()
 
     // MARK: 12 —— 数值插值：终点精确落在终值上
     //
@@ -728,7 +709,7 @@ func main() async {
     var exportNumber = whiteTitle(start: 1, duration: 5)
     exportNumber.number = NumberRoll(
         from: 0, to: 500, fractionDigits: 0, groupsThousands: false,
-        prefix: "", suffix: "", style: .count, duration: 2
+        prefix: "", suffix: "", style: .count, duration: 2, delay: 0.5
     )
     exportNumber.animation = TextAnimation(
         entrance: .fade, exit: .none,
@@ -739,12 +720,15 @@ func main() async {
 
     if let plan = await planKeepingWorkspace(exported, name: "number") {
         defer { try? FileManager.default.removeItem(at: plan.workspace) }
-        // 入场 0.5s、滚动 2s → 头部逐帧要按 2s 算：2 × 30 + 1 = 61 帧。
-        checkEqual(pngCount(in: plan.workspace, prefix: "text0-in_"), 61,
-                   "头部逐帧的长度要取「入场」和「滚动」里更长的那个")
+        // 入场 0.5s、等待 0.5s + 滚动 2s → 头部逐帧要按 2.5s 算：2.5 × 30 + 1 = 76 帧。
+        checkEqual(pngCount(in: plan.workspace, prefix: "text0-in_"), 76,
+                   "头部逐帧的长度要取「入场」和「等待 + 滚动」里更长的那个")
         checkEqual(pngCount(in: plan.workspace, prefix: "text0-mid"), 1,
                    "滚完之后画面不再变，中间仍是一张静止图")
     }
+
+    // MARK: 16b —— 数字的等待（checks/TextRender/NumberDelay.swift）
+    checkNumberDelay()
 
     // MARK: 17 —— 对焦：边缓缓放大、边从模糊收清
     //

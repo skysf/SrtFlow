@@ -85,6 +85,7 @@ xcrun swiftc \
   checks/ProjectFile/RowHeights.swift \
   checks/ProjectFile/SoundScene.swift \
   checks/ProjectFile/BookmarkCache.swift \
+  checks/ProjectFile/NumberDelay.swift \
   checks/ProjectFile/SplitGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
