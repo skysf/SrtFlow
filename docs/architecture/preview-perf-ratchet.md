@@ -125,9 +125,10 @@ tap、audioMix 快路径。守卫也钉着这几处。
 ## 六、已知的偶发误报
 
 CI 虚拟机上偶尔有一个**不发任何窗口 / App 通知**的系统事件，让检查器的数值框（连带上面的
-即时提示）和时间线的缩放桥接 `TimelineMagnificationBridge` 多更新一轮。按 2026-09-24 的
-基线，数字固定是 busy 的 `ticks.body` +99、`ticks.update` +35，basic 的 `ticks.update` +2
-（basic 没选中东西，检查器里没有数值框），大约十遍一次。
+即时提示）和时间线的缩放桥接 `TimelineMagnificationBridge` 多更新一轮，大约十遍一次。
+它落在空闲、时钟连跳哪一段都有可能。按 2026-09-24 的基线，见过的有：busy 的 `ticks.body`
++99、`ticks.update` +35；basic 的 `ticks.update` +2、`idle.update` +1（basic 没选中东西，
+检查器里没有数值框，只剩缩放桥接那一两下）。
 
 - 只有一遍撞上：被「要有两遍一模一样」挡掉，汇总页上多一行「当受干扰的那遍扔掉」。
 - 两遍都撞上：它每次多出来的活一模一样，两遍会「一致」地多，**被报成退步**。
