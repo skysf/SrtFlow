@@ -612,6 +612,8 @@
 /* 时间线标记、字幕与导出 */
 "Add Marker at Playhead" = "在播放头处添加标记";
 "Delete Marker" = "删除标记";
+"Colour" = "颜色";
+"Edit Note…" = "编辑备注…";
 "Note" = "备注";
 "Burn subtitles into the video" = "把字幕烧录进视频";
 "Every subtitle track is hidden — nothing will be burned." = "所有字幕轨都隐藏了 —— 不会烧录任何字幕。";

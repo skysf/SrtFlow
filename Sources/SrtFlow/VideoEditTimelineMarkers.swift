@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 // 轨道块上标记的画法与交互。数据模型在 VideoEditClipMarker.swift，
@@ -30,9 +31,15 @@ extension MarkerColor {
 
 /// 一段素材上的全部标记。挂在剪辑块的 overlay 上。
 ///
-/// **命中区只有顶上那顶小帽子**，底下那道竖线一律 `allowsHitTesting(false)`。
-/// 这是刻意的：标记如果整条竖着吃事件，一段素材上打几枚标记就等于在块上凿出
+/// 一枚标记就是块顶上那顶小帽子（2026-09-24 用户拍板去掉了贯穿块的竖线）。
+/// **命中区只有帽子**：标记若整条竖着吃事件，一段素材上打几枚标记就等于在块上凿出
 /// 几道拖不动的死缝 —— 从那儿按下去既拖不走整段，也扫不了帧。
+///
+/// 点击语义（docs/architecture/clip-markers.md 第十一节）：
+/// - 单击 = 只选中（⌫ 删、检查器跟着走）。**单击不弹面板** —— 面板一开，里面的备注框
+///   就成了第一响应者，⌫ 全进了输入框，标记怎么都删不掉（2026-09-24 案例）。
+/// - 双击 = 选中 + 弹面板（换色 / 写备注 / 删除）。
+/// - 右键 = 菜单：删除、换色、编辑备注。
 struct ClipMarkerStrip: View {
     let clip: EditClip
     let width: Double
@@ -71,20 +78,12 @@ struct ClipMarkerStrip: View {
     private func pin(_ marker: ClipMarker) -> some View {
         let x = (clip.timelineTime(of: marker) - clip.timelineStart) * pps
         let isSelected = project.selectedMarkerRef == ref(marker)
-        ZStack(alignment: .top) {
-            // 竖线：块缩得再矮也一眼看出标的是哪一帧。不吃事件。
-            Rectangle()
-                .fill(marker.color.swiftUIColor.opacity(0.85))
-                .frame(width: 1.5, height: height)
-                .shadow(color: .black.opacity(0.55), radius: 0.7)
-                .allowsHitTesting(false)
-            cap(marker, isSelected: isSelected)
-        }
-        .frame(width: hitWidth, height: height, alignment: .top)
-        .overlay(alignment: .top) { bubble(marker) }
-        .offset(x: x - hitWidth / 2)
-        // 帽子之外的区域必须让路：`.contentShape` 只画在帽子上（见 cap）。
-        .zIndex(hovered == marker.id || editing == marker.id ? 2 : 1)
+        cap(marker, isSelected: isSelected)
+            .frame(width: hitWidth, height: height, alignment: .top)
+            .overlay(alignment: .top) { bubble(marker) }
+            .offset(x: x - hitWidth / 2)
+            // 帽子之外的区域必须让路：`.contentShape` 只画在帽子上（见 cap）。
+            .zIndex(hovered == marker.id || editing == marker.id ? 2 : 1)
     }
 
     private func cap(_ marker: ClipMarker, isSelected: Bool) -> some View {
@@ -105,9 +104,38 @@ struct ClipMarkerStrip: View {
             .frame(width: capSize, height: capSize)
             .frame(width: hitWidth, height: hitWidth)
             .contentShape(Rectangle())
-            .onTapGesture {
+            // 双击在前：单击手势要让出双击（同文字块）。单击只选中、不弹面板 —— 面板里的
+            // 备注框会成为第一响应者，把 ⌫ 吃掉（2026-09-24 案例）。
+            .onTapGesture(count: 2) {
                 project.selectedMarkerRef = ref(marker)
                 editing = marker.id
+            }
+            .onTapGesture {
+                project.selectedMarkerRef = ref(marker)
+            }
+            .contextMenu {
+                Button(role: .destructive) {
+                    project.deleteMarker(ref(marker))
+                } label: {
+                    Label("Delete Marker", systemImage: "trash")
+                }
+                Menu("Colour") {
+                    ForEach(MarkerColor.allCases) { color in
+                        Button {
+                            project.setMarkerColor(ref(marker), color)
+                        } label: {
+                            if color == marker.color {
+                                Label(LocalizedStringKey(color.title), systemImage: "checkmark")
+                            } else {
+                                Text(LocalizedStringKey(color.title))
+                            }
+                        }
+                    }
+                }
+                Button("Edit Note…") {
+                    project.selectedMarkerRef = ref(marker)
+                    editing = marker.id
+                }
             }
             .onHover { inside in
                 if inside {

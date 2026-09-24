@@ -177,6 +177,20 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
   Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
+# 标记的点击语义（2026-09-24 用户拍板）：单击只选中、双击才弹面板、右键有菜单。
+# **单击不许弹面板**：面板一开，里面的备注框就成了第一响应者，⌫ 全进了输入框，标记怎么都
+# 删不掉（docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md）。
+MARKERS="Sources/SrtFlow/VideoEditTimelineMarkers.swift"
+require "标记双击弹面板（count: 2 的手势在前）" "$MARKERS" '\.onTapGesture\(count: 2\)'
+require "标记右键菜单（删除 / 换色 / 编辑备注）" "$MARKERS" '\.contextMenu \{'
+SINGLE_TAP="$(awk '/^ *\.onTapGesture \{$/ { inside = 1; next } inside && /^ *\}$/ { exit } inside { print }' "$MARKERS")"
+if [ -z "$SINGLE_TAP" ]; then
+  echo "✗ 接线守卫：标记的单击手势（.onTapGesture {）不见了：单击选不中" >&2
+  WIRING_FAIL=1
+elif grep -c 'editing' <<<"$SINGLE_TAP" >/dev/null; then
+  echo "✗ 接线守卫：标记单击又弹面板了（单击手势里出现了 editing）：备注框会把 ⌫ 吃掉" >&2
+  WIRING_FAIL=1
+fi
 # 标记的帽子是可命中的子视图，但容器那圈 onContinuousHover 不会因为指针压在子视图
 # 上就停发（2026-09-21 起扫帧 peek 的唯一所有者是时间线容器）。没有这道让位，
 # 鼠标悬在标记上时容器下一拍就会把画面从标记那一帧拽回指针底下。

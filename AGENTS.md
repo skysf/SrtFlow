@@ -121,7 +121,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择、字幕的三个编辑入口 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) |
-| 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md) |
+| 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
@@ -370,6 +370,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 选了声音场景却看不见选的是哪个](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) — 标题和锁死宽度的下拉挤一行，超过检查器窄栏，整列被撑宽、右边被裁（「Mute」只剩「Mu」）；先用独立探针排除了「带 Section 的菜单 Picker 不显示选中项」的猜测。自检全绿、实机一眼就看见 —— 界面改动交之前要在真窗口里看一眼。
 - [2026-09-24 来回换声音场景，换下来的效果链一直攒着不放](docs/bugfixes/2026-09-24-sound-scene-chains-pile-up.md) — 「等宿主释放再放」而宿主（tap）跟着整条合成活，等于不放；一条失真链 ~8MB。改成多挂一拍、下次换配置时放。
 - [2026-09-24 点一下选段卡半秒、拖块和滚动跟不上手](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md) — 时间线上每个块和每条音量线都 `@ObservedObject` 着整个工程，点选一段 73 个块全重算、61 条线全重画；块的输入带闭包、没 `Equatable`，拖动每一拍全部块跟着时间线重算。块只收值、自己比较、调用处套 `.equatable()`（守卫钉着）；body 次数降十倍、CPU 只降三分之一 —— 「一拍多少次」和「一次多贵」是两笔账。
+- [2026-09-24 点了标记按 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) — 单击就弹出带备注框的面板，备注框成了第一响应者把 ⌫ 吃掉；点别处关面板又把选择清了。改成单击只选中、双击弹面板、右键菜单（守卫钉着）。**点一下就弹带输入框的面板 = 交出键盘**；冒烟驱动的工程拷贝要放在 Downloads / Desktop / Documents 之外（TCC 每次重编都重新弹，App 卡在 `getxattr` 里像是工程没打开）。
 - [2026-09-24 改得勤就隔一会儿卡一下：自动保存每次重建书签](docs/bugfixes/2026-09-24-autosave-rebuilds-bookmarks-every-save.md) — 存盘给每个素材现建系统书签，57 个约 55ms、每 2 秒一次；缓存按「路径 + inode + 卷」认，同名换文件必须重建。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
