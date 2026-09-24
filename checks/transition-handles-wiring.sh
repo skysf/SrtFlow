@@ -71,6 +71,12 @@ for needle in 'Self.holdSteps(video: clip)' 'Self.holdSteps(audio: clip)' 'let s
     grep -qF "${needle}" "${GRAPH}" \
         || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的 / 没声音对不上" >&2; FAILED=1; }
 done
+# **铺音量的 makeAudioMix 必须自己展开**：预览换 mix 的三个入口传进来的是用户那一份状态，
+# 照着没展开的几何铺斜坡，转场接缝上的声音就会掉下去一截
+#（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
+MIX_BODY="$(awk '/static func makeAudioMix\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${BUILDER}")"
+grep -qF "${CALL}" <<<"${MIX_BODY}" \
+    || { echo "  ✗ makeAudioMix 没有自己展开转场：预览换 mix 的三个入口会照着没展开的几何铺音量" >&2; FAILED=1; }
 if [ "$FAILED" -ne 0 ]; then
     echo "✗ 转场定格补足接线守卫失败" >&2
     exit 1

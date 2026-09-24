@@ -576,6 +576,9 @@ func main() async {
         check(false, "接缝用例的 plan() 失败：\(error)")
     }
 
+    // ---- 6b. 正在播的预览换上的那份 mix，和成片是同一份（展开过转场的几何）----
+    await checkLiveMixFollowsExpandedSeams(videoSource: videoSource)
+
     // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
     await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
 

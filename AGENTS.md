@@ -348,6 +348,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 应用里选了简体中文，所有 sheet 和 popover 却还是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md) — SwiftUI 不把 `\.locale` 带进 sheet / popover（探针实测），只有 `L10n` 那几句是中文、于是半中半英；系统本身是中文时整个被盖住。每个新宿主都要自己套 `.appLanguage()`，守卫钉着。
 - [2026-09-24 剪辑导出面板说「音频原样复制」，其实每次都重新编码](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) — 共用的设置界面按控件加开关，只修到被点名的分辨率 / 帧率，音频那一栏没人对照过管线。改成按管线声明自己消费什么。
 - [2026-09-24 本地化守卫不扫 `LabeledContent`，「File」一直没翻译](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) — 按调用名清单扫的守卫，清单外整类调用是**静默**的盲区；用到仓库里第一次出现的控件，先去守卫清单里查一眼。
+- [2026-09-24 主轨转场的地方，预览的声音掉下去一截](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) — 预览换 mix 的三个入口拿没展开的用户状态铺斜坡，接缝上最深掉 25 dB，成片是好的；自检只读 build 顺手产出的那份 mix，走不到生产入口。**两份结果互相比，比不出它们一起错**：第一版守卫撤掉修复照样绿，加上绝对期望才红。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

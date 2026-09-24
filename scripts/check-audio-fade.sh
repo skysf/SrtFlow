@@ -74,6 +74,7 @@ xcrun swiftc \
   checks/AudioFade/main.swift \
   checks/AudioFade/VolumeCurve.swift \
   checks/AudioFade/Meter.swift \
+  checks/AudioFade/LiveMix.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

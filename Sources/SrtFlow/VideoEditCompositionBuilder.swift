@@ -208,6 +208,8 @@ enum VideoEditCompositionBuilder {
         // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
         // 改动入口已维持有序，这里再守一道 —— 上层视频轨（下面）同款 sorted。
         PerfCounters.event(.compositionBuild)
+        // 铺音量要的是**用户那一份**（`makeAudioMix` 自己展开，展开只许一次）。
+        let requested = state
         var state = state
         state.sortMainClipsByStart()
         // 转场靠向两边借余料做出来，展开之后两段真的相叠 —— 下面那套按「相叠」
@@ -539,7 +541,7 @@ enum VideoEditCompositionBuilder {
         return Built(
             composition: composition,
             videoComposition: videoComposition,
-            audioMix: makeAudioMix(state: state, plan: audioPlan),
+            audioMix: makeAudioMix(state: requested, plan: audioPlan),
             audioPlan: audioPlan,
             renderSize: renderSize
         )
@@ -555,10 +557,17 @@ enum VideoEditCompositionBuilder {
     /// 音量设定先记进一张 `GainTable`，再原样铺进 AVFoundation（乘上总推子）。电平表拿的
     /// 是**同一张**（tap 看到的是乘音量之前的采样，增益得自己乘，见 VideoEditAudioMeter.swift）。
     /// `meters` 为 nil 时（自检、离线读）不挂 tap。
+    ///
+    /// `state` 传**用户那一份**，这里自己排序、展开转场（和 `build` 插段时同一份几何）。以前三个
+    /// 预览调用方传的是没展开的状态，斜坡和插进去的段对不上，转场接缝上预览的声音掉下去一截
+    ///（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
     static func makeAudioMix(
-        state: TimelineState, plan: AudioMixPlan, meters: AudioMeterEngine? = nil
+        state requested: TimelineState, plan: AudioMixPlan, meters: AudioMeterEngine? = nil
     ) -> AVMutableAudioMix? {
         guard !plan.lanes.isEmpty else { return nil }
+        var state = requested
+        state.sortMainClipsByStart()
+        state = state.expandingTransitionHandles()
         var parameters: [AVMutableAudioMixInputParameters] = []
         let master = Float(state.masterVolume)
         for lane in plan.lanes {
