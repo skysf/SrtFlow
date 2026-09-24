@@ -284,6 +284,13 @@ extension TimelineState {
         hasVolumeCurves || hasMixerSettings
     }
 
+    /// v20：`EditClip.soundScene` —— 段上的声音场景（喇叭 / 室内 / 室外）。
+    ///
+    /// 为什么要抬：它**直接决定成片里的声音**。只认 v19 的旧版照常打开，场景整个消失，
+    /// 随手编辑触发自动保存即永久丢失。**按需**：没挂场景的段不写这个键（`EditClip` 的 encode
+    /// 按同一判据跳过）。合同见 docs/architecture/sound-scenes.md。
+    var requiresFormatVersion20: Bool { hasSoundScenes }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

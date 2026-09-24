@@ -104,6 +104,31 @@ extension FadeWindow {
 }
 
 extension EditClip {
+    /// 「分离音频」造出来的那一段：同一个源文件、只取声音，挂在 `linkGroup` 上。
+    ///
+    /// **声音的设置跟着走**：音量、音量曲线、渐入渐出、声音场景都是这段声音自己的属性，
+    /// 分离之后视频那段被静音，留在它身上的这些设置就再也听不见了 —— 用户画好的
+    /// 曲线凭空消失（2026-09-23 随音量曲线补上；在那之前渐入渐出也一直没跟过来）。
+    func detachedAudio(linkGroup group: UUID) -> EditClip {
+        var detached = EditClip(
+            sourceURL: sourceURL,
+            isAudioOnly: true,
+            sourceStart: sourceStart,
+            sourceDuration: sourceDuration,
+            speed: speed,
+            timelineStart: timelineStart,
+            volume: volume,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+            linkGroup: group,
+            info: info,
+            audioAssetDuration: info?.duration
+        )
+        detached.volumeCurve = volumeCurve
+        detached.soundScene = soundScene
+        return detached
+    }
+
     /// 这一段实际生效的渐入/渐出（时间线秒）。夹紧规则见 `FadeWindow.clamped`
     /// —— 与画面渐变**同一份**，两边不许各夹各的。
     var audioFades: AudioFadeWindow {
@@ -140,6 +165,10 @@ extension TimelineState {
             clip.fadeInDuration = 0
             clip.fadeOutDuration = 0
             clip.volumeCurve = KeyframeTrack()
+            // 声音场景：换种类、拖滑杆只进 audioMix（tap 背后的配置），抹平；**有没有**场景
+            // 留着 —— 挂了场景的合成音轨最后一段后面要垫一截素材让余音散完，那是合成结构
+            // （docs/architecture/sound-scenes.md）。
+            if clip.soundScene != nil { clip.soundScene = SoundScene(kind: .room) }
         }
         copy.mainVolume = 1
         copy.masterVolume = 1

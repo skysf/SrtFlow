@@ -32,7 +32,7 @@
 - 预览和成片之间**没有**这 0.03 dB —— 成片就是预览那份混音读出来的。
 - 表里的时刻是**离段起点的时间线秒**；增益含静音，不含渐变和推子（那两样调用方乘）。
 
-### 预览（`VideoEditCompositionBuilder.addCurveRamps`）
+### 预览（`AudioMixBuilder.addCurveRamps`，VideoEditAudioMix.swift）
 
 - 没画曲线的段一行不变地走老路（`addVolumeRamps`）；只有画了曲线的段走折线。
 - 渐变窗口里线性渐变 × 线性折线是二次曲线，按 16 等分补点。

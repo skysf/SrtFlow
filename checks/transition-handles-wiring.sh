@@ -76,7 +76,10 @@ done
 # 在预览合成里（留空段），导出图不再自己补。**铺音量的 makeAudioMix 必须自己展开**：三个预览
 # 入口传进来的是用户那一份状态，照着没展开的几何铺斜坡，转场接缝上的声音就会掉下去一截
 #（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
-MIX_BODY="$(awk '/static func makeAudioMix\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${BUILDER}")"
+# 2026-09-24 起实现搬到 AudioMixBuilder.make（VideoEditAudioMix.swift），builder 里的 makeAudioMix 只是转交。
+MIX_FILE="Sources/SrtFlow/VideoEditAudioMix.swift"
+[ -f "${MIX_FILE}" ] || { echo "  ✗ 找不到 ${MIX_FILE}：铺音量的实现挪窝了，守卫会扫空 —— 同步改这里" >&2; FAILED=1; }
+MIX_BODY="$(awk '/static func make\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${MIX_FILE}")"
 grep -qF "${CALL}" <<<"${MIX_BODY}" \
     || { echo "  ✗ makeAudioMix 没有自己展开转场：预览换 mix 的三个入口会照着没展开的几何铺音量" >&2; FAILED=1; }
 if [ "$FAILED" -ne 0 ]; then

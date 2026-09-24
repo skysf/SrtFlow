@@ -53,7 +53,10 @@
 **总表最要紧**：混音是各轨直接相加（不压不限，成片同样），每条轨都没爆、加起来
 爆了的情况只有它看得见。
 
-实现（`VideoEditAudioMeter.swift`）全部建立在 2026-09-23 的 tap 探针上，七条不许改的：
+实现（`VideoEditAudioMeter.swift`）全部建立在 2026-09-23 的 tap 探针上，七条不许改的。
+**2026-09-24 起同一个 tap 还管[声音场景](sound-scenes.md)**：挂了场景的合成音轨，tap 先原地改声音
+（段增益 → 效果 → 轨道推子，AVFoundation 只乘总推子），电平表量的是改完的声音（那张增益表是空的 = 1）；
+没挂场景的轨照旧只看不改。
 
 1. **每条合成音轨一个 `MTAudioProcessingTap`（PreEffects）。** tap 拿到的是**乘音量之前**
    的采样（PreEffects / PostEffects 都看不到 audioMix 的音量；PostEffects 的时间标签还不准），

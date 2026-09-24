@@ -34,6 +34,12 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
+  Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTrack.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTails.swift \
+  Sources/SrtFlow/VideoEditAudioMix.swift \
+  Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
@@ -79,6 +85,7 @@ xcrun swiftc \
   checks/AudioFade/VolumeCurve.swift \
   checks/AudioFade/Meter.swift \
   checks/AudioFade/LiveMix.swift \
+  checks/AudioFade/SoundScene.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

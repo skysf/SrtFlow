@@ -862,3 +862,25 @@
 "Write the checked subtitle files into the export folder" = "把勾选的字幕文件写进导出文件夹";
 "%d of these files are already in this folder. Exporting will replace them." = "其中 %d 个文件这个文件夹里已经有了，导出会替换它们。";
 "Replace %d subtitle files?" = "替换 %d 个字幕文件？";
+
+/* 声音场景（VideoEditSoundScene.swift / VideoEditInspector+Sound.swift） */
+"Sound scene" = "声音场景";
+"Speaker" = "喇叭";
+"Indoor" = "室内";
+"Outdoor" = "室外";
+"Telephone" = "电话";
+"Megaphone" = "扩音器";
+"Radio" = "收音机";
+"Room" = "房间";
+"Bathroom" = "浴室";
+"Hall" = "大厅";
+"Open air" = "空旷室外";
+"Forest" = "森林";
+"Valley echo" = "山谷回声";
+"Distortion" = "失真";
+"Tone" = "音质";
+"Room size" = "空间大小";
+"Distance" = "距离";
+"Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "让声音听起来像从喇叭里出来、在室内或在室外。只能加空间感，去不掉素材里本来的回声。";
+"Put this scene’s sliders back to their defaults" = "把这个场景的滑杆恢复成默认值";
+"Applies to all %d clips with sound selected" = "套用到选中的 %d 个有声音的段";

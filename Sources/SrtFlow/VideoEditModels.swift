@@ -438,6 +438,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// docs/architecture/audio-volume-curve.md。不进 `init`（同 `markers`）。
     var volumeCurve = KeyframeTrack()
 
+    /// 声音场景（喇叭 / 室内 / 室外）；nil = 没有。模型见 VideoEditSoundScene.swift，合同见
+    /// docs/architecture/sound-scenes.md。不进 `init`（同 `markers`）。
+    var soundScene: SoundScene?
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -1144,7 +1148,7 @@ extension EditClip: Codable {
         case markers
         case fadeInDuration, fadeOutDuration
         case isHidden
-        case volumeCurve
+        case volumeCurve, soundScene
     }
 
     init(from decoder: Decoder) throws {
@@ -1190,6 +1194,8 @@ extension EditClip: Codable {
         volumeCurve = VolumeCurve.sanitized(
             try c.decodeIfPresent(KeyframeTrack.self, forKey: .volumeCurve) ?? KeyframeTrack()
         )
+        // v20 起才有。认不出的场景（更新的版本加的）整个不认、当作没有（`SoundScene` 的解码）。
+        soundScene = (try? c.decodeIfPresent(SoundScene.self, forKey: .soundScene)) ?? nil
         // v14 及更早：画面渐变只有时长、没有"效果"这个概念。合并成一个槽之后，
         // 这些段就是 In/Out = Fade —— 不认回来的话，老工程一打开，调好的淡入淡出
         // 会因为 `kind == .none` 当场失效（不变量见 `ClipPresetAnimation.isEmpty`）。
@@ -1250,36 +1256,9 @@ extension EditClip: Codable {
         if !presetAnimation.isEmpty { try c.encode(presetAnimation, forKey: .presetAnimation) }
         // 没画过曲线的段不写这个键（判据与格式版本闸门 `requiresFormatVersion19` 同源）。
         if !volumeCurve.isEmpty { try c.encode(volumeCurve, forKey: .volumeCurve) }
+        // 没挂场景的段不写这个键（判据与格式版本闸门 `requiresFormatVersion20` 同源）。
+        try c.encodeIfPresent(soundScene, forKey: .soundScene)
     }
-}
-
-extension ClipMarker: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case id, sourceTime, color, text
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        // 位置是唯一必需的字段：没有它这枚标记不知道该画在哪。
-        self.init(
-            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
-            sourceTime: try c.decode(Double.self, forKey: .sourceTime),
-            color: try c.decodeIfPresent(MarkerColor.self, forKey: .color) ?? .red,
-            text: try c.decodeIfPresent(String.self, forKey: .text) ?? ""
-        )
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(sourceTime, forKey: .sourceTime)
-        try c.encode(color, forKey: .color)
-        if !text.isEmpty { try c.encode(text, forKey: .text) }
-    }
-}
-
-extension MarkerColor: LenientCodableEnum {
-    static var decodingFallback: MarkerColor { .red }
 }
 
 extension EditLane: Codable {

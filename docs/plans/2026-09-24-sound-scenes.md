@@ -1,6 +1,7 @@
 # 声音场景（喇叭 / 室内 / 室外），以及成片的声音改从预览混音里读
 
-> 2026-09-24 方案。一个 PR、按第四节分刀提交。实施后的长期约束落在对应的架构文档里
+> 2026-09-24 方案，同日两步都已落地：[成片的声音](../architecture/export-audio-mixdown.md)、
+> [声音场景](../architecture/sound-scenes.md)。一个 PR、按第四节分刀提交。实施后的长期约束落在对应的架构文档里
 > （见第四节每一刀的「落到」），**当前状态以那些文档和代码为准**。
 > 相关：[声音：音量与渐入渐出](../architecture/audio-fades.md)、[音量曲线](../architecture/audio-volume-curve.md)、
 > [推子与电平表](../architecture/audio-mixer.md)、[阻塞的媒体读取](../architecture/blocking-media-reads.md)、

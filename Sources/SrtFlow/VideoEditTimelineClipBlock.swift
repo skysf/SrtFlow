@@ -158,6 +158,10 @@ struct ClipBlockView: View {
                 if clip.isHidden {
                     Image(systemName: "eye.slash").font(.system(size: 8))
                 }
+                // 挂了声音场景：按场景那一组给一枚小图标（喇叭 / 房子 / 树）。
+                if let scene = clip.soundScene {
+                    Image(systemName: scene.kind.group.symbol).font(.system(size: 8))
+                }
                 if clip.transitionAfter != .none {
                     Spacer(minLength: 2)
                     Image(systemName: "square.filled.and.line.vertical.and.square")

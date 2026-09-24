@@ -110,6 +110,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段 | [滤镜](docs/architecture/filters.md) |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
+| 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
 | 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方 | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
 | 波形显示、深度缩放（缩放上限、标尺刻度、缩略图、超宽内容的绘制） | [波形与深度缩放](docs/architecture/audio-waveform.md)、[捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md) §5、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md) |
 | `AVAssetReader` 读采样（`copyNextSampleBuffer`），以及在 async 函数 / `Task` 里做任何会卡住线程的事（等信号量、同步 IO、等子进程） | [阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) |
@@ -264,6 +265,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [关键帧动画](docs/architecture/keyframe-animation.md) — 源时间锚定、切片与 fill + matte。
 - [工程帧率](docs/architecture/project-frame-rate.md) — 唯一事实来源、容差空间与回归矩阵。
 - [声音：音量与渐入渐出](docs/architecture/audio-fades.md) — 唯一夹紧点、转场仲裁、dB 换算、只换 audioMix 的快路径。
+- [声音场景](docs/architecture/sound-scenes.md) — 九个场景的模型与 v20、效果跑在 tap 里（预览和成片同一份）、挂了场景的轨段增益在 tap 里乘（效果在段增益之后、推子之前）、每段一条效果链各自散余音、最后一段后面垫同一素材当余音的载体、seek 复位、不载入出厂预设、喇叭类先削波后限带、响度补偿用同一串处理量（渲染前记输入）、回归与人工清单。
 - [成片的声音](docs/architecture/export-audio-mixdown.md) — 成片的声音就是预览那份混音离线读出来的（导出图里不许有声音滤镜）、读用户那一份状态（展开只许一次）、正好画面那么长、f32 中间文件、`MediaReadQueue.export`、和以前的成片比变了什么（单声道响 3 dB、变速换成预览的算法）。
 - [音量曲线](docs/architecture/audio-volume-curve.md) — 曲线属于段（dB、锚源时间、有点时取代 `volume`）、编辑动作本身不改声音、两条管线同一张折线表、导出 `aeval` 平衡树的六条实测约束（放在 `adelay` 之前并减掉首帧定格、最右叶子必须是常数、全精度数字、超大图走文件）。
 - [波形与深度缩放](docs/architecture/audio-waveform.md) — 一个文件读一次的三层精度（多级峰值 / 按需原始采样块 / 顶替）、粗级是 min/max 不是平均、画「听到的声音」且爆音涂红、**Canvas 只画 `clipBoundingRect`**（超宽内容的实测地基）。

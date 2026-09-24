@@ -468,6 +468,9 @@ func main() async {
     await checkMeters(audioSource: audioSource, videoSource: videoSource)
     await checkMetersAcrossFormatChange(audioSource: audioSource, videoSource: videoSource)
 
+    // ---- 9. 声音场景（checks/AudioFade/SoundScene.swift）----
+    await checkSoundScenes(videoSource: videoSource)
+
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }
     finish(failures == 0 ? 0 : 1)

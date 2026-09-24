@@ -862,3 +862,25 @@
 "Write the checked subtitle files into the export folder" = "Write the checked subtitle files into the export folder";
 "%d of these files are already in this folder. Exporting will replace them." = "%d of these files are already in this folder. Exporting will replace them.";
 "Replace %d subtitle files?" = "Replace %d subtitle files?";
+
+/* 声音场景（VideoEditSoundScene.swift / VideoEditInspector+Sound.swift） */
+"Sound scene" = "Sound scene";
+"Speaker" = "Speaker";
+"Indoor" = "Indoor";
+"Outdoor" = "Outdoor";
+"Telephone" = "Telephone";
+"Megaphone" = "Megaphone";
+"Radio" = "Radio";
+"Room" = "Room";
+"Bathroom" = "Bathroom";
+"Hall" = "Hall";
+"Open air" = "Open air";
+"Forest" = "Forest";
+"Valley echo" = "Valley echo";
+"Distortion" = "Distortion";
+"Tone" = "Tone";
+"Room size" = "Room size";
+"Distance" = "Distance";
+"Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording.";
+"Put this scene’s sliders back to their defaults" = "Put this scene’s sliders back to their defaults";
+"Applies to all %d clips with sound selected" = "Applies to all %d clips with sound selected";

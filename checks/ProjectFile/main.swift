@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 19, "新版写盘一律用 v19")
+    checkEqual(raw?["formatVersion"] as? Int, 20, "新版写盘一律用 v20")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 19, "只有原文轨的工程也写 v19")
+    checkEqual(try savedVersion(), 20, "只有原文轨的工程也写 v20")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 19, "往返后仍是 v19")
+    checkEqual(try savedVersion(), 20, "往返后仍是 v20")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -448,7 +448,7 @@ do {
         cueMeta: [cueA.id: CueMeta(recognitionConfidence: 0.9, translationStale: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 19, "带译文轨的工程写 v19（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 20, "带译文轨的工程写 v20（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -521,7 +521,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 19, "新版 writer 一律写 latest")
+    checkEqual(try savedVersion(), 20, "新版 writer 一律写 latest")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -541,7 +541,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 19, "带字幕布局的工程必须写 latest（v19）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 20, "带字幕布局的工程必须写 latest（v20）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -675,7 +675,7 @@ do {
     try VideoEditProjectIO.save(textState, to: textFile)
     let textRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: textFile)) as? [String: Any]
-    checkEqual(textRaw?["formatVersion"] as? Int, 19, "带文字的工程必须写 latest（v19）")
+    checkEqual(textRaw?["formatVersion"] as? Int, 20, "带文字的工程必须写 latest（v20）")
 
     let textBack = try VideoEditProjectIO.load(from: textFile).timeline
     checkEqual(textBack.textOverlays.count, 1, "文字往返后还在")
@@ -720,7 +720,7 @@ do {
     try VideoEditProjectIO.save(animated, to: animFile)
     let animRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: animFile)) as? [String: Any]
-    checkEqual(animRaw?["formatVersion"] as? Int, 19, "带动画的工程必须写 latest（v19）")
+    checkEqual(animRaw?["formatVersion"] as? Int, 20, "带动画的工程必须写 latest（v20）")
 
     if let back = try VideoEditProjectIO.load(from: animFile).timeline.textOverlays.first {
         checkEqual(back.animation.entrance, .cascade, "入场效果往返不变")
@@ -766,7 +766,7 @@ do {
     try VideoEditProjectIO.save(numbered, to: numberFile)
     let numberRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: numberFile)) as? [String: Any]
-    checkEqual(numberRaw?["formatVersion"] as? Int, 19, "数字元件的工程必须写 latest（v19）")
+    checkEqual(numberRaw?["formatVersion"] as? Int, 20, "数字元件的工程必须写 latest（v20）")
 
     if let back = try VideoEditProjectIO.load(from: numberFile).timeline.textOverlays.first?.number {
         checkEqual(back.from, -12.5, "起始值往返不变")
@@ -806,7 +806,7 @@ do {
     try VideoEditProjectIO.save(focused, to: focusFile)
     let focusRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: focusFile)) as? [String: Any]
-    checkEqual(focusRaw?["formatVersion"] as? Int, 19, "用了对焦的工程必须写 latest（v19）")
+    checkEqual(focusRaw?["formatVersion"] as? Int, 20, "用了对焦的工程必须写 latest（v20）")
 
     if let back = try VideoEditProjectIO.load(from: focusFile).timeline.textOverlays.first?.animation {
         checkEqual(back.entrance, .focus, "对焦入场往返不变")
@@ -825,14 +825,14 @@ do {
     let nonFocusAnimation = nonFocusOverlays?.first?["animation"] as? [String: Any]
     check(nonFocusAnimation?["focusStartOpacity"] == nil, "没用对焦时不该写 focusStartOpacity 键")
 
-    // 闸门另一侧：比 reader 上限更高的 v20 必须拒开。
+    // 闸门另一侧：比 reader 上限更高的 v21 必须拒开。
     // **每次抬 latestFormatVersion 都要把这里跟着抬**：拿旧的版本号当「未来」，
     // 这条断言就变成在测一个 reader 已经认识的版本，闸门坏了也照样绿。
-    let future = dir.appendingPathComponent("v20.srtflowproj")
+    let future = dir.appendingPathComponent("v21.srtflowproj")
     try Data("""
-    { "formatVersion": 20, "timeline": { "mainClips": [] }, "media": [] }
+    { "formatVersion": 21, "timeline": { "mainClips": [] }, "media": [] }
     """.utf8).write(to: future)
-    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v20）必须拒开")
+    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v21）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -842,7 +842,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 19, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 20, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -850,7 +850,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 19, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 20, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -2012,7 +2012,7 @@ do {
     let fadeRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 9**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。
-    checkEqual(fadeRaw?["formatVersion"] as? Int, 19, "带渐变的工程必须写 latest（v19）")
+    checkEqual(fadeRaw?["formatVersion"] as? Int, 20, "带渐变的工程必须写 latest（v20）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     checkEqual(reloaded.clip(with: clipID)?.fadeInDuration, 1.5, "渐入要存得住")
@@ -2229,7 +2229,7 @@ do {
     try VideoEditProjectIO.save(state, to: project)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 15**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言。
-    checkEqual(raw?["formatVersion"] as? Int, 19, "带动画的工程必须写 latest（v19）")
+    checkEqual(raw?["formatVersion"] as? Int, 20, "带动画的工程必须写 latest（v20）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     let back = reloaded.clip(with: clipID)
@@ -2485,7 +2485,7 @@ do {
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
     let stored = ((raw?["timeline"] as? [String: Any])?["filters"] as? [[String: Any]]) ?? []
     checkEqual(stored.count, 2, "两段滤镜都落了盘")
-    checkEqual(raw?["formatVersion"] as? Int, 19, "带滤镜的工程必须写 latest（v19）")
+    checkEqual(raw?["formatVersion"] as? Int, 20, "带滤镜的工程必须写 latest（v20）")
 
     let back = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(back.filters.count, 2, "往返不丢滤镜段")
@@ -2551,7 +2551,7 @@ do {
 
     try VideoEditProjectIO.save(state, to: file)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 19, "带音频库素材的工程必须写 latest（v19）")
+    checkEqual(raw?["formatVersion"] as? Int, 20, "带音频库素材的工程必须写 latest（v20）")
     let lane = ((raw?["timeline"] as? [String: Any])?["audioTracks"] as? [[String: Any]])?.first
     let stored = (lane?["clips"] as? [[String: Any]])?.first
     checkEqual(stored?["remoteKey"] as? String, "mus_1048289", "remoteKey 落了盘")
@@ -2645,96 +2645,13 @@ do {
 }
 
 
-// MARK: - 27. 轨道行高：一轨一个值、键绑身份不绑行号、存盘往返
+// MARK: - 27. 轨道行高：一轨一个值、键绑身份不绑行号、存盘往返（checks/ProjectFile/RowHeights.swift）
 
 do {
-    let dir = root.appendingPathComponent("rowheights")
-    let media = dir.appendingPathComponent("a.mp4")
-    makeFile(media)
-    let project = dir.appendingPathComponent("p.srtflowproj")
-
-    // ---- 夹紧：两类各自的区间，不可调的类一律拒绝 ----
-    checkEqual(TrackRowKind(.main), .video, "主轨算视频轨")
-    checkEqual(TrackRowKind(.overlay(0)), .video, "上层轨和主轨同一类（对等）")
-    checkEqual(TrackRowKind(.audio(0)), .audio, "音频轨自成一类")
-    checkEqual(TrackRowKind(nil), .other, "没有 slot 的行不可调")
-    checkEqual(TrackRowKind.video.clamped(1000), 200, "视频轨行高上限 200")
-    checkEqual(TrackRowKind.video.clamped(0), 28, "视频轨行高下限 28")
-    checkEqual(TrackRowKind.audio.clamped(1000), 200, "音频轨行高上限 200")
-    checkEqual(TrackRowKind.audio.clamped(0), 20, "音频轨行高下限 20")
-    check(TrackRowKind.other.clamped(50) == nil,
-          "字幕/文字/形状/滤镜行不可调：行高和块高是一对硬编码常量，框选的命中判据靠那个差")
-    check(TrackRowKind.video.clamped(.nan) == nil, "NaN 不许落进行高")
-    check(TrackRowKind.video.clamped(.infinity) == nil, "inf 不许落进行高")
-
-    // ---- 没调过的轨回落到这一类的默认值 ----
-    var heights = TimelineRowHeights()
-    checkEqual(heights.height(for: .main, fallback: 54), 54, "没调过就走默认高度")
-    checkEqual(heights.height(for: nil, fallback: 54), 54, "不可调的行也得拿到一个能用的高度")
-    heights.set(300, for: .main, kind: .video)
-    checkEqual(heights.main, 200, "写入口就该夹紧，别让越界值存进工程")
-    heights.set(70, for: .main, kind: .other)
-    checkEqual(heights.main, 200, "不可调的类写不进去")
-
-    // ---- 三条轨各调各的：拖一条不许动到另一条 ----
-    var state = timeline(mainMedia: [media])
-    let audioA = EditLane(clips: [EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 8)])
-    let audioB = EditLane(clips: [EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 8)])
-    state.audioTracks = [audioA, audioB]
-    checkEqual(TimelineRowHeights.key(for: .audio(0), in: state), .lane(audioA.id),
-               "行 → 键走的是轨道身份（UUID），不是行号")
-    checkEqual(TimelineRowHeights.key(for: .audio(1), in: state), .lane(audioB.id),
-               "第二条轨要拿到自己的身份，不是第一条的")
-    check(TimelineRowHeights.key(for: .audio(5), in: state) == nil, "越界的行没有键")
-    check(TimelineRowHeights.key(for: nil, in: state) == nil, "没有 slot 的行没有键")
-
-    var perTrack = TimelineRowHeights()
-    perTrack.set(88, for: .lane(audioA.id), kind: .audio)
-    checkEqual(perTrack.height(for: .lane(audioA.id), fallback: 34), 88, "调过的那条用自己的高度")
-    checkEqual(perTrack.height(for: .lane(audioB.id), fallback: 34), 34,
-               "同类的另一条不许跟着动 —— 这正是 2026-09-22 要修掉的毛病")
-    checkEqual(perTrack.height(for: .main, fallback: 54), 54, "主轨更不该跟着音频轨动")
-
-    // ---- 存盘往返 ----
-    perTrack.set(96, for: .main, kind: .video)
-    try VideoEditProjectIO.save(state, to: project, rowHeights: perTrack)
-    let loaded = try VideoEditProjectIO.load(from: project)
-    checkEqual(loaded.rowHeights.main, 96, "主轨行高要存住")
-    checkEqual(loaded.rowHeights.height(for: .lane(audioA.id), fallback: 34), 88,
-               "每条轨的行高都要存住")
-    checkEqual(loaded.rowHeights.height(for: .lane(audioB.id), fallback: 34), 34,
-               "没调过的轨读回来还是没调过")
-
-    // ---- 键绑身份：删掉前一条轨，后一条不许继承它的高度 ----
-    var shortened = state
-    shortened.audioTracks.removeFirst()          // 剩下的 B 现在是 .audio(0)
-    let afterDelete = dir.appendingPathComponent("after-delete.srtflowproj")
-    try VideoEditProjectIO.save(shortened, to: afterDelete, rowHeights: perTrack)
-    let reloaded = try VideoEditProjectIO.load(from: afterDelete)
-    checkEqual(TimelineRowHeights.key(for: .audio(0), in: shortened), .lane(audioB.id),
-               "删掉中间一条轨之后，行号变了、身份没变")
-    checkEqual(reloaded.rowHeights.height(for: .lane(audioB.id), fallback: 34), 34,
-               "删掉上面那条轨，剩下的轨不许继承它的高度（键绑身份不绑行号）")
-    check(reloaded.rowHeights.lanes[audioA.id] == nil, "删掉的轨不该留在工程文件里")
-
-    // 裁剪只作用在写盘那一份拷贝上：内存里的条目要留着，
-    // 否则「删一条轨 → 自动保存 → ⌘Z 撤回来」高度就没了。
-    checkEqual(perTrack.lanes[audioA.id], 88, "裁剪不许回写调用方手里的那份")
-    checkEqual(perTrack.pruned(keeping: []).lanes.count, 0, "裁剪本身要真的丢掉死条目")
-    checkEqual(perTrack.pruned(keeping: []).main, 96, "主轨不是 lane，裁剪不许把它一起丢了")
-
-    // ---- 老工程：没有这个键，读回来是空的（全部走默认值）----
-    let legacy = dir.appendingPathComponent("legacy.srtflowproj")
-    try VideoEditProjectIO.save(state, to: legacy)
-    let legacyText = try String(contentsOf: legacy, encoding: .utf8)
-    check(!legacyText.contains("rowHeights"),
-          "没人调过行高的工程不该多出这个键（按需写键）")
-    let legacyLoaded = try VideoEditProjectIO.load(from: legacy)
-    check(legacyLoaded.rowHeights.isEmpty, "老工程读回来是空的 = 全部走默认值")
-    checkEqual(legacyLoaded.rowHeights.height(for: .main, fallback: 54), 54,
-               "老工程打开就是老样子")
+    try checkRowHeights(root: root)
+} catch {
+    check(false, "轨道行高那一组抛错：\(error)")
 }
-
 
 // MARK: - 28. 音量曲线与推子（checks/ProjectFile/VolumeCurve.swift）
 
@@ -2742,6 +2659,14 @@ do {
     try checkVolumeCurveAndMixer(root: root)
 } catch {
     check(false, "音量曲线与推子那一组抛错：\(error)")
+}
+
+// MARK: - 29. 声音场景（checks/ProjectFile/SoundScene.swift）
+
+do {
+    try checkSoundScenes(root: root)
+} catch {
+    check(false, "声音场景那一组抛错：\(error)")
 }
 
 try? manager.removeItem(at: root)

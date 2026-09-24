@@ -1,8 +1,9 @@
 # 声音：音量与渐入渐出
 
 > 2026-08-11 落地渐入渐出，2026-08-12 补 dB 显示与「只换 audioMix」快路径。
-> 改 `VideoEditAudioFade.swift`、`addVolumeRamps`、`makeAudioMix`、导出图里
-> 任何音频滤镜链之前必读。
+> 改 `VideoEditAudioFade.swift`、`addVolumeRamps` / `makeAudioMix`（2026-09-24 起实现在
+> `AudioMixBuilder`，VideoEditAudioMix.swift）之前必读。挂了[声音场景](sound-scenes.md)的合成音轨，
+> 段的增益改在 tap 里乘（效果之前），下面第 7 条的钉点只对没挂场景的轨有意义。
 >
 > 2026-09-23 起同一条链上又多了两环：段上的[音量曲线](audio-volume-curve.md)（有点时取代
 > `volume`）和轨道 / 总[推子](audio-mixer.md)（常数，乘进每一段）。下面「只换 audioMix」
@@ -95,7 +96,7 @@
    **同时保护预览和成片**（2026-09-24 之前导出走 ffmpeg 的 `afade`，逐样本算增益，没有这个问题）。
 
 8. **界面必须说出被抑制的那条边。** 主轨接缝上有转场时，检查器要显示一行说明
-   （`VideoEditInspector.fadeNote`），判据与合成同一个来源
+   （`ClipSoundSection.fadeNote`，`VideoEditInspector+Sound.swift`），判据与合成同一个来源
    `transitionOverlap`。用户设了却听不出差别，不解释就是「功能坏了」。
 
 ## 音量：存线性，显示 dB
