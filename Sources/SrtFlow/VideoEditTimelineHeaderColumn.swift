@@ -19,6 +19,8 @@ import SwiftUI
 struct TimelineHeaderColumn: View {
     let rows: [VideoEditTimelineView.RowSpec]
     let rowSpacing: Double
+    /// 拉开的插入缝垫在哪一行上面（和轨道行垫**同一行、同一段**，§5h）。nil = 没有缝。
+    let gapRowID: String?
     @ObservedObject var project: VideoEditProject
     /// 纵向滚动量的推送值：只有这一列和标尺订阅它。
     @ObservedObject var geometry: TimelineScrollGeometry
@@ -44,9 +46,12 @@ struct TimelineHeaderColumn: View {
         VStack(alignment: .center, spacing: rowSpacing) {
             ForEach(rows) { row in
                 TimelineHeaderRow(row: row, project: project, resizeBase: $resizeBase)
+                    // 缝垫在行**外面**：`TimelineHeaderRow` 的输入不变，它在时钟每跳一下时
+                    // 就照旧不重算（docs/architecture/preview-perf-ratchet.md）。
+                    .padding(.top, row.id == gapRowID ? TimelineSeams.gapExtra : 0)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, TimelineRowMetrics.inset)
         // 轨道行是**同一份 `rows`** 排出来的，所以只要减掉同一个纵向滚动量，
         // 两边就永远对得上（不用各自去量位置）。
         .offset(y: -geometry.offset.y)

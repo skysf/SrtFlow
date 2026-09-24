@@ -138,11 +138,14 @@ extension TimelineState {
     ///
     /// `clips` 和 `landings` 一一对应（多出来的一边被忽略）。
     mutating func insertImported(_ clips: [EditClip], at landings: [MediaImportLanding]) {
-        // 这一次导入新开的那条轨。第二段也要落进**同一条**，不能一段开一条 ——
-        // 落点算法把它们算在同一级梯子上（`newOverlayTop` / `newAudioBottom`
-        // 在 `busy` 里是同一个下标），这里必须对得上。
-        var freshOverlay: Int?
-        var freshAudio: Int?
+        // 落点里的「第几条轨」是按**这一批落地之前**的排布算的。这一批里要是在缝里
+        // 新插了一条轨（2026-09-24 起有这种落点），后面的下标就会错位 —— 所以先把
+        // 下标翻成轨道身份，再动数组。
+        let overlayIDs = overlayTracks.map(\.id)
+        let audioIDs = audioTracks.map(\.id)
+        // 这一次导入新开的轨，按落点记。同一个落点的第二段也要落进**同一条**，不能
+        // 一段开一条 —— 落点算法把它们算在同一级梯子上 / 同一条缝里，这里必须对得上。
+        var fresh: [TrackDropTarget: UUID] = [:]
         var touchedMain = false
 
         for (clip, landing) in zip(clips, landings) {
@@ -152,38 +155,30 @@ extension TimelineState {
             case .main:
                 mainClips.append(placed)
                 touchedMain = true
-            case .overlay(let index):
-                if overlayTracks.indices.contains(index) {
-                    overlayTracks[index].clips.append(placed)
-                    overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+            case .overlay(let index) where overlayIDs.indices.contains(index):
+                appendImported(placed, toLane: overlayIDs[index], audio: false)
+            case .audio(let index) where audioIDs.indices.contains(index):
+                appendImported(placed, toLane: audioIDs[index], audio: true)
+            case .overlay, .newOverlayTop:
+                // 指到的轨号已经不在了，和「最上面新开一条」走同一条路。
+                // 数组末尾 = 层级最高 = 显示在最上面一行（同 relocateClip）。
+                if let id = fresh[.newOverlayTop] {
+                    appendImported(placed, toLane: id, audio: false)
                 } else {
-                    overlayTracks.append(EditLane(clips: [placed]))
-                    freshOverlay = overlayTracks.count - 1
+                    fresh[.newOverlayTop] = insertLane(audio: false, at: overlayTracks.count, clips: [placed])
                 }
-            case .newOverlayTop:
-                if let index = freshOverlay {
-                    overlayTracks[index].clips.append(placed)
-                    overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+            case .audio, .newAudioBottom:
+                if let id = fresh[.newAudioBottom] {
+                    appendImported(placed, toLane: id, audio: true)
                 } else {
-                    // 数组末尾 = 层级最高 = 显示在最上面一行（同 relocateClip）。
-                    overlayTracks.append(EditLane(clips: [placed]))
-                    freshOverlay = overlayTracks.count - 1
+                    fresh[.newAudioBottom] = insertLane(audio: true, at: audioTracks.count, clips: [placed])
                 }
-            case .audio(let index):
-                if audioTracks.indices.contains(index) {
-                    audioTracks[index].clips.append(placed)
-                    audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+            case .insertOverlay(let index), .insertAudio(let index):
+                let audio = landing.target.insertion?.audio == true
+                if let id = fresh[landing.target] {
+                    appendImported(placed, toLane: id, audio: audio)
                 } else {
-                    audioTracks.append(EditLane(clips: [placed]))
-                    freshAudio = audioTracks.count - 1
-                }
-            case .newAudioBottom:
-                if let index = freshAudio {
-                    audioTracks[index].clips.append(placed)
-                    audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
-                } else {
-                    audioTracks.append(EditLane(clips: [placed]))
-                    freshAudio = audioTracks.count - 1
+                    fresh[landing.target] = insertLane(audio: audio, at: index, clips: [placed])
                 }
             }
         }
@@ -232,10 +227,23 @@ extension TimelineState {
             clips = overlayTracks.indices.contains(index) ? overlayTracks[index].clips : []
         case .audio(let index):
             clips = audioTracks.indices.contains(index) ? audioTracks[index].clips : []
-        case .newOverlayTop, .newAudioBottom:
+        case .newOverlayTop, .newAudioBottom, .insertOverlay, .insertAudio:
             clips = []
         }
         return clips.map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
+    }
+
+    /// 往一条现有的轨（按身份找）上放一段，轨里保持按时间排。
+    private mutating func appendImported(_ clip: EditClip, toLane id: UUID, audio: Bool) {
+        if audio {
+            guard let index = audioTracks.firstIndex(where: { $0.id == id }) else { return }
+            audioTracks[index].clips.append(clip)
+            audioTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+        } else {
+            guard let index = overlayTracks.firstIndex(where: { $0.id == id }) else { return }
+            overlayTracks[index].clips.append(clip)
+            overlayTracks[index].clips.sort { $0.timelineStart < $1.timelineStart }
+        }
     }
 
     /// 这一段放得进这条轨吗。判据和 `TimelineState.fits` 一字不差（1ms 容差：

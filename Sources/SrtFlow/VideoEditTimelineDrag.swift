@@ -27,25 +27,25 @@ struct ClipDragSession {
     let plan: ClipDragPlan
     /// 手势开始时的横向滚动量：边缘自动滚动把内容抽走时要补回来。
     let originScrollOffset: Double
-    /// 手势开始时的纵向滚动量：跨轨判定要按「此刻露出来的是哪几条轨」算，
-    /// 纵向自动滚动期间指针不动、内容在滚，差的就是这一段。
-    let originScrollOffsetY: Double
 
     /// 最近一次手势位移。自动滚动那一拍指针根本没动，得靠它重算落点。
     private(set) var translation: CGSize = .zero
+    /// 指针此刻在滚动视口里的位置。跨轨判定按它 + **现读**的纵向滚动量算指针的内容 y
+    /// （docs/architecture/timeline-drag-gestures.md §5h）：纵向自动滚动那一拍指针
+    /// 没动、内容在滚，缝一拉开指针底下的行也会被推走 —— 按「起手那一行 + dy」推算
+    /// 两种情况都会算错。
+    var pointerViewport: CGPoint = .zero
     /// 这一拍的落点解析（位移 / 对齐线 / 磁吸插入位置）。
     private(set) var resolution: DragResolution
 
     init(
         subject: Subject,
         plan: ClipDragPlan,
-        originScrollOffset: Double,
-        originScrollOffsetY: Double
+        originScrollOffset: Double
     ) {
         self.subject = subject
         self.plan = plan
         self.originScrollOffset = originScrollOffset
-        self.originScrollOffsetY = originScrollOffsetY
         self.resolution = DragResolution(delta: 0, guides: [], mainInsertion: nil)
     }
 

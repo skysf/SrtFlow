@@ -405,7 +405,7 @@ struct MediaFileDropDelegate: DropDelegate {
         case .main: slot = .main
         case .overlay(let index): slot = .overlay(index)
         case .audio(let index): slot = .audio(index)
-        case .newOverlayTop, .newAudioBottom: slot = nil
+        case .newOverlayTop, .newAudioBottom, .insertOverlay, .insertAudio: slot = nil
         }
         if let slot, let row = rowLayouts.first(where: { $0.spec.slot == slot }) {
             return (row.minY, row.maxY - row.minY)

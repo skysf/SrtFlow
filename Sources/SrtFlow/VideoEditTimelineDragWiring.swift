@@ -39,8 +39,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .clip(slot: slot),
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX,
-            originScrollOffsetY: scrollGeometry.offsetY
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -54,8 +53,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .shape,
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX,
-            originScrollOffsetY: scrollGeometry.offsetY
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -69,8 +67,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .text,
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX,
-            originScrollOffsetY: scrollGeometry.offsetY
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -86,8 +83,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .filter,
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX,
-            originScrollOffsetY: scrollGeometry.offsetY
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -102,8 +98,7 @@ extension VideoEditTimelineView {
         clipDrag = ClipDragSession(
             subject: .subtitleCue,
             plan: plan,
-            originScrollOffset: scrollGeometry.offsetX,
-            originScrollOffsetY: scrollGeometry.offsetY
+            originScrollOffset: scrollGeometry.offsetX
         )
     }
 
@@ -111,8 +106,9 @@ extension VideoEditTimelineView {
     func updateClipDrag(translation: CGSize, pointerViewport: CGPoint) {
         guard var drag = clipDrag else { return }
         drag.update(translation: translation, scrollOffset: scrollGeometry.offsetX, pixelsPerSecond: pps)
+        drag.pointerViewport = pointerViewport
         clipDrag = drag
-        dragTargetRow = verticalTarget(for: drag, dy: translation.height)
+        aimVertically(drag)
         autoScroller.update(
             pointer: pointerViewport,
             viewport: CGSize(width: viewportWidth, height: viewportHeight)
@@ -126,14 +122,36 @@ extension VideoEditTimelineView {
                 pixelsPerSecond: pps
             )
             clipDrag = drag
+            // 纵向滚动时内容在不动的指针底下走：目标行 / 缝也得跟着重判，
+            // 不然纵向滚出来的轨要等鼠标再动一下才选得中。
+            aimVertically(drag)
+        }
+    }
+
+    /// 按这一拍的指针定纵向目标：高亮哪条轨、压在哪条缝上（停够 0.2 秒拉开）、
+    /// 开着的缝该不该合上（§5h）。只写视图状态，一个字都不写 `TimelineState`（§0）。
+    func aimVertically(_ drag: ClipDragSession) {
+        let aim = verticalAim(for: drag, dy: drag.translation.height)
+        if !aim.inOpenGap, openSeam != nil {
+            withAnimation(TimelineSeamDwell.animation) { openSeam = nil }
+        }
+        dragTargetRow = aim.row
+        seamDwell.hover(aim.dwell) { seam in
+            // 停够了：拉开这条缝，落点改成「在这儿新开一条轨」。
+            guard clipDrag != nil else { return }
+            withAnimation(TimelineSeamDwell.animation) { openSeam = seam }
+            dragTargetRow = ("seam", seam.target)
         }
     }
 
     func endClipDrag() {
         autoScroller.stop()
+        seamDwell.cancel()
         defer {
             clipDrag = nil
             dragTargetRow = nil
+            // 缝跟着这一轮一起收：落进了缝，新开的那条轨就长在缝的位置上；没落进去就合上。
+            openSeam = nil
         }
         guard let drag = clipDrag else { return }
         switch drag.subject {
@@ -172,17 +190,14 @@ extension VideoEditTimelineView {
             target: target.target,
             magnet: project.magnetEnabled
         )
-        let layouts = rowLayouts()
-        if let layout = layouts.first(where: { $0.spec.id == target.id }) {
-            return (span, layout.minY, layout.spec.height)
+        if target.target.insertion != nil {
+            // 落进缝里：行还不存在，缩略框骑在缝正中那条插入线上。缝只有 28pt
+            // （用户选的窄缝），放不下整条轨高的框。几何只有 `TimelineSeams` 一份。
+            guard let top = gapPlacement.top else { return nil }
+            return (span, TimelineSeams.ghostY(gapTop: top), TimelineSeams.ghostHeight)
         }
-        // 开新轨：行还不存在，占位框骑在那条插入线上，高度给个缩略值。
-        // 几何常量在 `TimelineDropPlaceholder` 上 —— 从 Finder 拖文件落到新轨时
-        // 画的是同一个东西，两处各写一份字面量就会慢慢分叉。
-        let y: Double = target.id == "new-top"
-            ? TimelineDropPlaceholder.newLaneY(above: layouts.first { $0.spec.slot != nil }?.minY ?? 30)
-            : TimelineDropPlaceholder.newLaneY(below: layouts.last?.maxY ?? 30)
-        return (span, y, TimelineDropPlaceholder.newLaneHeight)
+        guard let layout = rowLayouts().first(where: { $0.spec.id == target.id }) else { return nil }
+        return (span, layout.minY, layout.spec.height)
     }
 
     /// 占位框本体：半透明填充 + 虚线描边，和被拖素材落地后等长。不拦事件。
@@ -190,54 +205,49 @@ extension VideoEditTimelineView {
         TimelineDropPlaceholder(span: span, pps: pps, y: y, height: height)
     }
 
-    /// 垂直拖出 18pt 之后开始找目标行：同类行里挑离指尖最近的；
-    /// 拖出最上面（视频）/最下面（音频）就是开新轨。
-    func verticalTarget(
-        for drag: ClipDragSession,
-        dy: Double
-    ) -> (id: String, target: VideoEditProject.RowTarget)? {
-        guard abs(dy) > 18 else { return nil }
+    /// 一拍的纵向判定结果。
+    struct VerticalAim {
+        /// 松手落到哪（nil = 留在自己这条轨上）。
+        var row: (id: String, target: VideoEditProject.RowTarget)?
+        /// 指针压着哪条关着的缝：停够时间就拉开它。
+        var dwell: TimelineSeam?
+        /// 指针在已经拉开的那条缝里（缝保持开着）。
+        var inOpenGap = false
+    }
+
+    /// 垂直拖出 18pt 之后开始找目标：缝拉开了就落进缝（新开一条轨）；没拉开就落进同类行里
+    /// 离指针最近的那条，同时看指针压没压在某条缝上（停够 0.2 秒拉开它）。
+    ///
+    /// 最上面那条视频缝以上、最下面那条音频缝以下都算那条缝 —— 原来「拖出最上面 = 顶上
+    /// 新开一条」「拖出最下面 = 底下新开一条」的老手感，现在也要先停一下、缝拉开了才落。
+    func verticalAim(for drag: ClipDragSession, dy: Double) -> VerticalAim {
+        guard abs(dy) > 18 else { return VerticalAim() }
         // 形状只在自己那一行里横向移动，没有跨轨这回事。
         guard let slot = drag.clipSlot,
-              let clip = project.state.clip(with: drag.draggedID) else { return nil }
-        let layouts = rowLayouts()
-        guard let source = layouts.first(where: { $0.spec.slot == slot }) else { return nil }
-        // 纵向自动滚动那一路：指针没动、内容在它底下滚走了，得把这段补上，
-        // 否则新露出来的轨道永远选不中（同横向那条补偿，见 ClipDragSession）。
-        let scrolled = scrollGeometry.offsetY - drag.originScrollOffsetY
-        let pointY = source.midY + dy + scrolled
-
-        var candidates: [(id: String, midY: Double, target: VideoEditProject.RowTarget)] = []
-        if clip.isAudioOnly {
-            for layout in layouts {
-                if case .audio(let index) = layout.spec.slot {
-                    candidates.append((layout.spec.id, layout.midY, .audio(index)))
-                }
+              let clip = project.state.clip(with: drag.draggedID) else { return VerticalAim() }
+        let specs = rows
+        let seamRows = specs.map(\.seamRow)
+        guard let source = specs.firstIndex(where: { $0.slot == slot }) else { return VerticalAim() }
+        // 指针的内容 y = 视口 y + **现读**的纵向滚动量（§5c）。不能再按「起手那一行的中线
+        // + dy + 滚过的量」推算：缝一拉开，指针底下的行就被推走了，按起手的行去推会差一个
+        // 缝宽（§5h）。纵向自动滚动那一拍指针没动、内容在滚，差的也正是这一项。
+        let y = drag.pointerViewport.y + scrollGeometry.offsetY
+        let audio = clip.isAudioOnly
+        let noOp = TimelineSeams.noOpSeams(draggingClip: clip.id, in: project.state)
+        let candidates = TimelineSeams.spots(audio: audio, rows: seamRows)
+            .map(\.seam)
+            .filter { !noOp.contains($0) }
+        switch TimelineSeams.aim(y: y, rows: seamRows, open: openSeam, candidates: candidates, openEnds: true) {
+        case .inOpenGap(let seam):
+            return VerticalAim(row: ("seam", seam.target), dwell: nil, inOpenGap: true)
+        case .near(let seam):
+            // 缝没拉开（或者这一拍就合上）：按关着时的排布挑最近的同类轨。
+            guard let nearest = TimelineSeams.nearestTrackRow(y: y, rows: seamRows, audio: audio),
+                  nearest != source, let target = specs[nearest].slot else {
+                return VerticalAim(row: nil, dwell: seam)
             }
-            if let bottom = layouts.last {
-                candidates.append(("new-bottom", bottom.maxY + 16, .newAudioBottom))
-            }
-        } else {
-            for layout in layouts {
-                switch layout.spec.slot {
-                case .main:
-                    candidates.append((layout.spec.id, layout.midY, .main))
-                case .overlay(let index):
-                    candidates.append((layout.spec.id, layout.midY, .overlay(index)))
-                default:
-                    break
-                }
-            }
-            if let firstContent = layouts.first(where: { $0.spec.slot != nil }) {
-                candidates.append(("new-top", firstContent.minY - 16, .newOverlayTop))
-            }
+            return VerticalAim(row: (specs[nearest].id, TrackDropTarget(target)), dwell: seam)
         }
-
-        guard let best = candidates.min(by: { abs($0.midY - pointY) < abs($1.midY - pointY) }) else {
-            return nil
-        }
-        if best.id == source.spec.id { return nil }
-        return (best.id, best.target)
     }
 
 }
@@ -256,8 +266,8 @@ struct TimelineDropPlaceholder: View {
 
     /// 开新轨时占位框的缩略高度。那儿只有几个点的缝（标尺到 28、最上面那条轨行
     /// 从 33 起），按真实行高去画，框会整个跑到视口外面 —— 所以缩一缩、**骑在**
-    /// 插入线上，上下各露出来一半。
-    static let newLaneHeight = 22.0
+    /// 插入线上，上下各露出来一半。和拉开的缝里那个框同一个尺寸（`TimelineSeams`）。
+    static let newLaneHeight = TimelineSeams.ghostHeight
     /// 缩略框的中心离相邻那条轨有多远。
     static let newLaneGap = 4.0
 
