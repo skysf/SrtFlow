@@ -105,6 +105,7 @@ run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
 run_check "blocking-media-reads（扫描守卫）" checks/blocking-media-reads.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh
 run_check "docs-index-drift（扫描守卫）" checks/docs-index-drift.sh
+run_check "source-file-size（扫描守卫：代码文件行数上限，老文件只许降）" checks/source-file-size.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
 run_check "transition-handles-wiring（扫描守卫）" checks/transition-handles-wiring.sh

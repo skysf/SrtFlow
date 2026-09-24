@@ -28,7 +28,7 @@ GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
 ROW_HEIGHTS="Sources/SrtFlow/VideoEditTimelineRowHeights.swift"
 ROW_HEIGHT_DRAG="Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift"
-# 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
+# 「整族都必须满足」的约束（手势坐标系、文件都在）扫这一批。
 MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 DROP_ROUTER="Sources/SrtFlow/VideoEditTimelineDropRouter.swift"
 VOLUME_CURVE="Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift"
@@ -80,17 +80,13 @@ require_func() {
   printf '%s\n' "$body"
 }
 
-# ── 0. 拆分后的文件都必须在，且都不许再长回「什么都往里塞」的那种体积 ──
-# 这一族本来是一个 2101 行的文件，谁都不敢动。拆完之后守卫得自己盯住两件事：
-# 路径别失效（扫空文件 = 假绿），单文件别再超过仓库约 800 行的警戒线。
+# ── 0. 拆分后的文件都必须在（扫空文件 = 假绿） ──────────────────────────
+# 这一族本来是一个 2101 行的文件，谁都不敢动。单文件行数的上限自 2026-09-24 起归
+# checks/source-file-size.sh 管（全仓一个上限，见 docs/architecture/coding-standards.md），
+# 这里不再另算一份。
 for file in "${TIMELINE_VIEWS[@]}"; do
-  if [ ! -f "${file}" ]; then
-    fail "找不到 ${file}：时间线视图这一族的文件被改名/删了，守卫会扫空 —— 同步改这里"
-    continue
-  fi
-  LINES="$(wc -l < "${file}" | tr -d ' ')"
-  [ "${LINES}" -le 800 ] \
-    || fail "${file} 已经 ${LINES} 行，超过 800 行警戒线：按职责再拆一刀，别让它长回老样子"
+  [ -f "${file}" ] \
+    || fail "找不到 ${file}：时间线视图这一族的文件被改名/删了，守卫会扫空 —— 同步改这里"
 done
 
 # ── 1. 正在被拖 / 被裁的块必须豁免那条 0.12s 重排动画 ─────────────────
@@ -1262,4 +1258,4 @@ fi
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工（都在） / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

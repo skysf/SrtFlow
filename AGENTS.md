@@ -58,13 +58,16 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 2. **复用优先，抽象克制。** 同一模式出现第二次时，按仓库现有粒度抽成共享组件；
    没有真实第二用例时不提前制造泛型和框架。参考：`ResizableFrameBox`、
    `LenientCodableEnum`、`liveApply` / `perform`。
-3. **控制单文件体积。** 新类型或新功能默认按职责开新文件。单文件超过约 800 行即为
-   警戒线；改到超标文件时，可顺手拆出职责独立的部分，但不要借题做一次性大重构。
-   当前待瘦身：`VideoEditProject.swift`、`VideoEditModels.swift`、
-   `VideoEditCompositionBuilder.swift`。
-   时间线视图已于 2026-09-18 按职责拆成一族文件（`VideoEditTimeline*.swift`，
-   分工写在 `VideoEditTimelineView.swift` 顶部），**单文件 800 行的上限由
-   `checks/timeline-drag-wiring.sh` 第 0 节钉住**，别再往里堆。
+3. **代码要模块化，单文件不许太长**（2026-09-24 用户定的规范，细则见
+   [写代码的规范](docs/architecture/coding-standards.md)，**写代码前必读**）：
+   - 一个文件只管一件事，新类型、新功能默认开新文件；文件开头写清它管什么、不管什么。
+   - **单文件目标 ≤ 400 行，超过 600 行就红**（Swift / shell / Python，测试和检查脚本
+     也算）：`checks/source-file-size.sh`。超了就拆，不许靠删注释、挤行凑数。
+   - 当时就超了的老文件登记在 `checks/source-file-size-baseline.txt`，**行数只许降不许涨**：
+     往里加代码就在同一次改动里拆出等量的行；变短了跑 `checks/source-file-size.sh --update`
+     把基线改小。可以顺手拆出职责独立的部分，但不要借题做一次性大重构。
+   - 拆的时候优先抽出**有名字的顶层类型**（纯值、接口窄、自检能单独编），不要给
+     `VideoEditProject`、`TimelineState` 这种大对象再开一个只有 extension 的文件。
 
 ### 验证纪律
 
@@ -188,6 +191,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
+- 代码文件的行数上限（超过 600 行就红，老文件只许降不许涨，变短了用 `--update` 改小基线）：
+  `checks/source-file-size.sh`。
 - shell 脚本里裸 `$VAR` 不许紧跟中文 / 全角标点（bash 会把首字节吃进变量名，
   `set -u` 下当场退出）：`checks/shell-var-boundary.sh`。
 - 开着 pipefail 的 shell 脚本里，管道末端不许用 `grep -q`（命中就退出，上游吃 SIGPIPE，
@@ -240,6 +245,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 ## 架构与长期约束索引
 
+- [写代码的规范](docs/architecture/coding-standards.md) — 模块化的六条（一个文件一件事、抽有名字的顶层类型、
+  别开只有 extension 的文件、纯计算和副作用分开、同一规则只有一处实现、函数别太长），单文件目标 400 / 上限 600
+  行与老文件只许降的基线、审查清单。
 - [时间线捏合缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
