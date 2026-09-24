@@ -120,6 +120,10 @@ run_check "export-alpha-compositing（上层轨动画段 fill+matte）" scripts/
 
 # ---- 第 2 组 ----
 shard 2
+# 只跑比对规则的自检。真正的预览性能 ratchet（起真 App 数活）**故意不在这里**：要图形
+# 会话，基线也是按 GitHub runner 的环境记的 —— 它是 CI 第 1 组里单独的一步
+#（.github/workflows/checks.yml，docs/architecture/preview-perf-ratchet.md）。
+run_check "preview-perf-compare（性能 ratchet 的比对规则）" scripts/check-preview-perf.sh --self-test
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh

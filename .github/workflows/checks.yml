@@ -37,6 +37,10 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 预览性能 ratchet 要拿「这个 PR 之前」的基线来比（只许降），PR 的合并提交
+          # 得带上它的父提交。
+          fetch-depth: 2
 
       - name: Toolchain versions (diagnostics)
         run: |
@@ -72,6 +76,23 @@ jobs:
 
       - name: Run checks (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
         run: scripts/check-all.sh --shard ${{ matrix.shard }} --of ${{ strategy.job-total }}
+
+      # 预览性能 ratchet：起真 App 按固定场景数「做了多少件活」，只许降不许涨
+      # （docs/architecture/preview-perf-ratchet.md）。要图形会话，所以不在 check-all.sh 里；
+      # 放第 1 组是因为这台已经编好了完整 App。上一步红了它照跑：一次看全。
+      - name: Preview performance ratchet
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        env:
+          PREVIEW_PERF_OUT: ${{ runner.temp }}/preview-perf
+        run: scripts/check-preview-perf.sh
+
+      - name: Upload preview performance results
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-perf
+          path: ${{ runner.temp }}/preview-perf
+          if-no-files-found: ignore
 
   check-all:
     # ruleset protect-main 要求一个叫 check-all 的检查通过，由这里汇总 5 组的结果。
