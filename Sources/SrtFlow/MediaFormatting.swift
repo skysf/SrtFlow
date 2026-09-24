@@ -165,11 +165,12 @@ enum FilePicker {
         return panel.runModal() == .OK ? panel.urls : []
     }
 
-    static func chooseDirectory() -> URL? {
+    static func chooseDirectory(startingAt directory: URL? = nil) -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
+        panel.directoryURL = directory
         return panel.runModal() == .OK ? panel.url : nil
     }
 }

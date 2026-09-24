@@ -506,6 +506,24 @@ do {
                "5K offers 2160p first")
 }
 
+// MARK: - 导出面板：标题 → 文件名主干
+
+do {
+    func stem(_ title: String, _ ext: String = "mp4") -> String {
+        ExportFileName.stem(from: title, droppingExtension: ext, fallback: "L12")
+    }
+    checkEqual(stem("  Lesson 12  "), "Lesson 12", "trims surrounding whitespace")
+    checkEqual(stem("a/b:c"), "a-b-c", "path separators become dashes")
+    checkEqual(stem(".hidden"), "hidden", "a leading dot would hide the file")
+    checkEqual(stem("L12.mp4"), "L12", "drops the extension the user typed")
+    checkEqual(stem("L12.MP4"), "L12", "extension match ignores case")
+    checkEqual(stem("L12.mov"), "L12.mov", "a different extension is part of the name")
+    checkEqual(stem("L12.mp4", "m4a"), "L12.mp4", "only the export's own extension is dropped")
+    checkEqual(stem(""), "L12", "empty title falls back")
+    checkEqual(stem("   "), "L12", "blank title falls back")
+    checkEqual(stem(".mp4"), "L12", "nothing left after cleaning falls back")
+}
+
 // MARK: - 进度解析
 
 do {
@@ -1043,17 +1061,18 @@ do {
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: dir) }
 
-    // 冲突追加 -2/-3。
+    // 同名：导出面板先提示、再确认，确认之后原子地整份替换（2026-09-24 起；
+    // 以前是追加 -2/-3，重导几次就堆出一串，见 docs/architecture/export-settings.md）。
     try Data("x".utf8).write(to: dir.appendingPathComponent("movie.srt"))
-    let next = SubtitleExportPlanner.availableURL(directory: dir, fileName: "movie.srt")
-    checkEqual(next.lastPathComponent, "movie-2.srt", "冲突：追加 -2")
+    let replaced = dir.appendingPathComponent("movie.en.srt")
+    try Data("old".utf8).write(to: replaced)
 
     // 写盘 → 回读校验 → 能再解析。
-    let written = try SubtitleExportPlanner.writeValidated(original, format: .srt, to: next)
+    let written = try SubtitleExportPlanner.writeValidated(original, format: .srt, to: replaced)
     let parsed = SubtitleParser.parse(
-        try String(contentsOf: written, encoding: .utf8), format: .srt, filename: "movie-2.srt"
+        try String(contentsOf: written, encoding: .utf8), format: .srt, filename: "movie.en.srt"
     )
-    checkEqual(parsed.cues.count, 2, "写盘：SRT 回读 cue 数一致")
+    checkEqual(parsed.cues.count, 2, "写盘：同名旧文件被整份替换，SRT 回读 cue 数一致")
     checkEqual(parsed.cues.first?.text, "hello", "写盘：内容无损")
 
     let vtt = try SubtitleExportPlanner.writeValidated(

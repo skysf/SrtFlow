@@ -20,6 +20,9 @@ private let localizedCalls = [
     "Text", "L10n", "Label", "Button", "Toggle", "Picker", "TextField",
     "Section", "Stepper", "Menu", "Link", "LocalizedStringKey",
     "instantHelp", "confirmationDialog",
+    // 录屏设置早就在用、却一直没进这张表（2026-09-24 导出面板要用它时补上）：
+    // 在此之前「Frame rate」「Save to」这几条是碰巧在表里，不是被守着。
+    "LabeledContent",
     // 仓库自己的控件：第一个实参就是 LocalizedStringKey，最后还是进 Text。
     // 不列进来的话，整条检查器右栏（全是 labelledSlider）都是扫描盲区 ——
     // 2026-09-17 加文字功能时发现「Box width」这类文案一条都没被守到。

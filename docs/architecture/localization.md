@@ -20,9 +20,11 @@
 
 `scripts/check-localization-coverage.sh` 扫全部源码，第一个实参是
 `LocalizedStringKey` 的调用一个不落：`Text` / `Label` / `Button` / `Toggle` /
-`Picker` / `TextField` / `Section` / `Stepper` / `Menu` / `Link` /
+`Picker` / `TextField` / `Section` / `Stepper` / `Menu` / `Link` / `LabeledContent` /
 `confirmationDialog` / `.alert` / `.navigationTitle` / `LocalizedStringKey(…)` /
 `instantHelp` / `ToolbarIcon(help:)`，外加代码里查表的 `L10n(…)`。
+（`LabeledContent` 是 2026-09-24 才补进来的：录屏设置页早就在用，漏掉的那段时间里
+「File」一直没翻译，见 [案例](../bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md)。）
 还包括经参数转交的（`ToolbarIcon(help:)`、`LabeledSlider(label:)`）和
 `String(localized:)`。**新增 SwiftUI 控件类型、或新开一个转交文案的参数标签时，
 要往守卫的清单里补一行**，漏一个就是漏一类文案 —— `help:` 和 `label:` 都是这么

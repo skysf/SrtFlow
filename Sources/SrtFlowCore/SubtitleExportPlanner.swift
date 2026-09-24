@@ -1,8 +1,10 @@
 import Foundation
 
 // 字幕导出规划（docs/plans/2026-08-06-native-subtitle-generation.md 第 13 节）：
-// 命名、同名冲突、双语合成、「临时名 → 回读校验 → 原子替换」。
+// 命名、双语合成、「临时名 → 回读校验 → 原子替换」。
 // 任何失败不删不动用户已有文件（transform-review / export-prerender 教训）。
+// 同名怎么办归导出面板管：先提示、再确认替换（2026-09-24 起；以前在这里追加
+// -2/-3，见 docs/architecture/export-settings.md）。
 
 /// 预览与导出共用的轨道选择。
 public enum SubtitleTrackChoice: String, CaseIterable, Sendable {
@@ -75,20 +77,6 @@ public enum SubtitleExportPlanner {
         }
         let stem = tag.map { "\(base).\($0)" } ?? base
         return "\(stem).\(format.rawValue)"
-    }
-
-    /// 同目录冲突追加 -2/-3……（不覆盖任何已有文件）。
-    public static func availableURL(directory: URL, fileName: String) -> URL {
-        let manager = FileManager.default
-        let first = directory.appendingPathComponent(fileName)
-        guard manager.fileExists(atPath: first.path) else { return first }
-        let ext = (fileName as NSString).pathExtension
-        let stem = (fileName as NSString).deletingPathExtension
-        for n in 2...999 {
-            let candidate = directory.appendingPathComponent("\(stem)-\(n).\(ext)")
-            if !manager.fileExists(atPath: candidate.path) { return candidate }
-        }
-        return directory.appendingPathComponent("\(stem)-\(UUID().uuidString).\(ext)")
     }
 
     // MARK: 写盘（临时名 → 回读校验 → 原子替换）
