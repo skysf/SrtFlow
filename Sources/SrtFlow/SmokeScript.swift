@@ -17,6 +17,7 @@ import Foundation
 //   {"do": "key", "code": 0, "chars": "a", "flags": ["cmd"]}
 //   {"do": "hit", "at": [x, y]}                      日志里记下这一点命中的是哪个 NSView（排查用）
 //   {"do": "focus"}                                  日志里记下此刻的 key 窗口和第一响应者（排查按键被谁吃了）
+//   {"do": "toggles", "magnet": true, "snapping": false, "linkage": true}   直接拨工具栏的三个开关（省得去点图标）
 //   {"do": "perfReset"} / {"do": "perf", "label": "拖动"}   计数清零 / 记一份快照
 //   {"do": "state", "label": "拖完"}                 记下工程此刻的样子（选择、各段位置）
 //   {"do": "snapshot", "name": "after-drag"}         请外面拍一张窗口截图（见 SmokeDriver）
@@ -26,7 +27,7 @@ import Foundation
 
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
-        case wait, settle, window, seek, click, drag, scroll, key, hit, focus
+        case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles
         case perfReset, perf, state, snapshot, quit
     }
 
@@ -50,11 +51,14 @@ struct SmokeStep: Decodable {
     var flags: [String]?
     var label: String?
     var name: String?
+    var magnet: Bool?
+    var snapping: Bool?
+    var linkage: Bool?
 
     private enum CodingKeys: String, CodingKey {
         case action = "do"
         case seconds, quiet, timeout, width, height, time, at, from, to, count, steps, hold
-        case dx, dy, code, chars, flags, label, name
+        case dx, dy, code, chars, flags, label, name, magnet, snapping, linkage
     }
 
     static func load(from url: URL) throws -> [SmokeStep] {

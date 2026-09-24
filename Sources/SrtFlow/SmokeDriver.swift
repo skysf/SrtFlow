@@ -122,6 +122,12 @@ enum SmokeDriver {
             try await events.key(code: step.code ?? 0, chars: step.chars ?? "", flags: SmokeEvents.flags(step.flags))
         case .hit:
             note(events.describeHit(at: try SmokeStep.point(step.at, "hit.at")))
+        case .toggles:
+            // 三个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨。
+            if let magnet = step.magnet { project.magnetEnabled = magnet }
+            if let snapping = step.snapping { project.snappingEnabled = snapping }
+            if let linkage = step.linkage { project.linkageEnabled = linkage }
+            note("开关：磁吸 \(project.magnetEnabled) 吸附 \(project.snappingEnabled) 链接 \(project.linkageEnabled)")
         case .focus:
             // 排查「⌫ 被谁吃了」：编辑器的按键监听在第一响应者是 NSTextView 时让路。
             let keyWindow = NSApp.keyWindow.map { "\(type(of: $0)) #\($0.windowNumber)" } ?? "nil"
