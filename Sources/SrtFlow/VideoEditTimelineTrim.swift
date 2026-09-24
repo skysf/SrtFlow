@@ -26,6 +26,45 @@ enum TimelineTrim {
     /// 字幕 cue 裁到最短还剩多少。
     static let cueMinimumDuration = 0.1
 
+    /// 拉 `anchor` 的把手时一起裁的名单（2026-09-25 用户拍板：所有能选中的都算）：
+    /// - 拉的那个块在选中集合里 → 整个选择（剪辑、形状、文字、cue；含隐藏轨上被 ⌘A 选中的剪辑）；
+    /// - 没选中 → 只有它自己；
+    /// - 链接开着时，名单里每一段剪辑的链接伙伴都跟着（和挪、切、删同一条语义）；
+    /// - 滤镜单选、和别的选择互斥，所以拉滤镜只裁它自己。
+    /// 顺序固定（按 id），同一份输入永远同一份名单。
+    static func members(
+        anchor: Member,
+        selectedClips: Set<UUID>, selectedShapes: Set<UUID>, selectedTexts: Set<UUID>, selectedCues: Set<UUID>,
+        linkage: Bool, in state: TimelineState
+    ) -> [Member] {
+        if anchor.kind == .filter { return [anchor] }
+        let anchored: Bool
+        switch anchor.kind {
+        case .clip: anchored = selectedClips.contains(anchor.id)
+        case .shape: anchored = selectedShapes.contains(anchor.id)
+        case .text: anchored = selectedTexts.contains(anchor.id)
+        case .cue: anchored = selectedCues.contains(anchor.id)
+        case .filter: anchored = false
+        }
+        var clips: Set<UUID> = anchor.kind == .clip ? [anchor.id] : []
+        var shapes: Set<UUID> = anchor.kind == .shape ? [anchor.id] : []
+        var texts: Set<UUID> = anchor.kind == .text ? [anchor.id] : []
+        var cues: Set<UUID> = anchor.kind == .cue ? [anchor.id] : []
+        if anchored {
+            clips.formUnion(selectedClips)
+            shapes.formUnion(selectedShapes)
+            texts.formUnion(selectedTexts)
+            cues.formUnion(selectedCues)
+        }
+        if linkage {
+            for id in clips { clips.formUnion(state.linkedClipIDs(of: id)) }
+        }
+        func sorted(_ ids: Set<UUID>, _ kind: Kind) -> [Member] {
+            ids.sorted { $0.uuidString < $1.uuidString }.map { Member(id: $0, kind: kind) }
+        }
+        return sorted(clips, .clip) + sorted(shapes, .shape) + sorted(texts, .text) + sorted(cues, .cue)
+    }
+
     /// 整组能一起走的量：每个成员的范围取交集，再把要求的量夹进去。交集为空（有人一步都
     /// 不能动）就是 0 —— 整组不动，不会出现「别人动了、它没动」。
     static func clamp(_ requested: Double, ranges: [ClosedRange<Double>]) -> Double {

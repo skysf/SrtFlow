@@ -699,15 +699,24 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
-    /// 拖剪辑块的把手裁一边。链接开着时链接伙伴**一起裁**（和挪、切、删同一条链接语义），
-    /// 整组同一个量、谁先到头整组一起停（VideoEditTimelineTrim.swift）。
-    func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        let ids = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
-        let members = ids.sorted { $0.uuidString < $1.uuidString }.map { TimelineTrim.Member(id: $0, kind: .clip) }
+    /// 拉任何一个块的把手裁一边：拉的那个块在选中集合里就**整个选择一起裁**，链接开着时
+    /// 链接伙伴跟着（名单规则 `TimelineTrim.members`）；整组同一个量、谁先到头整组一起停
+    /// （VideoEditTimelineTrim.swift，docs/architecture/timeline-drag-gestures.md §3.6）。
+    /// 四种块的把手（剪辑 / 形状 / 文字 / 滤镜）都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    func liveTrim(anchor: TimelineTrim.Member, leading: Bool, deltaSeconds: Double) {
+        let members = TimelineTrim.members(
+            anchor: anchor, selectedClips: selectedClipIDs, selectedShapes: selectedShapeIDs,
+            selectedTexts: selectedTextIDs, selectedCues: selectedSubtitleCueIDs,
+            linkage: linkageEnabled, in: state
+        )
         beginLiveEdit()
         liveApply { state in
             state.trimGroup(members, leading: leading, by: deltaSeconds)
         }
+    }
+
+    func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .clip), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     /// 视图给的 UndoManager 首次出现时常常还是 nil，注册进去就全丢了。
@@ -1354,19 +1363,7 @@ final class VideoEditProject: ObservableObject {
     /// 形状没有素材边界：起点端最多回拉到 0；两端收缩的下限 0.2s 与检查器
     /// 「Shows for」步进器的下限同一个数。
     func liveTrimShape(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        beginLiveEdit()
-        liveApply { state in
-            state.updateShape(id) { shape in
-                let minDuration = 0.2
-                if leading {
-                    let delta = min(max(deltaSeconds, -shape.timelineStart), shape.duration - minDuration)
-                    shape.timelineStart += delta
-                    shape.duration -= delta
-                } else {
-                    shape.duration += max(deltaSeconds, -(shape.duration - minDuration))
-                }
-            }
-        }
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .shape), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     func deleteShape(_ id: UUID) {

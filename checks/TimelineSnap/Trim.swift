@@ -83,4 +83,36 @@ func checkTrim() {
     checkClose(tooShort, 4.8, "再往右缩：形状 / 文字 / 滤镜最短剩 0.2s，比剪辑的 0.1s 先到头 → 整组只走 4.8s")
     check((mixed.subtitle?.cues.first).map { $0.end - $0.start >= TimelineTrim.cueMinimumDuration } == true,
           "cue 不会被裁成负时长")
+
+    // ---- 名单：拉的那个在选中集合里 → 整个选择；没选中 → 只有它；链接伙伴跟着；滤镜只有自己 ----
+    let other = EditClip(sourceURL: media, sourceDuration: 3, timelineStart: 30)
+    var listed = mixed
+    listed.mainClips.append(other)
+    let sel = (clips: Set([video.id, other.id]), shapes: Set([shape.id]), texts: Set([text.id]), cues: Set([cue.id]))
+    let whole = TimelineTrim.members(anchor: v, selectedClips: sel.clips, selectedShapes: sel.shapes,
+                                     selectedTexts: sel.texts, selectedCues: sel.cues, linkage: true, in: listed)
+    checkEqual(Set(whole.map(\.id)), [video.id, audio.id, other.id, shape.id, text.id, cue.id],
+               "拉选中的剪辑：整个选择 + 链接伙伴")
+    checkEqual(whole.map(\.kind).filter { $0 == .clip }.count, 3, "剪辑三段（含链接的音频）")
+    let alone = TimelineTrim.members(anchor: TimelineTrim.Member(id: other.id, kind: .clip),
+                                     selectedClips: [], selectedShapes: sel.shapes, selectedTexts: sel.texts,
+                                     selectedCues: [], linkage: true, in: listed)
+    checkEqual(alone.map(\.id), [other.id], "拉没选中的剪辑：只有它（别的选择不跟）")
+    let linkedOnly = TimelineTrim.members(anchor: v, selectedClips: [], selectedShapes: [], selectedTexts: [],
+                                          selectedCues: [], linkage: true, in: listed)
+    checkEqual(Set(linkedOnly.map(\.id)), [video.id, audio.id], "拉没选中的视频：它 + 链接的音频")
+    let unlinked = TimelineTrim.members(anchor: v, selectedClips: [], selectedShapes: [], selectedTexts: [],
+                                        selectedCues: [], linkage: false, in: listed)
+    checkEqual(unlinked.map(\.id), [video.id], "链接关着：只有它")
+    let fromText = TimelineTrim.members(anchor: TimelineTrim.Member(id: text.id, kind: .text),
+                                        selectedClips: sel.clips, selectedShapes: sel.shapes, selectedTexts: sel.texts,
+                                        selectedCues: sel.cues, linkage: false, in: listed)
+    checkEqual(Set(fromText.map(\.id)), [video.id, other.id, shape.id, text.id, cue.id], "从文字起手一样带上整个选择")
+    let filterOnly = TimelineTrim.members(anchor: TimelineTrim.Member(id: filter.id, kind: .filter),
+                                          selectedClips: sel.clips, selectedShapes: sel.shapes, selectedTexts: sel.texts,
+                                          selectedCues: sel.cues, linkage: true, in: listed)
+    checkEqual(filterOnly.map(\.id), [filter.id], "滤镜单选：只裁自己")
+    checkEqual(whole, TimelineTrim.members(anchor: v, selectedClips: sel.clips, selectedShapes: sel.shapes,
+                                            selectedTexts: sel.texts, selectedCues: sel.cues, linkage: true, in: listed),
+               "同一份输入永远同一份名单（顺序固定）")
 }

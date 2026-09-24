@@ -64,24 +64,10 @@ extension VideoEditProject {
 
     // MARK: - 时间线上的拖动
 
-    /// 拖文字块两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
-    ///
-    /// 与形状同一套口径：没有素材边界，起点端最多回拉到 0，两端收缩的下限是
-    /// `TextOverlay.minimumDuration`。
+    /// 拖文字块两端裁切（实时版本）。范围与整组一起停的规矩都在 `TimelineTrim`
+    ///（没有素材边界，起点端最多回拉到 0，两端收缩的下限是 `TextOverlay.minimumDuration`）。
     func liveTrimTextOverlay(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        beginLiveEdit()
-        liveApply { state in
-            state.updateTextOverlay(id) { overlay in
-                let minDuration = TextOverlay.minimumDuration
-                if leading {
-                    let delta = min(max(deltaSeconds, -overlay.timelineStart), overlay.duration - minDuration)
-                    overlay.timelineStart += delta
-                    overlay.duration -= delta
-                } else {
-                    overlay.duration += max(deltaSeconds, -(overlay.duration - minDuration))
-                }
-            }
-        }
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .text), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     // MARK: - 查询

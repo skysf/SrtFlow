@@ -92,22 +92,9 @@ extension VideoEditProject {
     ///
     /// 与形状/文字同一套口径：没有素材边界，起点端最多回拉到 0，两端收缩的
     /// 下限是 `FilterClip.minimumDuration`。
+    /// 拖滤镜块两端裁切。滤镜单选、和别的选择互斥，所以只裁它自己（范围规矩在 `TimelineTrim`）。
     func liveTrimFilter(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        beginLiveEdit()
-        liveApply { state in
-            state.updateFilter(id) { filter in
-                let minDuration = FilterClip.minimumDuration
-                if leading {
-                    let delta = min(
-                        max(deltaSeconds, -filter.timelineStart), filter.duration - minDuration
-                    )
-                    filter.timelineStart += delta
-                    filter.duration -= delta
-                } else {
-                    filter.duration += max(deltaSeconds, -(filter.duration - minDuration))
-                }
-            }
-        }
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .filter), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     // MARK: - 复制 / 剪切 / 粘贴
