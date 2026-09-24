@@ -72,6 +72,11 @@ CI 跑的就是 `scripts/check-all.sh`，只是拆成几组、分到几台 runne
   `-enable-batch-mode` 实测编不过，别换成它。
 - **同一个 PR 又推了新提交，旧的一轮直接取消**（`concurrency`），不白占 runner；main 上的
   每一次都跑完。
+- **第 1 组多一步「预览性能 ratchet」**（`scripts/check-preview-perf.sh`，不在 check-all.sh 里：
+  要图形会话）。它起第 1 组已经编好的 App，按固定场景数「做了多少件活」，和
+  `checks/PreviewPerf/baseline.json` 比，只许降不许涨；结果和 App 日志作为附件 `preview-perf`
+  上传，逐项对比写在汇总页。为了比「这个 PR 之前」的基线，checkout 带 `fetch-depth: 2`
+  （PR 合并提交的第一个父提交）。规则见 [预览性能 ratchet](../architecture/preview-perf-ratchet.md)。
 - `.build` 缓存帮得有限：恢复之后第 1 组的完整编译仍要 50–80 秒（多半是因为 checkout 之后
   源文件的修改时间都是新的，SwiftPM 按修改时间判断要不要重编）。留着是因为恢复只要几秒。
 
