@@ -51,6 +51,7 @@ struct TransitionMaskView: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         if let window, let outgoing {
             // 下限 18：再窄两条把手就贴到一起，哪条都抓不准。窄到贴底之后画出来
             // 的宽度不再代表真实时长 —— 想精调就放大时间线。

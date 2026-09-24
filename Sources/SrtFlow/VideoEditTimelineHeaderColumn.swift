@@ -25,6 +25,7 @@ struct TimelineHeaderColumn: View {
     @Binding var resizeBase: RowHeightDragState?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         // **这一列不许决定时间线的高度。** 它的固有高度是所有行加起来（十来条轨
         // 就 500pt 往上），直接摆在 HStack 里的话，整条时间线会按这个高度去要
         // 地方 —— VSplitView 给不了那么多，工具栏和标尺就被挤出窗口。
@@ -79,6 +80,7 @@ private struct TimelineHeaderRow: View {
     @Binding var resizeBase: RowHeightDragState?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Group {
             if row.isRuler {
                 masterStrip

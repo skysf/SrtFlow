@@ -29,6 +29,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoPreviewView.swift \
+  Sources/SrtFlow/PerfCounters.swift \
   checks/PlayerClock/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

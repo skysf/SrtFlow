@@ -36,6 +36,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/AudioLibraryManifest.swift \
+  Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/AudioLibrary/main.swift

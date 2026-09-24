@@ -32,6 +32,7 @@ struct TimelinePinnedRuler: View {
     let onSeek: (Double, Bool) -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         TimelineRuler(pps: pps, duration: duration, frameRate: frameRate, onSeek: onSeek)
             // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
             // 底下，挡住了就点不动播放头了。
@@ -71,7 +72,9 @@ struct TimelineRuler: View {
     let onSeek: (Double, Bool) -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Canvas { context, size in
+            PerfCounters.canvas(Self.self)
             let scale = RulerScale.pick(pps: pps, frameRate: frameRate)
             let visible = context.clipBoundingRect
             // 左边多退一格：标签画在刻度线右边，刚滚出去的那个刻度的标签还露着半截。

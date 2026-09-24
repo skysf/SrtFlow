@@ -207,6 +207,7 @@ enum VideoEditCompositionBuilder {
         // 主轨按数组顺序进 A/B 轨，插入游标只会前进：乱序的输入会让
         // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
         // 改动入口已维持有序，这里再守一道 —— 上层视频轨（下面）同款 sorted。
+        PerfCounters.event(.compositionBuild)
         var state = state
         state.sortMainClipsByStart()
         // 转场靠向两边借余料做出来，展开之后两段真的相叠 —— 下面那套按「相叠」
@@ -225,6 +226,7 @@ enum VideoEditCompositionBuilder {
         var assets: [URL: AVURLAsset] = [:]
         func asset(for url: URL) -> AVURLAsset {
             if let existing = assets[url] { return existing }
+            PerfCounters.event(.compositionAssetOpen)
             let created = AVURLAsset(url: url)
             assets[url] = created
             return created

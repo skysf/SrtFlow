@@ -144,6 +144,7 @@ struct TransitionDropIndicator: View {
     let rowHeight: Double
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         let height = max(14, rowHeight - 10)
         RoundedRectangle(cornerRadius: 4)
             .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))

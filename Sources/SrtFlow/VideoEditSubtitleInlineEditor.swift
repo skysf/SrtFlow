@@ -29,6 +29,7 @@ struct SubtitleInlineEditor: View {
     enum Field: Hashable { case original, translation }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 6) {
             if editsOriginal {
                 TextField(

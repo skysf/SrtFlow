@@ -13,6 +13,7 @@ struct VideoEditProjectMenu: View {
     @State private var recents: [URL] = []
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Menu {
             Button("New Project") { project.newProject() }
             Button("Open Project…") { project.promptOpenProject() }
@@ -74,6 +75,7 @@ struct VideoEditStartScreen: View {
     private let columns = [GridItem(.adaptive(minimum: 190, maximum: 260), spacing: 12)]
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ScrollView {
             VStack(spacing: 18) {
                 header
@@ -137,6 +139,7 @@ private struct RecentProjectCard: View {
     let open: () -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button(action: open) {
             HStack(spacing: 10) {
                 Image(systemName: "film.stack")
@@ -186,6 +189,7 @@ struct MissingMediaBar: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)

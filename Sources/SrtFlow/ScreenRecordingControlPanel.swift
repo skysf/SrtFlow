@@ -98,6 +98,7 @@ private struct ControlPanelView: View {
     @ObservedObject var model: ScreenRecordingControlPanel.Model
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 10) {
             if let remaining = model.countdown {
                 // 代码确实等了三秒，界面上却什么都不显示、只有一个 00:00 的

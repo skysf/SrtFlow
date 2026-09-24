@@ -92,6 +92,7 @@ struct TimelineAlignmentGuides: View {
     let pixelsPerSecond: Double
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ForEach(times, id: \.self) { time in
             Rectangle()
                 .fill(.yellow)

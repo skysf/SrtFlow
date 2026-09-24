@@ -148,6 +148,7 @@ struct TimelineScrollViewAccessor: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: ScrollViewProbe, context: Context) {
+        PerfCounters.update(Self.self)
         nsView.onAttach = attach
         attach(nsView.enclosingScrollView)
     }

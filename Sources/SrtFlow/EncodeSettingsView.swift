@@ -6,6 +6,7 @@ struct EncodeSettingsView: View {
     @Binding var settings: VideoEncodeSettings
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Form {
             EncodeSettingsSections(settings: $settings, pipeline: .sourceFile)
         }
@@ -36,6 +37,7 @@ struct EncodeSettingsSections: View {
     let pipeline: Pipeline
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         if pipeline != .timelineAudioOnly {
             videoSection
         }
@@ -218,6 +220,7 @@ struct CommandPreview: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 8) {
                 ScrollView(.horizontal, showsIndicators: true) {

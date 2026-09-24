@@ -31,6 +31,7 @@ xcrun swiftc \
   -target "$TRIPLE" \
   -o "$OUT" \
   Sources/SrtFlow/InstantTooltip.swift \
+  Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/InstantTooltipPanel/main.swift
 

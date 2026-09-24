@@ -155,6 +155,7 @@ struct FilterDropIndicator: View {
     let fallbackY: Double
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         RoundedRectangle(cornerRadius: 4)
             .strokeBorder(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [4, 3]))
             .background(

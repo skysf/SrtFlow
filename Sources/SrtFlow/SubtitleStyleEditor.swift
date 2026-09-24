@@ -60,6 +60,7 @@ struct SubtitleStyleEditor: View {
     @State private var isNamingPreset = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Form {
             Section("Preset") {
                 presetPicker
@@ -307,6 +308,7 @@ private struct LabeledSlider: View {
     var onEditingChanged: ((Bool) -> Void)?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 2) {
             HStack {
                 Text(label)
@@ -332,6 +334,7 @@ private struct PositionGrid: View {
     ]
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 4) {
             ForEach(rows.indices, id: \.self) { rowIndex in
                 HStack(spacing: 4) {

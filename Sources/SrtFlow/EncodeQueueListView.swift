@@ -8,6 +8,7 @@ struct EncodeQueueListView: View {
     var onAddFiles: () -> Void
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Group {
             if queue.items.isEmpty {
                 emptyState
@@ -47,6 +48,7 @@ private struct EncodeQueueRow: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 statusIcon
@@ -175,6 +177,7 @@ struct OutputLocationPicker: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 8) {
             Text("Save to")
                 .foregroundStyle(.secondary)

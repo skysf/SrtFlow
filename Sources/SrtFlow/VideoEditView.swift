@@ -36,6 +36,7 @@ struct VideoEditView: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VSplitView {
             HSplitView {
                 // 素材库（转场 / 滤镜两页）：预览左边的一栏，只占上半区 ——
@@ -106,6 +107,9 @@ struct VideoEditView: View {
                 let url = URL(fileURLWithPath: smoke)
                 Task { await project.openProject(at: url) }
             }
+            // 预览性能测试：只有 CI 上 scripts/check-preview-perf.sh 起的 App 才带
+            // `SRTFLOW_BENCH_OUT`，平时是空操作（PreviewBench.swift）。
+            PreviewBench.startIfRequested(project: project)
         }
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
@@ -769,6 +773,7 @@ private struct ToolbarIcon: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button(action: action) {
             // 忙的时候原地换成转圈。**尺寸写在外层、和图标完全一样** ——
             // 写在分支里的话两种内容的固有尺寸不同，工具栏会在转圈出现和消失时
@@ -794,6 +799,7 @@ private struct ToolbarToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Toggle(isOn: $isOn) {
             Image(systemName: icon)
                 .frame(width: 20, height: 18)
@@ -822,6 +828,7 @@ private struct ShapeOverlayCanvas: View {
     @State private var centerGuides = (vertical: false, horizontal: false)
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             Color.clear
             // displayTime：悬停预览时形状的出没要跟画面那一帧走。

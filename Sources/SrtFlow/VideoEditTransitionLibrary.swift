@@ -23,6 +23,7 @@ struct TransitionLibraryPanel: View {
     private var target: TransitionLibraryTarget { project.transitionLibraryTarget }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
             if let note = unavailableNote {
                 Text(note)

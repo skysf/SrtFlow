@@ -49,11 +49,13 @@ struct VolumeCurveOverlay: View {
     private var displayed: EditClip { session?.edited ?? clip }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         GeometryReader { proxy in
             let height = proxy.size.height
             if height >= VolumeCurveLayout.minimumHeight {
                 ZStack(alignment: .topLeading) {
                     Canvas { context, size in
+                        PerfCounters.canvas(Self.self)
                         draw(in: &context, size: size)
                     }
                     .allowsHitTesting(false)

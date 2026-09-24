@@ -59,6 +59,7 @@ struct SubtitleBurnInToggle: View {
     var exportState: TimelineState
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         if exportState.subtitle != nil {
             Toggle("Burn subtitles into the video", isOn: $options.burnIn)
             if options.burnIn {
@@ -141,6 +142,7 @@ struct SubtitleFilesExport: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         if exportState.subtitle != nil {
             // 一行一条轨（原文 / 译文），一列一种格式：四个挤一行在 420 宽的面板里会折行。
             Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 6) {

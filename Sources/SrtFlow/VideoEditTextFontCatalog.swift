@@ -71,6 +71,7 @@ struct TextFontPicker: View {
     @State private var query = ""
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack {
             Text("Typeface").font(.caption).foregroundStyle(.secondary)
             Spacer(minLength: 4)

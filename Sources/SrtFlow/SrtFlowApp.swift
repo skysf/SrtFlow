@@ -178,6 +178,7 @@ private struct SettingsView: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Form {
             Section("Appearance") {
                 AppLanguagePicker()
@@ -209,6 +210,7 @@ private struct ProjectCommands: View {
     private var isEditing: Bool { windowState.section == .videoEdit }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button("New Project") {
             showEditor()
             project.newProject()
@@ -265,6 +267,7 @@ private struct SectionButton: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button(title) {
             MainWindowState.shared.section = section
             openWindow(id: WindowID.main)

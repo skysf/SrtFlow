@@ -38,6 +38,7 @@ struct FilterBlockView: View {
     private var width: Double { max(FilterBlockMetrics.minimumWidth, filter.duration * pps) }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 3) {
             Image(systemName: "camera.filters")
                 .font(.system(size: 8))

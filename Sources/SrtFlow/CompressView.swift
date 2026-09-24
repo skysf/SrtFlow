@@ -16,6 +16,7 @@ struct CompressView: View {
     @AppStorage("compressSettings") private var storedSettings = ""
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HSplitView {
             queueSide
                 .frame(minWidth: 420, idealWidth: 560, maxWidth: .infinity)

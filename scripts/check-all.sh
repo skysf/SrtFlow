@@ -111,6 +111,7 @@ run_check "transition-handles-wiring（扫描守卫）" checks/transition-handle
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
+run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
 # 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口

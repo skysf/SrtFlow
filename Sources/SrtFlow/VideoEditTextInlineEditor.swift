@@ -24,6 +24,7 @@ struct TextInlineEditor: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 8) {
             TextField("Text", text: $draft, axis: .vertical)
                 .textFieldStyle(.roundedBorder)

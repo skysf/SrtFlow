@@ -53,6 +53,7 @@ struct ClipMarkerStrip: View {
     private let hitWidth: Double = 14
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             Color.clear
             ForEach(clip.visibleMarkers) { marker in
@@ -174,6 +175,7 @@ private struct ClipMarkerEditor: View {
     @State private var draft: String = ""
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 ForEach(MarkerColor.allCases) { color in

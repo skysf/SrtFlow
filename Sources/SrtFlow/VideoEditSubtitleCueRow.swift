@@ -34,6 +34,7 @@ struct VideoEditSubtitleCueRow: View {
     @FocusState.Binding var focusedField: SubtitleFieldFocus?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 Text("#\(cue.index)")

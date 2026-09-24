@@ -17,6 +17,7 @@ struct TransitionPickerButton: View {
     @State private var showsPicker = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button {
             showsPicker.toggle()
         } label: {
@@ -78,6 +79,7 @@ struct TransitionPickerGrid: View {
     private let columns = [GridItem(.adaptive(minimum: 76, maximum: 120), spacing: 8)]
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Group {
             if scrolls {
                 ScrollView { cards }
@@ -204,6 +206,7 @@ private struct TransitionCard: View {
     }
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Button(action: action) {
             VStack(spacing: 3) {
                 TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !hovering)) { context in
@@ -253,6 +256,7 @@ private struct TransitionMiniPreview: View {
     let head: CGImage?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         GeometryReader { geo in
             let size = geo.size
             ZStack {

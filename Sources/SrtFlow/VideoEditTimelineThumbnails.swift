@@ -27,7 +27,9 @@ struct ThumbnailStripView: View {
     @State private var still: CGImage?
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Canvas { [revision, still] context, size in
+            PerfCounters.canvas(Self.self)
             _ = revision
             ThumbnailPainter(clip: clip, pps: pps, still: still).draw(in: &context, size: size)
         }

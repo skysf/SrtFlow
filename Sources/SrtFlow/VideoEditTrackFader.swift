@@ -42,6 +42,7 @@ struct TrackFaderView: View {
     static let knob = 10.0
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         GeometryReader { proxy in
             let width = Double(proxy.size.width)
             let decibels = drag?.liveDecibels ?? AudioGain.decibels(fromLinear: value)
@@ -154,6 +155,7 @@ struct TrackMeterBars: View {
     static let red = Color(red: 1, green: 0.27, blue: 0.23)
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !clock.isPlaying)) { timeline in
             let reading = clock.isPlaying
                 ? source.engine.reading(
@@ -163,6 +165,7 @@ struct TrackMeterBars: View {
                 : MeterReading(left: AudioGain.minimumDB, right: AudioGain.minimumDB,
                                hold: AudioGain.minimumDB, clipped: source.engine.isClipped(source.key))
             Canvas { context, size in
+                PerfCounters.canvas(Self.self)
                 draw(reading, in: &context, size: size)
             }
         }

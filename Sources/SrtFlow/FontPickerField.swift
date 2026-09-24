@@ -14,6 +14,7 @@ struct FontPickerField: View {
     @State private var isPresented = false
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack {
             Text("Typeface")
             Spacer()
@@ -48,6 +49,7 @@ private struct FontBrowser: View {
     @State private var query = ""
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         VStack(spacing: 0) {
             searchField
             Divider()
@@ -135,6 +137,7 @@ private struct FontRow: View {
     let isCurrent: Bool
 
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         HStack(spacing: 6) {
             // 名字用这个字体本身画出来，一眼就能看出粗细和字形。
             Text(font.familyName)
@@ -158,6 +161,7 @@ private struct FontRow: View {
 /// 含中文字形的标记。中文字幕挑错字体是最常见的坑，标出来省事。
 private struct ChineseBadge: View {
     var body: some View {
+        let _ = PerfCounters.body(Self.self)
         Text("中")
             .font(.caption2)
             .padding(.horizontal, 4)
