@@ -115,6 +115,11 @@ need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.c
 need Sources/SrtFlow/VideoEditAudioMeter.swift 'PerfCounters\.event\(\.meterTapCreate\)' '新建电平表 tap 的计数'
 need Sources/SrtFlow/VideoEditProject.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
 need Sources/SrtFlow/VideoEditView.swift 'PreviewBench\.startIfRequested\(project: project\)' '编辑器出现时启动性能测试的入口'
+# 后台读媒体的起止：少了它，测试会在缩略图 / 波形还没读完时就开始量，数时有时无。
+need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadBegan\(\)' '缩略图开始取图的登记'
+need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadEnded\(\)' '缩略图取完的登记'
+need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadBegan\(\)' '波形开始解码的登记'
+need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadEnded\(\)' '波形解码完的登记'
 
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"

@@ -65,6 +65,27 @@ enum PerfCounters {
         case audioMixRefresh = "audioMix.refresh"
     }
 
+    /// 后台开始读一份媒体（时间线缩略图一轮取图、一个文件的波形）。和 `backgroundReadEnded`
+    /// 成对调，结束要算到「读完之后那次通知界面」为止。
+    ///
+    /// 性能测试要等它归零才开始量：这些读完会让界面更新一次，量到一半冒出来，数就不稳
+    /// —— 2026-09-24 就在「空闲 3 秒」里冒出过一次缩略图重画，而光看界面计数「一段时间
+    /// 没动」看不出后台还在解码。
+    static func backgroundReadBegan() {
+        guard isEnabled else { return }
+        store.withLock { $0.readsInFlight += 1 }
+    }
+
+    static func backgroundReadEnded() {
+        guard isEnabled else { return }
+        store.withLock { $0.readsInFlight -= 1 }
+    }
+
+    /// 此刻后台还有几份媒体在读。
+    static var backgroundReadsInFlight: Int {
+        store.withLock { $0.readsInFlight }
+    }
+
     /// 到此刻为止的全部计数，键形如 `body:VideoEditTimelineView`、`event:clock.tick`。
     static func snapshot() -> [String: Int] {
         store.withLock { store in
@@ -100,6 +121,7 @@ enum PerfCounters {
     private struct Store {
         var counts: [Key: Int] = [:]
         var events: [Event: Int] = [:]
+        var readsInFlight = 0
         /// 类型名只算一次（`String(describing:)` 不便宜，body 一秒要被调几百次）。
         var names: [ObjectIdentifier: String] = [:]
     }

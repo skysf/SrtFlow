@@ -185,7 +185,11 @@ enum PreviewBench {
         breakdown[prefix] = phase.counts
     }
 
-    /// 等预览落定：不在重建、不在导入、播放条目就绪，而且计数连续 `quietFor` 秒没动过。
+    /// 等预览落定：不在重建、不在导入、播放条目就绪、后台没有在读的缩略图 / 波形，
+    /// 而且计数连续 `quietFor` 秒没动过。
+    ///
+    /// 光看「计数一段时间没动」不够：后台解码缩略图时界面一下都不动，解完才更新一次
+    /// （2026-09-24：空闲阶段冒出一次缩略图重画，那一遍空闲时 CPU 276ms、另一遍 28ms）。
     private static func settle(_ project: VideoEditProject, quietFor: Double, timeout: Double) async throws {
         let deadline = Date().addingTimeInterval(timeout)
         var last = PerfCounters.snapshot()
@@ -195,6 +199,7 @@ enum PreviewBench {
             let now = PerfCounters.snapshot()
             let busy = project.isRebuildingPreview || project.importingCount > 0
                 || project.clock.player.currentItem?.status != .readyToPlay
+                || PerfCounters.backgroundReadsInFlight > 0
             if busy || now != last {
                 last = now
                 quietSince = Date()
@@ -203,7 +208,8 @@ enum PreviewBench {
             }
             if Date() > deadline {
                 throw Failure("\(Int(timeout)) 秒内等不到预览落定（重建中=\(project.isRebuildingPreview)，"
-                    + "导入中=\(project.importingCount)，条目=\(String(describing: project.clock.player.currentItem?.status.rawValue))）")
+                    + "导入中=\(project.importingCount)，后台在读=\(PerfCounters.backgroundReadsInFlight)，"
+                    + "条目=\(String(describing: project.clock.player.currentItem?.status.rawValue))）")
             }
         }
     }

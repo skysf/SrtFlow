@@ -161,11 +161,14 @@ actor WaveformStore {
             Task { await self?.dropContinuation(token, for: key) }
         }
         if isNew {
+            // 性能测试等后台读完再量（PerfCounters.backgroundReadBegan）。
+            PerfCounters.backgroundReadBegan()
             Task.detached(priority: .utility) {
                 await WaveformDecoder.decode(url: key) { snapshot in
                     await self.publish(snapshot, for: key)
                 }
                 await self.finish(key)
+                PerfCounters.backgroundReadEnded()
             }
         }
         return stream

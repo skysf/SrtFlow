@@ -191,6 +191,8 @@ final class ThumbnailTileCache: @unchecked Sendable {
         if shouldStart { draining = true }
         lock.unlock()
         if shouldStart {
+            // 性能测试等后台读完再量（PerfCounters.backgroundReadBegan）；结束记在 drain 最后。
+            PerfCounters.backgroundReadBegan()
             Task.detached(priority: .utility) { [self] in await drain() }
         }
     }
@@ -236,6 +238,7 @@ final class ThumbnailTileCache: @unchecked Sendable {
             }
         }
         await announce(delivered)
+        PerfCounters.backgroundReadEnded()
     }
 
     private func store(_ image: CGImage, for key: Key) {
