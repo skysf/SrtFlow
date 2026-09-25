@@ -17,13 +17,21 @@ import SwiftUI
 // 编辑规则与纵轴几何是纯值（VideoEditVolumeCurve.swift），合同见
 // docs/architecture/audio-volume-curve.md。
 
-struct VolumeCurveOverlay: View {
+struct VolumeCurveOverlay: View, Equatable {
     let clip: EditClip
     let pps: Double
     let activeTool: TimelineTool
     /// 只拿来**调动作**，不订阅：订阅的话工程里任何一处变化（点选一段）都让每一条音量线
     /// 重算、Canvas 重画 —— 2026-09-24 实测一次点选重画 61 条（见 `ClipBlockContext`）。
     let project: VideoEditProject
+
+    /// 按值比较（调用方套 `.equatable()`）：输入里有 `project` 这个引用，SwiftUI 自己比不出
+    /// 「没变」，块每重算一次（拖动每一拍）线就跟着重算、Canvas 重画一遍（2026-09-25 实测
+    /// 拖一段音频 30 拍重画 22 次）。线只由段、缩放和工具决定。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.clip == rhs.clip && lhs.pps == rhs.pps && lhs.activeTool == rhs.activeTool
+            && lhs.project === rhs.project
+    }
 
     @State private var session: Session?
     @State private var hovering = false

@@ -18,9 +18,13 @@ struct SubtitleCueBlockView: View, Equatable {
     let pps: Double
     /// 原文轨橙、译文轨青。
     let tint: Color
+    /// 模型里的选中。拉框进行中的实时高亮另走 `marqueeHit`（看框不看模型）。
     let isSelected: Bool
-    /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。
-    let dragOffset: Double?
+    /// 拖动 / 拉框的会话盒子：只 `onReceive` 自己那份位移和框选命中（同 `ClipBlockView`）。
+    let drag: TimelineDragBox
+    /// 在不在这一轮拖动的成员里（时间线按 `dragMembers` 算好传进来，一轮只变两次）：
+    /// 是成员才订阅位移，不是就拿一个永远不发的发布者（§0b）。
+    let isDragMember: Bool
     /// 单击 / 双击都从这里出去（`NSApp.currentEvent` 的 clickCount 由行来分流）。
     let onTap: () -> Void
     /// (手势总位移, 指针在滚动视口里的位置)。起手（冻结这一轮的输入）也由行在
@@ -28,20 +32,26 @@ struct SubtitleCueBlockView: View, Equatable {
     let onDragChange: (CGSize, CGPoint) -> Void
     let onDragEnd: () -> Void
 
+    /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
+    @State private var dragOffset: Double?
+    /// 拉框进行中这块在不在框里；nil = 没在拉框、或者和模型里一样，按 `isSelected` 画。
+    @State private var marqueeHit: Bool?
+    private var highlighted: Bool { marqueeHit ?? isSelected }
+
     /// 只比画面用得到的输入（同 `ClipBlockView`）。闭包比不了、也不用比：它们捕获的是
     /// 时间线视图，读的是它的 `@State` 和工程对象，永远是最新的。
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.cue == rhs.cue && lhs.pps == rhs.pps && lhs.tint == rhs.tint
-            && lhs.isSelected == rhs.isSelected && lhs.dragOffset == rhs.dragOffset
+            && lhs.isSelected == rhs.isSelected && lhs.drag === rhs.drag && lhs.isDragMember == rhs.isDragMember
     }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         RoundedRectangle(cornerRadius: 3)
-            .fill(tint.opacity(isSelected ? 0.8 : 0.45))
+            .fill(tint.opacity(highlighted ? 0.8 : 0.45))
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
-                    .strokeBorder(.white, lineWidth: isSelected ? 1.2 : 0)
+                    .strokeBorder(.white, lineWidth: highlighted ? 1.2 : 0)
             )
             // 宽和高都与框选的命中判定共用常量：画多大就该按多大判，
             // 否则一条 0.05 秒的 cue 框得中却看不见、或反过来。
@@ -63,5 +73,15 @@ struct SubtitleCueBlockView: View, Equatable {
                     .onEnded { _ in onDragEnd() }
             )
             .instantHelp(verbatim: SubtitleSerializer.plainText(cue.text))
+            // 只收自己那份：位移 / 框选命中没变就不写 @State，这块就不重算（§0b）。
+            .onReceive(drag.offsets(member: isDragMember)) { offsets in
+                let mine = offsets.offset(for: cue.id)
+                if mine != dragOffset { dragOffset = mine }
+            }
+            .onReceive(drag.$marqueeHit) { hit in
+                // 框里的和模型里的一样就记 nil：不然框一起手，全部块都从 nil 变成 false、各重算一遍。
+                let mine = hit.map { $0.cues.contains(cue.id) }.flatMap { $0 == isSelected ? nil : $0 }
+                if mine != marqueeHit { marqueeHit = mine }
+            }
     }
 }

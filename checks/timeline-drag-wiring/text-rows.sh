@@ -22,10 +22,11 @@ STACKING_CALLS="$(grep -rn 'TextOverlayStacking\.' Sources/SrtFlow --include='*.
 grep_code 'textOverlays(onRow: row)' "$TEXT_ROW" || fail "文字行没按 row 取字"
 grep_code 'textOverlays(onRow: row)' "$MARQUEE_VIEW" || fail "框选的文字行没按 row 取字"
 grep_code 'textOverlays(onRow: row)' "$ROW_SELECT_RULE" || fail "行头点选没按 row 取字"
-# 2) 目标行只是视图状态：拖动中不写 state；松手清掉；视图消失清掉。
-grep_code '@State var textDropRow: Int?' "$VIEW" || fail "目标行不是视图状态（textDropRow）"
+# 2) 目标行只是视图状态（在拖动盒子里，§0b）：拖动中不写 state；松手清掉；视图消失清掉。
+grep_code '@Published private(set) var textDropRow: Int?' "Sources/SrtFlow/VideoEditTimelineDragBox.swift" \
+  || fail "目标行不是拖动盒子里的视图状态（textDropRow）"
 if BODY="$(require_func 'func aimVertically(' "$DRAG_WIRING")"; then
-  grep -q 'textDropRow = textRowTarget(for: drag)' <<<"$BODY" \
+  grep -q 'dragBox.aim(textRow: textRowTarget(for: drag))' <<<"$BODY" \
     || fail "aimVertically 没给文字块判目标行（textRowTarget）"
   grep -q 'drag.subject == .text' <<<"$BODY" \
     || fail "aimVertically 没把文字块和跨轨拖动分开：文字会进缝、换轨"
@@ -38,11 +39,14 @@ if BODY="$(require_func 'func textRowTarget(' "$DRAG_WIRING")"; then
   done
 fi
 if BODY="$(require_func 'func endClipDrag(' "$DRAG_WIRING")"; then
-  grep -q 'textDropRow = nil' <<<"$BODY" || fail "松手没清 textDropRow"
-  grep -q 'textRow: textDropRow' <<<"$BODY" || fail "松手没把目标行交给 commitFreeDrag：换行不落地"
+  grep -q 'dragBox.end()' <<<"$BODY" || fail "松手没清 textDropRow（dragBox.end()）"
+  grep -q 'textRow: dragBox.textDropRow' <<<"$BODY" || fail "松手没把目标行交给 commitFreeDrag：换行不落地"
+fi
+if BODY="$(require_func 'func end()' "Sources/SrtFlow/VideoEditTimelineDragBox.swift")"; then
+  grep -q 'textDropRow = nil' <<<"$BODY" || fail "TimelineDragBox.end 没清 textDropRow"
 fi
 if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
-  grep -q 'textDropRow = nil' <<<"$BODY" || fail "onDisappear 没清 textDropRow"
+  grep -q 'dragBox.reset()' <<<"$BODY" || fail "onDisappear 没清 textDropRow（dragBox.reset()）"
 fi
 # 3) 落地：换行和横向位移在同一次 perform 里（一步撤销），落点被占往上找。
 if BODY="$(require_func 'func commitFreeDrag(' "$PROJECT")"; then

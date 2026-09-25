@@ -40,10 +40,12 @@ INSERT_GAP="Sources/SrtFlow/VideoEditTimelineInsertGap.swift"
 # 整条轨换位置（2026-09-24）：纯值的落点算法一个文件，轨道头上的拖动接线一个文件。
 LANE_ORDER="Sources/SrtFlow/VideoEditTimelineLaneOrder.swift"
 LANE_REORDER="Sources/SrtFlow/VideoEditTimelineLaneReorder.swift"
+# 拖动 / 拉框的会话盒子与覆盖层（2026-09-25，§0b）：时间线持有不订阅，块只收自己那份。
+DRAG_BOX_FILE="Sources/SrtFlow/VideoEditTimelineDragBox.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$CUE_BLOCK" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
   "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE" \
-  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER")
+  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -233,15 +235,7 @@ if BODY="$(require_func 'private func endMarquee' "$MARQUEE_VIEW")"; then
   COUNT="$(printf '%s\n' "$BODY" | grep -c 'applyBoxSelection' || true)"
   [ "$COUNT" -eq 1 ] || fail "endMarquee 里有 ${COUNT} 处 applyBoxSelection，应当正好 1 处"
 fi
-# 拖框中的高亮必须走「看框不看模型」的那个助手，绕过去就没有实时反馈了。
-grep -q 'isSelected: isSelected(clip: clip.id)' "$VIEW" \
-  || fail "剪辑块的选中态没走 isSelected(clip:)：拖框中不会实时高亮"
-grep -q 'isSelected: isSelected(shape: shape.id)' "$SHAPE_ROW" \
-  || fail "形状块的选中态没走 isSelected(shape:)：拖框中不会实时高亮"
-grep -q 'isSelected: isSelected(text: overlay.id)' "$TEXT_ROW" \
-  || fail "文字块的选中态没走 isSelected(text:)：拖框中不会实时高亮"
-grep -q 'isSelected(cue: cue.id)' "$SUBTITLE_ROW" \
-  || fail "字幕 cue 的选中态没走 isSelected(cue:)：拖框中不会实时高亮"
+# 拖框中的高亮「看框不看模型」：块各自从盒子里收框选命中，钉在 timeline-drag-wiring/drag-box.sh。
 # 混选只能从 selectBox 这一个入口进来。
 OTHER_BOX="$(grep -rn 'selectBox(' Sources/SrtFlow --include='*.swift' \
   | grep -v 'VideoEditSelection.swift' \
@@ -279,15 +273,11 @@ if BODY="$(require_func 'func subtitleRow' "$SUBTITLE_ROW")"; then
   grep -q 'allowsHitTesting(!hidden)' <<<"$BODY" \
     || fail "字幕行隐藏后仍然吃事件：隐藏轨必须不可编辑"
   # 起手判据要带上「有没有活着的会话」，否则被打断后留下的陈旧 id 会让同一条 cue
-  # 的下一次拖动整轮建不出会话。
-  grep -q 'clipDrag == nil || movingCueID != cue.id' <<<"$BODY" \
+  # 的下一次拖动整轮建不出会话。（会话和记号都在盒子里，§0b。）
+  grep -q 'dragBox.clipDrag == nil || dragBox.movingCueID != cue.id' <<<"$BODY" \
     || fail "cue 起手只比了 id：手势被打断后同一条 cue 会失效一次"
 fi
-# 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）。
-if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
-  grep -q 'movingCueID = nil' <<<"$BODY" \
-    || fail "onDisappear 没清 movingCueID：下一次拖同一条 cue 会失效一次"
-fi
+# 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）：钉在 drag-box.sh（dragBox.reset()）。
 grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$SHAPE_ROW" \
   || fail "形状块没有接上 beginShapeDrag"
 grep -q 'beginClipDrag(' "$VIEW" || fail "剪辑块没有接上 beginClipDrag"
@@ -610,11 +600,13 @@ if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
   fi
 fi
 
-# ── 点非素材处 = 把播放头挪过来 / 文字块上下换行（各拆在自己的文件里，同一个 shell 里 source）──
+# ── 点非素材处 = 把播放头挪过来 / 文字块上下换行 / 拖动会话不进时间线的 @State（各拆在自己的文件里）──
 # shellcheck source=checks/timeline-drag-wiring/playhead-click.sh
 source checks/timeline-drag-wiring/playhead-click.sh
 # shellcheck source=checks/timeline-drag-wiring/text-rows.sh
 source checks/timeline-drag-wiring/text-rows.sh
+# shellcheck source=checks/timeline-drag-wiring/drag-box.sh
+source checks/timeline-drag-wiring/drag-box.sh
 
 # ── 从转场库拖卡片到接缝 ──────────────────────────────────────────────
 # 时间线在这之前**零 SwiftUI 拖放**（块的移动/裁切、标尺 scrub 全是 DragGesture），
@@ -733,7 +725,7 @@ if BODY="$(require_func 'func hoverPeek(' "$VIEW")"; then
     || fail "hoverPeek 没把扫帧时刻夹进 [0, duration]：影子指针会和画面各说各话"
   # 播放中 / 拖块 / 拖框 / 裁切都不扫帧。裁切那条只能从 project 上判 ——
   # `isTrimming` 是剪辑块内的 @State，容器看不见。
-  for guard_expr in '!clock.isPlaying' 'clipDrag == nil' 'marquee == nil' 'project.liveEditOrigin == nil'; do
+  for guard_expr in '!clock.isPlaying' 'dragBox.clipDrag == nil' 'dragBox.marquee == nil' 'project.liveEditOrigin == nil'; do
     grep -qF "$guard_expr" <<<"$BODY" \
       || fail "hoverPeek 少了 ${guard_expr} 这道 guard：按住在动的时候画面会被扫帧抢走"
   done
@@ -977,4 +969,4 @@ fi
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工（都在） / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：拖动会话不进时间线的 @State（盒子持有不订阅、块只收自己那份、覆盖层唯一订阅者）/ 整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工（都在） / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

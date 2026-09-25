@@ -36,8 +36,9 @@ extension VideoEditTimelineView {
                         cue: cue,
                         pps: pps,
                         tint: tint,
-                        isSelected: isSelected(cue: cue.id),
-                        dragOffset: dragOffset(movingID: cue.id),
+                        isSelected: project.selectedSubtitleCueIDs.contains(cue.id),
+                        drag: dragBox,
+                        isDragMember: dragMembers.contains(cue.id),
                         onTap: {
                             // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
                             // 带进这条字幕，画面上立刻有字可调。⌘/⇧ 点是加选。
@@ -57,14 +58,14 @@ extension VideoEditTimelineView {
                             // 判据带上「有没有活着的会话」：只比 id 的话，
                             // 上一轮被打断（切栏目/关窗）留下的陈旧 id 会让
                             // 同一条 cue 的下一次拖动整轮都建不出会话。
-                            if clipDrag == nil || movingCueID != cue.id {
-                                movingCueID = cue.id
+                            if dragBox.clipDrag == nil || dragBox.movingCueID != cue.id {
+                                dragBox.movingCueID = cue.id
                                 beginCueDrag(cue)
                             }
                             updateClipDrag(translation: translation, pointerViewport: pointerViewport)
                         },
                         onDragEnd: {
-                            movingCueID = nil
+                            // 起手记号由 `dragBox.end()` 一起清。
                             endClipDrag()
                         }
                     )

@@ -26,6 +26,37 @@
 推论：拖动中要让**跟随块**（链接的音频、多选的伙伴）跟着动，靠的也是给它们同一个
 渲染偏移，不是去改它们的 `timelineStart`。
 
+## 0b. 拖动 / 拉框的**会话**也不进时间线的 `@State`（2026-09-25）
+
+第 0 节只挡住了模型。会话本身（`ClipDragSession`、`TimelineMarquee.Session`、瞄准的目标行、
+文字块的目标行、cue 的起手记号）以前是 `VideoEditTimelineView` 的 `@State`，拖动每一拍写一次，
+时间线的 body 就整个重算一次：ForEach 把所有行和块 diff 一遍、AttributeGraph 更新、布局 ——
+块靠 `.equatable()` 挡住了自己的 body，这一层挡不住，采样里占拖动中主线程约 75%
+（用户 77 段的工程：拖 30 拍约 1100 ms，[案例](../bugfixes/2026-09-25-drag-session-in-timeline-state.md)）。
+
+现在会话住在引用类型 `TimelineDragBox`（`VideoEditTimelineDragBox.swift`）里：
+
+- **时间线 `@State` 持有它、不订阅、body 里一个字都不读**（`@State var dragBox`；`@StateObject` /
+  `@ObservedObject` 都是订阅）。和 §5c 的 `scrollGeometry` 完全同一个模式。
+- **块只收自己那份**：`onReceive(drag.$offsets)` 拿位移、`onReceive(drag.$marqueeHit)` 拿框选命中，
+  收到的值变了才写自己的 `@State` —— 于是每一拍只有正在动的那几个块重算。框选命中和模型里的
+  选中**一样就记 nil**，不然框一起手全部块都从 nil 变成 false、各重算一遍（首版就是这么多出
+  ~300 次 body 和 128 次音量线重画的）。位移不再是块的输入：当输入的话时间线每一拍都得重算一遍
+  来喂它。
+- **覆盖层 `TimelineDragOverlay` 是唯一的订阅者**（`@ObservedObject`）：对齐线、磁吸占位框、
+  跨轨占位框、目标轨描边、文字换行指示、框选矩形都在它里面；行的排布、缝的位置、内容宽度
+  以值传进去。三套拖放（滤镜 / 音频库 / Finder 文件）的落点框仍是时间线的 `@State`，不在这条里。
+- **盒子只在变了时才发**：`update` / `aim(row:)` / `aim(textRow:)` / `updateMarquee` 都先比再写 ——
+  目标行、文字行每一拍都写但很少变。
+- 时间线里拖动中仅剩**一个**会写的 `@State`：弹性尾部 `dragTailWidth`（§5），按半个视口一档往上跳，
+  一次拖动最多写几次；松手归零。
+- `openSeam`（缝开合，一次拖动最多几次，行的排布本来就得重算）和 `laneReorder`（整轨换位，
+  §5i，另一条手势）仍是时间线的 `@State`。整轨换位每一拍仍重算整条时间线：已知、未做。
+- `hoverPeek` / `markerPeek` 的让位判据读 `dragBox.clipDrag` / `dragBox.marquee`（§5g）。
+
+守卫：`checks/timeline-drag-wiring/drag-box.sh`（持有不订阅、五种块的收法、唯一订阅者、
+先比再发、一轮结束清干净、拖动中只写盒子）。
+
 ## 1. 布局模型与坐标系
 
 `ClipBlockView` 在轨道行里的**布局**位置固定在行首（ZStack topLeading），
@@ -536,7 +567,7 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 - **夹紧和点击共用一份**（`min(max(0, x/pps), duration)`）：影子指针指着哪儿，
   画面就得是哪儿。不夹的话，鼠标扫进工程长度之外的那片空白，影子一路往右跑而
   画面早停在最后一帧了。
-- **按住在动的时候不扫帧**：播放中、拖块（`clipDrag`）、拖框（`marquee`）、
+- **按住在动的时候不扫帧**：播放中、拖块（`dragBox.clipDrag`）、拖框（`dragBox.marquee`）、
   裁切（`project.liveEditOrigin` —— `isTrimming` 是块内的 `@State`，容器看不见，
   只能从模型侧判）。
 - **时刻没变就不写。** `peekTime` 是 `@Published`，每写一次连带整条时间线视图树
@@ -559,7 +590,8 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
   管缝在哪、指针在不在缝上、拉开之后每一行挪到哪。`rowLayouts(open:)` 走它的 `layout`，
   轨道行（`scrolledContent` 的 VStack）和轨道头列按同一组常量（`TimelineRowMetrics`）排、
   在**同一行**上面垫同一段 `gapExtra`。只垫一边，轨道头和轨道行当场错开一个缝宽。
-- **缝开没开是视图状态**（`openSeam`），拖动中一个字都不写 `TimelineState`（§0）。松手才
+- **缝开没开是视图状态**（`openSeam`，这是时间线自己的 `@State`：一次拖动最多开合几次，行的排布
+  本来就要重算，见 §0b），拖动中一个字都不写 `TimelineState`（§0）。松手才
   `perform` 一次：`TrackDropTarget.insertOverlay(at:)` / `.insertAudio(at:)` 经
   `relocateClip` → `insertLane` 落地，一步撤销。
 - **停够才拉开**：`TimelineSeamDwell` 计时，三种拖动（素材块、Finder 文件、音频库）共用。
@@ -623,7 +655,7 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 文字行的行号进模型（`TextOverlay.row`，[画面文字](text-overlays.md)「时间线上的行」），
 所以文字块可以在文字行之间上下拖：
 
-- **目标行只是视图状态**（`textDropRow`，同 `dragTargetRow`），拖动中一个字都不写 `state`（§0）。
+- **目标行只是视图状态**（`dragBox.textDropRow`，同 `dragBox.dragTargetRow`，§0b），拖动中一个字都不写 `state`（§0）。
   判定是纯值的 `TextRows.dropTarget`：指针的内容 y（视口 y + 现读的纵向滚动量，§5c）落在哪一条
   画出来的文字行就是哪一行；比最上面那一行还高（标尺、滤镜、上层轨都算）= 顶上新开一行；
   文字行以下、或自己那一行 = 不换。18pt 门槛同跨轨拖动。

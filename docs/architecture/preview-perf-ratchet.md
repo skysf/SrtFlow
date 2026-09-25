@@ -180,9 +180,11 @@ CI 虚拟机上偶尔有一个**不发任何窗口 / App 通知**的系统事件
 重画」（2026-09-24 用户工程实测，案例
 [时间线上每个块都订阅着整个工程](../bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)）。
 
-守卫：`checks/preview-perf-wiring.sh` 最后一节，钉着七个视图的三条（Equatable、没有
-`@ObservedObject var project`、构造处紧跟 `.equatable()`）。新加一种块，往那张表里加一行。
+守卫：`checks/preview-perf-wiring.sh`「时间线上的块」一节，钉着八个视图的三条（Equatable、没有
+`@ObservedObject var project`、构造处紧跟 `.equatable()`；音量线 2026-09-25 加进来）。新加一种块，
+往那张表里加一行。
 
-还没做、量过的下一步：拖动位移是时间线的 `@State`，每拍时间线 body 仍重算一次，带起的
-AttributeGraph 更新和布局占拖动中主线程的约 75%。要消掉得把拖动位移挪出时间线的状态，
-动 [拖动手势](timeline-drag-gestures.md) §0 的规矩。
+拖动位移那一半 2026-09-25 也做了：会话搬进 `TimelineDragBox`，时间线持有不订阅、块只收自己那份，
+拖动每一拍时间线 body 不再重算（[拖动手势](timeline-drag-gestures.md) §0b，案例
+[拖动会话住在时间线的 @State 里](../bugfixes/2026-09-25-drag-session-in-timeline-state.md)）。
+还留着的：整轨换位（§5i）每一拍仍重算整条时间线。

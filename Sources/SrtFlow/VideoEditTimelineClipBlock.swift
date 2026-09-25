@@ -46,10 +46,15 @@ struct ClipBlockView: View, Equatable {
     let slot: TrackSlot
     let height: Double
     let pps: Double
+    /// 模型里的选中。拉框进行中的实时高亮另走 `marqueeHit`（看框不看模型）。
     let isSelected: Bool
-    /// 拖动中的渲染位移（秒）。nil = 没在被拖。被拖的块和跟着它动的伙伴都拿它
-    /// 画位置 —— 拖动期间模型一个字都不改，所以 `timelineStart` 是拖前那个值。
-    let dragOffset: Double?
+    /// 拖动 / 拉框的会话盒子。**不订阅整个盒子**：只 `onReceive` 自己那份位移和框选命中，
+    /// 收到的值变了才写自己的 `@State` —— 拖动每一拍只有正在动的块重算，时间线本体不动
+    /// （docs/architecture/timeline-drag-gestures.md §0b）。
+    let drag: TimelineDragBox
+    /// 在不在这一轮拖动的成员里（时间线按 `dragMembers` 算好传进来，一轮只变两次）：
+    /// 是成员才订阅位移，不是就拿一个永远不发的发布者（§0b）。
+    let isDragMember: Bool
     let context: ClipBlockContext
     /// 只拿来**调动作**（选中、切、打标记、右键菜单），不订阅 —— 见 `ClipBlockContext`。
     let project: VideoEditProject
@@ -65,8 +70,14 @@ struct ClipBlockView: View, Equatable {
     /// 「悬着哪一枚」报上去（仲裁本体在 `VideoEditTimelineView.markerPeek`）。
     let onMarkerPeek: (Double?) -> Void
 
+    /// 拖动中的渲染位移（秒）。nil = 没在被拖。被拖的块和跟着它动的伙伴都拿它
+    /// 画位置 —— 拖动期间模型一个字都不改，所以 `timelineStart` 是拖前那个值。
+    /// 从 `drag.$offsets` 收、不是输入：当输入的话时间线每一拍都得重算一遍来喂它。
+    @State private var dragOffset: Double?
+    /// 拉框进行中这块在不在框里；nil = 没在拉框、或者和模型里一样，按 `isSelected` 画。
+    @State private var marqueeHit: Bool?
     /// 移动手势进行中：第一拍要开一轮拖动会话。（扫帧让位归容器判 —— 它看
-    /// `clipDrag`，那是同一件事的模型侧。）
+    /// `dragBox.clipDrag`，那是同一件事的模型侧。）
     @State private var isMoving = false
     /// 裁切进行中：块自己要严格跟手，磁吸重排动画只留给邻居。
     @State private var isTrimming = false
@@ -91,13 +102,15 @@ struct ClipBlockView: View, Equatable {
     }
 
     private var trackGain: Double { context.trackGain }
+    /// 画出来的选中态：拉框中看框，平时看模型。
+    private var highlighted: Bool { marqueeHit ?? isSelected }
 
     /// 只比画面用得到的输入。闭包比不了、也不用比：它们捕获的是时间线视图，读的是它的
-    /// `@State` 和工程对象，永远是最新的；`project` 是同一个对象。
+    /// `@State` 和工程对象，永远是最新的；`project` 是同一个对象；`drag` 是同一个盒子。
     nonisolated static func == (lhs: ClipBlockView, rhs: ClipBlockView) -> Bool {
         lhs.clip == rhs.clip && lhs.slot == rhs.slot && lhs.height == rhs.height
             && lhs.pps == rhs.pps && lhs.isSelected == rhs.isSelected
-            && lhs.dragOffset == rhs.dragOffset && lhs.context == rhs.context
+            && lhs.context == rhs.context && lhs.drag === rhs.drag && lhs.isDragMember == rhs.isDragMember
     }
 
     var body: some View {
@@ -113,7 +126,7 @@ struct ClipBlockView: View, Equatable {
             }
             .opacity(clip.isHidden ? 0.4 : 1)
             .saturation(clip.isHidden ? 0 : 1)
-            if isSelected {
+            if highlighted {
                 // 白框 + 青色光晕：选中的是谁一目了然。
                 RoundedRectangle(cornerRadius: 5)
                     .strokeBorder(.white, lineWidth: 2)
@@ -155,6 +168,16 @@ struct ClipBlockView: View, Equatable {
         // 鼠标」—— 手越快落后越多，这正是 2026-08-09 那个「光标到最右、块还在
         // 中间」的 bug。约束见 docs/architecture/timeline-drag-gestures.md。
         .animation(isTrimming || dragOffset != nil ? nil : .easeOut(duration: 0.12), value: clip.timelineStart)
+        // 只收自己那份：位移 / 框选命中没变就不写 @State，这块就不重算（§0b）。
+        .onReceive(drag.offsets(member: isDragMember)) { offsets in
+            let mine = offsets.offset(for: clip.id)
+            if mine != dragOffset { dragOffset = mine }
+        }
+        .onReceive(drag.$marqueeHit) { hit in
+            // 框里的和模型里的一样就记 nil：不然框一起手，全部块都从 nil 变成 false、各重算一遍。
+            let mine = hit.map { $0.clips.contains(clip.id) }.flatMap { $0 == isSelected ? nil : $0 }
+            if mine != marqueeHit { marqueeHit = mine }
+        }
     }
 
     private var background: some View {
@@ -220,7 +243,11 @@ struct ClipBlockView: View, Equatable {
                 WaveformView(clip: clip, pps: pps, trackGain: trackGain)
                     // 音量线画在波形上、贴着线操作（它自己的命中区只是线那一条窄带）。
                     .overlay {
-                        VolumeCurveOverlay(clip: clip, pps: pps, activeTool: context.activeTool, project: project)
+                        VolumeCurveOverlay(
+                            clip: clip, pps: pps, activeTool: context.activeTool, project: project
+                        )
+                        // 按值比较：块自己拖动每一拍都重算，线没变就别跟着重画。
+                        .equatable()
                     }
                     .padding(.bottom, 2)
             } else if height > 28 {
@@ -230,7 +257,10 @@ struct ClipBlockView: View, Equatable {
                 if showsInlineWaveform {
                     WaveformView(clip: clip, pps: pps, trackGain: trackGain)
                         .overlay {
-                            VolumeCurveOverlay(clip: clip, pps: pps, activeTool: context.activeTool, project: project)
+                            VolumeCurveOverlay(
+                                clip: clip, pps: pps, activeTool: context.activeTool, project: project
+                            )
+                            .equatable()
                         }
                         .frame(height: inlineWaveformHeight - 2)
                         .padding(.bottom, 2)
@@ -325,8 +355,8 @@ struct ClipBlockView: View, Equatable {
         // 分割模式下彻底不给：把手压着块的两端，边缘那一刀会变成裁切。
         if width > 26, context.activeTool == .select {
             Rectangle()
-                .fill(isSelected ? .white.opacity(0.85) : .white.opacity(0.001))
-                .frame(width: isSelected ? 5 : 8)
+                .fill(highlighted ? .white.opacity(0.85) : .white.opacity(0.001))
+                .frame(width: highlighted ? 5 : 8)
                 .clipShape(RoundedRectangle(cornerRadius: 2))
                 .contentShape(Rectangle())
                 .gesture(

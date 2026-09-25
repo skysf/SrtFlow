@@ -204,6 +204,7 @@ for spec in \
   'Sources/SrtFlow/VideoEditTimelineFilterRow.swift|FilterBlockView|Sources/SrtFlow/VideoEditTimelineFilterRow.swift' \
   'Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift|SubtitleCueBlockView|Sources/SrtFlow/VideoEditTimelineSubtitleRow.swift' \
   'Sources/SrtFlow/VideoEditTimelineRuler.swift|TimelinePinnedRuler|Sources/SrtFlow/VideoEditTimelineView.swift' \
+  'Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift|VolumeCurveOverlay|Sources/SrtFlow/VideoEditTimelineClipBlock.swift' \
   'Sources/SrtFlow/VideoEditTransitionPicker.swift|TransitionCard|Sources/SrtFlow/VideoEditTransitionPicker.swift'; do
   IFS='|' read -r file view host <<<"$spec"
   if [ ! -f "$file" ] || [ ! -f "$host" ]; then echo "✗ 文件不在：$file / $host"; fail=1; continue; fi

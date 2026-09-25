@@ -15,15 +15,16 @@ extension VideoEditTimelineView {
 
     /// 空白处拉框：相交即选中，⌘/⇧ 加选，拖到视口边缘自动滚动。
     ///
-    /// **整轮拖框不写 `project`** —— 命中集合只在 `marquee` 这个 `@State` 里，
-    /// 松手才落一次。每一拍写 `@Published` 的选择会连带预览区、检查器、所有块
-    /// 连同缩略图与波形重建，还要重挂一次自动保存，框立刻就跟不上光标了
-    /// （和拖块同一条约束，见 docs/architecture/timeline-drag-gestures.md）。
+    /// **整轮拖框不写 `project`** —— 命中集合只在 `dragBox.marquee` 里，松手才落一次。
+    /// 每一拍写 `@Published` 的选择会连带预览区、检查器、所有块连同缩略图与波形重建，
+    /// 还要重挂一次自动保存，框立刻就跟不上光标了（和拖块同一条约束，见
+    /// docs/architecture/timeline-drag-gestures.md）。会话也**不进时间线的 `@State`**（§0b）：
+    /// 框由 `TimelineDragOverlay` 画，块的实时高亮各自 `onReceive(dragBox.$marqueeHit)`。
     var marqueeGesture: some Gesture {
         // 起手门槛和块的移动手势一致：手抖几个点不该把已有的选择清掉。
         DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
             .onChanged { value in
-                if marquee == nil { beginMarquee(at: value.startLocation) }
+                if dragBox.marquee == nil { beginMarquee(at: value.startLocation) }
                 updateMarquee(pointer: value.location)
             }
             .onEnded { _ in endMarquee() }
@@ -33,7 +34,7 @@ extension VideoEditTimelineView {
         // 拉框期间把悬停预览收掉，画面回播放头 —— 和拖块的处理一致。
         project.clock.endPeek()
         let flags = NSEvent.modifierFlags
-        marquee = TimelineMarquee.Session(
+        dragBox.beginMarquee(TimelineMarquee.Session(
             // 锚点存**滚动内容**的坐标：视口坐标 + 此刻的滚动量（两轴都要补，
             // 时间线 2026-09-18 起也能上下滚）。这个量必须**现读**
             //（`TimelineScrollGeometry`）—— 缓存进 `@State` 的版本在起手这一拍
@@ -50,12 +51,12 @@ extension VideoEditTimelineView {
                 cues: project.selectedSubtitleCueIDs,
                 filters: project.selectedFilterIDs
             )
-        )
+        ))
     }
 
     /// `pointer` 是指针在滚动视口里的位置（手势坐标系钉在视口上）。
     private func updateMarquee(pointer: CGPoint) {
-        guard marquee != nil else { return }
+        guard dragBox.marquee != nil else { return }
         applyMarqueePoint(pointer: pointer)
         autoScroller.update(
             pointer: pointer,
@@ -67,7 +68,7 @@ extension VideoEditTimelineView {
     }
 
     private func applyMarqueePoint(pointer: CGPoint) {
-        guard var session = marquee else { return }
+        guard var session = dragBox.marquee else { return }
         session.update(
             current: CGPoint(
                 x: pointer.x + scrollGeometry.offsetX,
@@ -76,13 +77,13 @@ extension VideoEditTimelineView {
             rows: marqueeRows(),
             pixelsPerSecond: pps
         )
-        marquee = session
+        dragBox.updateMarquee(session)
     }
 
     private func endMarquee() {
         autoScroller.stop()
-        defer { marquee = nil }
-        guard let session = marquee else { return }
+        defer { dragBox.endMarquee() }
+        guard let session = dragBox.marquee else { return }
         // 空框 = 点了一下空白：四类一起清（和 `.onTapGesture` 同义）。
         project.applyBoxSelection(
             clips: session.hit.clips,
@@ -158,25 +159,6 @@ extension VideoEditTimelineView {
         }
     }
 
-    /// 拉框中的高亮只看框，不看模型 —— 模型要等松手才写。
-    func isSelected(clip id: UUID) -> Bool {
-        marquee?.hit.clips.contains(id) ?? project.selectedClipIDs.contains(id)
-    }
-
-    func isSelected(shape id: UUID) -> Bool {
-        marquee?.hit.shapes.contains(id) ?? project.selectedShapeIDs.contains(id)
-    }
-
-    func isSelected(text id: UUID) -> Bool {
-        marquee?.hit.texts.contains(id) ?? project.selectedTextIDs.contains(id)
-    }
-
-    func isSelected(cue id: UUID) -> Bool {
-        marquee?.hit.cues.contains(id) ?? project.selectedSubtitleCueIDs.contains(id)
-    }
-
-    func isSelected(filter id: UUID) -> Bool {
-        marquee?.hit.filters.contains(id) ?? project.selectedFilterIDs.contains(id)
-    }
-
+    // 拉框中的实时高亮不在这儿：块各自 `onReceive(dragBox.$marqueeHit)`，只看框不看模型
+    // —— 模型要等松手才写（`TimelineMarquee.Hit`，见各块文件里的 `marqueeHit`）。
 }
