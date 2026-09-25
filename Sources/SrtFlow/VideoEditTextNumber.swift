@@ -10,7 +10,8 @@ import Foundation
 //
 // - **数值插值**：整个数字连续变化（`0 → 1,234`），位数会跟着变多。
 //   质感来自缓动收尾。
-// - **老虎机**：每一位在一条垂直数字带上滚到位。质感明显更强，但要按位排版。
+// - **老虎机**：每一位在一条垂直数字带上滚到位。质感明显更强，但要按位排版
+//   （每一位怎么滚、位数不同的两头怎么接：VideoEditTextOdometer.swift）。
 //
 // ## 格式化**不跟系统区域走**
 //
@@ -97,86 +98,24 @@ struct NumberRoll: Hashable, Sendable {
                                    groupsThousands: groupsThousands) + suffix
     }
 
-    /// 排版定版用的串：`from` 和 `to` 里**更长的那个**。
+    /// 排版定版用的串：前后缀 + `settledNumber`。
     ///
     /// 选中框、包络、老虎机的位槽都按它算 —— 取终值的话，`1000 → 5` 这种
-    /// 会在滚动中途超出包络被裁掉。
-    var settledText: String {
-        let a = text(for: from)
-        let b = text(for: to)
-        return a.count >= b.count ? a : b
-    }
+    /// 会在滚动中途超出包络被裁掉。老虎机怎么按位滚见 `NumberOdometer`。
+    var settledText: String { prefix + settledNumber + suffix }
 
-    /// 定版串里每个数字所在的**十进制位**（0 = 个位，-1 = 小数第一位）。
+    /// 定版串去掉前后缀的那一段：位数取 `from` 和 `to` 里**多的那个**（一样多取 `from`），
+    /// 任一头是负数就带负号 —— 两头显示串里的每一个字符，它都有一个位置。
     ///
-    /// 老虎机按位滚，所以必须知道每个字符对应哪一位；前后缀、符号、千分位
-    /// 逗号都不是位槽，不参与滚动。
-    func digitPlaces(in text: String) -> [Int: Int] {
-        var places: [Int: Int] = [:]
-        let characters = Array(text)
-        // 小数点右边从 -1 往下数，左边从 0 往上数。没有小数点就整串当整数部分。
-        let dot = characters.firstIndex(of: ".")
-        var place = 0
-        var index = (dot ?? characters.count) - 1
-        while index >= 0 {
-            if characters[index].isNumber {
-                places[index] = place
-                place += 1
-            }
-            index -= 1
-        }
-        if let dot {
-            var fraction = -1
-            for position in (dot + 1)..<characters.count where characters[position].isNumber {
-                places[position] = fraction
-                fraction -= 1
-            }
-        }
-        return places
-    }
-
-    /// 某个值在各个十进制位上的数字。
-    ///
-    /// 从**格式化之后的串**里取，不从数值上除 —— 除法在小数位上会踩浮点误差
-    /// （`12.5 / 0.1` 可能是 124.999…，第一位小数会算成 4 而不是 5），
-    /// 而串就是用户看到的东西，天然对得上。
-    func digits(of value: Double) -> [Int: Int] {
-        let text = NumberRoll.format(value, fractionDigits: fractionDigits,
-                                     groupsThousands: groupsThousands)
-        let characters = Array(text)
-        var result: [Int: Int] = [:]
-        for (index, place) in digitPlaces(in: text) {
-            result[place] = characters[index].wholeNumberValue ?? 0
-        }
-        return result
-    }
-
-    /// 老虎机：某一位这一刻的**连续轮位**。整数部分是当前数字，小数部分是
-    /// 它往上移出去了多少。
-    ///
-    /// 每条带子从**起始数字**转到**终止数字**，中间多转几圈。
-    ///
-    /// 没用「第 k 位的轮位 = 值/10^k」那个真实里程表公式：现实中高位只在低位
-    /// 归零时才对齐，而目标值一般不是整十整百 —— 4827 的千位会停在 4.827，
-    /// 也就是卡在 4 和 5 中间糊成一片。终点必须精确落在终值的那一位上。
-    ///
-    /// 圈数取整，否则起点显示的数字不等于起始值的那一位。
-    /// 低位转得多、高位转得少，而且**高位先停**（`lead`）—— 这就是老虎机
-    /// 依次锁定的那个节奏。
-    func wheel(place: Int, local: Double) -> Double {
-        let startDigit = Double(digits(of: from)[place] ?? 0)
-        let endDigit = Double(digits(of: to)[place] ?? 0)
-        let turns = min(
-            NumberRoll.maximumWheelTurns,
-            (abs(to - from) / pow(10.0, Double(place + 1))).rounded(.down)
-        )
-        let direction: Double = to >= from ? 1 : -1
-        let travel = (endDigit - startDigit) + 10 * turns * direction
-
-        // 高位提前收口：第 k 位在整体进度 `1 - lead` 处就到位。
-        let lead = min(0.5, Double(max(0, place)) * 0.12)
-        let own = min(1, progress(local: local) / max(0.0001, 1 - lead))
-        return endDigit - travel * (1 - own)
+    /// 以前取的是「两个完整显示串里更长的那个」：两头符号不同时会漏位（`-12 → 345` 取了
+    /// 「-12」，百位没了，老虎机的终点画成「-45」）。
+    var settledNumber: String {
+        let start = NumberRoll.format(from, fractionDigits: fractionDigits, groupsThousands: groupsThousands)
+        let end = NumberRoll.format(to, fractionDigits: fractionDigits, groupsThousands: groupsThousands)
+        let startMagnitude = start.hasPrefix("-") ? String(start.dropFirst()) : start
+        let endMagnitude = end.hasPrefix("-") ? String(end.dropFirst()) : end
+        let magnitude = endMagnitude.count > startMagnitude.count ? endMagnitude : startMagnitude
+        return (start.hasPrefix("-") || end.hasPrefix("-") ? "-" : "") + magnitude
     }
 
     /// 无区域依赖的定点格式化。

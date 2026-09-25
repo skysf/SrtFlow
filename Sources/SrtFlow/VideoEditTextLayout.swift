@@ -133,7 +133,13 @@ enum TextTypesetter {
     ///
     /// `text` 可以覆盖 `overlay.text` —— 数字元件每一帧的内容都不一样，
     /// 但样式、框宽、对齐全都照旧。
-    static func layout(_ overlay: TextOverlay, canvas: CGSize, text: String? = nil) -> TextLayout {
+    ///
+    /// `widths`：老虎机里正滚进 / 滚出的字符（UTF-16 下标 → 此刻占几成宽，见
+    /// `OdometerFrame.widths`）。按比例收掉它的步进，行宽照常由 Core Text 算；位数变了的时候
+    /// 谁不动：左对齐左边不动，居中和右对齐右边不动（`placeCollapsing`）。
+    static func layout(
+        _ overlay: TextOverlay, canvas: CGSize, text: String? = nil, widths: [Int: Double] = [:]
+    ) -> TextLayout {
         let scale = TextOverlay.pixelScale(canvas: canvas)
         let style = overlay.style
         let font = makeFont(
@@ -148,8 +154,8 @@ enum TextTypesetter {
         }
 
         let metrics = overlay.number != nil ? digitMetrics(font) : nil
-        let attributed = attributedString(
-            content, style: style, font: font, scale: scale, digitMetrics: metrics
+        let (attributed, collapsed) = attributedString(
+            content, style: style, font: font, scale: scale, digitMetrics: metrics, widths: widths
         )
         let setter = CTFramesetterCreateWithAttributedString(attributed)
         let full = CFRange(location: 0, length: 0)
@@ -199,7 +205,43 @@ enum TextTypesetter {
         if let metrics {
             centerDigits(in: &lines, text: content, metrics: metrics)
         }
+        if !collapsed.isEmpty {
+            placeCollapsing(&lines, collapsed: collapsed, alignment: style.alignment)
+        }
         return TextLayout(size: CGSize(width: boxWidth, height: height), lines: lines, font: font)
+    }
+
+    /// 老虎机里有字符正收起来（或从 0 宽展开）时，这一行怎么摆。两件事：
+    ///
+    /// 1. **谁不动**：左对齐左边不动（Core Text 本来就这样排）；居中和右对齐**右边不动** ——
+    ///    Core Text 按收窄之后的行宽重新居中，等于左右各让一半，往右补上另一半，个位那一轮就一动
+    ///    不动。为什么不照居中的本意左右各让一半：数字后面紧跟单位是最常见的摆法（「90°」「365 天」
+    ///    「100%」），单位常常是另一段字 —— 数字一挪，中间就空出半格（2026-09-25，南极片子的
+    ///    「90° SOUTH」）。
+    /// 2. **正在收的那几个字形留在原地**：它们的步进收窄了，Core Text 把它们排到了挪过之后的位置上；
+    ///    挪回定版串里自己那一格，这一位就是在原地滚走（滚进来），不会一边滚一边往邻居身上蹭 ——
+    ///    居中时往右蹭的那个「1」只剩上半截，看着像个逗号贴在「3」前面（第一版就是这样）。
+    ///    右边不动时，一个字形离原位差的是它自己和它右边所有正在收的字符让出去的量；左边不动时，
+    ///    是它左边那些让出去的量。
+    private static func placeCollapsing(
+        _ lines: inout [TextLayout.Line], collapsed: [Int: Double], alignment: TextBlockAlignment
+    ) {
+        for index in lines.indices {
+            let given = lines[index].glyphs.map { collapsed[$0.characterIndex] ?? 0 }
+            let total = given.reduce(0, +)
+            guard total > 0 else { continue }
+            let shift = alignment == .center ? total / 2 : 0
+            lines[index].originX += shift
+            var before = 0.0
+            for glyph in lines[index].glyphs.indices {
+                var x = lines[index].glyphs[glyph].position.x + shift
+                if given[glyph] > 0 {
+                    x += alignment == .leading ? before : -(total - before)
+                }
+                before += given[glyph]
+                lines[index].glyphs[glyph].position.x = x
+            }
+        }
     }
 
     /// 把每个数字字形挪到自己格子的正中。
@@ -252,10 +294,12 @@ enum TextTypesetter {
     }
 
     /// 段落属性：对齐、行距倍数、字距。
+    /// 第二个返回值：`widths` 里每个字符让出去了多少步进（像素），`placeCollapsing` 按它摆。
     private static func attributedString(
         _ text: String, style: TextStyle, font: CTFont, scale: Double,
-        digitMetrics: (pitch: Double, advances: [CGGlyph: Double])?
-    ) -> CFAttributedString {
+        digitMetrics: (pitch: Double, advances: [CGGlyph: Double])?,
+        widths: [Int: Double]
+    ) -> (CFAttributedString, collapsed: [Int: Double]) {
         var alignment: CTTextAlignment = {
             switch style.alignment {
             case .leading: return .left
@@ -295,7 +339,37 @@ enum TextTypesetter {
         if let digitMetrics {
             applyDigitPitch(to: result, text: text, baseKern: baseKern, metrics: digitMetrics)
         }
-        return result as CFAttributedString
+        let collapsed = widths.isEmpty ? [:] : applyWidths(widths, to: result, font: font)
+        return (result as CFAttributedString, collapsed)
+    }
+
+    /// 按比例收掉几个字符的步进：老虎机里正滚向空白（或从空白滚出来）的那一位、跟着它的
+    /// 千分位逗号、只在一头有的负号。
+    ///
+    /// 收的是这个字符在属性串上的**全部**步进（字形步进 + 已经加上的 kern：数字是撑满的格距，
+    /// 其余是字距），所以 0 就是一点不占。在属性串上做，理由同 `applyDigitPitch`：行宽、
+    /// 折行、对齐全都自动算对。
+    ///
+    /// 返回每个字符让出去的步进（像素）。
+    private static func applyWidths(
+        _ widths: [Int: Double], to string: NSMutableAttributedString, font: CTFont
+    ) -> [Int: Double] {
+        let kernKey = NSAttributedString.Key(kCTKernAttributeName as String)
+        let units = Array(string.string.utf16)
+        var collapsed: [Int: Double] = [:]
+        for (offset, width) in widths where units.indices.contains(offset) {
+            var unit = [units[offset]]
+            var glyph = CGGlyph(0)
+            guard CTFontGetGlyphsForCharacters(font, &unit, &glyph, 1) else { continue }
+            var advance = CGSize.zero
+            CTFontGetAdvancesForGlyphs(font, .horizontal, &glyph, &advance, 1)
+            let kern = (string.attribute(kernKey, at: offset, effectiveRange: nil) as? NSNumber)?
+                .doubleValue ?? 0
+            let given = (Double(advance.width) + kern) * (1 - min(max(width, 0), 1))
+            string.addAttribute(kernKey, value: kern - given, range: NSRange(location: offset, length: 1))
+            collapsed[offset] = given
+        }
+        return collapsed
     }
 
     /// 逐个数字加 kern，把它撑成 `pitch` 那么宽的格子。

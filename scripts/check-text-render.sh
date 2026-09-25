@@ -64,6 +64,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextAnimation.swift \
   Sources/SrtFlow/VideoEditTextAnimator.swift \
   Sources/SrtFlow/VideoEditTextNumber.swift \
+  Sources/SrtFlow/VideoEditTextOdometer.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
   Sources/SrtFlow/VideoEditTextRows.swift \
@@ -94,6 +95,7 @@ xcrun swiftc \
   checks/TextRender/Assertions.swift \
   checks/TextRender/HitGeometry.swift \
   checks/TextRender/NumberDelay.swift \
+  checks/TextRender/Odometer.swift \
   checks/TextRender/TextRows.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
