@@ -1,8 +1,14 @@
 import SwiftUI
 import AVKit
+import Combine
 import SrtFlowCore
 
 /// Owns the AVPlayer and publishes playback time for subtitle sync.
+///
+/// **只有真跟着播放头动的小视图才许订阅它**（播放头的线、时间读数、预览上的叠层、电平表）：
+/// 播放时它一秒发二十次，订阅它的大视图就一秒重算二十次。检查器、素材库那一栏读
+/// `whilePaused` / `atRest`（`PacedPlayhead`）；按钮能不能点看播放头的，用
+/// `.disabled(followingPlayhead:)`（docs/architecture/preview-perf-ratchet.md 第十二节）。
 final class PlayerClock: ObservableObject {
     @Published private(set) var time: TimeInterval = 0
     @Published private(set) var hasVideo = false
@@ -10,6 +16,12 @@ final class PlayerClock: ObservableObject {
     /// 悬停预览（peek）此刻指着哪：非 nil 时画面显示的是这里的帧，而 `time`
     /// （真播放头）原地不动。时间线用它画那根半透明的影子指针。
     @Published private(set) var peekTime: TimeInterval?
+
+    /// 播放头被放到了哪儿（`seek`、换片、卸片）。播放把它带着走的时间回调不发这里。
+    let placed = PassthroughSubject<PlayheadPlacement, Never>()
+    /// 播放头的两种慢读法（见 `PacedPlayhead`）。懒建：烧字幕页的时钟用不上，不必挂订阅。
+    lazy var whilePaused = PacedPlayhead(clock: self, pace: .whilePaused)
+    lazy var atRest = PacedPlayhead(clock: self, pace: .atRest)
 
     /// 预览画面此刻实际显示的时间：悬停预览优先，否则就是播放头。
     /// 叠在画面上的东西（字幕、形状、变换框）读这个才和帧对得上。
@@ -72,6 +84,7 @@ final class PlayerClock: ObservableObject {
         player.replaceCurrentItem(with: AVPlayerItem(url: url))
         hasVideo = true
         time = 0
+        placed.send(PlayheadPlacement(time: 0, precise: true))
         if autoplay { player.play() }
     }
 
@@ -92,6 +105,7 @@ final class PlayerClock: ObservableObject {
         peekTime = nil
         hasVideo = false
         time = 0
+        placed.send(PlayheadPlacement(time: 0, precise: true))
     }
 
     /// - Parameter precise: 松手和按字幕跳转时给 `true`（立刻精确定位）；拖动/悬停
@@ -104,6 +118,7 @@ final class PlayerClock: ObservableObject {
         peekTime = nil
         let clamped = max(0, seconds)
         time = clamped
+        placed.send(PlayheadPlacement(time: clamped, precise: precise))
         if precise {
             pendingScrubTarget = nil
             player.seek(

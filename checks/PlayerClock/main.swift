@@ -65,6 +65,9 @@ clock.peek(at: -5)
 check(clock.peekTime == 0, "peek 负数收口到 0")
 clock.endPeek()
 
+// 9. 播放头的慢读法（检查器、素材库那一栏读它，不被播放一跳一跳叫醒）
+checkPacedPlayhead()
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 exit(failures == 0 ? 0 : 1)

@@ -266,6 +266,59 @@ if grep -cE 'VideoEditTimelineView\(project: project, clock: clock\)\.equatable\
   echo "✗ 根视图给时间线套了 .equatable()：块的选中高亮会停在上一次（第十一节）"; fail=1
 fi
 
+echo "==> 播放器时钟只许跟着播放头动的小视图订阅"
+# 时钟（PlayerClock）播放时一秒发二十次，订阅它的视图一秒重算二十遍。2026-09-25 以前根视图、
+# 时间线、检查器、素材库那一栏、字幕列表都订阅着它：播放每一跳整个编辑器重算一遍，播放卡
+# （docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md）。所以按**类型名单**管：只许是真跟着
+# 播放头变、又足够小的那几个。检查器、素材库读 PacedPlayhead（停着的播放头）；按钮能不能点看
+# 播放头的用 .disabled(followingPlayhead:)；只关心「换没换句 / 换没换状态」的用 onReceive 自己那一份。
+# 要往名单里加，先想清楚它每一跳重算多少东西（docs/architecture/preview-perf-ratchet.md 第十二节）。
+ALLOWED_CLOCK_SUBSCRIBERS=" TimelinePlayheadLines TimelinePlayheadHandle PlayheadDisabledModifier \
+PreviewPlayerSurface PreviewSubtitleLayer ClipTransformCanvas ShapeOverlayCanvas TextOverlayCanvas \
+SubtitlePreviewEditLayer TrackMeterBars BurnInView BurnInPreviewArea SubtitleEditPanel "
+# 订阅的写法：@ObservedObject / @StateObject / @EnvironmentObject，类型写在冒号后或直接 = PlayerClock(…)。
+# shellcheck disable=SC2086
+subscribers="$(awk '
+  FNR == 1 { type = "" }
+  /^[[:space:]]*(private |fileprivate )?(final )?(struct|class) [A-Za-z0-9_]+/ {
+    t = $0
+    sub(/^[[:space:]]*(private |fileprivate )?(final )?(struct|class) /, "", t)
+    sub(/[^A-Za-z0-9_].*$/, "", t)
+    type = t
+  }
+  /@(ObservedObject|StateObject|EnvironmentObject)[^=]*(: PlayerClock|= PlayerClock\()/ && $0 !~ /^[[:space:]]*\/\// {
+    print type "|" FILENAME
+  }' $SWIFT_FILES)"
+clock_subscribers=0
+while IFS='|' read -r type file; do
+  [ -n "${type}" ] || continue
+  clock_subscribers=$((clock_subscribers + 1))
+  case "${ALLOWED_CLOCK_SUBSCRIBERS}" in
+    *" ${type} "*) ;;
+    *) echo "✗ ${type}（${file}）订阅了播放器时钟：播放时它连同底下的一切一秒重算二十遍"; fail=1 ;;
+  esac
+done <<<"${subscribers}"
+# 扫空（写法全变了）也是绿的 —— 先钉一个下限。
+if [ "${clock_subscribers}" -lt 8 ]; then
+  echo "✗ 只扫到 ${clock_subscribers} 个订阅时钟的视图，这一节多半扫空了"; fail=1
+fi
+# 播放中该停着的两处读的是「停着的播放头」，而且各接对了节奏：检查器拖播放头找关键帧要实时
+#（whilePaused），素材库拖动中不换小样（atRest，2026-09-25 用户拍板）。
+need Sources/SrtFlow/VideoEditInspector.swift '@ObservedObject var playhead: PacedPlayhead' '检查器订阅「停着的播放头」'
+need Sources/SrtFlow/VideoEditView.swift 'playhead: clock\.whilePaused' '检查器接的是 whilePaused'
+need Sources/SrtFlow/VideoEditTransitionLibrary.swift '@ObservedObject var playhead: PacedPlayhead' '转场库订阅「停稳了的播放头」'
+need Sources/SrtFlow/VideoEditFilterLibrary.swift '@ObservedObject var playhead: PacedPlayhead' '滤镜库订阅「停稳了的播放头」'
+# 两页都接 atRest，一处都不许是 whilePaused（只查「出现过」的话，一页接错了另一页会把它顶成绿的）。
+rest_panels="$(grep -cE '(Transition|Filter)LibraryPanel\(project: project, playhead: project\.clock\.atRest\)' \
+  Sources/SrtFlow/VideoEditLibraryColumn.swift || true)"
+if [ "${rest_panels}" -ne 2 ] || grep -cE 'whilePaused' Sources/SrtFlow/VideoEditLibraryColumn.swift >/dev/null; then
+  echo "✗ 素材库那一栏的转场 / 滤镜两页必须都接 clock.atRest（拖播放头的过程中不换小样）"; fail=1
+fi
+# 慢读法只认「放置」：订阅了时钟的时间回调，播放把它带着走的每一跳都会叫醒检查器和素材库。
+if grep -cE 'clock\.\$time' Sources/SrtFlow/PacedPlayhead.swift >/dev/null; then
+  echo "✗ PacedPlayhead 订阅了 clock.\$time —— 播放的每一跳都会叫醒检查器和素材库"; fail=1
+fi
+
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"
   echo "All checks passed"

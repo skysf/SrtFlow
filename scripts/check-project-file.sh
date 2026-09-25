@@ -271,10 +271,11 @@ forbid "预览轨道模式选择器已删除，不许复活" \
   Sources/SrtFlow/VideoEditView.swift 'subtitlePreviewTrack'
 forbid "面板不许再有 Preview track 选择器" \
   Sources/SrtFlow/SubtitleGen/SubtitleGenPanel.swift 'subtitlePreviewTrack'
+# 预览上的字幕 2026-09-25 从根视图搬进了 PreviewSubtitleLayer（根视图不再订阅时钟）。
 forbid "旧的按选择取可见文档的入口已废弃（会绕开眼睛推导）" \
-  Sources/SrtFlow/VideoEditView.swift 'visibleSubtitleDocument\(for:'
+  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(for:'
 require "预览必须走两只眼睛推导出的合同" \
-  Sources/SrtFlow/VideoEditView.swift 'visibleSubtitleDocument\(\)'
+  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(\)'
 require "烧录必须与预览同一份合同（眼睛说了算）" \
   Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'state\.visibleSubtitleDocument\(\)'
 forbid "导出面板不许再自己选烧哪条轨" \

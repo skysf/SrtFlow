@@ -31,18 +31,19 @@ extension VideoEditProject {
     /// ② **选中的那一段主轨片段**（且后面还有一段）—— 和检查器里那个入口指向
     ///    同一个接缝，两处不会给出不同答案；
     /// ③ 都没有就取**播放头最近的接缝** —— 常驻面板在没有选中时也得能用，这
-    ///    正是它和检查器入口的差别（那个必须先选中才出现）。
+    ///    正是它和检查器入口的差别（那个必须先选中才出现）。`playhead` 由面板传进来：
+    ///    它用的是**停稳了的**播放头（`clock.atRest`），播放中不跟（2026-09-25 用户拍板）。
     ///
     /// 只从主轨里找：转场只有主轨有语义，上层视频轨和音频轨根本不读
     /// `transitionAfter`（见 `VideoEditCompositionBuilder` 与 `VideoEditExportGraph`
     /// 都只遍历 `state.mainClips`）。
-    var transitionLibraryTarget: TransitionLibraryTarget {
+    func transitionLibraryTarget(at playhead: Double) -> TransitionLibraryTarget {
         let clips = state.mainClips
         guard clips.count >= 2 else { return .noSeam }
         if selectedClipIDs.count > 1 { return .multipleSelection }
         let index = selectedTransitionSeamIndex(in: clips)
             ?? selectedMainSeamIndex(in: clips)
-            ?? nearestSeamIndex(to: clock.time, in: clips)
+            ?? nearestSeamIndex(to: playhead, in: clips)
         // 缝找着了还不算数：两边得相接，转场才做得出来。
         // 这道闸和两条渲染管线**同一个判据**，不会出现「面板让点、成片没有」。
         // 只有「中间有空隙」是整条缝不成立。片段太短放不放得下是**逐种类**的事
@@ -92,8 +93,11 @@ extension VideoEditProject {
     ///
     /// **不动时长**：已经有转场的接缝保留用户调过的秒数，第一次套上的接缝用
     /// `EditClip.transitionDuration` 的默认 0.5s。想改秒数仍然去检查器的滑块。
-    func applyTransitionFromLibrary(_ transition: ClipTransition) {
-        guard case .seam(let seam) = transitionLibraryTarget else { return }
+    ///
+    /// `playhead` 必须是面板显示时用的那一个（停稳了的播放头）：播放中点卡片，套到的是面板上
+    /// 那条缝、不是播放头此刻最近的那条 —— 看到哪条改哪条（2026-09-25 用户拍板）。
+    func applyTransitionFromLibrary(_ transition: ClipTransition, at playhead: Double) {
+        guard case .seam(let seam) = transitionLibraryTarget(at: playhead) else { return }
         applyTransition(toSeamAfter: seam.outgoing.id, transition)
     }
 

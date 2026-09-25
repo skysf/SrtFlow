@@ -397,10 +397,12 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 - **播放跟随只碰横向**。`ScrollViewProxy.scrollTo(_:anchor:)` 的锚点是双轴的，
   正在看下面几条轨时一按播放，画面会被连带拽回顶上。改走
   `TimelineScrollGeometry.scrollHorizontally(to:animated:)`。
-- **播放头的把手画在标尺里**（`TimelinePinnedRuler`），竖线才留在滚动内容里。
+- **播放头的把手画在标尺里**（`TimelinePinnedRuler` 里的 `TimelinePlayheadHandle`），竖线才留在
+  滚动内容里（`TimelinePlayheadLines`，`VideoEditTimelinePlayhead.swift`，连同影子指针和播放跟随滚动）。
   标尺是不透明的（要盖住滚上来的轨道行），把手画在内容顶部的话，纵向滚下去之后
   就藏到标尺后面了 —— 竖线还在，抓手没了。两边都按同一个 `clock.time * pps`
-  画，所以永远在同一条 x 上。
+  画，所以永远在同一条 x 上。**时间线上只有这两个小视图订阅时钟**：时间线本体和标尺本身持有不订阅，
+  不然播放每一跳整条时间线重算一遍（2026-09-25，[预览性能 ratchet](preview-perf-ratchet.md) 第十二节）。
 
 ### 5d. 滚动内容必须**两轴**填满视口、左上角对齐
 

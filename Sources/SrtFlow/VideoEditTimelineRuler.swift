@@ -5,7 +5,8 @@ import SrtFlowCore
 // MARK: - 标尺
 //
 // 从 `VideoEditTimelineView.swift` 拆出来（拆分前 2101 行，远超仓库约 800 行的
-// 警戒线）。标尺自己只管画刻度和把点击换算成 seek，播放头画在滚动内容那一层。
+// 警戒线）。标尺自己只管画刻度和把点击换算成 seek，播放头的竖线画在滚动内容那一层
+// （`VideoEditTimelinePlayhead.swift`），把手（`TimelinePlayheadHandle`）跟着标尺钉住。
 // 行高拖调原本也在这个文件里，2026-09-22 改成「一轨一个高度」时搬去了
 // `VideoEditTimelineRowHeights.swift`（纯值）+ `VideoEditTimelineRowHeightDrag.swift`（接线）。
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按文件扫描，挪动这里的东西要同步改它。
@@ -25,9 +26,10 @@ struct TimelinePinnedRuler: View, Equatable {
     let frameRate: ProjectFrameRate
     /// 行距：标尺的不透明底要盖住它，不然滚上来的块会从缝里露出来。
     let rowSpacing: Double
-    /// 播放头此刻在内容坐标里的 x。把手画在这儿而不是跟着竖线走：标尺是不透明
-    /// 的，纵向滚下去之后画在滚动内容顶部的把手会被它盖住。
-    let playheadX: Double
+    /// 播放头的把手画在这儿而不是跟着竖线走：标尺是不透明的，纵向滚下去之后画在滚动内容
+    /// 顶部的把手会被它盖住。**持有不订阅**：跟着时钟跳的只有把手（`TimelinePlayheadHandle`），
+    /// 标尺本身不随播放一跳一跳重算（preview-perf-ratchet.md 第十二节）。
+    let clock: PlayerClock
     @ObservedObject var geometry: TimelineScrollGeometry
     let onSeek: (Double, Bool) -> Void
 
@@ -36,7 +38,7 @@ struct TimelinePinnedRuler: View, Equatable {
     /// 它捕获的是时间线视图，读的是最新状态。滚动量走 `geometry` 的订阅，不经这里。
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.pps == rhs.pps && lhs.duration == rhs.duration && lhs.frameRate == rhs.frameRate
-            && lhs.rowSpacing == rhs.rowSpacing && lhs.playheadX == rhs.playheadX
+            && lhs.rowSpacing == rhs.rowSpacing && lhs.clock === rhs.clock
             && lhs.geometry === rhs.geometry
     }
 
@@ -48,12 +50,7 @@ struct TimelinePinnedRuler: View, Equatable {
             // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
             // 底下，挡住了就点不动播放头了。
             .overlay(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(.white)
-                    .frame(width: 9, height: 14)
-                    .shadow(radius: 1)
-                    .offset(x: playheadX - 4.5)
-                    .allowsHitTesting(false)
+                TimelinePlayheadHandle(clock: clock, pps: pps)
             }
             // 自带不透明底：它盖在滚上去的轨道行上面，透明的话会看见块从刻度
             // 底下穿过去。上面 2pt 是内容的 padding，下面一格是行距。
@@ -65,6 +62,24 @@ struct TimelinePinnedRuler: View, Equatable {
             .offset(y: geometry.offset.y)
             // 盖在轨道行之上（VStack 按 zIndex 决定绘制与命中顺序）。
             .zIndex(50)
+    }
+}
+
+/// 标尺上播放头的把手。只有它订阅时钟：播放每一跳重画这一个小圆角块，标尺的刻度不动。
+/// 不吃事件 —— 标尺的 scrub 手势在它底下，挡住了就点不动播放头了。
+struct TimelinePlayheadHandle: View {
+    @ObservedObject var clock: PlayerClock
+    let pps: Double
+
+    var body: some View {
+        let _ = PerfCounters.body(Self.self)
+        let playheadX = clock.time * pps
+        RoundedRectangle(cornerRadius: 2)
+            .fill(.white)
+            .frame(width: 9, height: 14)
+            .shadow(radius: 1)
+            .offset(x: playheadX - 4.5)
+            .allowsHitTesting(false)
     }
 }
 

@@ -10,7 +10,10 @@ struct VideoEditView: View {
     // 字幕轨的样式沿用「烧制字幕」页调好的那套。
     @ObservedObject private var burnInQueue = EncodeQueue.burnIn
     @ObservedObject private var languageStore = AppLanguageStore.shared
-    @ObservedObject private var clock: PlayerClock
+    /// 播放器时钟：**持有不订阅**。播放时它一秒跳二十下，根视图订阅它就是整个编辑器一秒重算
+    /// 二十遍（播放卡的大头）。跟着它变的几小块各自订阅，见 `VideoEditPlayheadFollowers.swift`；
+    /// body 里别再直接读 `clock.time`（docs/architecture/preview-perf-ratchet.md 第十二节）。
+    private let clock: PlayerClock
 
     @Environment(\.undoManager) private var undoManager
     @State private var showsExportSheet = false
@@ -44,7 +47,7 @@ struct VideoEditView: View {
                 // 宽度预算：库 196 + 预览 430 + 检查器 252 = 878，没超过下面那
                 // 条 minWidth 900，所以加这一栏不用抬窗口的最小宽度。
                 if showsLibraryColumn {
-                    LibraryColumn(project: project, clock: clock)
+                    LibraryColumn(project: project)
                         .frame(minWidth: 196, idealWidth: 220, maxWidth: 340)
                 }
                 previewPane
@@ -69,6 +72,7 @@ struct VideoEditView: View {
                         VideoEditInspectorView(
                             project: project,
                             clock: clock,
+                            playhead: clock.whilePaused,
                             onExport: { showsExportSheet = true }
                         )
                     }
@@ -302,14 +306,9 @@ struct VideoEditView: View {
             ZStack {
                 Color.black
                 if !project.state.isEmpty {
-                    // 滤镜挂在播放器视图自己身上，所以 ZStack 里它**上面**的那些
-                    // 叠层（形状 / 文字 / 字幕 / 变换框）天然不吃调色 —— 与导出
-                    // 滤镜链里「滤镜插在画面合成之后、形状之前」一字不差。
-                    PlayerViewRepresentable(
-                        player: clock.player,
-                        controlsStyle: .none,
-                        filterStack: FilterStack(in: project.state, at: clock.displayTime)
-                    )
+                    // 播放器画面 + 此刻的调色。滤镜挂在播放器视图自己身上，所以 ZStack 里
+                    // 它**上面**的叠层天然不吃调色（见 PreviewPlayerSurface）。
+                    PreviewPlayerSurface(project: project, clock: clock)
                     // 点选画面内容 + 变换框。放在形状叠层下面：形状的点击优先。
                     ClipTransformCanvas(project: project, clock: clock, boxSize: size)
                 } else {
@@ -320,42 +319,15 @@ struct VideoEditView: View {
                 // 文字压在形状之上、字幕之下 —— 与导出滤镜链一字不差
                 //（docs/architecture/text-overlays.md）。
                 TextOverlayCanvas(project: project, clock: clock, boxSize: size)
-                if let text = currentSubtitleText {
-                    BurnInSubtitleOverlay(
-                        text: text,
-                        style: burnInQueue.burnInStyle,
-                        scale: size.height / Double(BurnInStyle.referenceHeight),
-                        boxSize: size,
-                        layout: project.state.subtitleLayout,
-                        onBlockSize: { subtitleBlockHeight = $0.height }
-                    )
-                    // 画面上的字幕：单击选中这句、双击就地改字（输入框浮在
-                    // 字幕下方）。夹在叠层和拖框中间 —— 见该文件的层序说明。
-                    SubtitlePreviewEditLayer(
-                        project: project,
-                        clock: clock,
-                        boxSize: size,
-                        style: burnInQueue.burnInStyle,
-                        blockHeight: subtitleBlockHeight,
-                        editingCueID: $previewEditingCueID
-                    )
-                    // 轨道上点选了 cue：叠出工程级字幕拖框（移动/换行宽度/
-                    // 等比字号）。放最上层 —— 有选中时字幕调整优先。
-                    if let cueID = project.selectedSubtitleCueID,
-                       project.state.subtitle?.cues.contains(where: { $0.id == cueID }) == true {
-                        SubtitleFrameCanvas(
-                            project: project,
-                            boxSize: size,
-                            style: burnInQueue.burnInStyle,
-                            blockHeight: subtitleBlockHeight,
-                            // 框盖住了字幕，双击就地编辑这一路从框上补进来。
-                            onDoubleClick: {
-                                if clock.isPlaying { clock.togglePlayback() }
-                                previewEditingCueID = cueID
-                            }
-                        )
-                    }
-                }
+                // 字幕（文字 + 画面上点选 / 就地改字 + 选中 cue 的拖框），跟着播放头换句。
+                PreviewSubtitleLayer(
+                    project: project,
+                    clock: clock,
+                    boxSize: size,
+                    style: burnInQueue.burnInStyle,
+                    blockHeight: $subtitleBlockHeight,
+                    editingCueID: $previewEditingCueID
+                )
             }
             .frame(width: size.width, height: size.height)
             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -381,43 +353,11 @@ struct VideoEditView: View {
         return CGSize(width: width, height: height)
     }
 
-    /// 播放头此刻的字幕文本（字幕轨直接按时间线时间对齐）。
-    /// 多条重叠 cue 全部显示，顺序走第 9 节合同（与烧录共用同一排序实现）；
-    /// 显示什么由两条字幕轨的眼睛推导（visibleSubtitleChoice），没有模式选择器。
-    private var currentSubtitleText: String? {
-        // 眼睛是唯一的判据：两只都关（或没有字幕轨）就是 nil，预览不画。
-        // 不再需要「选中的轨道已经不存在」那种回退 —— 译文被删时
-        // hasVisibleTranslation 自然为假，推导出的选择永远指向真实存在的轨。
-        guard let doc = project.state.visibleSubtitleDocument() else { return nil }
-        // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。
-        let active = SubtitleOverlap.active(at: clock.displayTime, in: doc.cues)
-        guard !active.isEmpty else { return nil }
-        // doc.cues 已按合同排序，active 保序。overlay 文本块底部对齐，
-        // 而 libass 把最早的事件排在最底、后来的往上叠 —— 所以显示时要
-        // 倒序拼行（合同序的第一条落在最后一行 = 画面最底），预览和
-        // 烧录的堆叠方向才一致。
-        let text = active.reversed().map { SubtitleSerializer.plainText($0.text) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n")
-        return text.isEmpty ? nil : text
-    }
-
     private var transport: some View {
         HStack(spacing: 10) {
-            Button {
-                clock.togglePlayback()
-            } label: {
-                Image(systemName: clock.isPlaying ? "pause.fill" : "play.fill")
-                    .frame(width: 14)
-            }
-            .buttonStyle(.borderless)
-            .disabled(project.state.isEmpty)
-            .instantHelp(clock.isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"), shortcut: .plain("Space"))
-
-            Text("\(clockLabel(clock.time)) / \(clockLabel(project.duration))")
-                .font(.caption)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
+            // 这两块各自订阅自己那一份（播放状态 / 显示的那一格时间），播放时不牵动这一行。
+            TransportPlayButton(clock: clock, isDisabled: project.state.isEmpty)
+            TransportTimeLabel(clock: clock, duration: project.duration)
 
             // 画布比例：16:9、9:16 …… auto 跟随第一段素材。
             Menu {
@@ -537,12 +477,6 @@ struct VideoEditView: View {
         .layoutPriority(1)
     }
 
-    private func clockLabel(_ seconds: Double) -> String {
-        guard seconds.isFinite, seconds >= 0 else { return "0:00.0" }
-        let tenth = Int((seconds * 10).rounded())
-        return String(format: "%d:%02d.%d", tenth / 600, (tenth / 10) % 60, tenth % 10)
-    }
-
     // MARK: - 时间线 + 工具栏
 
     private var timelinePane: some View {
@@ -571,10 +505,11 @@ struct VideoEditView: View {
 
             Divider().frame(height: 16)
 
+            // 下面五个能不能点看播放头：判据跟着时钟走，但只有那个小修饰器订阅它（工具栏本身不重算）。
             ToolbarIcon(icon: "scissors", help: "Split at playhead", shortcut: .command("B")) {
                 project.splitAtPlayhead()
             }
-            .disabled(!canSplit)
+            .disabled(followingPlayhead: clock) { !canSplit }
             // 定格要抽帧 + 转码，实测 720p 约 0.5 秒、4K 更久。反馈就放在用户
             // 刚点的这个按钮上 —— 播放条那一行虽然也有转圈，但那是另一行工具栏。
             ToolbarIcon(
@@ -583,21 +518,21 @@ struct VideoEditView: View {
             ) {
                 project.freezeFrameAtPlayhead()
             }
-            .disabled(!project.canFreezeFrame)
+            .disabled(followingPlayhead: clock) { !project.canFreezeFrame }
             // `.plain` 只显示不挂等价符：无修饰键的键盘等价符会抢文本框的输入，
             // M 由 handleEvent 里的事件监听接（那边会先让开正在打字的输入框）。
             ToolbarIcon(icon: "bookmark", help: "Add a marker at the playhead", shortcut: .plain("M")) {
                 project.addMarkerAtPlayhead()
             }
-            .disabled(!project.canAddMarker)
+            .disabled(followingPlayhead: clock) { !project.canAddMarker }
             ToolbarIcon(icon: "delete.left", help: "Delete everything left of the playhead in this clip") {
                 project.trimToPlayhead(keepRight: true)
             }
-            .disabled(!canSplit)
+            .disabled(followingPlayhead: clock) { !canSplit }
             ToolbarIcon(icon: "delete.right", help: "Delete everything right of the playhead in this clip") {
                 project.trimToPlayhead(keepRight: false)
             }
-            .disabled(!canSplit)
+            .disabled(followingPlayhead: clock) { !canSplit }
             ToolbarIcon(icon: "trash", help: "Delete the selection", shortcut: .plain("⌫")) {
                 project.deleteSelected()
             }

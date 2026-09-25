@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# PlayerClock 悬停预览（peek/endPeek/displayTime）状态机的自检。
+# PlayerClock 悬停预览（peek/endPeek/displayTime）状态机的自检，
+# 以及播放头的慢读法（PacedPlayhead：播放中不跟、停下追上一次）。
 #
 # 用法：
 #   scripts/check-player-clock.sh
@@ -29,8 +30,10 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoPreviewView.swift \
+  Sources/SrtFlow/PacedPlayhead.swift \
   Sources/SrtFlow/PerfCounters.swift \
   checks/PlayerClock/main.swift \
+  checks/PlayerClock/PacedPlayheadChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

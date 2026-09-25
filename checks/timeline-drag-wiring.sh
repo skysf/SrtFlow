@@ -42,10 +42,11 @@ LANE_ORDER="Sources/SrtFlow/VideoEditTimelineLaneOrder.swift"
 LANE_REORDER="Sources/SrtFlow/VideoEditTimelineLaneReorder.swift"
 # 拖动 / 拉框的会话盒子与覆盖层（2026-09-25，§0b）：时间线持有不订阅，块只收自己那份。
 DRAG_BOX_FILE="Sources/SrtFlow/VideoEditTimelineDragBox.swift"
+PLAYHEAD="Sources/SrtFlow/VideoEditTimelinePlayhead.swift"   # 播放头竖线：滚动内容里只有它订阅时钟
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$CUE_BLOCK" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
   "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE" \
-  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE")
+  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE" "$PLAYHEAD")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -440,13 +441,11 @@ grep_code '@Published var linkageEnabled = false' "$PROJECT" \
 
 # ── 12. 播放头的把手跟标尺一起钉住 ─────────────────────────────────────
 # 标尺是不透明的（要盖住滚上来的轨道行）。把手画在滚动内容顶部的话，纵向滚下去
-# 之后它就藏到标尺后面了 —— 竖线还在，抓手没了。
+# 之后它就藏到标尺后面了 —— 竖线还在，抓手没了。竖线在 PLAYHEAD 里（滚动内容里只有它订阅时钟）。
 grep_code 'offset(x: playheadX' "$RULER" \
   || fail "标尺没画播放头把手：纵向滚下去之后把手会被标尺盖住"
-if BODY="$(require_func 'private var playhead' "$VIEW")"; then
-  grep -q 'frame(width: 9, height: 14)' <<<"$BODY" \
-    && fail "播放头把手又画回滚动内容里了：纵向滚下去会被钉住的标尺盖住"
-fi
+grep_code 'frame(width: 9, height: 14)' "$PLAYHEAD" \
+  && fail "播放头把手又画回滚动内容里了（${PLAYHEAD}）：纵向滚下去会被钉住的标尺盖住"
 
 # ── 13. 轨道头：三格固定宽度 + 点一下选中整行 ──────────────────────────
 # 路径先确认：扫空文件还是绿的（第 0 节同一条教训）。
