@@ -254,8 +254,11 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
 ```
 
 - **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` /
-  `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`。
-  坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。
+  `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`，
+  以及 `open`（换一个工程，走「打开工程」同一个入口）和 `menu`（把某一层菜单的每一项和亮不亮写进日志）。
+  坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。**菜单只能读、不能点**；`menu` 读之前先让菜单的
+  代理更新一遍（`menuNeedsUpdate`，AppKit 在菜单要打开时做的就是这个）—— SwiftUI 的 `Commands` 那时才把
+  内容填进 `NSMenu`，直接读拿到的是上一次打开时的样子。
 - **结果**写在 `<步骤表名>.out.json`：`log`（每一步、窗口号、窗口实际大小）、`state`（每个 `state`
   步骤记下的选择、每段位置、文字的位置和角度、两条字幕轨每条 cue 的起止 —— 验「落在哪」读这里，比看截图准）、`perf`（两个
   `perf` 之间每个视图重算了几次，冒烟时 `PerfCounters` 也记账）、`cpuMs`（那一段的进程 CPU）、
@@ -295,8 +298,12 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
 6. **冒烟窗口对真鼠标关掉**（`window.ignoresMouseEvents = true`）：人在用这台机器，指针从
    冒烟窗口上扫过，悬停扫帧、提示这些会被真事件叫醒，量出来的数就不是脚本的了。合成事件是
    直接交给窗口的，不受影响。
-7. **量性能时看 `event:project.willChange`**：`perf` 快照里这一项是两次快照之间工程发了几次
-   「要变了」；订阅整个工程的视图每一次都得重算，所以「谁在白白叫醒大家」先看它。
+7. **量性能时看 `event:project.changed.<属性>`**：`perf` 快照里这几项是两次快照之间工程的**哪个属性**
+   变了几轮（同一拍里写几次算一轮，和 SwiftUI 一样；值没变的写入不算）。工程是 `@Observable`，body 里读了
+   那个属性的视图每一轮都得重算，所以「谁在白白叫醒大家」先看它：点选一段只该有 `selection`。
+   清单在 `Sources/SrtFlow/SmokeProjectChanges.swift`，冒烟起手时拿 `Mirror` 和工程对一遍，工程加了被观察的
+   属性而清单没跟上，脚本直接报错。（2026-09-25 以前工程是 `ObservableObject`，这里数的是
+   `event:project.willChange`。）
 9. **工程和素材不能留在 TCC 保护的文件夹里**（`~/Downloads`、`~/Desktop`、`~/Documents`）：
    `SrtFlowDev.app` 每次重编都是新签名，系统每次都重新弹「想访问下载文件夹」；人不点，
    App 就卡在第一次访问那个文件的 `getxattr` 里（`sample` 看到 `bookmarkData` → `getxattr`
@@ -308,6 +315,16 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
    开没开」看有没有 `_NSPopoverWindow`。驱动里 App 不激活、key 窗口永远是 nil，所以「输入框把
    按键吃了」这类要 key 窗口才有的现象它复现不了，只能按代码推。
 11. **`click` 的 `count: 2` 是双击**；单击后驱动会等过系统的双击间隔再往下走。
+12. **点不了 AppKit 控件，点了会卡死**（2026-09-25 实测）：`.borderless` 的 `Button`、`Slider` 这类背后是
+   `NSControl` 的，按下之后进自己的跟踪循环等松手，而驱动的松手要等「按下」返回才发 —— 主线程停在
+   `NSControlTrackMouse`，脚本不动，900 秒看门狗才退出（点工具栏的放大按钮就这样）。**灰着的**控件不跟踪，
+   点下去立刻返回：「点了没卡」反倒说明它是灰的。验按钮亮不亮看截图（亮 / 灰的像素亮度差得很开），要它的
+   动作用快捷键或直接调工程（`toggles` 就是这么做的）。滑杆拖不动，同理。
+13. **合成的鼠标事件关不上撤销组**（2026-09-25 实测）：驱动把事件直接交给窗口、不走 `NSApp.sendEvent`，
+   撤销管理器「一个事件一组」的那一组要等下一个排进队列的真事件（比如一个 `key` 步骤）才关上。在那之前
+   刚登记的撤销 `canUndo` 还是 false，撤销按钮也就还灰着 —— 真鼠标走 `NSApp`，每个事件末尾就关，不是 App 的 bug。
+14. **⌘Z 这类菜单快捷键没用**：窗口永远不是 key，菜单项的动作找不到响应者，按了什么都不发生
+   （那个按键事件倒是会顺手把上一条说的撤销组关上）。
 8. **坐标要避开块上叠着的东西，从截图上裁一块放大再量**：音频块中下部压着音量线（命中带只有
    几 pt 宽），落在那儿拖的是线不是块；裁切把手选中时只有 5 pt 宽，差 1 pt 就点进了块里。
    `state` 里每段带 `transition`（接缝上的转场）和 `volumePoints`（音量线上的点），验这两样

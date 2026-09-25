@@ -127,6 +127,13 @@ enum SmokeDriver {
             if let snapping = step.snapping { project.snappingEnabled = snapping }
             if let linkage = step.linkage { project.linkageEnabled = linkage }
             note("开关：磁吸 \(project.magnetEnabled) 吸附 \(project.snappingEnabled) 链接 \(project.linkageEnabled)")
+        case .open:
+            guard case .file(let file) = step.path else { throw SmokeScriptError("open 要写 \"path\": \"/绝对路径\"") }
+            await project.openProject(at: URL(fileURLWithPath: file))
+            note("打开了 \(project.documentURL?.lastPathComponent ?? "nil")")
+        case .menu:
+            guard case .titles(let titles) = step.path else { throw SmokeScriptError("menu 要写 \"path\": [\"File\", …]") }
+            note(describeMenu(titles))
         case .focus:
             // 排查「⌫ 被谁吃了」：编辑器的按键监听在第一响应者是 NSTextView 时让路。
             let keyWindow = NSApp.keyWindow.map { "\(type(of: $0)) #\($0.windowNumber)" } ?? "nil"
@@ -167,6 +174,23 @@ enum SmokeDriver {
             try await Task.sleep(for: .milliseconds(100))
         }
         note("截图 \(name) 等了 15 秒没等到，跳过")
+    }
+
+    /// 顺着标题一层层往下找，写出最后那一层的每一项（标题 + 亮不亮）。每一层先让菜单的代理更新一遍
+    /// （`menuNeedsUpdate`，AppKit 在菜单要打开时做的就是这个）：SwiftUI 的 `Commands` 是那时才把
+    /// 内容填进 `NSMenu` 的，直接读拿到的是上一次打开时的样子（2026-09-25 实测）。
+    private static func describeMenu(_ titles: [String]) -> String {
+        var menu = NSApp.mainMenu
+        for title in titles {
+            if let menu { menu.delegate?.menuNeedsUpdate?(menu) }
+            guard let item = menu?.items.first(where: { $0.title == title }) else {
+                return "菜单 \(titles)：找不到「\(title)」"
+            }
+            menu = item.submenu
+        }
+        if let menu { menu.delegate?.menuNeedsUpdate?(menu) }
+        let items = (menu?.items ?? []).map { $0.isSeparatorItem ? "—" : "\($0.title)\($0.isEnabled ? "" : "（灰）")" }
+        return "菜单 \(titles.joined(separator: " ▸ "))：\(items)"
     }
 
     // MARK: - 结果
