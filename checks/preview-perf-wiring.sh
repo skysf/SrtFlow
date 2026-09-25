@@ -277,14 +277,16 @@ if [ -n "$readers" ]; then
 fi
 
 echo "==> 时间线本体不许按值跳过根视图那一遍"
-# 每点一下时间线重算两遍，看着像能用 .equatable() 省掉第二遍 —— 实测块的选中高亮只在那一遍里更新
-#（时间线自己那一遍里 ForEach(rows) 被判成没变），省掉就点了哪段都不亮，读模型的冒烟照样全绿。
-# 见 docs/architecture/preview-perf-ratchet.md 第十一节；要改先把块的输入改成那一遍看得见的值。
+# 工程还是 ObservableObject 时（2026-09-25 以前），每点一下时间线重算两遍，而块的选中高亮**只在根视图那一遍**
+# 里更新（时间线自己那一遍里 ForEach(rows) 被判成没变）：套 .equatable() 省掉那一遍，点了哪段都不亮。
+# 换成 @Observable 之后点选已经不走根视图（实测时间线 body 0 次、块 2 次，高亮跟得上：ForEach 里读选择的那一处
+# 被直接叫醒），这个坑不在了 —— 但给时间线套 .equatable() 也就省不下点选的活，只省改动时根视图带的那一遍，
+# 而那要重新验高亮、位置、缩放、拖动都跟得上（没做）。要做先按第十一节验，再撤这条。
 if grep -cE 'struct VideoEditTimelineView: View, Equatable|extension VideoEditTimelineView: .*Equatable' $SWIFT_FILES >/dev/null; then
-  echo "✗ VideoEditTimelineView 成了 Equatable：块的选中高亮会停在上一次（第十一节）"; fail=1
+  echo "✗ VideoEditTimelineView 成了 Equatable：没按第十一节验过块的高亮 / 位置 / 缩放跟不跟得上"; fail=1
 fi
 if grep -cE 'VideoEditTimelineView\(project: project, clock: clock\)\.equatable\(\)' Sources/SrtFlow/VideoEditView.swift >/dev/null; then
-  echo "✗ 根视图给时间线套了 .equatable()：块的选中高亮会停在上一次（第十一节）"; fail=1
+  echo "✗ 根视图给时间线套了 .equatable()：没按第十一节验过块的高亮 / 位置 / 缩放跟不跟得上"; fail=1
 fi
 
 echo "==> 播放器时钟只许跟着播放头动的小视图订阅"

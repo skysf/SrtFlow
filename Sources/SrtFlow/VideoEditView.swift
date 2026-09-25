@@ -4,6 +4,8 @@ import SrtFlowCore
 
 /// 视频编辑：上面是预览 + 检查器，下面是工具栏 + 时间线。
 struct VideoEditView: View {
+    /// `@Bindable` 只为三个开关的 `$project.x`。body 读了工程的哪个属性，整个编辑器就在它变时重算一遍：
+    /// **别在这儿读选择**（点选一段会叫醒一切），看选择的按钮放进小视图（preview-perf-ratchet.md 第十三节）。
     @Bindable private var project = VideoEditProject.shared
     @ObservedObject private var exporter = VideoEditExporter.shared
     @StateObject private var toolchain = MediaToolchain.shared
@@ -494,14 +496,8 @@ struct VideoEditView: View {
 
             Divider().frame(height: 16)
 
-            ToolbarIcon(icon: "arrow.uturn.backward", help: "Undo") {
-                undoManager?.undo()
-            }
-            .disabled(!(undoManager?.canUndo ?? false))
-            ToolbarIcon(icon: "arrow.uturn.forward", help: "Redo") {
-                undoManager?.redo()
-            }
-            .disabled(!(undoManager?.canRedo ?? false))
+            // 撤销栈不可观察：这两个按钮自己听撤销栈的通知，别让根视图替它们刷新（第十三节）。
+            UndoRedoToolbarButtons(project: project)
 
             Divider().frame(height: 16)
 
@@ -533,16 +529,8 @@ struct VideoEditView: View {
                 project.trimToPlayhead(keepRight: false)
             }
             .disabled(followingPlayhead: clock) { !canSplit }
-            ToolbarIcon(icon: "trash", help: "Delete the selection", shortcut: .plain("⌫")) {
-                project.deleteSelected()
-            }
-            // 判据和 ⌫ 那道守卫是**同一个**表达式。少一类，选中标记时垃圾桶
-            // 就是灰的，而键盘删得掉 —— 同一个动作两个入口给出两种答案。
-            .disabled(project.selection.isEmpty)
-            ToolbarIcon(icon: "waveform.badge.minus", help: "Detach the audio onto its own track") {
-                if let id = project.selectedClip?.id { project.detachAudio(from: id) }
-            }
-            .disabled(!canDetach)
+            // 垃圾桶和分离声音看选择：单拎成小视图，点选一段只叫醒它俩、不叫醒整个编辑器（第十三节）。
+            SelectionToolbarButtons(project: project)
 
             Spacer()
 
@@ -648,11 +636,6 @@ struct VideoEditView: View {
             return true
         }
         return project.mainClipAtPlayhead() != nil
-    }
-
-    private var canDetach: Bool {
-        guard let clip = project.selectedClip else { return false }
-        return !clip.isAudioOnly && clip.hasAudio && !clip.isMuted
     }
 
     private func pickMedia(toOverlay: Bool) {

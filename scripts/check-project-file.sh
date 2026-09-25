@@ -191,8 +191,9 @@ require "滤镜块拖框中实时高亮（从拖动盒子里收框选命中的�
   Sources/SrtFlow/VideoEditTimelineFilterRow.swift '\$0\.filters\.contains\(filter\.id\)'
 require "滤镜行的轨道头点得出整层" \
   Sources/SrtFlow/VideoEditTimelineRowSpec.swift 'return \.filterLayer\(filterLayer\)'
+# 垃圾桶 2026-09-25 从根视图拆进了 SelectionToolbarButtons（根视图读选择 = 点选一段叫醒整个编辑器）。
 require "工具栏垃圾桶的置灰判据必须和 ⌫ 是同一个表达式" \
-  Sources/SrtFlow/VideoEditView.swift '\.disabled\(project\.selection\.isEmpty\)'
+  Sources/SrtFlow/VideoEditToolbarStateButtons.swift '\.disabled\(project\.selection\.isEmpty\)'
 # 按钮亮不亮和真正会打在哪几段，必须是同一个函数算出来的。
 require "工具栏书签按钮的置灰走 canAddMarker" \
   Sources/SrtFlow/VideoEditView.swift 'project\.canAddMarker'
