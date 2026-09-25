@@ -8,7 +8,7 @@ import SrtFlowCore
 // MARK: - 时间线这一族文件的分工
 //
 // 这个文件只留「骨架」：行的排列（`rows` / `rowLayouts`）、轨道头列、滚动容器、
-// 轨道行、播放头。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
+// 轨道行、播放头的落点入口。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
 //
 // - `VideoEditTimelineRowSpec.swift`        一行的描述（`TimelineRowSpec`，纯值）
 // - `VideoEditTimelineMarqueeGesture.swift` 框选接线
@@ -29,6 +29,7 @@ import SrtFlowCore
 // - `VideoEditTimelineDragBox.swift`        拖动 / 拉框进行中的视图状态（时间线持有、不订阅）
 // - `VideoEditTimelineDragOverlay.swift`    拖动中画的覆盖层（对齐线、占位框、框选矩形；订阅盒子）
 // - `VideoEditTimelineEmptyState.swift`     工程为空时那块虚线提示
+// - `VideoEditTimelinePlayhead.swift`       播放头竖线、影子指针、跟随滚动（滚动内容里只有它订阅时钟）
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -36,9 +37,11 @@ import SrtFlowCore
 /// 时间线区域：左边一列轨道头图标，右边横向滚动的标尺 + 各轨 + 播放头。
 struct VideoEditTimelineView: View {
     @ObservedObject var project: VideoEditProject
-    /// 必须**直接**订阅播放器时钟：它是 project 上的普通属性，不是 @Published，
-    /// 光观察 project 的话时钟跳动不会触发重绘 —— 播放头就会僵在原地。
-    @ObservedObject var clock: PlayerClock
+    /// 播放器时钟：**持有不订阅**。播放时它每 0.05 秒一跳，订阅了的话整条时间线每一跳都重算一遍
+    /// （2026-09-25 前就是这样，播放卡的大头之一）。跟着它跳的只有播放头那两根线
+    /// （`TimelinePlayheadLines`）和标尺上的把手（`TimelinePlayheadHandle`），它们自己订阅；
+    /// 这里的 body 一个字都不读它，手势回调里读的是现值（preview-perf-ratchet.md 第十二节）。
+    let clock: PlayerClock
 
     /// 一轮拖动 / 拉框**进行中**的全部视图状态：块的位移、框选命中、瞄准的目标行、文字块的
     /// 目标行、cue 起手的记号（`VideoEditTimelineDragBox.swift`）。**拖动中不写 `TimelineState`**，
@@ -70,8 +73,6 @@ struct VideoEditTimelineView: View {
     /// **连行别一起记**：原文行和译文行是同一批 cue ID 的镜像，只按 ID 判定的话
     /// 双击一行会让两行同时弹出浮层。
     @State var editingCue: EditingCue?
-    /// 播放跟随滚动的节流。
-    @State private var lastFollowTime: Double = -1
     /// 此刻拉开的那条插入缝（§5h）。**只是视图状态**：拖动中不写 `TimelineState`，
     /// 行的位置全由 `TimelineSeams.layout` 按它算，轨道头列和轨道行垫同一段。
     @State var openSeam: TimelineSeam?
@@ -274,9 +275,6 @@ struct VideoEditTimelineView: View {
                 .onChange(of: viewport.size.height, initial: true) { _, height in
                     viewportHeight = height
                 }
-                .onChange(of: clock.time) { _, newTime in
-                    followPlayhead(newTime)
-                }
                 // 视图消失（切栏目、关窗、切工程）时心跳必须跟着停 ——
                 // 正常松手走 onEnded，这条管的是「手势没有终点」的那些死法。
                 .onDisappear {
@@ -424,8 +422,8 @@ struct VideoEditTimelineView: View {
                 project: project
             )
 
-            hoverPointer
-            playhead
+            // 影子指针 + 播放头竖线 + 播放跟随滚动：只有它订阅时钟，播放每一跳时间线本体不重算。
+            TimelinePlayheadLines(clock: clock, pps: pps, viewportWidth: viewportWidth, geometry: scrollGeometry)
         }
         // 内容区这一层：宽度就是 `contentWidth`，轨道底色和标尺刻度都画到这儿为止。
         .frame(width: contentWidth, alignment: .topLeading)
@@ -486,7 +484,7 @@ struct VideoEditTimelineView: View {
                 duration: project.duration,
                 frameRate: project.state.frameRate,
                 rowSpacing: rowSpacing,
-                playheadX: clock.time * pps,
+                clock: clock,
                 geometry: scrollGeometry,
                 onSeek: { time, precise in
                     seekFromTimeline(time: time, precise: precise)
@@ -647,52 +645,4 @@ struct VideoEditTimelineView: View {
         }
     }
 
-    /// 悬停预览的影子指针：半透明细线、没有把手 —— 只说明「画面此刻在看这儿」。
-    /// 真播放头（白色实线 + 把手）留在用户点定的位置，点击才会把它移过来。
-    @ViewBuilder
-    private var hoverPointer: some View {
-        if let peek = clock.peekTime {
-            Rectangle()
-                .fill(.white.opacity(0.5))
-                .frame(width: 1)
-                .frame(maxHeight: .infinity, alignment: .top)
-                .offset(x: peek * pps - 0.5)
-                .allowsHitTesting(false)
-        }
-    }
-
-    /// 播放头的**竖线**。它贯穿所有轨道，所以跟着内容一起纵向滚。
-    ///
-    /// 标尺上那枚把手不在这儿 —— 它画在 `TimelinePinnedRuler` 里，跟着标尺一起
-    /// 钉在视口顶上。画在这里的话，纵向滚下去之后把手会藏到标尺后面（标尺是不
-    /// 透明的），用户就看不见播放头的抓手了。
-    private var playhead: some View {
-        Rectangle()
-            .fill(.white)
-            .frame(width: 1.5)
-            .shadow(radius: 0.5)
-            .frame(maxHeight: .infinity, alignment: .top)
-            .offset(x: clock.time * pps - 0.75)
-            .allowsHitTesting(false)
-    }
-
-    /// 播放时让播放头留在视野里：只有它快滚出去了才动一下，
-    /// 平时不跟着走 —— 每帧都居中会看得人晕。
-    ///
-    /// **只碰横向。** 以前走 `ScrollViewProxy.scrollTo(_:anchor:)`，那个锚点是
-    /// 双轴的：时间线能上下滚之后（2026-09-18），正在看下面几条轨时一按播放，
-    /// 画面会被连带拽回最顶上。
-    private func followPlayhead(_ time: Double) {
-        guard clock.isPlaying, viewportWidth > 80 else { return }
-        guard abs(time - lastFollowTime) > 0.15 else { return }
-        lastFollowTime = time
-
-        let x = time * pps
-        let offset = scrollGeometry.offsetX
-        let leftEdge = offset + 40
-        let rightEdge = offset + viewportWidth - 80
-        guard x < leftEdge || x > rightEdge else { return }
-        // 挪到视野偏左的位置，后面还留着一大段能看。
-        scrollGeometry.scrollHorizontally(to: x - viewportWidth * 0.15, animated: true)
-    }
 }
