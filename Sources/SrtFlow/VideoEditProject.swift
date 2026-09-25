@@ -1440,7 +1440,7 @@ final class VideoEditProject: ObservableObject {
         rebuildTask?.cancel()
         rebuildStatus.set(true)
         rebuildTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)  // 防抖只为并掉一阵子里的连续改动；250 时松手到预览回来白等 130ms（2026-09-25）
             guard let self, !Task.isCancelled else { return }
             let snapshot = self.state
             let built = await VideoEditCompositionBuilder.build(from: snapshot)
