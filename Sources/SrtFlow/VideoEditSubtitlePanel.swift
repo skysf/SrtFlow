@@ -15,11 +15,16 @@ import SrtFlowCore
 /// docs/architecture/subtitle-track-visibility-and-layout.md。
 struct VideoEditSubtitlePanel: View {
     @ObservedObject var project: VideoEditProject
-    @ObservedObject var clock: PlayerClock
+    /// 播放器时钟：**持有不订阅**。这一列要跟着播放高亮「正在说的那句」，可一句通常好几秒 ——
+    /// 订阅时钟就是整张表（每一行连同输入框）一秒重算二十遍。改成只在换句时写 `currentCueID`
+    /// （docs/architecture/preview-perf-ratchet.md 第十二节）。
+    let clock: PlayerClock
     /// 打开生成/翻译面板 —— 那是另一件事（从音频识别、机器翻译），不塞进这一列。
     var onOpenGenerator: () -> Void = {}
 
     @State private var followsPlayback = true
+    /// 播放头（悬停预览时是影子播放头）此刻落在哪条上。只在换句时写（`followCurrentCue`）。
+    @State private var currentCueID: UUID?
     /// 哪个格子有光标。**焦点归这一列持有**：行是会被重建的临时值，
     /// 从行内部给自己上焦点写不进去（见 `SubtitleFieldFocus` 的说明）。
     @FocusState private var focusedField: SubtitleFieldFocus?
@@ -52,6 +57,11 @@ struct VideoEditSubtitlePanel: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // 哪句是「正在说的」：时钟每一跳只比一次，换了句才写 @State（整张表才重算）。
+        // `$time` / `$peekTime` 在赋值之前发（willSet）：参数是新值，另一个读现值。
+        .onReceive(clock.$time) { followCurrentCue(at: clock.peekTime ?? $0) }
+        .onReceive(clock.$peekTime) { followCurrentCue(at: $0 ?? clock.time) }
+        .onChange(of: cues) { _, _ in followCurrentCue(at: clock.displayTime) }
     }
 
     // MARK: - 顶部
@@ -173,10 +183,11 @@ struct VideoEditSubtitlePanel: View {
 
     // MARK: - 字幕表
 
-    /// 播放头此刻落在哪条上。重叠时取合同序最后一条 —— 与画面叠层最上面那行
-    /// （`SubtitleOverlap.active` 的末条）是同一条。
-    private var currentCueID: UUID? {
-        SubtitleOverlap.active(at: clock.displayTime, in: cues).last?.id
+    /// 更新「播放头此刻落在哪条上」。重叠时取合同序最后一条 —— 与画面叠层最上面那行
+    /// （`SubtitleOverlap.active` 的末条）是同一条。没换句不写。
+    private func followCurrentCue(at time: Double) {
+        let id = SubtitleOverlap.active(at: time, in: cues).last?.id
+        if id != currentCueID { currentCueID = id }
     }
 
     private var table: some View {

@@ -5,8 +5,12 @@ import SrtFlowCore
 /// 形状给颜色/线宽/大小，文字给内容/字体/外观，什么都没选给项目总览。
 struct VideoEditInspectorView: View {
     @ObservedObject var project: VideoEditProject
-    /// 必须直接订阅时钟：关键帧的 ◇ 实心态和数值都跟着播放头走。
-    @ObservedObject var clock: PlayerClock
+    /// 关键帧的 ◇ 实心态和数值都跟着播放头走：body 里读 `clock.time` 的现值，但**不订阅时钟** ——
+    /// 播放时它一秒跳二十下，检查器跟着重算就是十几个数值框连同底下的 AppKit 控件一秒更新二十遍
+    /// （播放卡的大头之一）。重算的时机交给 `playhead`（`clock.whilePaused`）：停着时播放头放到哪儿
+    /// 就跟到哪儿（拖播放头找关键帧照样实时），播放中不跟，停下来追上一次（preview-perf-ratchet.md 第十二节）。
+    let clock: PlayerClock
+    @ObservedObject var playhead: PacedPlayhead
     var onExport: () -> Void = {}
 
     var body: some View {
@@ -26,7 +30,8 @@ struct VideoEditInspectorView: View {
                 } else if project.selectedClipIDs.count > 1 {
                     multiSelectionSection
                 } else {
-                    projectSection
+                    // 什么都没选：项目总览（只读工程，VideoEditInspectorProjectOverview.swift）。
+                    InspectorProjectOverview(project: project)
                 }
             }
             .padding(14)
@@ -275,7 +280,8 @@ struct VideoEditInspectorView: View {
                 project.select(clip.id, additive: false)
                 project.splitAtPlayhead()
             }
-            .disabled(!clip.contains(time: project.clock.time))
+            // 能不能点看播放头：播放中检查器不重算，这一个判据由小修饰器自己跟着时钟走。
+            .disabled(followingPlayhead: clock) { !clip.contains(time: clock.time) }
             .instantHelp("Cut this clip in two at the playhead", shortcut: .plain("⌘B"))
             Spacer()
             Button("Delete", systemImage: "trash", role: .destructive) {
@@ -455,85 +461,6 @@ struct VideoEditInspectorView: View {
             },
             set: { project.liveSetFilterStrength(filter.id, $0) }
         )
-    }
-
-    // MARK: - 什么都没选：项目总览
-
-    @ViewBuilder
-    private var projectSection: some View {
-        Text("Project").font(.headline)
-
-        VStack(alignment: .leading, spacing: 5) {
-            summaryRow("Total length", MediaFormatting.duration(project.duration))
-            summaryRow("Main track clips", "\(project.state.mainClips.count)")
-            let overlayCount = project.state.overlayTracks.reduce(0) { $0 + $1.clips.count }
-            if overlayCount > 0 {
-                summaryRow("Upper track clips", "\(overlayCount)")
-            }
-            let audioCount = project.state.audioTracks.reduce(0) { $0 + $1.clips.count }
-            if audioCount > 0 {
-                summaryRow("Audio clips", "\(audioCount)")
-            }
-            if !project.state.shapes.isEmpty {
-                summaryRow("Shapes", "\(project.state.shapes.count)")
-            }
-            if !project.state.textOverlays.isEmpty {
-                summaryRow("Text", "\(project.state.textOverlays.count)")
-            }
-            summaryRow("Output size", "\(Int(project.renderSize.width))×\(Int(project.renderSize.height))")
-        }
-
-        Divider()
-
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Subtitles").font(.callout).fontWeight(.medium)
-            if let url = project.state.subtitleURL {
-                HStack(spacing: 6) {
-                    Image(systemName: "captions.bubble").foregroundStyle(.secondary)
-                    Text(url.lastPathComponent)
-                        .font(.caption)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer()
-                    Button {
-                        project.removeSubtitle()
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                    .instantHelp("Unlink this subtitle file from the project")
-                }
-                Text("Burned in on export, using the style from the Burn In Subtitles tool.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("Add a subtitle file to burn it into the exported video.")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-
-        Divider()
-
-        // 这里曾经还有一个 Export… 按钮。删掉了（2026-08-12 用户）：
-        // 窗口右上角的工具栏本来就有一个，同一个动作摆两遍只是占地方。
-        // 多选那一段里的 Export… 留着 —— 那个说的是「只导出选中的这几段」，
-        // 不是同一件事。
-        Text("Select a clip on the timeline to adjust its speed, volume, and transition. Select a shape to recolor and resize it.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func summaryRow(_ title: LocalizedStringKey, _ value: String) -> some View {
-        HStack {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Spacer()
-            Text(value).font(.caption).monospacedDigit()
-        }
     }
 
     // MARK: - 绑定
