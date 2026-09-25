@@ -125,7 +125,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
-| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项** | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不订阅工程、按值比较 + `.equatable()`**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md) |
+| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不订阅工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
@@ -143,7 +143,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。
-- 播放头与悬停 peek 状态机：`scripts/check-player-clock.sh`。
+- 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
+  不认悬停）：`scripts/check-player-clock.sh`。
 - 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开：
   `scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
@@ -221,8 +222,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `check-all.sh` 里**；check-all 只跑它的比对规则自检（`--self-test`）。偶尔会误报退步
   （CI 虚拟机上的已知干扰），认法和处理见架构文档「已知的偶发误报」。每个视图、
   `updateNSView`、Canvas 都接了计数：`checks/preview-perf-wiring.sh`；新写视图漏了计数，
-  跑 `checks/preview-perf-wiring.sh --fix` 自动补上。同一个守卫最后一节钉着**时间线上的块不许
-  订阅工程、必须 `Equatable` 且构造处套 `.equatable()`**。
+  跑 `checks/preview-perf-wiring.sh --fix` 自动补上。同一个守卫还钉着**时间线上的块不许
+  订阅工程、必须 `Equatable` 且构造处套 `.equatable()`**，以及**订阅播放器时钟的只许是名单里跟着播放头动的
+  小视图**（根视图、时间线本体、检查器、素材库、字幕列表都持有不订阅）。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
   所以漏一行等于那份文档不存在。
@@ -258,6 +260,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md) — 为什么数「活」不数 CPU
   指令（托管 runner 读不到计数器、CPU 时间差两倍的探针实测）、不挂自托管 runner、不许拿画质换数字、
   只许降不许涨（要加开销先在别处省回来）等拍过的板。
+- [播放丝滑：播放头的每一跳只叫醒跟着它动的东西](docs/plans/2026-09-25-smooth-playback.md) — 用户说播放卡、
+  授权「按体验丝滑的方式来优化」之后拍的板：左栏播放中冻住、停稳刷一次、不认悬停、点卡片作用在显示的那条缝；
+  检查器播放中不跟、停下追上；工具栏按钮照样实时；字幕列表只在换句时重算；不拿 CPU 数字验收。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -303,7 +308,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md) — 量的是活不是 CPU、**每个视图 body
   第一行计数**（守卫钉着，`--fix` 自动补）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、要有两遍
   一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
-  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）、**点一下选中一段的时间花在哪**（第十一节：release 和 debug 一样慢、活在框架里；时间线本体不许套 `.equatable()`，块的选中高亮靠根视图那一遍）。
+  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）、**点一下选中一段的时间花在哪**（第十一节：release 和 debug 一样慢、活在框架里；时间线本体不许套 `.equatable()`，块的选中高亮靠根视图那一遍）、**播放头的每一跳只叫醒跟着它动的东西**（第十二节：订阅时钟按类型名单、大视图持有不订阅、只关心变没变的 `onReceive` 自己那份、停着才有意义的读 `PacedPlayhead`，守卫钉着）。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
@@ -384,6 +389,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-25 松手重建预览把每个素材重新打开一遍、还白叫醒整个编辑器](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) — 每次重建 `AVURLAsset` 都是新开的（一次 63 个），「正在重建」和 `renderSize` 每次都在工程上发、每发一次整个编辑器重算一轮。素材按文件身份（路径 + inode + 卷 + 大小 + 修改时间）进程级缓存（`MediaAssetCache`），换了文件、原地改写过才重开；「正在重建」挪进只有工具栏转圈订阅的小对象，`renderSize` 没变不写。第一版说「没有视图读它」就摘了 `@Published` —— 其实转圈在读，没卡住全靠时钟碰巧一起发。
 - [2026-09-25 PR #71 首跑 CI 红了两项](docs/bugfixes/2026-09-25-pr71-first-ci-run.md) — 数字可点范围的自检拿普通文字当参照（数字是 App 自己等宽排的，本机碰巧对上、CI 差 1.8pt）；滤镜块的接线守卫在另一组里还钉着旧名字。**期望值要和被测值走同一条路径；改接线后按旧名字把 scripts/、checks/ 全 grep 一遍**。
 - [2026-09-25 老虎机数字 365 → 90 停在「090」上](docs/bugfixes/2026-09-25-odometer-leading-zero.md) — 位数少的那一头，多出来的高位被 `?? 0` 编成了 0（逗号、负号也照样留着）；改成那一格滚成空白、宽度收掉。**缺省值替缺失的数据说了话**；自检只测了位数最多的那一头。第一版照居中重排，自检全绿、一渲用户的真工程「90」和「° SOUTH」之间空出半格 —— 居中和右对齐改成右边不动；第二版正在滚走的「1」蹭到「3」跟前像个逗号 —— 改成原地滚走。
+- [2026-09-25 播放的时候卡：时钟每跳一下，整个编辑器都重算一遍](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md) — 根视图、时间线本体、检查器、素材库、字幕列表都订阅着一秒二十跳的播放器时钟，一跳约 172 次 body；用户点名的左栏只占约 3%。跟着播放头动的拆成小视图各自订阅，停着才有意义的读播放头的慢读法（`PacedPlayhead`：只跟「放置」、播放中不跟、停下追上一次），按钮能不能点走 `.disabled(followingPlayhead:)`；真播放一跳降到约 25 次，一半是电平表。订阅时钟按类型名单钉着；**用户点名的地方不一定是大头，先看明细**。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
