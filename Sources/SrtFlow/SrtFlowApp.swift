@@ -202,7 +202,7 @@ private struct SettingsView: View {
 /// 图标右键看到的是同一份，不用自己存一套。
 private struct ProjectCommands: View {
     @ObservedObject private var windowState = MainWindowState.shared
-    @ObservedObject private var project = VideoEditProject.shared
+    private let project = VideoEditProject.shared
 
     @Environment(\.openWindow) private var openWindow
 
@@ -211,6 +211,9 @@ private struct ProjectCommands: View {
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
+        // 「最近打开」那份系统列表在开 / 存工程时变，而那正是 `documentURL` 变的时候。工程是
+        // `@Observable`：body 不读它就不会被叫醒，菜单就停在旧的列表上（以前订阅整个工程，是顺带刷新的）。
+        let _ = project.documentURL
         Button("New Project") {
             showEditor()
             project.newProject()

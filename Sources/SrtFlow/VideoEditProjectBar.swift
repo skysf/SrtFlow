@@ -6,7 +6,7 @@ import SwiftUI
 /// 它就是这个编辑器的「文件菜单」：新建、打开、最近、存一版、在访达里显示。
 /// 名字旁边的小圆点表示还没落盘 —— 自动保存开着，它一般只闪一下就没了。
 struct VideoEditProjectMenu: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     /// 每次打开菜单现查一次最近列表：别的地方存过工程，这里要能看见。
@@ -67,7 +67,7 @@ struct VideoEditProjectMenu: View {
 /// 这里刻意**不做** App 内的文件夹管理 —— 工程就是普通文件，分文件夹、改名、
 /// 搜索都交给访达。这一屏只负责「快速回到最近那几条」。
 struct VideoEditStartScreen: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     @State private var recents: [URL] = []
@@ -185,7 +185,7 @@ private struct RecentProjectCard: View {
 /// 打开工程时没找回来的素材：原路径没了、书签解不开、相对位置和同名搜索也没中。
 /// 到这一步只能让用户指认，指完同目录的其他丢失素材会自动配上。
 struct MissingMediaBar: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     var body: some View {

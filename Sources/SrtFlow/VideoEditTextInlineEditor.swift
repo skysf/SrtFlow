@@ -16,7 +16,7 @@ import SwiftUI
 /// 改错了按 ⌘Z。视图消失（切工程、播放头走出这段文字）也当提交，
 /// 否则 `liveEditSnapshot` 会一直挂着，下一次拖动会从一份陈旧的快照出发。
 struct TextInlineEditor: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     let overlayID: UUID
 
     @State private var draft: String = ""

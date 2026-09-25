@@ -64,7 +64,7 @@ final class TextRenderStore {
 }
 
 struct TextOverlayCanvas: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 必须直接订阅时钟：播放头动了，画面上该显示哪几段文字会跟着变。
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize

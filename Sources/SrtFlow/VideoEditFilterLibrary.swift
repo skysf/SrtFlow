@@ -86,7 +86,7 @@ final class FilterThumbnailStore: ObservableObject {
 
 /// 左栏里常驻的滤镜库。
 struct FilterLibraryPanel: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 卡片小样取的是**停稳了的**播放头底下那一帧（`clock.atRest`，不是时钟本身）：播放中、拖播放头
     /// 的过程中都不换，鼠标在时间线上扫（影子播放头）也不算，停稳了刷新一次（2026-09-25 用户拍板）。
     @ObservedObject var playhead: PacedPlayhead

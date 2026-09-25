@@ -27,7 +27,7 @@ struct TimelineHeaderColumn: View {
     let rowSpacing: Double
     /// 拉开的插入缝垫在哪一行上面（和轨道行垫**同一行、同一段**，§5h）。nil = 没有缝。
     let gapRowID: String?
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 纵向滚动量的推送值：只有这一列和标尺订阅它。
     @ObservedObject var geometry: TimelineScrollGeometry
     @Binding var resizeBase: RowHeightDragState?
@@ -109,7 +109,7 @@ enum TimelineHeaderMetrics {
 
 private struct TimelineHeaderRow: View {
     let row: VideoEditTimelineView.RowSpec
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @Binding var resizeBase: RowHeightDragState?
     /// 这一行能不能拖着换位置（nil = 不能：主轨、非轨道行、这一组只有它一条）。
     /// **输入只许是值**：这一行在时钟每跳一下时不重算，靠的是输入每次都「相等」。

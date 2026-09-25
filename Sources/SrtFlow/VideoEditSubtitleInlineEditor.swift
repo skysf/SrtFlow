@@ -14,7 +14,7 @@ import SrtFlowCore
 /// 提交时机与仓库其余输入框一致：**回车或失焦即提交**，没有单独的「取消」——
 /// 改错了按 ⌘Z。一格 = 一步撤销：原文和译文分别是两格，各自一步。
 struct SubtitleInlineEditor: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     let cueID: UUID
     /// 原文轨看得见吗。**隐藏 = 不可编辑**（与时间线字幕行同一条合同），
     /// 看不见的那条不给输入框 —— 否则用户会在改一条自己看不到的字幕。

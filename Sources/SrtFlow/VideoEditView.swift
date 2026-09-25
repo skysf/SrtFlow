@@ -4,7 +4,7 @@ import SrtFlowCore
 
 /// 视频编辑：上面是预览 + 检查器，下面是工具栏 + 时间线。
 struct VideoEditView: View {
-    @ObservedObject private var project = VideoEditProject.shared
+    @Bindable private var project = VideoEditProject.shared
     @ObservedObject private var exporter = VideoEditExporter.shared
     @StateObject private var toolchain = MediaToolchain.shared
     // 字幕轨的样式沿用「烧制字幕」页调好的那套。
@@ -676,7 +676,7 @@ struct VideoEditView: View {
 // MARK: - 工具栏的小件
 
 private struct ShapeOverlayCanvas: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 必须直接订阅时钟（和 `ClipTransformCanvas` 同款）：形状的出没跟着
     /// 播放头走，只观察 project 的话，播放/扫帧时这层不重算 —— 形状要么
     /// 到点不出现、要么过点不消失。

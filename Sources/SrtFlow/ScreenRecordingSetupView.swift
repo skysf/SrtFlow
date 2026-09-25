@@ -7,7 +7,7 @@ import SwiftUI
 /// 帧率不在这里选 —— 它跟随工程（显示为只读事实）。
 @available(macOS 15.0, *)
 struct ScreenRecordingSetupView: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var coordinator = ScreenRecordingCoordinator.shared
 
     @State private var options = ScreenRecordingOptions()

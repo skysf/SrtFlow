@@ -8,7 +8,7 @@ import SwiftUI
 ///
 /// 只长在主轨：转场只有主轨有语义。
 struct TransitionMaskView: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 第几条缝（= 出场段在 `mainClips` 里的下标）。存下标不存片段：拖动过程中
     /// 磁吸会重排，拿着一份旧的拷贝会画在上一拍的位置上。
     let seamIndex: Int

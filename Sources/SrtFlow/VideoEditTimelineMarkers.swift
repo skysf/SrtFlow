@@ -45,7 +45,7 @@ struct ClipMarkerStrip: View {
     let width: Double
     let height: Double
     let pps: Double
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 指针进出标记时报一声（带上标记所在的时间线时刻）。块拿它接管扫帧 peek，
     /// 见 `ClipBlockView.markerHover`。
     let onHoverMarker: (Double?) -> Void

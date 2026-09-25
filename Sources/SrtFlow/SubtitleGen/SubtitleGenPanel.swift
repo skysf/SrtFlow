@@ -8,7 +8,7 @@ import SrtFlowCore
 // 从音频生成必须先确认替换（8 合同 0）。
 
 struct SubtitleGenPanel: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -43,7 +43,7 @@ struct SubtitleGenPanel: View {
 
 @available(macOS 15.0, *)
 private struct SubtitleGenPanelContent: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var translationService = SubtitleTranslationService.shared
     @ObservedObject private var coordinator = TranslationJobCoordinator.shared
     /// 「编辑字幕」要把这个弹窗关掉（编辑在常驻的字幕列里做）。
@@ -226,7 +226,7 @@ private struct SubtitleGenPanelContent: View {
 
 @available(macOS 26.0, *)
 private struct TranscriptionSection: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     var targetLanguages: [SubtitleTranslationService.TargetLanguage]
     @Binding var targetLanguageID: String
 

@@ -8,7 +8,7 @@ import SrtFlowCore
 // 全部字幕；预览（BurnInSubtitleOverlay.layout）与烧录（assStyle(layout:)）
 // 共用同一份数值。复用 ResizableFrameBox（剪辑/形状同款）。
 struct SubtitleFrameCanvas: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     let boxSize: CGSize
     let style: BurnInStyle
     /// 当前字幕文本块的实测高度（BurnInSubtitleOverlay 回报）。

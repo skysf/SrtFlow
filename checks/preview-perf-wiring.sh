@@ -189,13 +189,13 @@ need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.background
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadBegan\(\)' '波形开始解码的登记'
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadEnded\(\)' '波形解码完的登记'
 
-echo "==> 时间线上的块：不订阅工程、按值比较"
-# 块订阅整个工程（@ObservedObject var project）的话，工程里任何一处变化 —— 点选一段 ——
-# 都让全部块重算、全部音量线重画；块的输入里带闭包，SwiftUI 比不出「没变」，时间线
-# 每重算一次（拖动每动一下）全部块也都跟着重算。所以块只收算好的值（`ClipBlockContext`）、
-# 自己实现 `==`、调用处套 `.equatable()`。三条都钉住：
-# docs/architecture/preview-perf-ratchet.md「时间线上的块」，案例
-# docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md。
+echo "==> 时间线上的块：不读工程、按值比较"
+# 块读了工程的属性，就订阅了那个属性（工程是 @Observable，2026-09-25 起）：读 `selection` 就是
+# 「点选一段全部块重算」，读 `state` 就是「改任何一处全部块重算」；块的输入里带闭包，SwiftUI 比不出
+# 「没变」，时间线每重算一次全部块也都跟着重算。所以块只收算好的值（`ClipBlockContext`）、自己实现
+# `==`、调用处套 `.equatable()`。三条都钉住：docs/architecture/preview-perf-ratchet.md「时间线上的块」，
+# 案例 docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md。
+#（换 Observation 之前第二条钉的是「没有 @ObservedObject var project」，那种写法现在编不过了。）
 # 格式：<块所在文件>|<视图名>|<构造它的文件>
 for spec in \
   'Sources/SrtFlow/VideoEditTimelineClipBlock.swift|ClipBlockView|Sources/SrtFlow/VideoEditTimelineView.swift' \
@@ -211,8 +211,31 @@ for spec in \
   if ! grep -cE "struct ${view}: View, Equatable" "$file" >/dev/null; then
     echo "✗ ${view} 没有按值比较（要写成 struct ${view}: View, Equatable 并自己实现 ==）"; fail=1
   fi
-  if grep -cE '@ObservedObject var project' "$file" >/dev/null; then
-    echo "✗ ${file} 里有块订阅了整个工程（@ObservedObject var project）：点选一段全部块都要重算"; fail=1
+  # 只扫这个块自己的 struct（从声明到行首的 }）。放行：调方法（按了做什么）、写入、工程上的常量
+  # clock / meters / rebuildStatus（各有自己的订阅规矩）、注释，以及行尾写明「手势里现读」的那几处
+  #（手势回调里现读最新值，不在 body 里，不订阅）。盲区：在 body 里**调**工程的方法一样会订阅它读到的属性。
+  reads="$(awk -v view="$view" '
+    $0 ~ "^(private |fileprivate )?struct " view ": View, Equatable" { inside = 1; next }
+    inside && /^\}/ { inside = 0 }
+    inside {
+      line = $0
+      if (line ~ /^[[:space:]]*\/\//) next
+      if (line ~ /手势里现读/) next
+      sub(/\/\/.*$/, "", line)
+      while (match(line, /project\.[A-Za-z_]+/)) {
+        name = substr(line, RSTART + 8, RLENGTH - 8)
+        rest = substr(line, RSTART + RLENGTH)
+        line = rest
+        if (name ~ /^(clock|meters|rebuildStatus)$/) continue
+        if (rest ~ /^[[:space:]]*[({]/) continue
+        if (rest ~ /^[[:space:]]*(=[^=]|\+=|-=)/) continue
+        print FILENAME ":" FNR ": project." name
+      }
+    }' "$file")"
+  if [ -n "$reads" ]; then
+    echo "✗ ${view} 在块里读了工程的属性（读了就订阅：那个属性一变，全部块都要重算）："
+    sed 's/^/    /' <<<"$reads"
+    fail=1
   fi
   # 构造处必须紧跟 .equatable()：找到「行首是 视图名(」的那一行，跳过到它同缩进的收尾 )
   #（尾随闭包 `) {` 也算），之后（可以隔着注释、尾随闭包和别的修饰器）必须出现 .equatable()，
@@ -235,18 +258,16 @@ for spec in \
     echo "✗ ${host} 里 ${view}( 有 ${sites} 处，套了 .equatable() 的只有 ${wrapped} 处：没套的那处每次时间线重算都跟着重算"; fail=1
   fi
 done
-# 音量线不是独立块（挂在剪辑块的波形上），但同样不许订阅工程：61 条线一起重画就是它。
-if grep -cE '@ObservedObject var project' Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift >/dev/null; then
-  echo "✗ 音量线订阅了整个工程：点选一段每条线都重画"; fail=1
-fi
 
 echo "==> 「预览正在重建」只让那个转圈重算"
-# 这个开关放在工程上当 @Published，每次重建开始 / 结束整个编辑器各重算一轮；改成不发、视图却
+# 这个开关放在工程上当 @Published（那时工程是 ObservableObject），每次重建开始 / 结束整个编辑器各重算一轮；改成不发、视图却
 # 直接读它，转圈就停在最后一次被别的变化带着画出来的样子（2026-09-25 第一版这么写过：以为没有
 # 视图读它）。所以工程上不许有发通知的重建开关，视图只许经 PreviewRebuildSpinner 订阅
 # PreviewRebuildStatus（案例 docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md）。
-if grep -cE '@Published.*var isRebuilding' Sources/SrtFlow/VideoEditProject.swift >/dev/null; then
-  echo "✗ 工程上又有了发通知的重建开关：每次重建整个编辑器多算两轮"; fail=1
+# 工程换成 @Observable 之后，工程上的存储属性默认就是被观察的（加 @ObservationIgnored 又成了「不发、视图却
+# 读」那一种）：两种都不许，开关只许在 PreviewRebuildStatus 上。
+if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditProject.swift | grep -cE '^[[:space:]]*(@[A-Za-z]+ )*(private(\(set\))? )?var isRebuilding' >/dev/null; then
+  echo "✗ 工程上又有了重建开关：要么每次重建叫醒读它的视图，要么转圈不刷新 —— 用 PreviewRebuildStatus"; fail=1
 fi
 need Sources/SrtFlow/VideoEditView.swift 'PreviewRebuildSpinner\(status: project\.rebuildStatus\)' '工具栏上订阅重建开关的转圈'
 # 读值的只许是不画界面的两处：工程自己（快路径让路）和性能测试的「落定」。
