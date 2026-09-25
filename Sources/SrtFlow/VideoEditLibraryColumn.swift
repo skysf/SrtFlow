@@ -12,9 +12,12 @@ import SwiftUI
 /// **三段起只显示图标**（2026-09-22 加音频页时）：196pt 里塞三个「图标 + 文字」，
 /// 英文下 Transitions / Filters / Audio 会被截成看不出意思的残词。靠 `.instantHelp`
 /// 认路 —— 仓库本来就禁用系统 `.help`，这条是白捡的（见 instant-tooltips.md）。
+///
+/// **这一栏不订阅时钟**：转场、滤镜两页只跟「停稳了的播放头」（`clock.atRest`）—— 播放中、
+/// 拖播放头的过程中一动不动，鼠标在时间线上扫也不算，停稳了刷新一次（2026-09-25 用户拍板：
+/// 播放时小样来回换没有用，还把播放拖卡）。
 struct LibraryColumn: View {
     @ObservedObject var project: VideoEditProject
-    @ObservedObject var clock: PlayerClock
 
     enum Tab: String, CaseIterable, Identifiable {
         case transitions, filters, audio
@@ -66,9 +69,9 @@ struct LibraryColumn: View {
             Divider()
             switch tab.wrappedValue {
             case .transitions:
-                TransitionLibraryPanel(project: project, clock: clock)
+                TransitionLibraryPanel(project: project, playhead: project.clock.atRest)
             case .filters:
-                FilterLibraryPanel(project: project, clock: clock)
+                FilterLibraryPanel(project: project, playhead: project.clock.atRest)
             case .audio:
                 AudioLibraryPanel(project: project)
             }

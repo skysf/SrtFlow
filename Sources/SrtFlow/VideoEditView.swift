@@ -47,7 +47,7 @@ struct VideoEditView: View {
                 // 宽度预算：库 196 + 预览 430 + 检查器 252 = 878，没超过下面那
                 // 条 minWidth 900，所以加这一栏不用抬窗口的最小宽度。
                 if showsLibraryColumn {
-                    LibraryColumn(project: project, clock: clock)
+                    LibraryColumn(project: project)
                         .frame(minWidth: 196, idealWidth: 220, maxWidth: 340)
                 }
                 previewPane

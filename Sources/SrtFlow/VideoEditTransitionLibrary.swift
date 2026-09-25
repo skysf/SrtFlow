@@ -13,14 +13,15 @@ import SwiftUI
 ///（见 `VideoEditLibraryColumn.swift`），再画一行就是一栏里两行标题。
 struct TransitionLibraryPanel: View {
     @ObservedObject var project: VideoEditProject
-    /// 必须直接订阅时钟：没有选中片段时目标接缝是「播放头最近的那条」，
-    /// 只观察 project 的话播放头动了这栏不重算 —— 小样和高亮会停在旧接缝上。
-    @ObservedObject var clock: PlayerClock
+    /// 没有选中片段时目标接缝是「播放头最近的那条」—— 这里的播放头是**停稳了的**那个
+    /// （`clock.atRest`，不是时钟本身）：播放中、拖播放头的过程中这一栏一动不动，停稳了刷新一次
+    /// （2026-09-25 用户拍板）。点卡片套到的也是这里显示的那条缝，看到哪条改哪条。
+    @ObservedObject var playhead: PacedPlayhead
     // 这个视图用 L10n(...) 拼字符串，不是纯 LocalizedStringKey，光靠环境
     // locale 变化不会重新求值 body，所以要显式观察语言选择。
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
-    private var target: TransitionLibraryTarget { project.transitionLibraryTarget }
+    private var target: TransitionLibraryTarget { project.transitionLibraryTarget(at: playhead.time) }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
@@ -40,7 +41,7 @@ struct TransitionLibraryPanel: View {
                 selection: seam.map { $0.outgoing.transitionAfter },
                 outgoingClip: seam?.outgoing,
                 incomingClip: seam?.incoming,
-                onPick: { project.applyTransitionFromLibrary($0) },
+                onPick: { project.applyTransitionFromLibrary($0, at: playhead.time) },
                 isEnabled: { isEnabled($0) }
             )
         }

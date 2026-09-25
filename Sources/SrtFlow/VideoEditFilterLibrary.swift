@@ -10,9 +10,9 @@ import SwiftUI
 
 /// 卡片小样那一帧，以及它被十款滤镜各自调色之后的样子。
 ///
-/// 一次取帧、十次调色，全部缓存住 —— 播放头一动才失效。调色是 GPU 的，
+/// 一次取帧、十次调色，全部缓存住 —— 播放头停到别处才失效。调色是 GPU 的，
 /// 160px 的图十张加起来也不到一毫秒，但**不能每次 body 求值都重算**：
-/// 这一栏常驻，播放中每秒要重画二十次。
+/// 这一栏常驻，工程一变它就重算（2026-09-25 之前还订阅着时钟，播放中每秒重画二十次）。
 @MainActor
 final class FilterThumbnailStore: ObservableObject {
     /// 原始帧。
@@ -87,9 +87,9 @@ final class FilterThumbnailStore: ObservableObject {
 /// 左栏里常驻的滤镜库。
 struct FilterLibraryPanel: View {
     @ObservedObject var project: VideoEditProject
-    /// 必须直接订阅时钟：卡片小样取的是**播放头底下**那一帧，只观察 project
-    /// 的话播放头动了小样会一直停在旧画面上（同转场库那条理由）。
-    @ObservedObject var clock: PlayerClock
+    /// 卡片小样取的是**停稳了的**播放头底下那一帧（`clock.atRest`，不是时钟本身）：播放中、拖播放头
+    /// 的过程中都不换，鼠标在时间线上扫（影子播放头）也不算，停稳了刷新一次（2026-09-25 用户拍板）。
+    @ObservedObject var playhead: PacedPlayhead
     // 这个视图用 L10n(...) 拼字符串，不是纯 LocalizedStringKey，光靠环境
     // locale 变化不会重新求值 body，所以要显式观察语言选择。
     @ObservedObject private var languageStore = AppLanguageStore.shared
@@ -115,19 +115,11 @@ struct FilterLibraryPanel: View {
             )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        // 播放头一动就换小样，但**要等它停稳**。
-        //
-        // `task(id:)` 的 id 是「哪一段的哪一帧」（按 0.1s 量化）。播放中和拖播放头
-        // 时它每 0.1s 换一次，不防抖的话就是每秒扫十次帧、做一百次 CI 调色 ——
-        // 而那十张小图在画面飞跑的时候本来也看不清。id 一变这个 task 就被取消，
-        // 所以只有停下来之后的那一次会真的干活。
-        //
-        // 第一次不等：一打开这一栏就该有东西看，不该先空 0.3 秒。
-        .task(id: FilterThumbnailStore.key(for: clipUnderPlayhead, time: clock.displayTime)) {
-            if thumbnails.source != nil {
-                do { try await Task.sleep(nanoseconds: 300_000_000) } catch { return }
-            }
-            await thumbnails.reload(clip: clipUnderPlayhead, time: clock.displayTime)
+        // 播放头停稳了才换小样。`task(id:)` 的 id 是「哪一段的哪一帧」（按 0.1s 量化），
+        // 而 `playhead` 只在停稳时变 —— 播放中、拖播放头的过程中 id 不动，也就不用再防抖
+        //（以前读的是时钟本身，播放中 id 每 0.1s 一换，靠等 0.3 秒挡掉每秒十次取帧、一百次调色）。
+        .task(id: FilterThumbnailStore.key(for: clipUnderPlayhead, time: playhead.time)) {
+            await thumbnails.reload(clip: clipUnderPlayhead, time: playhead.time)
         }
     }
 
@@ -141,7 +133,7 @@ struct FilterLibraryPanel: View {
     /// 取最近的而不是退回占位：卡片的全部意义就是「这款滤镜用在**我的**画面上是
     /// 什么样」，播放头恰好停在空隙里也该回答这个问题。
     private var clipUnderPlayhead: EditClip? {
-        let time = clock.displayTime
+        let time = playhead.time
         let clips = project.state.mainClips
         if let covering = clips.first(where: { time >= $0.timelineStart && time < $0.timelineEnd }) {
             return covering
