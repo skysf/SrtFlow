@@ -76,17 +76,26 @@ func checkHitGeometry() {
     check(plateGeometry.contentInFrame.minX < 0 && plateGeometry.contentInFrame.maxX > plateGeometry.frame.width,
           "开着底板时可点范围要把整块底板包进去（底板按版面框画、四周还有内边距）：\(plateGeometry.contentInFrame)")
 
-    var rolling = short
-    rolling.text = ""
-    rolling.number = NumberRoll(
-        from: 365, to: 90, fractionDigits: 0, groupsThousands: false,
-        prefix: "", suffix: "", style: .odometer, duration: 1.7
-    )
-    let settled = TextHitGeometry(rolling, canvas: canvas)
-    var asText = short
-    asText.text = "365"
-    checkClose(settled.contentInFrame.width, TextHitGeometry(asText, canvas: canvas).contentInFrame.width, 1,
-               "数字按定版串（from / to 里更长的那个）算可点范围，滚动中不跳")
+    // 数字按定版串（from / to 里更长的那个）算可点范围，滚动中位数变了也不跳。参照物是「一直停在
+    // 那个定版串上的数字」—— 数字的数位是 App 自己按最宽的那个数字等宽排的（苹方不认等宽数字特性），
+    // 拿普通文字 "365" 当参照只在碰巧对得上的字体版本上成立：2026-09-25 CI 的 runner 上差 1.8pt
+    //（docs/bugfixes/2026-09-25-pr71-first-ci-run.md）。
+    func number(from: Double, to: Double) -> TextOverlay {
+        var overlay = short
+        overlay.text = ""
+        overlay.number = NumberRoll(
+            from: from, to: to, fractionDigits: 0, groupsThousands: false,
+            prefix: "", suffix: "", style: .odometer, duration: 1.7
+        )
+        return overlay
+    }
+    let parked = TextHitGeometry(number(from: 365, to: 365), canvas: canvas).contentInFrame.width
+    checkClose(TextHitGeometry(number(from: 365, to: 90), canvas: canvas).contentInFrame.width, parked, 0.01,
+               "365 → 90：按更长的 365 算可点范围，不按落定的 90")
+    checkClose(TextHitGeometry(number(from: 90, to: 365), canvas: canvas).contentInFrame.width, parked, 0.01,
+               "90 → 365：起步时也按 365 算，滚动中不跳")
+    check(TextHitGeometry(number(from: 90, to: 90), canvas: canvas).contentInFrame.width < parked - 10,
+          "用例本身：两位数的 90 要比三位数的 365 窄（不然上面两条量不出「按谁算」）")
 }
 
 /// 渲染图里不透明像素的外接框，换算到画布坐标（左上原点）。

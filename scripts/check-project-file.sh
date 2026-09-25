@@ -181,8 +181,13 @@ require "全选走框选那一个混选入口" \
   Sources/SrtFlow/VideoEditProject+Selection.swift 'applyBoxSelection\('
 require "框选把滤镜段也交给选择" \
   Sources/SrtFlow/VideoEditTimelineMarqueeGesture.swift 'filters: session\.hit\.filters'
-require "滤镜块的选中态走 isSelected(filter:)（拖框中实时高亮、多选）" \
-  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'isSelected: isSelected\(filter: filter\.id\)'
+# 滤镜块的选中态 = 模型里的多选 + 拖框中的实时高亮。2026-09-25 起实时高亮不再经时间线的
+# isSelected(filter:)，块自己从拖动盒子里收框选命中（五种块的收法都钉在
+# checks/timeline-drag-wiring/drag-box.sh；这里只钉滤镜这一类还在多选、还看框）。
+require "滤镜块的选中态走模型里的多选（selectedFilterIDs）" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'isSelected: project\.selectedFilterIDs\.contains\(filter\.id\)'
+require "滤镜块拖框中实时高亮（从拖动盒子里收框选命中的滤镜）" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift '\$0\.filters\.contains\(filter\.id\)'
 require "滤镜行的轨道头点得出整层" \
   Sources/SrtFlow/VideoEditTimelineRowSpec.swift 'return \.filterLayer\(filterLayer\)'
 require "工具栏垃圾桶的置灰判据必须和 ⌫ 是同一个表达式" \

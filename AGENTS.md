@@ -381,6 +381,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-25 ⌘ 拖框加选把原来选中的滤镜段丢了](docs/bugfixes/2026-09-25-marquee-additive-drops-filters.md) — 框选结果 `TimelineMarquee.Hit` 的五类都带 `= []`，滤镜段进框选时加选的 `union` 和起手的 `base` 都漏了 `filters`、照样编过。去掉默认值（漏写一类就编不过）+ 夹具每一类都不空的往返自检。**带默认值的字段 + 成员初始化器，加字段时编译器一声不吭**；⌘ 拖框在进程内冒烟里驱不动（读的是真键盘）。
 - [2026-09-25 拖块 / 拉框每一拍整条时间线重算一次](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) — 拖动会话是时间线的 `@State`，每一拍写一次时间线 body 就整个重算：ForEach 的 diff、AttributeGraph 的更新和布局挡不住，块的 `.equatable()` 救不了这一层。会话搬进 `TimelineDragBox`（时间线持有不订阅），块只 `onReceive` 自己那份位移 / 框选命中（**和模型一样就记 nil**，不然框一起手全部块各重算一遍），覆盖层是唯一订阅者。守卫要扫全仓不能只扫一族 —— 反向验证抓到的。
 - [2026-09-25 松手重建预览把每个素材重新打开一遍、还白叫醒整个编辑器](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) — 每次重建 `AVURLAsset` 都是新开的（一次 63 个），「正在重建」和 `renderSize` 每次都在工程上发、每发一次整个编辑器重算一轮。素材按文件身份（路径 + inode + 卷 + 大小 + 修改时间）进程级缓存（`MediaAssetCache`），换了文件、原地改写过才重开；「正在重建」挪进只有工具栏转圈订阅的小对象，`renderSize` 没变不写。第一版说「没有视图读它」就摘了 `@Published` —— 其实转圈在读，没卡住全靠时钟碰巧一起发。
+- [2026-09-25 PR #71 首跑 CI 红了两项](docs/bugfixes/2026-09-25-pr71-first-ci-run.md) — 数字可点范围的自检拿普通文字当参照（数字是 App 自己等宽排的，本机碰巧对上、CI 差 1.8pt）；滤镜块的接线守卫在另一组里还钉着旧名字。**期望值要和被测值走同一条路径；改接线后按旧名字把 scripts/、checks/ 全 grep 一遍**。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
