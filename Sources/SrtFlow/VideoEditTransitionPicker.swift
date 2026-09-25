@@ -134,17 +134,17 @@ struct TransitionPickerGrid: View {
         "\(outgoingClip?.id.uuidString ?? "-")|\(incomingClip?.id.uuidString ?? "-")"
     }
 
+    /// 两张取齐了再**一起**换：分两次写的话，整排卡片（连同小样和提示）每换一条缝要多重算一遍，
+    /// 小样也会先换一半（2026-09-25 实测点选一段：网格 3 遍 → 2 遍）。缝又换了（`.task(id:)` 取消了
+    /// 这一轮）就别写：那是上一条缝的帧。
     private func loadSeamFrames() async {
-        if let outgoingClip {
-            tailFrame = await Self.seamFrame(for: outgoingClip, atTail: true)
-        } else {
-            tailFrame = nil
-        }
-        if let incomingClip {
-            headFrame = await Self.seamFrame(for: incomingClip, atTail: false)
-        } else {
-            headFrame = nil
-        }
+        var tail: CGImage?
+        var head: CGImage?
+        if let outgoingClip { tail = await Self.seamFrame(for: outgoingClip, atTail: true) }
+        if let incomingClip { head = await Self.seamFrame(for: incomingClip, atTail: false) }
+        guard !Task.isCancelled else { return }
+        tailFrame = tail
+        headFrame = head
     }
 
     /// 接缝旁边的一帧（尾侧取结尾前一点，首侧取开头后一点）。
