@@ -265,7 +265,7 @@ enum PreviewBench {
         while true {
             try await Task.sleep(for: .milliseconds(50))
             let now = PerfCounters.snapshot()
-            let busy = project.isRebuildingPreview || project.importingCount > 0
+            let busy = project.rebuildStatus.isRebuilding || project.importingCount > 0
                 || project.clock.player.currentItem?.status != .readyToPlay
                 || PerfCounters.backgroundReadsInFlight > 0
             if busy || now != last || windowEvents != lastWindowEvents {
@@ -276,7 +276,7 @@ enum PreviewBench {
                 return
             }
             if Date() > deadline {
-                throw Failure("\(Int(timeout)) 秒内等不到预览落定（重建中=\(project.isRebuildingPreview)，"
+                throw Failure("\(Int(timeout)) 秒内等不到预览落定（重建中=\(project.rebuildStatus.isRebuilding)，"
                     + "导入中=\(project.importingCount)，后台在读=\(PerfCounters.backgroundReadsInFlight)，"
                     + "条目=\(String(describing: project.clock.player.currentItem?.status.rawValue))）")
             }

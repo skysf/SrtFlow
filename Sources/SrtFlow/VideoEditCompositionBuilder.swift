@@ -97,14 +97,14 @@ enum VideoEditCompositionBuilder {
         // 输出尺寸：第一段主轨素材说了算（预渲染时由外层画布指定）。
         let renderSize = renderSizeOverride ?? Self.renderSize(for: state)
 
-        // 素材缓存：同一个文件出现几段，AVURLAsset 只开一次。
+        // 素材跨 build 走进程级缓存（`MediaAssetCache`，按路径 + inode + 卷认）；计数只记真开了文件的那几次。
         var assets: [URL: AVURLAsset] = [:]
         func asset(for url: URL) -> AVURLAsset {
             if let existing = assets[url] { return existing }
-            PerfCounters.event(.compositionAssetOpen)
-            let created = AVURLAsset(url: url)
-            assets[url] = created
-            return created
+            let hit = MediaAssetCache.asset(for: url)
+            if hit.opened { PerfCounters.event(.compositionAssetOpen) }
+            assets[url] = hit.asset
+            return hit.asset
         }
 
         // MARK: 主轨（A/B 交替）

@@ -467,9 +467,8 @@ struct VideoEditView: View {
             .disabled(recordingCoordinator.isBusy)
             .instantHelp("Project frame rate — preview, export and keyframes all follow it")
 
-            if project.isRebuildingPreview {
-                ProgressView().controlSize(.mini)
-            }
+            // 只有它订阅「正在重建」：放在工程上发的话，每次重建整个编辑器多算两轮。
+            PreviewRebuildSpinner(status: project.rebuildStatus)
 
             if project.importingCount > 0 {
                 HStack(spacing: 4) {

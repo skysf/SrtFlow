@@ -94,7 +94,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 修改范围 | 动手前必读 |
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
-| 工程存盘、格式版本、素材路径、自动保存 | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md) |
+| 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件）、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
 | 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
@@ -144,7 +144,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。
 - 播放头与悬停 peek 状态机：`scripts/check-player-clock.sh`。
-- 预览合成真取帧：`scripts/check-preview-composition.sh`。
+- 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开：
+  `scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
 - 入场/出场动画的两条管线对账（预览取帧 vs 真导出抽帧）：`scripts/check-clip-animation.sh`。
@@ -301,7 +302,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md) — 量的是活不是 CPU、**每个视图 body
   第一行计数**（守卫钉着，`--fix` 自动补）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、要有两遍
   一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
-  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）。
+  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
@@ -379,6 +380,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-25 裁切不跟链接：视频裁短了，链接的音频留在原长](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md) — 挪、切、删都走 `linkedClipIDs`，唯独把手的裁切没走；裁的算法现在只有 `TimelineTrim` 一份，链接伙伴 / 选中的一组同一个量、谁先到头整组一起停。
 - [2026-09-25 ⌘ 拖框加选把原来选中的滤镜段丢了](docs/bugfixes/2026-09-25-marquee-additive-drops-filters.md) — 框选结果 `TimelineMarquee.Hit` 的五类都带 `= []`，滤镜段进框选时加选的 `union` 和起手的 `base` 都漏了 `filters`、照样编过。去掉默认值（漏写一类就编不过）+ 夹具每一类都不空的往返自检。**带默认值的字段 + 成员初始化器，加字段时编译器一声不吭**；⌘ 拖框在进程内冒烟里驱不动（读的是真键盘）。
 - [2026-09-25 拖块 / 拉框每一拍整条时间线重算一次](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) — 拖动会话是时间线的 `@State`，每一拍写一次时间线 body 就整个重算：ForEach 的 diff、AttributeGraph 的更新和布局挡不住，块的 `.equatable()` 救不了这一层。会话搬进 `TimelineDragBox`（时间线持有不订阅），块只 `onReceive` 自己那份位移 / 框选命中（**和模型一样就记 nil**，不然框一起手全部块各重算一遍），覆盖层是唯一订阅者。守卫要扫全仓不能只扫一族 —— 反向验证抓到的。
+- [2026-09-25 松手重建预览把每个素材重新打开一遍、还白叫醒整个编辑器](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) — 每次重建 `AVURLAsset` 都是新开的（一次 63 个），「正在重建」和 `renderSize` 每次都在工程上发、每发一次整个编辑器重算一轮。素材按文件身份（路径 + inode + 卷 + 大小 + 修改时间）进程级缓存（`MediaAssetCache`），换了文件、原地改写过才重开；「正在重建」挪进只有工具栏转圈订阅的小对象，`renderSize` 没变不写。第一版说「没有视图读它」就摘了 `@Published` —— 其实转圈在读，没卡住全靠时钟碰巧一起发。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 

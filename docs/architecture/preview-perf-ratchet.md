@@ -45,7 +45,8 @@ GitHub 托管的 macOS runner 是虚拟机（`VirtualMac2,1`，3 核），2026-0
 插进参数列表里，编都编不过），照样判红，改成标准写法再跑。只改已有视图的 body 内容什么都不用加。
 
 非视图的埋点（`PerfCounters.Event`）只挂在代价实打实的地方：时钟每跳一下
-（`PlayerClock.observePlaybackTime`）、换播放条目、建合成、建合成时开素材、新建电平表
+（`PlayerClock.observePlaybackTime`）、换播放条目、建合成、建合成时开素材（2026-09-25 起素材走
+进程级缓存 `MediaAssetCache`，只有真开了文件才记；同一个文件第二次重建记 0）、新建电平表
 tap、audioMix 快路径。守卫也钉着这几处。
 
 ## 三、测试怎么跑
@@ -188,3 +189,21 @@ CI 虚拟机上偶尔有一个**不发任何窗口 / App 通知**的系统事件
 拖动每一拍时间线 body 不再重算（[拖动手势](timeline-drag-gestures.md) §0b，案例
 [拖动会话住在时间线的 @State 里](../bugfixes/2026-09-25-drag-session-in-timeline-state.md)）。
 还留着的：整轨换位（§5i）每一拍仍重算整条时间线。
+
+## 十、只有一个小视图关心的状态，不放在工程上发
+
+`VideoEditProject` 上每发一次 `objectWillChange`，订阅工程的整个编辑器（提示修饰器、轨道头、工具栏、
+检查器、转场库）就重算一轮（debug 版一轮 150–400 ms）。所以：
+
+- **只有一个小视图关心的状态，放进只有它订阅的小 `ObservableObject`**，工程持有它（`let`，不是
+  `@Published`）；工程里要用这个值的逻辑直接读。例：「预览正在重建」→ `PreviewRebuildStatus`，
+  只有工具栏的 `PreviewRebuildSpinner` 订阅（2026-09-25，案例
+  [松手重建把每个素材重新打开一遍](../bugfixes/2026-09-25-rebuild-reopens-every-asset.md)）。
+- **不许把 `@Published` 摘掉了事**：视图读一个不发通知的值，界面只在碰巧别的东西刷新时才对。
+  摘之前先 grep 谁在读。
+- **没变不写**：`@Published` 写一次就发一次，值一样也发（`renderSize` 那种）。
+- 守卫：`checks/preview-perf-wiring.sh` 最后一节（工程上不许有发通知的重建开关、工具栏用
+  `PreviewRebuildSpinner`、别的视图不许直接读值）。
+
+还没做的同类：自动保存成功时写 `hasUnsavedChanges = false`、重建收尾时时钟无条件写 `peekTime` /
+`hasVideo` / `time`（根视图订阅着时钟），每次都是整个编辑器一轮。

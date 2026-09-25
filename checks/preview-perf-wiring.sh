@@ -240,6 +240,21 @@ if grep -cE '@ObservedObject var project' Sources/SrtFlow/VideoEditTimelineVolum
   echo "✗ 音量线订阅了整个工程：点选一段每条线都重画"; fail=1
 fi
 
+echo "==> 「预览正在重建」只让那个转圈重算"
+# 这个开关放在工程上当 @Published，每次重建开始 / 结束整个编辑器各重算一轮；改成不发、视图却
+# 直接读它，转圈就停在最后一次被别的变化带着画出来的样子（2026-09-25 第一版这么写过：以为没有
+# 视图读它）。所以工程上不许有发通知的重建开关，视图只许经 PreviewRebuildSpinner 订阅
+# PreviewRebuildStatus（案例 docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md）。
+if grep -cE '@Published.*var isRebuilding' Sources/SrtFlow/VideoEditProject.swift >/dev/null; then
+  echo "✗ 工程上又有了发通知的重建开关：每次重建整个编辑器多算两轮"; fail=1
+fi
+need Sources/SrtFlow/VideoEditView.swift 'PreviewRebuildSpinner\(status: project\.rebuildStatus\)' '工具栏上订阅重建开关的转圈'
+# 读值的只许是不画界面的两处：工程自己（快路径让路）和性能测试的「落定」。
+readers="$(grep -lE 'rebuildStatus\.isRebuilding' $SWIFT_FILES | grep -vE '/(VideoEditProject|PreviewBench)\.swift$' || true)"
+if [ -n "$readers" ]; then
+  echo "✗ 这些文件直接读了重建开关（不订阅就不刷新，转圈会卡住）：${readers}"; fail=1
+fi
+
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"
   echo "All checks passed"

@@ -418,8 +418,8 @@ final class VideoEditProject: ObservableObject {
 
     /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
     @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
-    /// 预览是否正在重建（大工程时给个转圈）。
-    @Published private(set) var isRebuildingPreview = false
+    /// 预览是否正在重建。**不在工程上发**：只有工具栏的转圈订阅它，放这儿当 `@Published` 每次重建整个编辑器多算两轮（2026-09-25）。
+    let rebuildStatus = PreviewRebuildStatus()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     private var audioPlan: AudioMixPlan?
@@ -1405,7 +1405,7 @@ final class VideoEditProject: ObservableObject {
               let item = clock.player.currentItem else { return false }
         // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
         // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
-        guard !isRebuildingPreview else { return false }
+        guard !rebuildStatus.isRebuilding else { return false }
         PerfCounters.event(.audioMixRefresh)
         item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
         return true
@@ -1421,7 +1421,7 @@ final class VideoEditProject: ObservableObject {
         let now = CACurrentMediaTime()
         guard now - lastLiveAudioPreview > 0.05 else { return }
         guard let plan = audioPlan, !plan.lanes.isEmpty,
-              let item = clock.player.currentItem, !isRebuildingPreview else { return }
+              let item = clock.player.currentItem, !rebuildStatus.isRebuilding else { return }
         lastLiveAudioPreview = now
         var preview = state
         mutate(&preview)
@@ -1438,19 +1438,19 @@ final class VideoEditProject: ObservableObject {
         rebuildGeneration += 1
         let generation = rebuildGeneration
         rebuildTask?.cancel()
-        isRebuildingPreview = true
+        rebuildStatus.set(true)
         rebuildTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard let self, !Task.isCancelled else { return }
             let snapshot = self.state
             let built = await VideoEditCompositionBuilder.build(from: snapshot)
             guard !Task.isCancelled, generation == self.rebuildGeneration else { return }
-            self.isRebuildingPreview = false
+            self.rebuildStatus.set(false)
             guard let built else {
                 self.clock.detach()
                 return
             }
-            self.renderSize = built.renderSize
+            if self.renderSize != built.renderSize { self.renderSize = built.renderSize }  // 没变不写：@Published
             self.audioPlan = built.audioPlan
             let wasPlaying = self.clock.isPlaying
             let time = self.clock.time

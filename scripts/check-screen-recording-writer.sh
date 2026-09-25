@@ -64,6 +64,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditMediaAssetCache.swift \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \

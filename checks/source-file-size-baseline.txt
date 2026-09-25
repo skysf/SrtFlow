@@ -17,12 +17,12 @@
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 629 Sources/SrtFlow/VideoEditTimelineEdits.swift
 698 Sources/SrtFlow/VideoEditTimelineView.swift
-909 Sources/SrtFlow/VideoEditView.swift
+908 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 1159 Sources/SrtFlowCoreChecks/main.swift
 625 checks/Filters/main.swift
-947 checks/PreviewComposition/main.swift
+885 checks/PreviewComposition/main.swift
 2656 checks/ProjectFile/main.swift
 749 checks/TextRender/main.swift
 1781 checks/TimelineSnap/main.swift
