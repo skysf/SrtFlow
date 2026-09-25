@@ -96,9 +96,9 @@ enum TextDrawing {
             // 刷一次渐变"就不成立了 —— 只能一个字形一次裁剪一次刷。
             // 渐变的几何仍按**整块墨迹**算，于是每个字形拿到的是它在整块
             // 渐变里本该有的那一段颜色，而不是各自从头到尾渐变一遍。
-            if animation.digitWheels != nil {
+            if let odometer = animation.odometer {
                 NumberWheelDrawing.draw(
-                    layout, wheels: animation.digitWheels ?? [:],
+                    layout, odometer: odometer,
                     paint: { ink in
                         paint(gradient, ink: ink, angleDegrees: angleDegrees, into: context)
                     },
@@ -142,8 +142,8 @@ enum TextDrawing {
         // 老虎机优先：数字带自己要按位裁剪，逐字错峰那套（每个字形一个
         // 不透明度）在它上面没有意义 —— 一位数字同时露着两个字形。
         // 整层的不透明度/缩放/模糊照常生效，它们是上下文级的。
-        if let wheels = animation.digitWheels {
-            NumberWheelDrawing.draw(layout, wheels: wheels, paint: nil, into: context)
+        if let odometer = animation.odometer {
+            NumberWheelDrawing.draw(layout, odometer: odometer, paint: nil, into: context)
             return
         }
         guard let perGlyph = animation.perGlyph else {

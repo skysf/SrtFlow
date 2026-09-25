@@ -37,8 +37,9 @@ struct TextAnimationState: Equatable {
     var perGlyph: PerGlyph?
     /// 这一帧要排版的文字。nil = 用 `overlay.text`。数字元件的数值插值靠它。
     var textOverride: String?
-    /// 老虎机：字符下标 → 这一位的连续轮位。nil = 不是老虎机。
-    var digitWheels: [Int: Double]?
+    /// 老虎机：定版串里会动的字符此刻怎么画（每一位的轮位、哪一格是空白、占几成宽）。
+    /// nil = 不是老虎机。
+    var odometer: OdometerFrame?
 
     struct StrokeDraw: Equatable {
         /// 描边自己的擦除进度 0…1。
@@ -65,7 +66,7 @@ struct TextAnimationState: Equatable {
     var isIdentity: Bool {
         opacity == 1 && offsetY == 0 && scale == 1 && blur == 0
             && wipe == nil && strokeDraw == nil && perGlyph == nil
-            && textOverride == nil && digitWheels == nil
+            && textOverride == nil && odometer == nil
     }
 }
 
@@ -122,14 +123,11 @@ enum TextAnimator {
             state.textOverride = number.text(for: number.value(local: local))
         case .odometer:
             // 老虎机的排版是**定版**的（滚动只改每一位的轮位，不改字符串），
-            // 于是位槽的位置全程固定，数字才不会一边滚一边横着挪。
-            let template = number.settledText
-            state.textOverride = template
-            var wheels: [Int: Double] = [:]
-            for (index, place) in number.digitPlaces(in: template) {
-                wheels[index] = number.wheel(place: place, local: local)
-            }
-            state.digitWheels = wheels
+            // 于是位槽的位置固定，数字才不会一边滚一边横着挪。只有某一位在起点或
+            // 终点不存在时，它那一格滚成空白、宽度跟着收（居中和右对齐右边不动，
+            // 左对齐左边不动）—— 首帧就是起始值、末帧就是终值（`NumberOdometer`）。
+            state.textOverride = number.settledText
+            state.odometer = NumberOdometer(number).frame(local: local)
         }
     }
 

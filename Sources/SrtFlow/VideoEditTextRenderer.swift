@@ -83,10 +83,11 @@ enum TextRenderer {
         //   · settled —— 定位与包络。数字滚动时位数会变，按当帧算的话位图
         //     尺寸每帧都不一样，贴图位置就固定不住了。
         //   · frame   —— 这一帧真要画的内容。
-        // 两者的框宽、对齐、字体完全相同，只有字符串可能不同。
+        // 两者的框宽、对齐、字体完全相同，只有字符串（以及老虎机里正滚进滚出的
+        // 那几格此刻占多宽）可能不同。
         let settled = TextTypesetter.layout(overlay, canvas: canvas, text: overlay.settledText)
         let layout = state.textOverride.map {
-            TextTypesetter.layout(overlay, canvas: canvas, text: $0)
+            TextTypesetter.layout(overlay, canvas: canvas, text: $0, widths: state.odometer?.widths ?? [:])
         } ?? settled
         guard !settled.isEmpty else { return nil }
 

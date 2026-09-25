@@ -64,29 +64,34 @@ func checkNumberRolling() {
     if let roll = rolling.number {
         let template = roll.settledText
         checkEqual(template, "4827", "老虎机的排版取定版串")
-        let places = roll.digitPlaces(in: template)
+        let odometer = NumberOdometer(roll)
+        let places = odometer.digitPlaces
         checkEqual(places.count, 4, "四位数字应当有四个位槽")
         // 个位在最后一个字符上，千位在第一个。
         checkEqual(places[3], 0, "最后一个字符是个位")
         checkEqual(places[0], 3, "第一个字符是千位")
         for (index, place) in places.sorted(by: { $0.key < $1.key }) {
-            let wheel = roll.wheel(place: place, local: 1.5)
+            let wheel = odometer.wheel(place: place, local: 1.5)
             let expected = Double(Array(template)[index].wholeNumberValue ?? -1)
             checkClose(wheel.truncatingRemainder(dividingBy: 10), expected, 0.0001,
                        "滚动结束时第 \(place) 位要停在 \(Int(expected)) 上")
         }
         // 中途必须真的在动，而且个位要比千位动得多（这就是里程表的样子）。
-        let unitsTravel = abs(roll.wheel(place: 0, local: 0) - roll.wheel(place: 0, local: 1.5))
-        let thousandsTravel = abs(roll.wheel(place: 3, local: 0) - roll.wheel(place: 3, local: 1.5))
+        let unitsTravel = abs(odometer.wheel(place: 0, local: 0) - odometer.wheel(place: 0, local: 1.5))
+        let thousandsTravel = abs(odometer.wheel(place: 3, local: 0) - odometer.wheel(place: 3, local: 1.5))
         check(unitsTravel > thousandsTravel,
               "个位转得要比千位多（\(unitsTravel) vs \(thousandsTravel)）")
         // 行程封顶：不封的话 0→1000000 的个位要转十万圈，每帧跳过几万个数字。
         var huge = roll
         huge.to = 1_000_000
-        let hugeTravel = abs(huge.wheel(place: 0, local: 0) - huge.wheel(place: 0, local: 1.5))
+        let hugeOdometer = NumberOdometer(huge)
+        let hugeTravel = abs(hugeOdometer.wheel(place: 0, local: 0) - hugeOdometer.wheel(place: 0, local: 1.5))
         check(hugeTravel <= NumberRoll.maximumWheelTurns * 10 + 0.001,
               "单条数字带的行程必须封顶，实际 \(hugeTravel)")
     }
+
+    // MARK: 13b —— 老虎机的首帧就是起始值、末帧就是终值（checks/TextRender/Odometer.swift）
+    checkOdometerEndpoints()
 
     // MARK: 14 —— 等宽数字：版面宽度不随数字内容变
     //
@@ -146,14 +151,14 @@ func checkNumberDelay() {
     roll.style = .odometer
     roll.from = 4827
     roll.to = 9000
-    let template = roll.settledText
-    for (index, place) in roll.digitPlaces(in: template) {
-        let expected = Double(roll.digits(of: roll.from)[place] ?? -1)
-        let wheel = roll.wheel(place: place, local: 0.5)
+    let odometer = NumberOdometer(roll)
+    for (index, place) in odometer.digitPlaces {
+        let expected = Double(odometer.startDigits[place] ?? -1)
+        let wheel = odometer.wheel(place: place, local: 0.5)
         let digit = (wheel.truncatingRemainder(dividingBy: 10) + 10).truncatingRemainder(dividingBy: 10)
         checkClose(digit, expected, 0.0001,
                    "等待期间第 \(place) 位要停在起始值的 \(Int(expected)) 上（字符 \(index)，轮位 \(wheel)）")
-        checkClose(wheel, roll.wheel(place: place, local: 0), 0.0001, "等待期间轮位一动不动")
+        checkClose(wheel, odometer.wheel(place: place, local: 0), 0.0001, "等待期间轮位一动不动")
     }
 
     // 头部逐帧：入场 0.3s、等待 1s + 滚动 2s → 3s；被段长夹住。

@@ -63,6 +63,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextAnimation.swift \
   Sources/SrtFlow/VideoEditTextAnimator.swift \
   Sources/SrtFlow/VideoEditTextNumber.swift \
+  Sources/SrtFlow/VideoEditTextOdometer.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
   Sources/SrtFlow/VideoEditTextRows.swift \
