@@ -255,6 +255,17 @@ if [ -n "$readers" ]; then
   echo "✗ 这些文件直接读了重建开关（不订阅就不刷新，转圈会卡住）：${readers}"; fail=1
 fi
 
+echo "==> 时间线本体不许按值跳过根视图那一遍"
+# 每点一下时间线重算两遍，看着像能用 .equatable() 省掉第二遍 —— 实测块的选中高亮只在那一遍里更新
+#（时间线自己那一遍里 ForEach(rows) 被判成没变），省掉就点了哪段都不亮，读模型的冒烟照样全绿。
+# 见 docs/architecture/preview-perf-ratchet.md 第十一节；要改先把块的输入改成那一遍看得见的值。
+if grep -cE 'struct VideoEditTimelineView: View, Equatable|extension VideoEditTimelineView: .*Equatable' $SWIFT_FILES >/dev/null; then
+  echo "✗ VideoEditTimelineView 成了 Equatable：块的选中高亮会停在上一次（第十一节）"; fail=1
+fi
+if grep -cE 'VideoEditTimelineView\(project: project, clock: clock\)\.equatable\(\)' Sources/SrtFlow/VideoEditView.swift >/dev/null; then
+  echo "✗ 根视图给时间线套了 .equatable()：块的选中高亮会停在上一次（第十一节）"; fail=1
+fi
+
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"
   echo "All checks passed"
