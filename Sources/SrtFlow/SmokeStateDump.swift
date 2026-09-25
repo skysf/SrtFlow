@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // MARK: - 冒烟驱动：记下工程此刻的样子
 //
@@ -45,6 +46,10 @@ enum SmokeStateDump {
             ["id": short(filter.id), "start": round3(filter.timelineStart),
              "duration": round3(filter.duration), "layer": filter.layer]
         }
+        // 字幕 cue 的起止，两条轨各一份：验「拖了 cue 落在哪」、译文有没有跟着原文走（同 id、同时间）。
+        func cueTimes(_ document: SubtitleDocumentModel?) -> [[String: Any]] {
+            (document?.cues ?? []).map { ["id": short($0.id), "start": round3($0.start), "end": round3($0.end)] }
+        }
         return [
             "playhead": round3(project.clock.time),
             "selection": [
@@ -60,6 +65,8 @@ enum SmokeStateDump {
             "texts": texts,
             "filters": filters,
             "cues": state.subtitle?.cues.count ?? 0,
+            "cueTimes": cueTimes(state.subtitle),
+            "translationCueTimes": cueTimes(state.subtitleCompanion?.translation),
         ]
     }
 

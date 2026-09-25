@@ -39,6 +39,10 @@ enum SmokeDriver {
     private static var log: [String] = []
     private static var perf: [String: [String: Int]] = [:]
     private static var cpu: [String: Double] = [:]
+    /// 两次快照之间过了多少墙钟毫秒：重建预览的活大半在别的线程上、还有一截是等 I/O，
+    /// 只看进程 CPU 看不出「预览多久才回来」。
+    private static var wall: [String: Double] = [:]
+    private static var wallStartedAt = Date()
     private static var states: [String: Any] = [:]
     private static var perfStartedAt = 0.0
     /// 工程发了几次「要变了」（`objectWillChange`）：订阅整个工程的视图每一次都要重算，
@@ -137,6 +141,7 @@ enum SmokeDriver {
         case .perfReset:
             PerfCounters.reset()
             perfStartedAt = PreviewBench.cpuTimeMs()
+            wallStartedAt = Date()
             projectChanges = 0
         case .perf:
             let label = step.label ?? "perf\(perf.count + 1)"
@@ -144,6 +149,7 @@ enum SmokeDriver {
             counts["event:project.willChange"] = projectChanges
             perf[label] = counts
             cpu[label] = (PreviewBench.cpuTimeMs() - perfStartedAt).rounded()
+            wall[label] = (Date().timeIntervalSince(wallStartedAt) * 1000).rounded()
         case .state:
             states[step.label ?? "state\(states.count + 1)"] = SmokeStateDump.make(project)
         case .snapshot:
@@ -176,7 +182,7 @@ enum SmokeDriver {
     }
 
     private static func write(to output: URL, error: String?) {
-        var body: [String: Any] = ["log": log, "perf": perf, "cpuMs": cpu, "state": states]
+        var body: [String: Any] = ["log": log, "perf": perf, "cpuMs": cpu, "wallMs": wall, "state": states]
         if let error { body["error"] = error }
         if let data = try? JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: output)

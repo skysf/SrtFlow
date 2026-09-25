@@ -257,8 +257,13 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
   `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`。
   坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。
 - **结果**写在 `<步骤表名>.out.json`：`log`（每一步、窗口号、窗口实际大小）、`state`（每个 `state`
-  步骤记下的选择、每段位置、文字的位置和角度 —— 验「落在哪」读这里，比看截图准）、`perf`（两个
-  `perf` 之间每个视图重算了几次，冒烟时 `PerfCounters` 也记账）。
+  步骤记下的选择、每段位置、文字的位置和角度、两条字幕轨每条 cue 的起止 —— 验「落在哪」读这里，比看截图准）、`perf`（两个
+  `perf` 之间每个视图重算了几次，冒烟时 `PerfCounters` 也记账）、`cpuMs`（那一段的进程 CPU）、
+  `wallMs`（那一段的墙钟 —— 重建预览的活大半不在主线程、还有一截是等 I/O，CPU 看不出「预览多久
+  才回来」）。
+- **量「每一拍多贵」用差值法**：同一动作拖 30 拍和 120 拍，两者之差除以 90。一次拖动的总数里
+  起手（选中 → 整个编辑器重算一轮）和松手（`perform` → 又一轮 → 重建预览）是固定开销，会把每拍
+  那几毫秒淹掉（2026-09-25：文字拖动总 874 ms，每拍其实只有 3.4 ms）。
 - **截图**：App 没有录屏权限、拍不了自己；`snapshot` 写一个 `<名字>.request`，`run.sh` 在旁边
   盯着、用终端的权限 `screencapture -l` 拍好再放它往下走。
 - run.sh 用 `open -g -n --env …` 起进程：`-g` 不抢前台，`--env` 把环境变量带进去（第二节那句
