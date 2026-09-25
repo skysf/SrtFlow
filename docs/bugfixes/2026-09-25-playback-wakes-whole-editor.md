@@ -72,6 +72,7 @@ CI 的性能测试早就量着这个数（main 36138775232 的 `preview-perf` �
   - 字幕列表开着播放 5 秒（102 跳）：列表本体 3 次（换句）、行 12 次。
   - 截图核对：播放中素材库卡片和起播时一模一样，暂停后换成新位置那条缝；拖到 30 秒松手后换成那条缝；
     播放键、时间读数、播放头、电平表、预览字幕照常走；字幕列表的高亮从 #1 跟到 #2。
+- **用户实机**：用这个分支打的 0.13.2 装到本机试过，回复「没有问题……现在体验很流畅」。
 - 回归面：`checks/timeline-drag-wiring.sh`（播放头把手钉在标尺上那一节改盯新文件）、
   `scripts/check-project-file.sh`（「预览字幕走两只眼睛推导」那一条改盯新文件）、
   `checks/subtitle-editing-wiring.sh`、`checks/transition-handles-wiring.sh`、本地化覆盖、
