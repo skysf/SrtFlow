@@ -280,6 +280,7 @@
 "Increase by 1" = "Increase by 1";
 "Decrease by 1" = "Decrease by 1";
 "Could not prepare the animated clip %@ for export." = "Could not prepare the animated clip %@ for export.";
+"Could not mix the timeline’s sound for export." = "Could not mix the timeline’s sound for export.";
 "Line" = "Line";
 "Rectangle" = "Rectangle";
 "Square" = "Square";
@@ -611,6 +612,8 @@
 /* 时间线标记、字幕与导出 */
 "Add Marker at Playhead" = "Add Marker at Playhead";
 "Delete Marker" = "Delete Marker";
+"Colour" = "Colour";
+"Edit Note…" = "Edit Note…";
 "Note" = "Note";
 "Burn subtitles into the video" = "Burn subtitles into the video";
 "Every subtitle track is hidden — nothing will be burned." = "Every subtitle track is hidden — nothing will be burned.";
@@ -724,6 +727,8 @@
 "Odometer" = "Odometer";
 "Count up changes the whole number; Odometer rolls each digit on its own wheel" = "Count up changes the whole number; Odometer rolls each digit on its own wheel";
 "Roll for" = "Roll for";
+"Delay" = "Delay";
+"Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting" = "Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting";
 "Decimals" = "Decimals";
 "Thousands" = "Thousands";
 "Group thousands with commas" = "Group thousands with commas";
@@ -861,3 +866,25 @@
 "Write the checked subtitle files into the export folder" = "Write the checked subtitle files into the export folder";
 "%d of these files are already in this folder. Exporting will replace them." = "%d of these files are already in this folder. Exporting will replace them.";
 "Replace %d subtitle files?" = "Replace %d subtitle files?";
+
+/* 声音场景（VideoEditSoundScene.swift / VideoEditInspector+Sound.swift） */
+"Sound scene" = "Sound scene";
+"Speaker" = "Speaker";
+"Indoor" = "Indoor";
+"Outdoor" = "Outdoor";
+"Telephone" = "Telephone";
+"Megaphone" = "Megaphone";
+"Radio" = "Radio";
+"Room" = "Room";
+"Bathroom" = "Bathroom";
+"Hall" = "Hall";
+"Open air" = "Open air";
+"Forest" = "Forest";
+"Valley echo" = "Valley echo";
+"Distortion" = "Distortion";
+"Tone" = "Tone";
+"Room size" = "Room size";
+"Distance" = "Distance";
+"Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording.";
+"Put this scene’s sliders back to their defaults" = "Put this scene’s sliders back to their defaults";
+"Applies to all %d clips with sound selected" = "Applies to all %d clips with sound selected";

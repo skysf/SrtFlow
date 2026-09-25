@@ -21,10 +21,26 @@
 #      （这正是漏掉那次的原因）。
 #   D. 裸 Slider 用 live 绑定时，同一个调用里必须有 endLiveEdit
 #      （labelledSlider 自带，豁免）。
+#   E. 滑杆行右边的数值框（InspectorSliderRow，2026-09-24 起所有滑杆行都能打字）收的是
+#      同一条 live 绑定换算出来的 fieldBinding：它的 set 里写完必须**立刻** endLiveEdit ——
+#      打字提交和箭头没有松手信号，不收快照就是 B 条那个病。
 #
 # 用法：checks/inspector-live-binding-wiring.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# ---- 规则 E：滑杆行数值框的绑定写完立刻收快照 ----
+ROW="Sources/SrtFlow/InspectorSliderRow.swift"
+[ -f "$ROW" ] || { echo "FAIL 找不到 ${ROW}（滑杆行挪走了就同步改这里）"; exit 1; }
+SETTER="$(awk '/private var fieldBinding/ { inside = 1 } inside { print } inside && /^    \}$/ { exit }' "$ROW")"
+if ! grep -c 'endLiveEdit' <<<"$SETTER" >/dev/null; then
+  echo "FAIL $ROW: fieldBinding 的 set 里没有 endLiveEdit —— 打字提交后快照会一直挂着，下一次改动从陈旧状态出发"
+  exit 1
+fi
+if ! grep -c 'value: fieldBinding' "$ROW" >/dev/null; then
+  echo "FAIL $ROW: 数值框没有接 fieldBinding（直接接 live 绑定 = 规则 B 那个病）"
+  exit 1
+fi
 
 python3 - << 'PYEOF'
 import glob, io, re, sys

@@ -39,12 +39,18 @@ enum TimelineMarquee {
     static let textTopInset: Double = 3
     static let textHeight: Double = 20
 
-    /// 框里能选中的四类东西。
+    /// 滤镜块的尺寸（画块的 `FilterBlockMetrics` 读这里，画和判共用一份）。
+    static let filterMinimumWidth: Double = 24
+    static let filterTopInset: Double = 3
+    static let filterHeight: Double = 20
+
+    /// 框里能选中的五类东西（滤镜段 2026-09-25 起也进框选）。
     enum Kind: Equatable {
         case clip
         case shape
         case text
         case subtitleCue
+        case filter
     }
 
     /// 一行里的一个可选中元素。
@@ -67,6 +73,7 @@ enum TimelineMarquee {
             case .shape: self.minimumWidth = TimelineMarquee.shapeMinimumWidth
             case .text: self.minimumWidth = TimelineMarquee.textMinimumWidth
             case .subtitleCue: self.minimumWidth = TimelineMarquee.cueMinimumWidth
+            case .filter: self.minimumWidth = TimelineMarquee.filterMinimumWidth
             }
         }
     }
@@ -89,13 +96,18 @@ enum TimelineMarquee {
     }
 
     /// 一次框选的结果。
+    ///
+    /// 五类**故意不给默认值**：逐类拼一个 `Hit` 的地方（`union`、起手时的 `base`）漏写一类就编不过。
+    /// 带着 `= []` 的时候，滤镜段进框选那次两处都漏了 `filters` 照样编过，⌘ 拖框加选把已经选中的
+    /// 滤镜段丢了（docs/bugfixes/2026-09-25-marquee-additive-drops-filters.md）。空的用 `Hit()`。
     struct Hit: Equatable {
-        var clips: Set<UUID> = []
-        var shapes: Set<UUID> = []
-        var texts: Set<UUID> = []
-        var cues: Set<UUID> = []
+        var clips: Set<UUID>
+        var shapes: Set<UUID>
+        var texts: Set<UUID>
+        var cues: Set<UUID>
+        var filters: Set<UUID>
 
-        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty }
+        var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty && filters.isEmpty }
 
         /// 加选（⌘/⇧ 拖框）：在原有选择上并集。
         func union(_ other: Hit) -> Hit {
@@ -103,7 +115,8 @@ enum TimelineMarquee {
                 clips: clips.union(other.clips),
                 shapes: shapes.union(other.shapes),
                 texts: texts.union(other.texts),
-                cues: cues.union(other.cues)
+                cues: cues.union(other.cues),
+                filters: filters.union(other.filters)
             )
         }
     }
@@ -180,9 +193,17 @@ enum TimelineMarquee {
                 case .shape: hit.shapes.insert(item.id)
                 case .text: hit.texts.insert(item.id)
                 case .subtitleCue: hit.cues.insert(item.id)
+                case .filter: hit.filters.insert(item.id)
                 }
             }
         }
         return hit
+    }
+}
+
+extension TimelineMarquee.Hit {
+    /// 什么都没框中。写在扩展里：写进类型本体的话，逐类列全的那个成员初始化器就没了。
+    init() {
+        self.init(clips: [], shapes: [], texts: [], cues: [], filters: [])
     }
 }

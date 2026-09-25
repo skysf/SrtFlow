@@ -26,6 +26,37 @@
 推论：拖动中要让**跟随块**（链接的音频、多选的伙伴）跟着动，靠的也是给它们同一个
 渲染偏移，不是去改它们的 `timelineStart`。
 
+## 0b. 拖动 / 拉框的**会话**也不进时间线的 `@State`（2026-09-25）
+
+第 0 节只挡住了模型。会话本身（`ClipDragSession`、`TimelineMarquee.Session`、瞄准的目标行、
+文字块的目标行、cue 的起手记号）以前是 `VideoEditTimelineView` 的 `@State`，拖动每一拍写一次，
+时间线的 body 就整个重算一次：ForEach 把所有行和块 diff 一遍、AttributeGraph 更新、布局 ——
+块靠 `.equatable()` 挡住了自己的 body，这一层挡不住，采样里占拖动中主线程约 75%
+（用户 77 段的工程：拖 30 拍约 1100 ms，[案例](../bugfixes/2026-09-25-drag-session-in-timeline-state.md)）。
+
+现在会话住在引用类型 `TimelineDragBox`（`VideoEditTimelineDragBox.swift`）里：
+
+- **时间线 `@State` 持有它、不订阅、body 里一个字都不读**（`@State var dragBox`；`@StateObject` /
+  `@ObservedObject` 都是订阅）。和 §5c 的 `scrollGeometry` 完全同一个模式。
+- **块只收自己那份**：`onReceive(drag.$offsets)` 拿位移、`onReceive(drag.$marqueeHit)` 拿框选命中，
+  收到的值变了才写自己的 `@State` —— 于是每一拍只有正在动的那几个块重算。框选命中和模型里的
+  选中**一样就记 nil**，不然框一起手全部块都从 nil 变成 false、各重算一遍（首版就是这么多出
+  ~300 次 body 和 128 次音量线重画的）。位移不再是块的输入：当输入的话时间线每一拍都得重算一遍
+  来喂它。
+- **覆盖层 `TimelineDragOverlay` 是唯一的订阅者**（`@ObservedObject`）：对齐线、磁吸占位框、
+  跨轨占位框、目标轨描边、文字换行指示、框选矩形都在它里面；行的排布、缝的位置、内容宽度
+  以值传进去。三套拖放（滤镜 / 音频库 / Finder 文件）的落点框仍是时间线的 `@State`，不在这条里。
+- **盒子只在变了时才发**：`update` / `aim(row:)` / `aim(textRow:)` / `updateMarquee` 都先比再写 ——
+  目标行、文字行每一拍都写但很少变。
+- 时间线里拖动中仅剩**一个**会写的 `@State`：弹性尾部 `dragTailWidth`（§5），按半个视口一档往上跳，
+  一次拖动最多写几次；松手归零。
+- `openSeam`（缝开合，一次拖动最多几次，行的排布本来就得重算）和 `laneReorder`（整轨换位，
+  §5i，另一条手势）仍是时间线的 `@State`。整轨换位每一拍仍重算整条时间线：已知、未做。
+- `hoverPeek` / `markerPeek` 的让位判据读 `dragBox.clipDrag` / `dragBox.marquee`（§5g）。
+
+守卫：`checks/timeline-drag-wiring/drag-box.sh`（持有不订阅、五种块的收法、唯一订阅者、
+先比再发、一轮结束清干净、拖动中只写盒子）。
+
 ## 1. 布局模型与坐标系
 
 `ClipBlockView` 在轨道行里的**布局**位置固定在行首（ZStack topLeading），
@@ -219,6 +250,42 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
   还能往左、字幕已经各自夹在 0 上，相对错位当场压扁。
 - cue 挪完必须**重排 + reindex**：`cues` 的数组顺序就是时间顺序，下游按顺序
   消费，挪过头不重排会让导出的 .srt 序号和时间对不上。
+
+## 3.5b 框选也框滤镜段、⌘A 全选、⌘⇧A 取消（2026-09-25 用户拍板）
+
+- 滤镜行 2026-09-25 起也给框选产出 item（`TimelineMarquee.Kind.filter`，命中区按画出来的块：
+  `filterTopInset` / `filterHeight`，和 `FilterBlockMetrics` 共用一份常量），`applyBoxSelection`
+  多一个 `filters:`。点选滤镜仍和别的互斥（理由见 `EditSelection.filterIDs`）。
+- **`TimelineMarquee.Hit` 的五类不给默认值**（空的用 `Hit()`）：逐类拼 `Hit` 的地方 —— 加选的
+  `union`、拉框起手记下的 `base` —— 漏写一类就编不过。带着默认值时这两处都漏了 `filters`，⌘ 拖框
+  加选把原来选中的滤镜段丢了（[案例](../bugfixes/2026-09-25-marquee-additive-drops-filters.md)）。
+  以后再加一类，`checks/TimelineSnap/Marquee.swift` 的往返用例（夹具每一类都不许空）也要跟上。
+- **⌘A** = `selectAllOnTimeline`：时间线上的一切（含隐藏轨上的剪辑、滤镜段），走 `applyBoxSelection`
+  这一个混选入口，所以标记和转场的选择照样清掉 —— 它们跟着段走。**⌘⇧A** = `clearSelection`。
+  两个键接在 `VideoEditView.handleEvent` 里、排在「带修饰键一律放行」之前；正在打字时让路。
+- 拖这一片：起手的那个块在选中集合里 → 整片一起走（滤镜段作为成员，不带障碍；拖滤镜段起手时
+  同层没在动的段才是障碍）；磁吸开着时主轨不动（`magnetPinsMainTrack`，用户选的 A 方案）。
+  拉把手：整片一起裁（§3.6）。⌫：一起删。
+
+## 3.6 多段一起裁（2026-09-25 用户拍板）
+
+拉任何一个块的裁切把手，**选中的每一个块**（剪辑、形状、文字、字幕 cue、滤镜，含隐藏轨上
+被 ⌘A 选中的剪辑）都裁同一条边、同一个量；链接开着时，被裁剪辑的链接伙伴也一起裁
+（和挪、切、删同一条链接语义 —— 以前裁切漏了这一条，见
+[裁切不跟链接](../bugfixes/2026-09-25-trim-ignores-linked-clips.md)）。规矩都在
+`VideoEditTimelineTrim.swift`：
+
+- **裁的算法只有一份**（`TimelineState.trim(_:leading:by:)`）：五种块各自改各自的字段，
+  剪辑改素材范围（按 `speed` 换算）、叠层类只改起点和时长、cue 走 `LinkedSubtitleEditing.setTime`
+  （两轨镜像一起改、改完重排）。「裁到播放头」（`trimToPlayhead`）也走它。
+- **一段能裁多少**（`trimRange`）：起点端往左最多退到素材开头 / 时间线 0，往右最多缩到最短
+  （剪辑 0.1s、叠层 0.2s、cue 0.1s）；终点端反之，剪辑受素材余量限制，叠层类没有素材边界。
+- **整组一起停**（`trimGroup`）：每个成员的范围取交集，再把手势的量夹进去，谁先到头整组一起停；
+  交集为空整组不动。不会出现「别人动了、它没动」。
+- 名单由 `VideoEditProject` 定：拉的那个块在选中集合里 → 整个选择（剪辑 ∪ 链接伙伴、形状、文字、
+  cue）；没选中 → 只有它（加链接伙伴）。滤镜单选、和别的选择互斥，所以滤镜只裁自己。
+- 手势那一侧没变：把手报的仍是「手势开始以来的总位移」，每一拍从快照重放（§0），松手
+  `endLiveEdit` 一步撤销。
 
 ## 4. 吸附与对齐线（`TimelineSnap`，纯值函数）
 
@@ -500,7 +567,7 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 - **夹紧和点击共用一份**（`min(max(0, x/pps), duration)`）：影子指针指着哪儿，
   画面就得是哪儿。不夹的话，鼠标扫进工程长度之外的那片空白，影子一路往右跑而
   画面早停在最后一帧了。
-- **按住在动的时候不扫帧**：播放中、拖块（`clipDrag`）、拖框（`marquee`）、
+- **按住在动的时候不扫帧**：播放中、拖块（`dragBox.clipDrag`）、拖框（`dragBox.marquee`）、
   裁切（`project.liveEditOrigin` —— `isTrimming` 是块内的 `@State`，容器看不见，
   只能从模型侧判）。
 - **时刻没变就不写。** `peekTime` 是 `@Published`，每写一次连带整条时间线视图树
@@ -523,7 +590,8 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
   管缝在哪、指针在不在缝上、拉开之后每一行挪到哪。`rowLayouts(open:)` 走它的 `layout`，
   轨道行（`scrolledContent` 的 VStack）和轨道头列按同一组常量（`TimelineRowMetrics`）排、
   在**同一行**上面垫同一段 `gapExtra`。只垫一边，轨道头和轨道行当场错开一个缝宽。
-- **缝开没开是视图状态**（`openSeam`），拖动中一个字都不写 `TimelineState`（§0）。松手才
+- **缝开没开是视图状态**（`openSeam`，这是时间线自己的 `@State`：一次拖动最多开合几次，行的排布
+  本来就要重算，见 §0b），拖动中一个字都不写 `TimelineState`（§0）。松手才
   `perform` 一次：`TrackDropTarget.insertOverlay(at:)` / `.insertAudio(at:)` 经
   `relocateClip` → `insertLane` 落地，一步撤销。
 - **停够才拉开**：`TimelineSeamDwell` 计时，三种拖动（素材块、Finder 文件、音频库）共用。
@@ -582,8 +650,35 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 守卫：纯值算法 `scripts/check-timeline-snap.sh` §32；接线 `checks/timeline-drag-wiring.sh`
 「整条轨换位置」一节；抓手光标 `checks/hover-pointer-style.sh`。
 
+### 5j. 文字块上下换行（2026-09-24）
+
+文字行的行号进模型（`TextOverlay.row`，[画面文字](text-overlays.md)「时间线上的行」），
+所以文字块可以在文字行之间上下拖：
+
+- **目标行只是视图状态**（`dragBox.textDropRow`，同 `dragBox.dragTargetRow`，§0b），拖动中一个字都不写 `state`（§0）。
+  判定是纯值的 `TextRows.dropTarget`：指针的内容 y（视口 y + 现读的纵向滚动量，§5c）落在哪一条
+  画出来的文字行就是哪一行；比最上面那一行还高（标尺、滤镜、上层轨都算）= 顶上新开一行；
+  文字行以下、或自己那一行 = 不换。18pt 门槛同跨轨拖动。
+- **画法**：已有行描一圈（和跨轨拖动的目标轨同一种描边），新开一行画一条插入线骑在最上面那行
+  的上沿（`TextRowDropIndicator`）。块本身只横向跟手，不上下飘（同跨轨拖动）。
+- **落地和横向位移在同一次 `perform` 里**（`commitFreeDrag(…, textRow:)` →
+  `settleTextRow`），一步撤销。目标行在落点时间被占了就往上找第一条空行；没换行的横向拖动
+  同样过这一关（自己那一行被占就往上走）。之后空行收拢。
+- 文字不进缝、不换轨（`aimVertically` 见到 `.text` 就只判文字行）。形状不动。
+
+- 轨道多到一屏放不下时，把块拖到视口下边缘让它纵向自动滚动，**指针不动**：滚出来的轨照样会被
+  高亮、滚出来的缝照样能拉开。
+- 从音频库拖一首曲子到两条音频轨之间停一下：缝拉开、框在缝里；松手 → 新的音频轨夹在中间。
+  拖出时间线再拖回来：缝跟着合上 / 重新计时。**只能人手拖**（合成事件驱动不了 `.onDrag`，§5e-2）。
+  Finder 文件那一路的清单在[拖文件进轨道](../plans/2026-09-22-media-file-drop.md)。
+
 ## 回归清单（改这些代码后过一遍）
 
+- ⌘A：时间线上的剪辑（含隐藏轨）、文字、形状、字幕、滤镜全亮；磁吸开着拖任意一段文字，主轨不动、
+  其余一起平移；⌘⇧A 全部取消。框选扫过滤镜行，滤镜段也被框中；点一段滤镜只选它一个。
+- 多段一起裁：框选两段剪辑 + 一段文字，拉其中一段的右把手 —— 三段一起变长 / 变短，同一个量；
+  其中一段到了素材尽头，三段一起停。链接开着裁视频，链接的音频跟着裁；⌘Z 一步全回。
+- 裁到播放头（工具栏的两个按钮）仍然只裁播放头下那一段（和它的链接伙伴）。
 - 拖右把手 238pt（10s 的量，默认缩放）→ 时长正好少 10s，不是 5s。
 - 拖动中块边缘连续跟手，无跳变；缩略图/波形不闪，松手 ~200ms 后刷新。
 - 磁吸开着时移动块，**邻居不动**（松手才归位），青色占位框（宽度 = 被拖素材
@@ -650,8 +745,4 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 - 把块拖过最上面那条轨（停在标尺上也行）：停一下，顶上拉开缝，松手顶上新开一条；音频块拖到最后一条
   音频轨下面同理。
 - 有文字 / 形状行时：最低一层上层轨下面那条缝开在文字行上面，形状行和主轨之间怎么停都不开。
-- 轨道多到一屏放不下时，把块拖到视口下边缘让它纵向自动滚动，**指针不动**：滚出来的轨照样会被
-  高亮、滚出来的缝照样能拉开。
-- 从音频库拖一首曲子到两条音频轨之间停一下：缝拉开、框在缝里；松手 → 新的音频轨夹在中间。
-  拖出时间线再拖回来：缝跟着合上 / 重新计时。**只能人手拖**（合成事件驱动不了 `.onDrag`，§5e-2）。
-  Finder 文件那一路的清单在[拖文件进轨道](../plans/2026-09-22-media-file-drop.md)。
+

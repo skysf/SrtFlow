@@ -52,7 +52,8 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
         rotationDegrees: Double = 0,
         style: TextStyle = .default,
         animation: TextAnimation = .default,
-        number: NumberRoll? = nil
+        number: NumberRoll? = nil,
+        row: Int = 0
     ) {
         self.id = id
         self.text = text
@@ -65,7 +66,16 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
         self.style = style
         self.animation = animation
         self.number = number
+        self.row = row
     }
+
+    /// 时间线上在哪一行（0 = 最下面那条文字行，紧挨形状行；越大越靠上）。
+    /// **行序就是画面上的叠放序**：行号大的画在上面（VideoEditTextRows.swift）。
+    /// 进模型、存盘（v21）；老工程没有这个键，载入时按当年的自动排布补上
+    ///（`TimelineState.normalizeTextRows`）。
+    var row: Int
+    /// 读盘时没有 `row` 键的标记，只在载入到 `normalizeTextRows` 之间短暂存在。
+    static let unassignedRow = -1
 
     /// 新建时的时长，与形状一致（3 秒）。
     static let defaultDuration = 3.0
@@ -107,12 +117,14 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
     /// 这段内容需要逐帧渲染吗（动画或数字滚动）。
     var needsPerFrameRendering: Bool { !animation.isEmpty || number != nil }
 
-    /// 头部需要逐帧的那一截：入场动画和数字滚动谁长听谁的。
+    /// 头部需要逐帧的那一截：入场动画和数字「等待 + 滚动」谁长听谁的。
     ///
     /// 数字滚完之前画面每一帧都在变，哪怕入场动画早就结束了 ——
-    /// 只按入场时长切段的话，滚动的后半截会被冻成一张静止图。
+    /// 只按入场时长切段的话，滚动的后半截会被冻成一张静止图。等待也算在头里：
+    /// 等待期间画面虽然不变，但滚动在它之后，只按滚动时长切的话数字会在等待
+    /// 结束那一刻被冻住。
     func animatedHead(window: FadeWindow) -> Double {
-        max(window.fadeIn, number.map { min($0.duration, duration) } ?? 0)
+        max(window.fadeIn, number.map { min($0.settleTime, duration) } ?? 0)
     }
 
     /// 时间线块上显示的名字。空的时候给个占位，否则块上是一片空白。
@@ -189,7 +201,7 @@ extension TextStyle {
 extension TextOverlay: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, text, timelineStart, duration
-        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number
+        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number, row
     }
 
     init(from decoder: Decoder) throws {
@@ -205,7 +217,8 @@ extension TextOverlay: Codable {
             rotationDegrees: try c.decodeIfPresent(Double.self, forKey: .rotationDegrees) ?? 0,
             style: try c.decodeIfPresent(TextStyle.self, forKey: .style) ?? .default,
             animation: try c.decodeIfPresent(TextAnimation.self, forKey: .animation) ?? .default,
-            number: try c.decodeIfPresent(NumberRoll.self, forKey: .number)
+            number: try c.decodeIfPresent(NumberRoll.self, forKey: .number),
+            row: try c.decodeIfPresent(Int.self, forKey: .row) ?? TextOverlay.unassignedRow
         )
     }
 
@@ -225,14 +238,16 @@ extension TextOverlay: Codable {
         if !animation.isEmpty { try c.encode(animation, forKey: .animation) }
         // 同理：不是数字元件的文字不落这个键，免得被抬进 v13。
         try c.encodeIfPresent(number, forKey: .number)
+        // 行号无条件落盘：它决定画面上谁压谁，没有「默认就等于没有」这回事（v21）。
+        try c.encode(row, forKey: .row)
     }
 }
 
-// MARK: - 时间线上的分层
+// MARK: - 老工程的自动排布（只剩迁移在用）
 //
-// 文字行会因为时间上重叠而长出多行：两段文字同时出现在画面上时挤在一行里
-// 根本分不清谁是谁。层号只是**显示用**的，不进模型、不存盘 —— 它完全由
-// 时间关系算出来，用户没有"把这条放到第二层"这种操作。
+// 2026-09-24 起行号进模型（`TextOverlay.row`，VideoEditTextRows.swift）。在那之前
+// 文字行由时间重叠现算：下面这个贪心只在载入没有 `row` 键的老工程时跑一次，把当年
+// 画在屏幕上的那个排布原样变成行号。**别在别处再调它。**
 
 enum TextOverlayStacking {
     /// 给每一段文字算一个层号（0 = 最上面那一行）。

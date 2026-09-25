@@ -87,6 +87,15 @@ struct TextOverlayCanvas: View {
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
+        let visible = self.visible
+        // 框和可点范围一次排版算好，下面几处共用 —— 这个 body 每跳都会重算。
+        let geometry = Dictionary(
+            visible.map { ($0.id, TextHitGeometry($0, canvas: boxSize)) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let selected = project.selectedTextOverlay.flatMap { selection in
+            visible.first { $0.id == selection.id }
+        }
         ZStack(alignment: .topLeading) {
             // 底噪：不拦事件，否则点画面空白就再也选不中底下的剪辑了。
             Color.clear.allowsHitTesting(false)
@@ -94,17 +103,25 @@ struct TextOverlayCanvas: View {
             ForEach(visible) { overlay in
                 image(for: overlay)
             }
+            // 选中的那段：整个版面框都能拖。垫在所有字的**下面** —— 点在别的字上，
+            // 选中的还是那段字，不会被这块大框抢走。
+            if let selected, let box = geometry[selected.id] {
+                hitArea(for: selected, geometry: box, wholeFrame: true)
+            }
             ForEach(visible) { overlay in
-                hitArea(for: overlay)
+                if let box = geometry[overlay.id] {
+                    hitArea(for: overlay, geometry: box, wholeFrame: false)
+                }
             }
 
-            if let selected = project.selectedTextOverlay, selected.contains(time: clock.displayTime) {
-                frameBox(for: selected)
+            if let selected, let box = geometry[selected.id] {
+                frameBox(for: selected, frame: box.frame)
             }
 
             if let id = project.textEditingRequest,
-               let overlay = visible.first(where: { $0.id == id }) {
-                editor(for: overlay)
+               let overlay = visible.first(where: { $0.id == id }),
+               let box = geometry[id] {
+                editor(for: overlay, frame: box.frame)
             }
 
             CenterGuideLines(
@@ -142,13 +159,23 @@ struct TextOverlayCanvas: View {
 
     // MARK: - 点选与移动
 
-    /// 命中范围就是**版面框**（转过之后的）。用渲染包络的话，投影和模糊会让
-    /// 可点区域比看得见的字大出一大圈，点旁边的空白就选中了。
-    private func hitArea(for overlay: TextOverlay) -> some View {
-        let frame = TextRenderer.layoutFrame(overlay, canvas: boxSize)
-        return Rectangle()
-            .fill(.white.opacity(0.001))
+    /// 可点范围。**没选中时只认看得见的那一块**（墨迹，开着底板时连底板，见
+    /// `TextHitGeometry`）：版面框默认有画面宽度的 80%，按整框判的话几段字的框互相
+    /// 盖着，点在这段字上会选中旁边那段。选中的那段另垫一块整框（`wholeFrame`），
+    /// 框里的空白处也拖得动。
+    ///
+    /// 也不用渲染包络：投影和模糊会让可点区域比看得见的字大出一大圈。
+    private func hitArea(
+        for overlay: TextOverlay, geometry: TextHitGeometry, wholeFrame: Bool
+    ) -> some View {
+        let frame = geometry.frame
+        return Color.clear
             .frame(width: frame.width, height: frame.height)
+            // 先定可点范围、再转：写在 `.rotationEffect` 之后的 `contentShape` 按的是
+            // 没转过的框（同 TextFrameBox 旋转把手那次，checks/hit-shape-before-offset.sh）。
+            .contentShape(RectInView(
+                rect: wholeFrame ? CGRect(origin: .zero, size: frame.size) : geometry.contentInFrame
+            ))
             .rotationEffect(.degrees(overlay.rotationDegrees))
             .position(x: frame.midX, y: frame.midY)
             // 数字元件没有"打字"这一步，内容全在检查器里调 ——
@@ -198,9 +225,9 @@ struct TextOverlayCanvas: View {
 
     // MARK: - 选中框
 
-    private func frameBox(for overlay: TextOverlay) -> some View {
+    private func frameBox(for overlay: TextOverlay, frame: CGRect) -> some View {
         TextFrameBox(
-            frame: TextRenderer.layoutFrame(overlay, canvas: boxSize),
+            frame: frame,
             rotationDegrees: overlay.rotationDegrees,
             canvas: boxSize,
             onScale: { factor in
@@ -228,13 +255,22 @@ struct TextOverlayCanvas: View {
 
     /// 输入框浮在文字块**下方**（贴着底边），与预览里改字幕同一个位置约定 ——
     /// 浮在上面会挡住正在编辑的那行字。
-    private func editor(for overlay: TextOverlay) -> some View {
-        let frame = TextRenderer.layoutFrame(overlay, canvas: boxSize)
-        return TextInlineEditor(project: project, overlayID: overlay.id)
+    private func editor(for overlay: TextOverlay, frame: CGRect) -> some View {
+        TextInlineEditor(project: project, overlayID: overlay.id)
             .frame(width: min(max(240, frame.width), boxSize.width - 16))
             .position(
                 x: min(max(frame.midX, 130), boxSize.width - 130),
                 y: min(frame.maxY + 46, boxSize.height - 40)
             )
+    }
+}
+
+/// 视图里的一块矩形（视图自己的坐标系，左上原点）。可点范围只要框里的一部分时用 ——
+/// `Rectangle()` 只能是整个框。
+private struct RectInView: Shape {
+    var rect: CGRect
+
+    func path(in _: CGRect) -> Path {
+        Path(rect)
     }
 }

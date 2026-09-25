@@ -149,3 +149,36 @@ extension TimelineState {
         }
     }
 }
+
+// MARK: - 存盘
+//
+// 2026-09-24 从 VideoEditModels.swift 搬过来（那个文件过了 600 行的上限）：标记怎么存盘是标记自己的事。
+
+extension ClipMarker: Codable {
+    private enum CodingKeys: String, CodingKey {
+        case id, sourceTime, color, text
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // 位置是唯一必需的字段：没有它这枚标记不知道该画在哪。
+        self.init(
+            id: try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceTime: try c.decode(Double.self, forKey: .sourceTime),
+            color: try c.decodeIfPresent(MarkerColor.self, forKey: .color) ?? .red,
+            text: try c.decodeIfPresent(String.self, forKey: .text) ?? ""
+        )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(sourceTime, forKey: .sourceTime)
+        try c.encode(color, forKey: .color)
+        if !text.isEmpty { try c.encode(text, forKey: .text) }
+    }
+}
+
+extension MarkerColor: LenientCodableEnum {
+    static var decodingFallback: MarkerColor { .red }
+}

@@ -34,6 +34,12 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
+  Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTrack.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTails.swift \
+  Sources/SrtFlow/VideoEditAudioMix.swift \
+  Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
@@ -53,6 +59,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextNumber.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextRows.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
@@ -62,8 +69,12 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
-  Sources/SrtFlow/VideoEditExportAudioGain.swift \
+  Sources/SrtFlow/VideoEditExportFilterScript.swift \
+  Sources/SrtFlow/VideoEditExportMixdown.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditMediaAssetCache.swift \
+  Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
@@ -72,8 +83,11 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/AudioFade/main.swift \
+  checks/AudioFade/Envelope.swift \
   checks/AudioFade/VolumeCurve.swift \
   checks/AudioFade/Meter.swift \
+  checks/AudioFade/LiveMix.swift \
+  checks/AudioFade/SoundScene.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

@@ -26,6 +26,9 @@ enum MediaReadQueue {
     static let overview = make("SrtFlow.MediaRead.overview", qos: .utility, width: 2)
     /// 深度放大时的原始采样块：一块只有一秒、读得快，但用户正盯着看 —— 高一档。
     static let detail = make("SrtFlow.MediaRead.detail", qos: .userInitiated, width: 2)
+    /// 导出时把整条混音离线读成文件（ExportAudioMixdown）：一次只导一个，一条就够；
+    /// 单独一条队列，长工程读上半分钟也不占波形放大要用的那两条。
+    static let export = make("SrtFlow.MediaRead.export", qos: .userInitiated, width: 1)
 
     /// 在 `queue` 上把一段阻塞的读取跑完，结果交回来（等的这一方只是挂起，不占线程）。
     static func run<T: Sendable>(on queue: OperationQueue, _ work: @escaping @Sendable () -> T) async -> T {

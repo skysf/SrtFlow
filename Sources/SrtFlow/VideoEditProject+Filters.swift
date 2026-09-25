@@ -11,10 +11,12 @@ extension VideoEditProject {
 
     // MARK: - 选中
 
-    var selectedFilterID: UUID? { selection.filterID }
+    /// 只选中了一段滤镜时的那一段（检查器的滤镜区、库面板「点卡片 = 换种类」认它）。
+    /// 多段一起选中（框选 / ⌘A）时是 nil；全部选中的段见 `selectedFilterIDs`。
+    var selectedFilterID: UUID? { selection.soleFilterID }
 
     var selectedFilter: FilterClip? {
-        guard let id = selection.filterID else { return nil }
+        guard let id = selection.soleFilterID else { return nil }
         return state.filters.first { $0.id == id }
     }
 
@@ -64,7 +66,7 @@ extension VideoEditProject {
     /// 试试」是最常见的意图，和转场库「点卡片只换种类不改时长」同一口径）；
     /// 没选中就在播放头加一段新的。
     func applyFilterFromLibrary(_ preset: FilterPreset) {
-        if let id = selection.filterID, state.filters.contains(where: { $0.id == id }) {
+        if let id = selection.soleFilterID, state.filters.contains(where: { $0.id == id }) {
             setFilterPreset(id, preset)
         } else {
             addFilter(preset)
@@ -92,22 +94,9 @@ extension VideoEditProject {
     ///
     /// 与形状/文字同一套口径：没有素材边界，起点端最多回拉到 0，两端收缩的
     /// 下限是 `FilterClip.minimumDuration`。
+    /// 拖滤镜块两端裁切。滤镜单选、和别的选择互斥，所以只裁它自己（范围规矩在 `TimelineTrim`）。
     func liveTrimFilter(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        beginLiveEdit()
-        liveApply { state in
-            state.updateFilter(id) { filter in
-                let minDuration = FilterClip.minimumDuration
-                if leading {
-                    let delta = min(
-                        max(deltaSeconds, -filter.timelineStart), filter.duration - minDuration
-                    )
-                    filter.timelineStart += delta
-                    filter.duration -= delta
-                } else {
-                    filter.duration += max(deltaSeconds, -(filter.duration - minDuration))
-                }
-            }
-        }
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .filter), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     // MARK: - 复制 / 剪切 / 粘贴
@@ -175,17 +164,31 @@ extension VideoEditProject {
     func filterDragPlan(filterID id: UUID) -> ClipDragPlan? {
         guard let filter = state.filters.first(where: { $0.id == id }) else { return nil }
         let span = TimelineSpan(start: filter.timelineStart, end: filter.timelineEnd)
-        let obstacles = state.filters
-            .filter { $0.layer == filter.layer && $0.id != id }
-            .map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
-            .sorted { $0.start < $1.start }
+        // 拖选中的一段 = 框选 / ⌘A 选中的那一片一起走（2026-09-25）：选中的滤镜段都是成员，
+        // 同一层上**没在动**的段才是障碍；剪辑 / 形状 / 文字 / cue 的伙伴和别的块起手时同一份规则。
+        let anchored = selectedFilterIDs.contains(id)
+        let moving: Set<UUID> = anchored ? selectedFilterIDs.union([id]) : [id]
+        let members = state.filters.filter { moving.contains($0.id) }.map { member -> ClipDragPlan.Member in
+            let obstacles = state.filters
+                .filter { $0.layer == member.layer && !moving.contains($0.id) }
+                .map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
+                .sorted { $0.start < $1.start }
+            return ClipDragPlan.Member(
+                id: member.id, span: TimelineSpan(start: member.timelineStart, end: member.timelineEnd),
+                obstacles: obstacles, kind: .filter
+            )
+        }
+        let clipIDs = state.draggingClipIDs(
+            seed: anchored ? selectedClipIDs : [], linkage: linkageEnabled, magnetPinsMainTrack: magnetEnabled
+        )
+        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
         return ClipDragPlan(
             draggedID: id,
             draggedSpan: span,
-            members: [ClipDragPlan.Member(id: id, span: span, obstacles: obstacles, kind: .filter)],
-            candidates: snapCandidates(moving: [id]),
+            members: members + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs),
+            candidates: snapCandidates(moving: moving.union(clipIDs).union(companions.ids)),
             magnet: nil
-        )
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: [])
     }
 
     // MARK: - 查询

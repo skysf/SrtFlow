@@ -41,8 +41,11 @@ struct NumberRoll: Hashable, Sendable {
     var prefix: String
     var suffix: String
     var style: NumberRollStyle
-    /// 滚动占多少秒（从这段文字的起点算起）。滚完之后停在终值上。
+    /// 滚动占多少秒。滚完之后停在终值上。
     var duration: Double
+    /// 先等多少秒再开始滚（从这段文字的起点算起）。等待期间停在起始值上
+    /// （2026-09-24 用户拍板：「Delay / 等待」）。默认 0，只有用了才落盘（v21）。
+    var delay: Double = 0
 
     static let `default` = NumberRoll(
         from: 0, to: 100, fractionDigits: 0, groupsThousands: true,
@@ -51,6 +54,7 @@ struct NumberRoll: Hashable, Sendable {
 
     static let fractionDigitsRange = 0...4
     static let durationRange = 0.1...20.0
+    static let delayRange = 0.0...60.0
     /// 一条数字带最多转几圈。
     ///
     /// 不封顶的话，`0 → 1000000` 的个位要转一百万圈 —— 30fps 下每帧跳过
@@ -62,17 +66,23 @@ struct NumberRoll: Hashable, Sendable {
                              NumberRoll.fractionDigitsRange.upperBound)
         duration = min(max(duration, NumberRoll.durationRange.lowerBound),
                        NumberRoll.durationRange.upperBound)
+        delay = delay.isFinite
+            ? min(max(delay, NumberRoll.delayRange.lowerBound), NumberRoll.delayRange.upperBound)
+            : 0
         if !from.isFinite { from = 0 }
         if !to.isFinite { to = 0 }
     }
 
     // MARK: - 取值
 
-    /// 滚动进度 0…1。`local` 是这段文字自己的时间。
+    /// 滚动进度 0…1。`local` 是这段文字自己的时间；前 `delay` 秒是等待，进度为 0。
     func progress(local: Double) -> Double {
-        guard duration > 0 else { return 1 }
-        return TextEasing.easeOutCubic(min(max(local / duration, 0), 1))
+        guard duration > 0 else { return local < delay ? 0 : 1 }
+        return TextEasing.easeOutCubic(min(max((local - delay) / duration, 0), 1))
     }
+
+    /// 从段起点算，几秒之后数字停下来（等待 + 滚动）。导出切段按它算头部逐帧的长度。
+    var settleTime: Double { delay + duration }
 
     /// 数值插值那一路：这一刻显示的数字。
     func value(local: Double) -> Double {
@@ -201,7 +211,7 @@ struct NumberRoll: Hashable, Sendable {
 
 extension NumberRoll: Codable {
     private enum CodingKeys: String, CodingKey {
-        case from, to, fractionDigits, groupsThousands, prefix, suffix, style, duration
+        case from, to, fractionDigits, groupsThousands, prefix, suffix, style, duration, delay
     }
 
     init(from decoder: Decoder) throws {
@@ -215,7 +225,8 @@ extension NumberRoll: Codable {
             prefix: try c.decodeIfPresent(String.self, forKey: .prefix) ?? "",
             suffix: try c.decodeIfPresent(String.self, forKey: .suffix) ?? "",
             style: try c.decodeIfPresent(NumberRollStyle.self, forKey: .style) ?? .count,
-            duration: try c.decodeIfPresent(Double.self, forKey: .duration) ?? fallback.duration
+            duration: try c.decodeIfPresent(Double.self, forKey: .duration) ?? fallback.duration,
+            delay: try c.decodeIfPresent(Double.self, forKey: .delay) ?? 0
         )
     }
 
@@ -229,6 +240,8 @@ extension NumberRoll: Codable {
         try c.encode(suffix, forKey: .suffix)
         try c.encode(style, forKey: .style)
         try c.encode(duration, forKey: .duration)
+        // 按需写入：没等待的数字不落这个键，v21 的闸门只对真用了等待的工程关门。
+        if delay > 0 { try c.encode(delay, forKey: .delay) }
     }
 }
 

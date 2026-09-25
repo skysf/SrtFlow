@@ -17,10 +17,21 @@ import SwiftUI
 // 编辑规则与纵轴几何是纯值（VideoEditVolumeCurve.swift），合同见
 // docs/architecture/audio-volume-curve.md。
 
-struct VolumeCurveOverlay: View {
+struct VolumeCurveOverlay: View, Equatable {
     let clip: EditClip
     let pps: Double
-    @ObservedObject var project: VideoEditProject
+    let activeTool: TimelineTool
+    /// 只拿来**调动作**，不订阅：订阅的话工程里任何一处变化（点选一段）都让每一条音量线
+    /// 重算、Canvas 重画 —— 2026-09-24 实测一次点选重画 61 条（见 `ClipBlockContext`）。
+    let project: VideoEditProject
+
+    /// 按值比较（调用方套 `.equatable()`）：输入里有 `project` 这个引用，SwiftUI 自己比不出
+    /// 「没变」，块每重算一次（拖动每一拍）线就跟着重算、Canvas 重画一遍（2026-09-25 实测
+    /// 拖一段音频 30 拍重画 22 次）。线只由段、缩放和工具决定。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.clip == rhs.clip && lhs.pps == rhs.pps && lhs.activeTool == rhs.activeTool
+            && lhs.project === rhs.project
+    }
 
     @State private var session: Session?
     @State private var hovering = false
@@ -61,10 +72,11 @@ struct VolumeCurveOverlay: View {
                     .allowsHitTesting(false)
 
                     Color.clear
-                        .contentShape(VolumeLineHitShape(
+                        // 命中区的路径在这里算一次（见 `VolumeLineHitShape`）。
+                        .contentShape(VolumeLineHitShape(hitPath: VolumeCurveLayout.hitPath(
                             vertices: VolumeCurveLayout.vertices(for: displayed, pps: pps, height: height),
                             handles: VolumeCurveLayout.handles(for: displayed, pps: pps, height: height).map(\.point)
-                        ))
+                        )))
                         .gesture(gesture(height: height))
                         .onChange(of: gestureActive) { _, active in
                             guard !active else { return }
@@ -81,7 +93,7 @@ struct VolumeCurveOverlay: View {
                         .pointerStyle(.rowResize)
                         .instantHelp("Drag to change the volume. ⌥-click the line to add a point, ⌥-click a point to remove it.")
                         // 刀片模式下整条让路：点在线上也该落下那一刀。
-                        .allowsHitTesting(project.activeTool == .select)
+                        .allowsHitTesting(activeTool == .select)
 
                     if let session, session.isDragging {
                         valueLabel(session)
@@ -241,12 +253,15 @@ struct VolumeCurveOverlay: View {
 /// 音量线的命中区：贴着线的一条窄带 + 每个点的小圆。**不是整块** —— 线以外的地方
 /// 拖动 / 裁切 / 框选 / 点选必须原样归块和容器。
 struct VolumeLineHitShape: Shape {
-    let vertices: [CGPoint]
-    let handles: [CGPoint]
-
-    /// 窄带与小圆必须**并**起来（`VolumeCurveLayout.hitPath`），不能 append：
+    /// 算好的命中区：窄带与小圆必须**并**起来（`VolumeCurveLayout.hitPath`），不能 append ——
     /// 重叠处环绕数互相抵消，点的正中间会点不中（2026-09-23 案例）。
+    ///
+    /// 由调用方在 body 里算好传进来，不在 `path(in:)` 里现算：SwiftUI 每次命中测试都会
+    /// 问形状要路径，描边加求并又贵 —— 2026-09-24 在 40 段音频的工程上实测，点一下时间线
+    /// 约 16ms 花在这里（悬停时也在算）。body 只在这一段的线变了时才重算。
+    let hitPath: CGPath
+
     func path(in rect: CGRect) -> Path {
-        Path(VolumeCurveLayout.hitPath(vertices: vertices, handles: handles))
+        Path(hitPath)
     }
 }

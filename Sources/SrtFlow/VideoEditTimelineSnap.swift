@@ -296,10 +296,15 @@ struct ClipDragPlan: Equatable {
     func adding(
         shapes: [(id: UUID, span: TimelineSpan)],
         texts: [(id: UUID, span: TimelineSpan)],
-        cues: [(id: UUID, span: TimelineSpan)]
+        cues: [(id: UUID, span: TimelineSpan)],
+        filters: [(id: UUID, span: TimelineSpan)] = []
     ) -> ClipDragPlan {
         var plan = self
         let existing = Set(plan.members.map(\.id))
+        // 跟着走的滤镜段不带障碍（同形状 / 文字）：整片一起平移，同层撞上就叠着，不挡。
+        for filter in filters where !existing.contains(filter.id) {
+            plan.members.append(Member(id: filter.id, span: filter.span, obstacles: [], kind: .filter))
+        }
         for shape in shapes where !existing.contains(shape.id) {
             plan.members.append(Member(id: shape.id, span: shape.span, obstacles: [], kind: .shape))
         }

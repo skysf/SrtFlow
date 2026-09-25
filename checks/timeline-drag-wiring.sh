@@ -20,6 +20,8 @@ CLIP_BLOCK="Sources/SrtFlow/VideoEditTimelineClipBlock.swift"
 SHAPE_ROW="Sources/SrtFlow/VideoEditTimelineShapeRow.swift"
 TEXT_ROW="Sources/SrtFlow/VideoEditTimelineTextRow.swift"
 SUBTITLE_ROW="Sources/SrtFlow/VideoEditTimelineSubtitleRow.swift"
+# 字幕 cue 块（2026-09-24 从行里拆出来，按值比较、不跟着时间线重算）。
+CUE_BLOCK="Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift"
 RULER="Sources/SrtFlow/VideoEditTimelineRuler.swift"
 THUMBS="Sources/SrtFlow/VideoEditTimelineThumbnails.swift"
 WAVEFORM="Sources/SrtFlow/VideoEditTimelineWaveform.swift"
@@ -28,7 +30,7 @@ GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
 ROW_HEIGHTS="Sources/SrtFlow/VideoEditTimelineRowHeights.swift"
 ROW_HEIGHT_DRAG="Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift"
-# 「整族都必须满足」的约束（手势坐标系、文件体积）扫这一批。
+# 「整族都必须满足」的约束（手势坐标系、文件都在）扫这一批。
 MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 DROP_ROUTER="Sources/SrtFlow/VideoEditTimelineDropRouter.swift"
 VOLUME_CURVE="Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift"
@@ -38,10 +40,12 @@ INSERT_GAP="Sources/SrtFlow/VideoEditTimelineInsertGap.swift"
 # 整条轨换位置（2026-09-24）：纯值的落点算法一个文件，轨道头上的拖动接线一个文件。
 LANE_ORDER="Sources/SrtFlow/VideoEditTimelineLaneOrder.swift"
 LANE_REORDER="Sources/SrtFlow/VideoEditTimelineLaneReorder.swift"
+# 拖动 / 拉框的会话盒子与覆盖层（2026-09-25，§0b）：时间线持有不订阅，块只收自己那份。
+DRAG_BOX_FILE="Sources/SrtFlow/VideoEditTimelineDragBox.swift"
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
-  "$TEXT_ROW" "$SUBTITLE_ROW" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
+  "$TEXT_ROW" "$SUBTITLE_ROW" "$CUE_BLOCK" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
   "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE" \
-  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER")
+  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -80,17 +84,13 @@ require_func() {
   printf '%s\n' "$body"
 }
 
-# ── 0. 拆分后的文件都必须在，且都不许再长回「什么都往里塞」的那种体积 ──
-# 这一族本来是一个 2101 行的文件，谁都不敢动。拆完之后守卫得自己盯住两件事：
-# 路径别失效（扫空文件 = 假绿），单文件别再超过仓库约 800 行的警戒线。
+# ── 0. 拆分后的文件都必须在（扫空文件 = 假绿） ──────────────────────────
+# 这一族本来是一个 2101 行的文件，谁都不敢动。单文件行数的上限自 2026-09-24 起归
+# checks/source-file-size.sh 管（全仓一个上限，见 docs/architecture/coding-standards.md），
+# 这里不再另算一份。
 for file in "${TIMELINE_VIEWS[@]}"; do
-  if [ ! -f "${file}" ]; then
-    fail "找不到 ${file}：时间线视图这一族的文件被改名/删了，守卫会扫空 —— 同步改这里"
-    continue
-  fi
-  LINES="$(wc -l < "${file}" | tr -d ' ')"
-  [ "${LINES}" -le 800 ] \
-    || fail "${file} 已经 ${LINES} 行，超过 800 行警戒线：按职责再拆一刀，别让它长回老样子"
+  [ -f "${file}" ] \
+    || fail "找不到 ${file}：时间线视图这一族的文件被改名/删了，守卫会扫空 —— 同步改这里"
 done
 
 # ── 1. 正在被拖 / 被裁的块必须豁免那条 0.12s 重排动画 ─────────────────
@@ -235,15 +235,7 @@ if BODY="$(require_func 'private func endMarquee' "$MARQUEE_VIEW")"; then
   COUNT="$(printf '%s\n' "$BODY" | grep -c 'applyBoxSelection' || true)"
   [ "$COUNT" -eq 1 ] || fail "endMarquee 里有 ${COUNT} 处 applyBoxSelection，应当正好 1 处"
 fi
-# 拖框中的高亮必须走「看框不看模型」的那个助手，绕过去就没有实时反馈了。
-grep -q 'isSelected: isSelected(clip: clip.id)' "$VIEW" \
-  || fail "剪辑块的选中态没走 isSelected(clip:)：拖框中不会实时高亮"
-grep -q 'isSelected: isSelected(shape: shape.id)' "$SHAPE_ROW" \
-  || fail "形状块的选中态没走 isSelected(shape:)：拖框中不会实时高亮"
-grep -q 'isSelected: isSelected(text: overlay.id)' "$TEXT_ROW" \
-  || fail "文字块的选中态没走 isSelected(text:)：拖框中不会实时高亮"
-grep -q 'isSelected(cue: cue.id)' "$SUBTITLE_ROW" \
-  || fail "字幕 cue 的选中态没走 isSelected(cue:)：拖框中不会实时高亮"
+# 拖框中的高亮「看框不看模型」：块各自从盒子里收框选命中，钉在 timeline-drag-wiring/drag-box.sh。
 # 混选只能从 selectBox 这一个入口进来。
 OTHER_BOX="$(grep -rn 'selectBox(' Sources/SrtFlow --include='*.swift' \
   | grep -v 'VideoEditSelection.swift' \
@@ -266,9 +258,12 @@ fi
 # 三类块都要真的把移动手势接上：剪辑、形状、字幕 cue。少一类，「拖任意一个被
 # 选中的东西，整片跟着走」对那一类就是空话 —— cue 就这么漏过一轮（复审第 3 条）。
 # 不用「数手势个数」：容器上还挂着拉框手势，数得出来的绿是假绿。
+# 手势本体在 cue 块里（按值比较的独立视图），起手 / 落地的接线在行里。
+grep_code 'DragGesture(minimumDistance: 4' "$CUE_BLOCK" \
+  || fail "字幕 cue 块没有移动手势：从 cue 起手拖不动整组"
+grep_code 'SubtitleCueBlockView(' "$SUBTITLE_ROW" \
+  || fail "字幕行没有用 SubtitleCueBlockView 画 cue：块写回行里就又跟着时间线每拍重算"
 if BODY="$(require_func 'func subtitleRow' "$SUBTITLE_ROW")"; then
-  grep -q 'DragGesture(minimumDistance: 4' <<<"$BODY" \
-    || fail "字幕 cue 块没有移动手势：从 cue 起手拖不动整组"
   grep -q 'beginCueDrag(' <<<"$BODY" \
     || fail "字幕 cue 的手势没冻结这一轮的输入（beginCueDrag）"
   grep -q 'endClipDrag(' <<<"$BODY" \
@@ -278,15 +273,11 @@ if BODY="$(require_func 'func subtitleRow' "$SUBTITLE_ROW")"; then
   grep -q 'allowsHitTesting(!hidden)' <<<"$BODY" \
     || fail "字幕行隐藏后仍然吃事件：隐藏轨必须不可编辑"
   # 起手判据要带上「有没有活着的会话」，否则被打断后留下的陈旧 id 会让同一条 cue
-  # 的下一次拖动整轮建不出会话。
-  grep -q 'clipDrag == nil || movingCueID != cue.id' <<<"$BODY" \
+  # 的下一次拖动整轮建不出会话。（会话和记号都在盒子里，§0b。）
+  grep -q 'dragBox.clipDrag == nil || dragBox.movingCueID != cue.id' <<<"$BODY" \
     || fail "cue 起手只比了 id：手势被打断后同一条 cue 会失效一次"
 fi
-# 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）。
-if BODY="$(extract_func '.onDisappear {' "$VIEW")"; then
-  grep -q 'movingCueID = nil' <<<"$BODY" \
-    || fail "onDisappear 没清 movingCueID：下一次拖同一条 cue 会失效一次"
-fi
+# 视图消失时，手势的所有残留状态都要清干净（会话 + 起手标记）：钉在 drag-box.sh（dragBox.reset()）。
 grep -q 'onDragBegin: { beginShapeDrag(shape) }' "$SHAPE_ROW" \
   || fail "形状块没有接上 beginShapeDrag"
 grep -q 'beginClipDrag(' "$VIEW" || fail "剪辑块没有接上 beginClipDrag"
@@ -549,27 +540,11 @@ if BODY="$(require_func 'func setRowHeight(' "$PROJECT")"; then
     || fail "setRowHeight 没标脏：调好的行高不会被自动保存带进工程文件"
 fi
 
-# ── 接缝上的转场遮罩 ──────────────────────────────────────────────────
-# 遮罩是改转场时长的**第二条路**（第一条是检查器的滑块）。三件事必须接住：
-# 行首锚点不能省：不带锚点时 `XXTransitionMaskView(` 也会命中，改名照样假绿
-# （反向验证第一版就是这么漏过去的）。
-grep_code '^ *TransitionMaskView(' "$VIEW" \
-  || fail "主轨那一行没有挂 TransitionMaskView：接缝上的转场遮罩根本不会出现"
-
-# 拖动开始时把时长定死。改时长会让磁吸重排片段、窗口跟着挪，每一拍拿**实时**
-# 窗口去算增量就是自己追自己（手越拖越飘）——和剪辑块 dragOrigin 同一条纪律。
-if MASK_EDGE="$(require_func 'private func edge(' "$MASK")"; then
-  grep -q 'dragStartDuration == nil' <<<"$MASK_EDGE" \
-    || fail "转场遮罩的拖动没有在开始时定死时长（dragStartDuration）：磁吸重排会让它自己追自己"
-fi
-
-# 落值必须被容量夹住。拖得出一个渲染管线做不出来的时长，就又回到了
-# 「设了但成片里没有」——那正是 2026-09-20 那次事故的形状。
-if MASK_APPLY="$(require_func 'private func apply(duration:' "$MASK")"; then
-  grep -q 'maxDuration' <<<"$MASK_APPLY" \
-    || fail "转场遮罩落值时没有按容量夹紧：能拖出渲染管线做不出来的时长"
-fi
-
+# ── 接缝上的转场遮罩 / 裁切（各拆在自己的文件里，同一个 shell 里 source）───────────
+# shellcheck source=checks/timeline-drag-wiring/transition-mask.sh
+source checks/timeline-drag-wiring/transition-mask.sh
+# shellcheck source=checks/timeline-drag-wiring/trim.sh
+source checks/timeline-drag-wiring/trim.sh
 
 # ── 滚动内容必须填满视口、左上角对齐（两轴都要） ──────────────────────
 # 内容比视口小时 SwiftUI 的 ScrollView 会把它**居中**，两根轴各自连出 bug：
@@ -625,30 +600,13 @@ if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
   fi
 fi
 
-# ── 点非素材处 = 把播放头挪过来（2026-09-21 用户拍板） ─────────────────
-# 在这之前，播放头只能在 26pt 高的标尺上点出来。合同是：
-#   点空白 → 移播放头**并且**清空选择；按住拖 → 还是框选（两者靠 4pt 门槛分开）。
-# 「非素材处」不用自己判：块本体 / 标尺 / 把手 / 标记帽子各有自己的手势，
-# SwiftUI 里子视图优先，落到容器上的只剩谁都不认领的空白。
-if BODY="$(require_func 'private var scrolledContent: some View' "$VIEW")"; then
-  grep -q 'onTapGesture(coordinateSpace: \.local)' <<<"$BODY" \
-    || fail "点空白的手势没带 coordinateSpace: .local：拿不到落点，播放头不知道该挪到哪一刻"
-  grep -q 'seekFromTimeline(time: location\.x / pps' <<<"$BODY" \
-    || fail "点空白没把播放头挪过去（少了 seekFromTimeline）"
-  grep -q 'project\.clearSelection()' <<<"$BODY" \
-    || fail "点空白不再清空选择：界面上就没有任何地方能取消选中了"
-fi
-# 夹紧只能有一处：标尺和点空白各写一份 min/max 迟早分叉（一边夹到片尾、一边不夹，
-# 点右边那片空白就会把播放头送到工程之外，工具栏上一排按钮随即全灰）。
-if BODY="$(require_func 'func seekFromTimeline(' "$VIEW")"; then
-  grep -q 'min(max(0, time), project.duration)' <<<"$BODY" \
-    || fail "seekFromTimeline 没把落点夹进 [0, duration]"
-fi
-grep_code 'seekFromTimeline(time: time, precise: precise)' "$VIEW" \
-  || fail "标尺的 onSeek 没走 seekFromTimeline：夹紧会变成两份账"
-CLAMPS="$(grep -c 'clock\.seek(to: min(max(0' "$VIEW" || true)"
-[ "$CLAMPS" -le 1 ] \
-  || fail "$VIEW 里有 ${CLAMPS} 处自己夹紧后 seek：落点只许 seekFromTimeline 一处算"
+# ── 点非素材处 = 把播放头挪过来 / 文字块上下换行 / 拖动会话不进时间线的 @State（各拆在自己的文件里）──
+# shellcheck source=checks/timeline-drag-wiring/playhead-click.sh
+source checks/timeline-drag-wiring/playhead-click.sh
+# shellcheck source=checks/timeline-drag-wiring/text-rows.sh
+source checks/timeline-drag-wiring/text-rows.sh
+# shellcheck source=checks/timeline-drag-wiring/drag-box.sh
+source checks/timeline-drag-wiring/drag-box.sh
 
 # ── 从转场库拖卡片到接缝 ──────────────────────────────────────────────
 # 时间线在这之前**零 SwiftUI 拖放**（块的移动/裁切、标尺 scrub 全是 DragGesture），
@@ -767,7 +725,7 @@ if BODY="$(require_func 'func hoverPeek(' "$VIEW")"; then
     || fail "hoverPeek 没把扫帧时刻夹进 [0, duration]：影子指针会和画面各说各话"
   # 播放中 / 拖块 / 拖框 / 裁切都不扫帧。裁切那条只能从 project 上判 ——
   # `isTrimming` 是剪辑块内的 @State，容器看不见。
-  for guard_expr in '!clock.isPlaying' 'clipDrag == nil' 'marquee == nil' 'project.liveEditOrigin == nil'; do
+  for guard_expr in '!clock.isPlaying' 'dragBox.clipDrag == nil' 'dragBox.marquee == nil' 'project.liveEditOrigin == nil'; do
     grep -qF "$guard_expr" <<<"$BODY" \
       || fail "hoverPeek 少了 ${guard_expr} 这道 guard：按住在动的时候画面会被扫帧抢走"
   done
@@ -783,262 +741,10 @@ if BODY="$(require_func 'func markerPeek(' "$VIEW")"; then
 fi
 
 # ── 从 Finder 拖文件进轨道 / ⌘V 粘贴进轨道 ────────────────────────────
-# 落点算法本身由 scripts/check-media-import.sh 守着（纯值，45 条断言）。
-# 那些断言全过、这里接线接错的话，用户拖上去照样落在主轨末尾 —— 也就是
-# 2026-09-22 之前的老样子，而且从界面上完全看不出区别。
-# 产品口径：docs/plans/2026-09-22-media-file-drop.md
-FILE_DROP="Sources/SrtFlow/VideoEditMediaFileDrop.swift"
-MEDIA_IMPORT="Sources/SrtFlow/VideoEditMediaImport.swift"
-EDITOR_VIEW="Sources/SrtFlow/VideoEditView.swift"
-APP_ENTRY="Sources/SrtFlow/SrtFlowApp.swift"
-for f in "$FILE_DROP" "$MEDIA_IMPORT" "$DROP_ROUTER" "$EDITOR_VIEW" "$APP_ENTRY"; do
-  [ -f "$f" ] || fail "文件不在：$f"
-done
-
-# 1) **整条时间线只许有一个 `.onDrop`**（2026-09-23，探针实测，§5e-2）。
-#    SwiftUI 把一次拖放交给指针底下**最里面**那个落点，类型对不上也不往外找，
-#    连 `.onDrop(of: [])` 这种空类型的都照样独占。两个落点一里一外叠着，里面
-#    那个就吞掉外面那个的拖入 —— 这条规则前后坑了三回：文件落点挂在外面（从
-#    Finder 拖不进来）、垫在里面（ea746c1：滤镜 / 音频库 / 转场卡片全死）、每条
-#    轨道行上的空类型转场落点（卡片和文件拖到轨道行上都被吞）。
-#    数的是时间线这一族**全部**文件，外加四套拖放各自的文件 —— 块、行拆在别的
-#    文件里，挂在那儿一样会吞。
-DROP_SITES="$(for f in "${TIMELINE_VIEWS[@]}" "$FILE_DROP" "$DRAG" \
-    Sources/SrtFlow/VideoEditFilterDrag.swift Sources/SrtFlow/AudioLibraryDrag.swift; do
-  [ -f "$f" ] || continue
-  # 没匹配时 grep 退出码是 1：pipefail 下不兜住，整个命令替换会让脚本静默退出。
-  { grep -nE '\.(onDrop|dropDestination)\(' "$f" || true; } \
-    | grep -vE '^[0-9]+:[[:space:]]*(//|\*)' | sed "s|^|$f:|" || true
-done)"
-DROP_COUNT="$(printf '%s\n' "$DROP_SITES" | grep -c . || true)"
-[ "$DROP_COUNT" -eq 1 ] \
-  || fail "时间线里有 ${DROP_COUNT} 处 .onDrop / .dropDestination（应为 1：scrolledContent 上的 TimelineDropRouter）—— 多出来的那个会吞掉别人的拖入：$DROP_SITES"
-
-# 1b) 路由器认齐四种载荷，而且**卡片的自定义载荷先认、文件最后认**：卡片的
-#     provider 万一同时也给得出 file URL，排反了就会被当成从 Finder 拖进来的文件。
-grep -q 'FilterDrag.type, AudioLibraryDrag.type, TransitionDrag.type, .fileURL' "$DROP_ROUTER" \
-  || fail "TimelineDropRouter.types 没列齐四种载荷：没列上的那种拖进时间线连 validateDrop 都不会调"
-ROUTE_BODY="$(awk '/private func payload\(_ info: DropInfo\)/,/^    \}/' "$DROP_ROUTER")"
-if [ -z "$ROUTE_BODY" ]; then
-  fail "找不到 TimelineDropRouter.payload（在 ${DROP_ROUTER}）：分派守卫失去目标"
-else
-  for t in FilterDrag AudioLibraryDrag TransitionDrag; do
-    grep -q "\[$t\.type\]" <<<"$ROUTE_BODY" \
-      || fail "路由器不认 ${t}：那一套卡片拖上时间线不会有任何反应"
-  done
-  FILE_ROUTE="$(printf '%s\n' "$ROUTE_BODY" | grep -n '\[\.fileURL\]' | head -1 | cut -d: -f1)"
-  LAST_CARD="$(printf '%s\n' "$ROUTE_BODY" | grep -nE '\[(FilterDrag|AudioLibraryDrag|TransitionDrag)\.type\]' \
-    | tail -1 | cut -d: -f1)"
-  if [ -z "$FILE_ROUTE" ]; then
-    fail "路由器不认 .fileURL：从 Finder 拖文件进时间线会没反应"
-  elif [ -n "$LAST_CARD" ] && [ "$FILE_ROUTE" -lt "$LAST_CARD" ]; then
-    fail "路由器先认 .fileURL 再认卡片：卡片要是同时给得出 file URL，就会被当成文件拖入"
-  fi
-fi
-
-# 1c) 滤镜只许落在内容区以内、转场只落主轨那一行。以前靠「落点挂在哪」来保证，
-#     现在只剩一个落点，改由路由器按坐标判 —— 漏一条，那一套就会落到不该落的地方。
-grep -q 'case .filter where withinContent(info)' "$DROP_ROUTER" \
-  || fail "路由器没按内容区宽度拦滤镜：滤镜会落进视口撑出来的空白（时间上远超工程长度，看不见也滚不到）"
-grep -q 'case .transition where onMainRow(info)' "$DROP_ROUTER" \
-  || fail "路由器没按主轨那一行拦转场：拖到别的行上也会接"
-
-# 1d) **松手之后 SwiftUI 还会补发一拍 dropUpdated**（2026-09-23 日志实测：
-#     validate → entered → updated… → PERFORM → updated）。这一拍照常转发的话，
-#     落点框按落地之后的状态重算、挂在时间线上不走；松手点在视口边缘时自动滚动的
-#     心跳还会被重新拉起来。路由器必须先判这一轮还活着没有，四套一个不漏。
-if UPD_BODY="$(awk '/func dropUpdated\(info: DropInfo\)/,/^    \}/' "$DROP_ROUTER")"; then
-  grep -q 'isLive(payload)' <<<"$UPD_BODY" \
-    || fail "路由器的 dropUpdated 没先判 isLive：松手后补发的那一拍会把落点框画回来、把自动滚动重新拉起来"
-fi
-LIVE_BODY="$(awk '/private func isLive\(_ payload: Payload\)/,/^    \}/' "$DROP_ROUTER")"
-for flag in 'MediaFileDrag.pending' 'FilterDrag.preset' 'AudioLibraryDrag.pending' 'TransitionDrag.kind'; do
-  grep -qF "$flag" <<<"$LIVE_BODY" \
-    || fail "isLive 没看 ${flag}：那一套松手后补发的一拍照样会转发"
-done
-# 1e) **「这里不能放」只许回 `.forbidden`，不许回 `.cancel`**（2026-09-23 日志实测）。
-#     `.cancel` 是「取消这一轮拖放」：回过一次，SwiftUI 之后再也不调 dropUpdated，
-#     松手只给 dropExited。转场卡片就这么死的 —— 拖动从标尺那侧进来，第一拍不在
-#     主轨那一行，路由器回了 `.cancel`，指针挪到接缝上也救不回来。整条时间线只有
-#     一个落点之后，拖动**总是**先经过不能放的地方，所以这条对四套拖放一视同仁。
-for f in "$DROP_ROUTER" "$FILE_DROP" "$DRAG" \
-         Sources/SrtFlow/VideoEditFilterDrag.swift Sources/SrtFlow/AudioLibraryDrag.swift; do
-  CANCELS="$({ grep -nE 'DropProposal\(operation:[^)]*\.cancel' "$f" || true; } \
-    | grep -vE '^[0-9]+:[[:space:]]*//' || true)"
-  [ -z "${CANCELS}" ] \
-    || fail "${f} 的落点回了 .cancel：那会取消整轮拖放，之后不再有 dropUpdated，挪到能放的地方也救不回来 —— 改成 .forbidden：${CANCELS}"
-done
-
-#     文件那一套还要自己守住：暂存清空之后 plan 返回 nil，不许「补探一次」——
-#     初版这么写过，补发的那一拍就把框按落地之后的状态画了回来（实测）。
-grep -q 'guard let pending = MediaFileDrag.pending, !pending.isUnusable else { return nil }' "$FILE_DROP" \
-  || fail "文件落点的 plan 在没有暂存时没返回 nil：这一轮收尾之后还会画框"
-if TRACK_BODY="$(awk '/private func track\(_ location: CGPoint\)/,/^    \}/' "$FILE_DROP")"; then
-  grep -vE '^[[:space:]]*//' <<<"$TRACK_BODY" | grep -c 'beginProbe' >/dev/null \
-    && fail "文件落点的 track 里在补探：松手后补发的那一拍会把落点框按落地之后的状态重新画出来"
-fi
-
-# 2) 兜底那条**必须留着**：拖到预览区 / 检查器 / 库栏上仍要能导入。
-[ "$(drag_hits "$EDITOR_VIEW" '\.onDropOfFiles \{ urls in project\.addMedia')" -ne 0 ] \
-  || fail "VideoEditView 的 .onDropOfFiles 兜底没了：拖到预览区 / 检查器 / 库栏上会彻底没反应"
-
-# 3) 另外三套应用内拖放**一律不许**用 .fileURL。它们要是也认 file-url，
-#    一次文件拖入就有四个候选接收者，谁接到全看视图树顺序。
-for f in Sources/SrtFlow/VideoEditTransitionDrag.swift \
-         Sources/SrtFlow/VideoEditFilterDrag.swift \
-         Sources/SrtFlow/AudioLibraryDrag.swift; do
-  [ "$(drag_hits "$f" 'UTType\.fileURL|\.fileURL')" -eq 0 ] \
-    || fail "$f 用了 .fileURL：会和时间线的文件落点、以及 .onDropOfFiles 抢同一种拖入"
-done
-
-# 4) **画落点框和真落地共用同一个落点函数。** 各算一遍必然分叉 ——
-#    框画在这条轨、素材落到另一条，是这个仓库反复踩的那一类错。
-#    全仓恰好两处调用：plan(at:) 画框那一处，importFiles 落地那一处。
-LANDING_CALLS="$(grep -rhE 'mediaImportLandings\(' Sources/SrtFlow --include='*.swift' \
-  | grep -vE '^[[:space:]]*(//|\*)' | grep -v 'func mediaImportLandings' | wc -l | tr -d ' ')"
-[ "$LANDING_CALLS" -eq 2 ] \
-  || fail "mediaImportLandings 被调了 ${LANDING_CALLS} 次（应为 2：画框一处、落地一处）—— 多出来的那处就是第二份账"
-# 起点也只有一份账（指针对中点 / ⌘V 对播放头都在 importFirstStart 里收口）。
-START_CALLS="$(grep -rhE 'importFirstStart\(' Sources/SrtFlow --include='*.swift' \
-  | grep -vE '^[[:space:]]*(//|\*)' | grep -v 'func importFirstStart' | wc -l | tr -d ' ')"
-[ "$START_CALLS" -eq 2 ] \
-  || fail "importFirstStart 被调了 ${START_CALLS} 次（应为 2：画框一处、落地一处）"
-
-# 4b) 磁吸开着时，落点框画在拼完之后的位置：落地走 perform，perform 收尾会 packMain，
-#     落主轨的段被拼到故事线末尾。框照指针处画的话就是「框在这儿、素材落到那儿」。
-#     挪动本身在纯值的 landingsAfterMagnet 里（scripts/check-media-import.sh 对账）。
-if PLAN_BODY="$(awk '/private func plan\(at location: CGPoint, open: TimelineSeam\?\) -> MediaFileDropPlan\?/,/^    \}/' "$FILE_DROP")"; then
-  [ -n "$PLAN_BODY" ] || fail "找不到文件落点的 plan(at:open:)（在 ${FILE_DROP}）：接线守卫失去目标 —— 改名了就同步改这里"
-  grep -q 'landingsAfterMagnet' <<<"$PLAN_BODY" \
-    || fail "文件落点的 plan 没按磁吸拼完之后的位置画框：磁吸开着时框在指针底下、素材却落到主轨末尾"
-fi
-
-# 4c) 素材类拖放（Finder 文件、音频库）**左边缘对齐指针**（2026-09-23 用户拍板）。
-#     素材往往很长，中点对齐时起点要退回半段时长：60 秒的视频拖到主轨末尾后面，
-#     起点退到末尾之前、撞上已有素材被抬轨，要落进主轨得把指针拖到末尾右边 30 秒
-#     开外。滤镜卡片时长短，仍按中点，不在这条里。
-if START_BODY="$(require_func 'func importFirstStart(anchor:' "$FILE_DROP")"; then
-  grep -q '/ 2' <<<"$START_BODY" \
-    && fail "importFirstStart 又按中点对齐了：长素材的起点会退回半段时长，拖到主轨末尾后面也落不进主轨"
-fi
-if AUDIO_PLAN="$(require_func 'private func plan(at location: CGPoint, open: TimelineSeam?) -> AudioLibraryDropPlan?' Sources/SrtFlow/AudioLibraryDrag.swift)"; then
-  grep -q 'duration / 2' <<<"$AUDIO_PLAN" \
-    && fail "音频库落点又按中点对齐了：整首音乐的起点会退回一分多钟，拖到哪都落不到指针那儿"
-fi
-
-# 5) 落地不许回读那份 @State：@Binding 的写入不是同步可见的，回读会让落点晚
-#    一帧（同转场第 5 条）。落点只许从**这一拍的** info.location 算。
-if DROP_BODY="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  grep -q 'info.location.x / pps' <<<"$DROP_BODY" \
-    || fail "文件落点的 performDrop 没按这一拍的指针算时间：读 preview 会和画框那一拍脱节"
-  grep -q 'trackTarget(at: info.location, open: seamAim(at: info.location).open)' <<<"$DROP_BODY" \
-    || fail "文件落点的 performDrop 没按这一拍的指针（和此刻拉开的缝）算目标轨"
-  grep -q 'defer { finish(animated: false) }' <<<"$DROP_BODY" \
-    || fail "文件落点的 performDrop 没收尾（finish）：暂存留着，心跳也可能空转，缝也不合上"
-fi
-if EXIT_BODY="$(awk '/func dropExited\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  grep -q 'finish(animated: true)' <<<"$EXIT_BODY" \
-    || fail "文件落点的 dropExited 没收尾（finish）：指针离开后框还挂着，缝也不合上"
-fi
-if FINISH_BODY="$(awk '/private func finish\(animated: Bool\)/,/^    \}/' "$FILE_DROP")"; then
-  [ -n "$FINISH_BODY" ] || fail "找不到文件落点的 finish(animated:)：接线守卫失去目标"
-  grep -q 'autoScroller.stop()' <<<"$FINISH_BODY" \
-    || fail "finish 没停心跳：指针离开后时间线会一直自己滚"
-  grep -q 'MediaFileDrag.reset()' <<<"$FINISH_BODY" \
-    || fail "finish 没清暂存：下一次拖进来会拿上一批文件画框"
-fi
-
-# 6) 拖动**过程**中一个字都不写模型（§0）：代理里只有 performDrop 能落地。
-NON_DROP="$(awk '/struct MediaFileDropDelegate/,/^\}/' "$FILE_DROP" \
-  | awk '/func (validateDrop|dropEntered|dropUpdated|dropExited)\(/,/^    \}/' \
-  | grep -nE 'project\.(perform|liveApply|importFiles|addMedia)' || true)"
-[ -z "$NON_DROP" ] || fail "文件落点代理在拖动过程中写了模型（只有 performDrop 能落地）：$NON_DROP"
-
-# 6b) 滚动量只许 TimelineScrollGeometry 一处读（§5b）：文件落点自己摸 NSScrollView
-#     的话，滚动量就有了第二份账。
-if grep -vE '^[[:space:]]*(//|///|\*)' "$FILE_DROP" | grep -c 'NSScrollView' >/dev/null; then
-  fail "$FILE_DROP 自己摸 NSScrollView 了：滚动量只许 TimelineScrollGeometry 一处读"
-fi
-
-# 7) 探测结果必须对代号：拖出去又拖回来时，回来的是**另一批**文件，
-#    旧探测落到新一批身上就是凭空多出几段素材（同 documentGeneration 那条守卫）。
-#    判据是「每一个 await 后面都有一道代号校验」，不是数死数 —— await 的个数会变。
-PROBE_BODY="$(awk '/private func beginProbe\(\)/,/^    \}/' "$FILE_DROP")"
-AWAITS="$(printf '%s\n' "$PROBE_BODY" | grep -c 'await ' || true)"
-TOKEN_GUARDS="$(printf '%s\n' "$PROBE_BODY" | grep -c 'MediaFileDrag.pending?.token == token' || true)"
-[ "$TOKEN_GUARDS" -ge "$AWAITS" ] && [ "$TOKEN_GUARDS" -ge 1 ] \
-  || fail "beginProbe 里 ${AWAITS} 个 await 只配了 ${TOKEN_GUARDS} 道代号校验：拖出去再拖进来会用上一批的时长画框"
-
-# 7b) **这次拖入能不能落，绝不许由探测结果决定**（2026-09-22 首测的回归点）。
-#     首测时进场从 `info.itemProviders(for:)` 读 URL —— 松手之前它在 macOS 上
-#     经常是空的，于是探测结论「一个能用的都没有」→ 整次拖入被判死，而外层兜底
-#     也救不回来（注册已被这一层认领），表现就是**拖进时间线彻底没反应**。
-#     三条各自独立：
-#     ① 进场读 URL 走拖放剪贴板，不走 itemProviders；
-#     ② 「确知不可落」的判据里必须带上「URL 真读到了」这一项；
-#     ③ 落地不许因为探测结论而提前返回。
-grep -q 'MediaFileDrag.draggedURLs()' <<<"$PROBE_BODY" \
-  || fail "beginProbe 没走 draggedURLs（拖放剪贴板）：itemProviders 在松手前经常是空的，整条拖入会静默失效"
-if grep -vE '^[[:space:]]*(//|///|\*)' <<<"$PROBE_BODY" | grep -c 'itemProviders' >/dev/null; then
-  fail "beginProbe 又去读 itemProviders 了：松手前它经常返回空，这是首测「拖进去没反应」的另一个根因"
-fi
-grep -q 'var isUnusable: Bool { !isProbing && !urls.isEmpty' "$FILE_DROP" \
-  || fail "isUnusable 少了「URL 真读到了」这一项：读不到 URL 会被当成「文件不行」，整条拖入当场变成不可落"
-if DROP_BODY3="$(awk '/func performDrop\(info: DropInfo\)/,/^    \}/' "$FILE_DROP")"; then
-  grep -q 'isUnusable' <<<"$DROP_BODY3" \
-    && fail "performDrop 拿探测结论当闸门：探测本来只为画框和 dropUpdated 的禁止号，拿它决定落不落就会把整次拖入吞掉"
-fi
-
-# 8) 落点框只画不吃事件（同第 8 节「块内装饰不吃事件」）：它盖在轨道上，吃掉
-#    hit test 就会把落点自己挡住。
-if IND_BODY="$(awk '/struct MediaFileDropIndicator/,/^\}/' "$FILE_DROP")"; then
-  grep -q 'allowsHitTesting(false)' <<<"$IND_BODY" \
-    || fail "MediaFileDropIndicator 没有 allowsHitTesting(false)：会挡住自己的落点"
-fi
-# 8b) 落点框的**外观只有一份账**：新轨那种「行还不存在」的缩略框必须用同一套几何，
-#     各写一份字面量会分叉。2026-09-24 起跨轨拖动的新轨都落在拉开的缝里（几何在
-#     `TimelineSeams.ghostY`），`newLaneY` 只剩拖文件进来的两处：梯子「撞上就抬到最上面
-#     新开一条」和「音频都放不下、最下面新开一条」—— 那两种没有缝可开。
-#     数调用点，别数「某个文件里有没有」（那种写法抓不到偷偷写回的）。
-NEW_LANE_CALLS="$(grep -rh 'newLaneY(' Sources/SrtFlow --include='*.swift' \
-  | grep -vE '^[[:space:]]*(//|\*)' | grep -v 'static func newLaneY' | wc -l | tr -d ' ')"
-[ "$NEW_LANE_CALLS" -eq 2 ] \
-  || fail "newLaneY 的调用点有 ${NEW_LANE_CALLS} 处（应为 2：拖文件进来开新轨的上/下）—— 少一处就是有人写回了字面量，多一处就是跨轨拖动绕开了缝的几何"
-GHOST_CALLS="$(grep -rh 'TimelineSeams.ghostY(' Sources/SrtFlow --include='*.swift' \
-  | grep -vE '^[[:space:]]*(//|\*)' | wc -l | tr -d ' ')"
-[ "$GHOST_CALLS" -ge 1 ] \
-  || fail "没有一处按 TimelineSeams.ghostY 画缝里的缩略框：框和缝会各画各的"
-
-# 9) ⌘V 两边认的东西必须一致。`paste(_:)` 收的和 `validateMenuItem` 亮的对不上，
-#    要么点了没反应，要么明明能粘却是灰的。
-if PASTE_BODY="$(awk '/@objc func paste\(_ sender: Any\?\)/,/^    \}/' "$APP_ENTRY")"; then
-  grep -q 'pasteMediaFiles()' <<<"$PASTE_BODY" \
-    || fail "paste(_:) 不认文件：⌘V 粘贴 Finder 复制的素材会没反应"
-fi
-if VALIDATE_BODY="$(awk '/func validateMenuItem/,/^    \}/' "$APP_ENTRY")"; then
-  grep -q 'MediaFileDrag.pasteboardURLs()' <<<"$VALIDATE_BODY" \
-    || fail "validateMenuItem 没把文件算进 Paste 的亮灭：剪贴板里有文件时菜单项仍是灰的"
-fi
-# 判据必须**同步**：validateMenuItem 等不了异步，所以只能读 NSPasteboard。
-# 两个读入口（⌘V 的系统剪贴板、拖放的拖放剪贴板）共用同一个 helper，
-# 它一旦变成异步，两边一起坏。
-if PB_BODY="$(awk '/private static func urls\(from pasteboard/,/^    \}/' "$FILE_DROP")"; then
-  grep -q 'pasteboard.readObjects' <<<"$PB_BODY" \
-    || fail "urls(from:) 没走 NSPasteboard 的同步读：validateMenuItem 等不了异步"
-  if grep -q 'await' <<<"$PB_BODY"; then
-    fail "urls(from:) 里有 await：菜单项的亮灭判据必须同步"
-  fi
-else
-  fail "找不到 urls(from:)（在 ${FILE_DROP}），接线守卫失去目标 —— 改名了就同步改这里"
-fi
-
-# 10) 落点算法必须留在**纯值**文件里，不许被挪进拖放那个文件 ——
-#     那个文件 import AppKit/SwiftUI，挪过去 scripts/check-media-import.sh 当场编不动。
-if grep -qE '^import (AppKit|SwiftUI)' "$MEDIA_IMPORT"; then
-  fail "$MEDIA_IMPORT 引入了 AppKit/SwiftUI：落点自检编不动它了（它必须保持纯值）"
-fi
-grep -q 'func mediaImportLandings' "$MEDIA_IMPORT" \
-  || fail "mediaImportLandings 不在 $MEDIA_IMPORT 里了：落点自检会扫空"
+# 这一节拆在 checks/timeline-drag-wiring/media-file-drop.sh（同一个 shell 里 source，
+# 共用上面的 fail / grep_code / require_func 和路径变量）。
+# shellcheck source=checks/timeline-drag-wiring/media-file-drop.sh
+source checks/timeline-drag-wiring/media-file-drop.sh
 
 # ── 超宽内容：Canvas 只画可见的那一段（2026-09-23 深度缩放） ──────────
 # 放大到 4800pt/秒之后，块和标尺能有几百万点宽。SwiftUI 的 Canvas 只光栅化可见条带，
@@ -1089,8 +795,9 @@ if grep -vE '^[[:space:]]*//' "$VOLUME_CURVE" | grep -cE 'liveApply|perform[ (]\
 fi
 grep_code 'commitVolumeEdit' "$VOLUME_CURVE" \
   || fail "音量线松手没有落地入口（commitVolumeEdit）"
-# 刀片模式下整条让路（点在线上也该落下那一刀）。
-grep_code 'allowsHitTesting(project.activeTool == .select)' "$VOLUME_CURVE" \
+# 刀片模式下整条让路（点在线上也该落下那一刀）。工具由剪辑块按值传进来
+#（2026-09-24 起音量线不再订阅整个工程，见 ClipBlockContext）。
+grep_code 'allowsHitTesting(activeTool == .select)' "$VOLUME_CURVE" \
   || fail "刀片模式下音量线还在吃点击：那一刀落不下去"
 # 线挂在波形上（音频块与视频块底部的波形带两处）。
 [ "$(grep -c 'VolumeCurveOverlay(' "$CLIP_BLOCK")" -ge 2 ] \
@@ -1262,4 +969,4 @@ fi
 if [ "$FAILED" -ne 0 ]; then
   exit 1
 fi
-echo "✓ timeline-drag-wiring：整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工与体积 / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"
+echo "✓ timeline-drag-wiring：拖动会话不进时间线的 @State（盒子持有不订阅、块只收自己那份、覆盖层唯一订阅者）/ 整轨换位（输入是值、量在不动的坐标系上、调行高只在下边缘、松手落一次、两边同一个位移）/ 插入缝（位置一份纯值、两边垫同一行、停够才拉开、按指针判、拖动中不写 state）/ 音量线只吃线那一条窄带（窄带 ∪ 小圆）、拖点跟手不跳且拖动中不写 state / 波形 / 标尺 / 缩略图只画可见条带、对数缩放滑杆 / 轨道头对齐与整行点选 / 行高一轨一个值且不进撤销栈 / 文件分工（都在） / 开关默认值 / 播放头把手钉住 / 滚动量现读 / 纵向滚动两处钉住同源 / 动画豁免 / 拖动中不写 state / 输入冻结 / 落点单一 / 三类同一个位移 / 拖框中不写 project / 手势坐标系 / 缩放钳制 / 心跳兜底 / 装饰不吃事件 / 转场遮罩 / 转场拖放接线 / 时间线唯一落点与四套分派 / 文件拖进轨道与 ⌘V 接线 / 滚动内容两轴填满视口 / 命中区盖在填满视口之后 / 点非素材处移播放头与唯一夹紧 / 扫帧 peek 唯一所有者"

@@ -58,7 +58,7 @@ need Sources/SrtFlow/VideoEditTimelineTransitionMask.swift '\.pointerStyle\(\.co
 need Sources/SrtFlow/VideoEditTimelineShapeRow.swift       '\.pointerStyle\(\.columnResize\)' '形状轨裁切把手的 .columnResize'
 need Sources/SrtFlow/VideoEditTimelineTextRow.swift        '\.pointerStyle\(\.columnResize\)' '文字轨裁切把手的 .columnResize'
 need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(\.columnResize\)' '片段裁切把手的 .columnResize'
-need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(project\.activeTool == \.split \? \.rectSelection : nil\)' '刀片十字（条件靠 nil 交回外层）'
+need Sources/SrtFlow/VideoEditTimelineClipBlock.swift      '\.pointerStyle\(context\.activeTool == \.split \? \.rectSelection : nil\)' '刀片十字（条件靠 nil 交回外层）'
 need Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift  '\.pointerStyle\(\.rowResize\)'    '轨道头调行高的 .rowResize'
 need Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift   '\.pointerStyle\(lane == nil \? nil : \(dragging \? \.grabActive : \.grabIdle\)\)' '轨道头换位的抓手（不能换位的行 nil 交回外层）'
 need Sources/SrtFlow/VideoEditPreviewTransform.swift       '\.pointerStyle\(handle\.pointerStyle\)' '预览变换把手接 handle.pointerStyle'

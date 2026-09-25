@@ -5,10 +5,9 @@ import Foundation
 /// 存的是 `EditClip.fadeInDuration` / `fadeOutDuration`，单位是**时间线秒**
 /// （变速之后）—— 用户在时间线上看到的就是这个长度，变速不该让他重算。
 ///
-/// 预览（`AVMutableAudioMixInputParameters.setVolumeRamp`）和导出
-/// （ffmpeg `afade`）都必须从**这里**取生效值，不许各自夹紧各自的：两边分叉
-/// 就是「预览听着对、成片不对」。曲线两边都是线性（`afade` 默认 `tri` 即线性），
-/// 所以同一组时长在两条管线上逐样本一致。
+/// 预览的音量斜坡（`AVMutableAudioMixInputParameters.setVolumeRamp`）从**这里**取生效值，
+/// 不许在调用点另夹一份。成片的声音自 2026-09-24 起就是预览这份混音离线读出来的
+/// （ExportAudioMixdown），不再有 ffmpeg 的 `afade` 那一份 —— 两条管线只剩一条。
 ///
 /// 长期约束见 docs/architecture/audio-fades.md。
 
@@ -80,14 +79,14 @@ enum AudioGain {
 
 /// 声音的渐变窗口就是共用的 `FadeWindow`（字段、`none`、`isEmpty`、转场仲裁的
 /// `suppressing` 和三重夹紧都在 VideoEditFadeWindow.swift）。下面只放声音专属的
-/// 两个口径和 `afade` 段。
+/// 那一个口径：主轨转场那条边怎么算。
 typealias AudioFadeWindow = FadeWindow
 
 extension FadeWindow {
-    /// 主轨某一段在**预览**里最终生效的音量斜坡。
+    /// 主轨某一段最终生效的音量斜坡（预览和成片是同一份混音）。
     ///
-    /// 预览没有 `acrossfade` 这种东西，转场的交叉淡变**就是**靠这里的斜坡实现的，
-    /// 所以有转场的边要换成转场时长本身。
+    /// 转场的交叉淡变**就是**靠这里的斜坡实现的（A/B 两条合成音轨一条淡出、一条淡入），
+    /// 所以有转场的边要换成转场时长本身；用户在那条边设的渐变让位，不叠加。
     ///
     /// - Parameters:
     ///   - transitionBefore: 与**前**一段的转场重叠时长（0 = 这条边没有转场）
@@ -102,44 +101,34 @@ extension FadeWindow {
             fadeOut: transitionAfter > 0 ? transitionAfter : user.fadeOut
         )
     }
-
-    /// 主轨某一段在**导出**里由段内滤镜负责的音量斜坡。
-    ///
-    /// 和预览的差别只有一处，但很容易写错：导出的转场交叉淡变是在**段与段之间**
-    /// 由 `acrossfade` 做的，不在段内的滤镜链里。所以这里有转场的边只做「抑制」，
-    /// **不能**把转场时长再加进段内的 `afade` —— 加了就是转场处衰减两遍。
-    static func exportMainTrack(
-        clip: EditClip, hasTransitionBefore: Bool, hasTransitionAfter: Bool
-    ) -> AudioFadeWindow {
-        clip.audioFades.suppressing(fadeIn: hasTransitionBefore, fadeOut: hasTransitionAfter)
-    }
-
-    /// 导出滤镜链里要插的 `afade`（`type` 是 `in` / `out`，起点和时长都是秒）。
-    ///
-    /// - Parameter timelineDuration: 这段在**时间线上**的长度，也就是变速之后的
-    ///   长度。`afade` 的 `st` 读的是它在链上看到的时间轴，而链上 `atempo`
-    ///   已经跑过了 —— 拿源长度算淡出起点，变速的段会淡错地方（2x 的段会在
-    ///   一半处就开始淡出）。
-    ///
-    /// 曲线不显式写：`afade` 默认 `curve=tri` 就是线性，与预览
-    /// `setVolumeRamp` 的线性斜坡逐样本一致。写死别的曲线就会两边分叉。
-    func afadeSegments(timelineDuration: Double) -> [(type: String, start: Double, duration: Double)] {
-        var segments: [(type: String, start: Double, duration: Double)] = []
-        if fadeIn > 0 {
-            segments.append((type: "in", start: 0, duration: fadeIn))
-        }
-        if fadeOut > 0 {
-            segments.append((
-                type: "out",
-                start: max(0, timelineDuration - fadeOut),
-                duration: fadeOut
-            ))
-        }
-        return segments
-    }
 }
 
 extension EditClip {
+    /// 「分离音频」造出来的那一段：同一个源文件、只取声音，挂在 `linkGroup` 上。
+    ///
+    /// **声音的设置跟着走**：音量、音量曲线、渐入渐出、声音场景都是这段声音自己的属性，
+    /// 分离之后视频那段被静音，留在它身上的这些设置就再也听不见了 —— 用户画好的
+    /// 曲线凭空消失（2026-09-23 随音量曲线补上；在那之前渐入渐出也一直没跟过来）。
+    func detachedAudio(linkGroup group: UUID) -> EditClip {
+        var detached = EditClip(
+            sourceURL: sourceURL,
+            isAudioOnly: true,
+            sourceStart: sourceStart,
+            sourceDuration: sourceDuration,
+            speed: speed,
+            timelineStart: timelineStart,
+            volume: volume,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+            linkGroup: group,
+            info: info,
+            audioAssetDuration: info?.duration
+        )
+        detached.volumeCurve = volumeCurve
+        detached.soundScene = soundScene
+        return detached
+    }
+
     /// 这一段实际生效的渐入/渐出（时间线秒）。夹紧规则见 `FadeWindow.clamped`
     /// —— 与画面渐变**同一份**，两边不许各夹各的。
     var audioFades: AudioFadeWindow {
@@ -176,6 +165,10 @@ extension TimelineState {
             clip.fadeInDuration = 0
             clip.fadeOutDuration = 0
             clip.volumeCurve = KeyframeTrack()
+            // 声音场景：换种类、拖滑杆只进 audioMix（tap 背后的配置），抹平；**有没有**场景
+            // 留着 —— 挂了场景的合成音轨最后一段后面要垫一截素材让余音散完，那是合成结构
+            // （docs/architecture/sound-scenes.md）。
+            if clip.soundScene != nil { clip.soundScene = SoundScene(kind: .room) }
         }
         copy.mainVolume = 1
         copy.masterVolume = 1

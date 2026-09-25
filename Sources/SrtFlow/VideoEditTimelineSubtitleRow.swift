@@ -6,6 +6,8 @@ import SrtFlowCore
 //
 // 从 `VideoEditTimelineView.swift` 拆出来（拆分前 2101 行，远超仓库约 800 行的
 // 警戒线）。译文轨是原文轨的镜像（同 ID 同时间），点任意一行选中的是同一条 cue。
+// 块本身在 `VideoEditTimelineSubtitleCueBlock.swift`（按值比较，不跟着时间线重算）；
+// 这里只管行、点了选谁、拖动会话的起手和落地。
 // 可见性与布局的长期约束见
 // docs/architecture/subtitle-track-visibility-and-layout.md。
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按文件扫描，挪动这里的东西要同步改它。
@@ -30,26 +32,14 @@ extension VideoEditTimelineView {
                 .frame(width: contentWidth)
             if let cues {
                 ForEach(cues) { cue in
-                    let selected = isSelected(cue: cue.id)
-                    let offset = dragOffset(movingID: cue.id)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(tint.opacity(selected ? 0.8 : 0.45))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 3)
-                                .strokeBorder(.white, lineWidth: selected ? 1.2 : 0)
-                        )
-                        // 宽和高都与框选的命中判定共用常量：画多大就该按多大判，
-                        // 否则一条 0.05 秒的 cue 框得中却看不见、或反过来。
-                        .frame(
-                            width: max(TimelineMarquee.cueMinimumWidth, (cue.end - cue.start) * pps),
-                            height: TimelineMarquee.cueHeight
-                        )
-                        .offset(
-                            x: (cue.start + (offset ?? 0)) * pps,
-                            y: TimelineMarquee.cueTopInset
-                        )
-                        .zIndex(offset != nil ? 10 : 0)
-                        .onTapGesture {
+                    SubtitleCueBlockView(
+                        cue: cue,
+                        pps: pps,
+                        tint: tint,
+                        isSelected: project.selectedSubtitleCueIDs.contains(cue.id),
+                        drag: dragBox,
+                        isDragMember: dragMembers.contains(cue.id),
+                        onTap: {
                             // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
                             // 带进这条字幕，画面上立刻有字可调。⌘/⇧ 点是加选。
                             let event = NSApp.currentEvent
@@ -63,30 +53,25 @@ extension VideoEditTimelineView {
                             guard !additive, (event?.clickCount ?? 1) >= 2 else { return }
                             if clock.isPlaying { clock.togglePlayback() }
                             editingCue = EditingCue(id: cue.id, kind: kind)
+                        },
+                        onDragChange: { translation, pointerViewport in
+                            // 判据带上「有没有活着的会话」：只比 id 的话，
+                            // 上一轮被打断（切栏目/关窗）留下的陈旧 id 会让
+                            // 同一条 cue 的下一次拖动整轮都建不出会话。
+                            if dragBox.clipDrag == nil || dragBox.movingCueID != cue.id {
+                                dragBox.movingCueID = cue.id
+                                beginCueDrag(cue)
+                            }
+                            updateClipDrag(translation: translation, pointerViewport: pointerViewport)
+                        },
+                        onDragEnd: {
+                            // 起手记号由 `dragBox.end()` 一起清。
+                            endClipDrag()
                         }
-                        .gesture(
-                            // 与剪辑/形状块同一套：坐标系钉在不动的滚动视口上
-                            //（块会在手指底下挪窝，自动滚动还会把内容抽走）。
-                            DragGesture(minimumDistance: 4, coordinateSpace: .named(VideoEditTimelineView.scrollSpace))
-                                .onChanged { value in
-                                    // 判据带上「有没有活着的会话」：只比 id 的话，
-                                    // 上一轮被打断（切栏目/关窗）留下的陈旧 id 会让
-                                    // 同一条 cue 的下一次拖动整轮都建不出会话。
-                                    if clipDrag == nil || movingCueID != cue.id {
-                                        movingCueID = cue.id
-                                        beginCueDrag(cue)
-                                    }
-                                    updateClipDrag(
-                                        translation: value.translation,
-                                        pointerViewport: value.location
-                                    )
-                                }
-                                .onEnded { _ in
-                                    movingCueID = nil
-                                    endClipDrag()
-                                }
-                        )
-                        .instantHelp(verbatim: SubtitleSerializer.plainText(cue.text))
+                    )
+                    // 按值比较：拖动每动一下时间线都重算，没变的 cue 别跟着重算
+                    //（见 `SubtitleCueBlockView` 文件头）。
+                    .equatable()
                 }
             }
         }

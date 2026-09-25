@@ -102,14 +102,18 @@ run_check "shell-var-boundary（扫描守卫）" checks/shell-var-boundary.sh
 run_check "shell-pipe-grep-q（扫描守卫）" checks/shell-pipe-grep-q.sh
 run_check "exported-types-declared（扫描守卫）" checks/exported-types-declared.sh
 run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
+run_check "hit-shape-before-offset（扫描守卫：可点范围写在 .offset 之前）" checks/hit-shape-before-offset.sh
 run_check "blocking-media-reads（扫描守卫）" checks/blocking-media-reads.sh
+run_check "export-audio-single-pipeline（扫描守卫：成片的声音就是预览那份混音）" checks/export-audio-single-pipeline.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh
 run_check "docs-index-drift（扫描守卫）" checks/docs-index-drift.sh
+run_check "source-file-size（扫描守卫：代码文件行数上限，老文件只许降）" checks/source-file-size.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
 run_check "transition-handles-wiring（扫描守卫）" checks/transition-handles-wiring.sh
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
+run_check "inspector-fits-width（扫描守卫：检查器里的 Picker 不许锁死宽度）" checks/inspector-fits-width.sh
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh

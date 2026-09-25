@@ -84,7 +84,7 @@ final class VideoEditProject: ObservableObject {
     /// 选中的滤镜段还在不在（被删、撤销掉「加滤镜」那一步）。同样收在这个唯一
     /// 入口 —— 留着的话时间线上没有任何东西高亮，⌫ 却还会去删一段看不见的滤镜。
     private func pruneFilterSelection() {
-        guard selection.filterID != nil else { return }
+        guard !selection.filterIDs.isEmpty else { return }
         selection.pruneFilter { id in state.filters.contains { $0.id == id } }
     }
 
@@ -269,11 +269,19 @@ final class VideoEditProject: ObservableObject {
         }
     }
 
-    /// 点选一段滤镜。没有加选 —— 滤镜段和标记、转场同族，只点选、不进框选
-    ///（理由见 `EditSelection.filterID`）。选中态的 `@Published` 写在这个文件里，
-    /// 因为 `selection` 是 `private(set)`。
-    func selectFilter(_ id: UUID?) {
-        selection.selectFilter(id)
+    /// 点选一段滤镜：普通点是单选（和别的选择互斥，理由见 `EditSelection.filterIDs`），
+    /// ⌘/⇧点是加选或取消。写在这个文件里，因为 `selection` 是 `private(set)`。
+    func selectFilter(_ id: UUID?, additive: Bool = false) {
+        guard let id, additive else { selection.selectFilter(id); return }
+        var ids = selectedFilterIDs
+        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        selectedFilterIDs = ids
+    }
+
+    /// 选中的全部滤镜段（框选 / ⌘A / ⌘点可以一次选中多段，2026-09-25）。
+    var selectedFilterIDs: Set<UUID> {
+        get { selection.filterIDs }
+        set { selection.selectFilters(newValue) }
     }
 
     /// 鼠标框选落地：四类一次写完，**整轮框选只写这一次**。
@@ -281,8 +289,10 @@ final class VideoEditProject: ObservableObject {
     /// 拖框过程中的高亮全在视图层的 `@State` 里（见
     /// `VideoEditTimelineView.marquee`）—— 每一拍写这里会连带整个编辑器视图树
     /// 重建、重挂一次自动保存，框就会跟不上光标，和拖块那条约束是同一个理由。
-    func applyBoxSelection(clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>) {
-        selection.selectBox(clips: clips, shapes: shapes, texts: texts, cues: cues)
+    func applyBoxSelection(
+        clips: Set<UUID>, shapes: Set<UUID>, texts: Set<UUID>, cues: Set<UUID>, filters: Set<UUID> = []
+    ) {
+        selection.selectBox(clips: clips, shapes: shapes, texts: texts, cues: cues, filters: filters)
     }
 
     /// 请求对这一段文字进入就地编辑（画面上直接打字）。
@@ -408,8 +418,8 @@ final class VideoEditProject: ObservableObject {
 
     /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
     @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
-    /// 预览是否正在重建（大工程时给个转圈）。
-    @Published private(set) var isRebuildingPreview = false
+    /// 预览是否正在重建。**不在工程上发**：只有工具栏的转圈订阅它，放这儿当 `@Published` 每次重建整个编辑器多算两轮（2026-09-25）。
+    let rebuildStatus = PreviewRebuildStatus()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     private var audioPlan: AudioMixPlan?
@@ -571,7 +581,7 @@ final class VideoEditProject: ObservableObject {
             movingIDs: movingIDs,
             candidates: snapCandidates(moving: movingIDs.union(companions.ids)),
             magnetMain: slot.isMain && magnetEnabled
-        )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+        )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
@@ -600,30 +610,7 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
-    }
-
-    /// 文字块的拖动会话。与形状那条**逐字同构** —— 文字行允许重叠（重叠了就
-    /// 自动多分一层，见 `TextOverlayStacking`），所以自己没有障碍；跟着走的
-    /// 剪辑各自带上本轨的障碍。
-    func textDragPlan(textID id: UUID) -> ClipDragPlan? {
-        guard let overlay = state.textOverlays.first(where: { $0.id == id }) else { return nil }
-        let span = TimelineSpan(start: overlay.timelineStart, end: overlay.timelineEnd)
-        let clipIDs = state.draggingClipIDs(
-            seed: selectedTextIDs.contains(id) ? selectedClipIDs : [],
-            linkage: linkageEnabled,
-            magnetPinsMainTrack: magnetEnabled
-        )
-        let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
-        let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .text)]
-            + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
-        return ClipDragPlan(
-            draggedID: id,
-            draggedSpan: span,
-            members: members,
-            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
-            magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
@@ -652,38 +639,7 @@ final class VideoEditProject: ObservableObject {
             members: members,
             candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
             magnet: nil
-        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues)
-    }
-
-    /// 跟着一起动的非剪辑伙伴：框选一起选中的形状和字幕 cue。
-    ///
-    /// 只在**被拖的那个本来就在选中集合里**时才有伙伴 —— 拖一个没选中的东西
-    /// 是「单选它再拖」，那时候整片选择已经被换掉了，不该再拉着旧的一片走。
-    private func movingCompanions(
-        draggedID: UUID,
-        movingClipIDs: Set<UUID>
-    ) -> (
-        shapes: [(id: UUID, span: TimelineSpan)],
-        texts: [(id: UUID, span: TimelineSpan)],
-        cues: [(id: UUID, span: TimelineSpan)],
-        ids: Set<UUID>
-    ) {
-        let engaged = movingClipIDs.contains(draggedID)
-            || selectedShapeIDs.contains(draggedID)
-            || selectedTextIDs.contains(draggedID)
-            || selectedSubtitleCueIDs.contains(draggedID)
-        guard engaged else { return ([], [], [], []) }
-        let shapes = state.shapes
-            .filter { selectedShapeIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
-        let texts = state.textOverlays
-            .filter { selectedTextIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
-        let cues = (state.subtitle?.cues ?? [])
-            .filter { selectedSubtitleCueIDs.contains($0.id) }
-            .map { (id: $0.id, span: TimelineSpan(start: $0.start, end: $0.end)) }
-        let ids = Set(shapes.map(\.id)).union(texts.map(\.id)).union(cues.map(\.id))
-        return (shapes, texts, cues, ids)
+        ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
     }
 
     /// 形状 / 文字 / 字幕 cue 起手的拖动落地：一步撤销。
@@ -694,13 +650,14 @@ final class VideoEditProject: ObservableObject {
     ///
     /// `magnet` 仍要如实传全局开关：这一组里可能挂着剪辑，而 `perform` 之后
     /// 无论如何都会重排主轨，`applyDrag` 里同步排一次，产物才等于最终状态。
-    func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution) {
+    func commitFreeDrag(_ plan: ClipDragPlan, resolution: DragResolution, textRow: Int? = nil) {
         // 形状、文字和字幕都不参与 AV 合成（叠层是 SwiftUI 画的），这一组里
         // 没有剪辑就别白重建一次预览 —— 那会让画面黑一下。
         let hasClip = plan.members.contains { $0.kind == .clip }
         let magnet = magnetEnabled
         perform(rebuildsPreview: hasClip) { state in
             state.applyDrag(plan, resolution: resolution, crossTrack: nil, magnet: magnet)
+            state.settleTextRow(plan, preferring: textRow)
         }
     }
 
@@ -721,25 +678,24 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
-    func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+    /// 拉任何一个块的把手裁一边：拉的那个块在选中集合里就**整个选择一起裁**，链接开着时
+    /// 链接伙伴跟着（名单规则 `TimelineTrim.members`）；整组同一个量、谁先到头整组一起停
+    /// （VideoEditTimelineTrim.swift，docs/architecture/timeline-drag-gestures.md §3.6）。
+    /// 四种块的把手（剪辑 / 形状 / 文字 / 滤镜）都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    func liveTrim(anchor: TimelineTrim.Member, leading: Bool, deltaSeconds: Double) {
+        let members = TimelineTrim.members(
+            anchor: anchor, selectedClips: selectedClipIDs, selectedShapes: selectedShapeIDs,
+            selectedTexts: selectedTextIDs, selectedCues: selectedSubtitleCueIDs,
+            selectedFilters: selectedFilterIDs, linkage: linkageEnabled, in: state
+        )
         beginLiveEdit()
         liveApply { state in
-            state.update(id) { clip in
-                if leading {
-                    let maxExtend = clip.sourceStart / clip.speed
-                    let maxShrink = clip.timelineDuration - 0.1
-                    let delta = min(max(deltaSeconds, -maxExtend), maxShrink)
-                    clip.sourceStart += delta * clip.speed
-                    clip.sourceDuration -= delta * clip.speed
-                    clip.timelineStart += delta
-                } else {
-                    let maxExtend = (clip.assetDuration - clip.sourceStart - clip.sourceDuration) / clip.speed
-                    let maxShrink = -(clip.timelineDuration - 0.1)
-                    let delta = min(max(deltaSeconds, maxShrink), maxExtend)
-                    clip.sourceDuration += delta * clip.speed
-                }
-            }
+            state.trimGroup(members, leading: leading, by: deltaSeconds)
         }
+    }
+
+    func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .clip), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     /// 视图给的 UndoManager 首次出现时常常还是 nil，注册进去就全丢了。
@@ -1067,19 +1023,12 @@ final class VideoEditProject: ObservableObject {
         guard let targetID else { return }
         let ids = linkageEnabled ? state.linkedClipIDs(of: targetID) : [targetID]
 
+        // 裁的算法只有 TimelineTrim 一份：留右边 = 起点端往右裁到播放头，留左边 = 终点端往左裁到播放头。
         perform { state in
             for id in ids {
-                state.update(id) { clip in
-                    guard clip.contains(time: time) else { return }
-                    let cut = (time - clip.timelineStart) * clip.speed
-                    if keepRight {
-                        clip.sourceStart += cut
-                        clip.sourceDuration -= cut
-                        clip.timelineStart = time
-                    } else {
-                        clip.sourceDuration = cut
-                    }
-                }
+                guard let clip = state.clip(with: id), clip.contains(time: time) else { continue }
+                let member = TimelineTrim.Member(id: id, kind: .clip)
+                state.trim(member, leading: keepRight, by: keepRight ? time - clip.timelineStart : time - clip.timelineEnd)
             }
         }
     }
@@ -1107,12 +1056,6 @@ final class VideoEditProject: ObservableObject {
             setTransition(after: seamID, .none)
             return
         }
-        // 选中的是一段滤镜：⌫ 删它，别去碰它下面那条轨上的素材。互斥由
-        // `EditSelection` 保证（选滤镜时剪辑选择已经清了）。
-        if let filterID = selection.filterID {
-            deleteFilter(filterID)
-            return
-        }
         var clipIDs = selectedClipIDs
         if linkageEnabled {
             for id in selectedClipIDs { clipIDs.formUnion(state.linkedClipIDs(of: id)) }
@@ -1120,13 +1063,15 @@ final class VideoEditProject: ObservableObject {
         let shapeIDs = selectedShapeIDs
         let textIDs = selectedTextIDs
         let cueIDs = selectedSubtitleCueIDs
-        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty else { return }
+        let filterIDs = selectedFilterIDs   // 滤镜和别的一起删（框选 / ⌘A 混选的那一片）；空出的层收拢
+        guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty || !filterIDs.isEmpty else { return }
         // 只删形状/文字/字幕时不重建预览：三者都不参与 AV 合成（叠层是 SwiftUI
         // 画的），白重建一次会让画面黑一下。
         perform(rebuildsPreview: !clipIDs.isEmpty) { state in
             for member in clipIDs { state.remove(member) }
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
-            if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) } }
+            if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
+            if !filterIDs.isEmpty { state.filters.removeAll { filterIDs.contains($0.id) }; state.compactFilterLayers() }
             if !cueIDs.isEmpty, var original = state.subtitle {
                 // 两轨 + meta 同删，走和字幕面板一样的那份合同。
                 var companion = state.subtitleCompanion ?? SubtitleCompanion()
@@ -1393,19 +1338,7 @@ final class VideoEditProject: ObservableObject {
     /// 形状没有素材边界：起点端最多回拉到 0；两端收缩的下限 0.2s 与检查器
     /// 「Shows for」步进器的下限同一个数。
     func liveTrimShape(_ id: UUID, leading: Bool, deltaSeconds: Double) {
-        beginLiveEdit()
-        liveApply { state in
-            state.updateShape(id) { shape in
-                let minDuration = 0.2
-                if leading {
-                    let delta = min(max(deltaSeconds, -shape.timelineStart), shape.duration - minDuration)
-                    shape.timelineStart += delta
-                    shape.duration -= delta
-                } else {
-                    shape.duration += max(deltaSeconds, -(shape.duration - minDuration))
-                }
-            }
-        }
+        liveTrim(anchor: TimelineTrim.Member(id: id, kind: .shape), leading: leading, deltaSeconds: deltaSeconds)
     }
 
     func deleteShape(_ id: UUID) {
@@ -1472,7 +1405,7 @@ final class VideoEditProject: ObservableObject {
               let item = clock.player.currentItem else { return false }
         // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
         // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
-        guard !isRebuildingPreview else { return false }
+        guard !rebuildStatus.isRebuilding else { return false }
         PerfCounters.event(.audioMixRefresh)
         item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
         return true
@@ -1488,7 +1421,7 @@ final class VideoEditProject: ObservableObject {
         let now = CACurrentMediaTime()
         guard now - lastLiveAudioPreview > 0.05 else { return }
         guard let plan = audioPlan, !plan.lanes.isEmpty,
-              let item = clock.player.currentItem, !isRebuildingPreview else { return }
+              let item = clock.player.currentItem, !rebuildStatus.isRebuilding else { return }
         lastLiveAudioPreview = now
         var preview = state
         mutate(&preview)
@@ -1505,19 +1438,19 @@ final class VideoEditProject: ObservableObject {
         rebuildGeneration += 1
         let generation = rebuildGeneration
         rebuildTask?.cancel()
-        isRebuildingPreview = true
+        rebuildStatus.set(true)
         rebuildTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 250_000_000)
+            try? await Task.sleep(nanoseconds: 120_000_000)  // 防抖只为并掉一阵子里的连续改动；250 时松手到预览回来白等 130ms（2026-09-25）
             guard let self, !Task.isCancelled else { return }
             let snapshot = self.state
             let built = await VideoEditCompositionBuilder.build(from: snapshot)
             guard !Task.isCancelled, generation == self.rebuildGeneration else { return }
-            self.isRebuildingPreview = false
+            self.rebuildStatus.set(false)
             guard let built else {
                 self.clock.detach()
                 return
             }
-            self.renderSize = built.renderSize
+            if self.renderSize != built.renderSize { self.renderSize = built.renderSize }  // 没变不写：@Published
             self.audioPlan = built.audioPlan
             let wasPlaying = self.clock.isPlaying
             let time = self.clock.time
@@ -1530,8 +1463,8 @@ final class VideoEditProject: ObservableObject {
             item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
                 state: snapshot, plan: built.audioPlan, meters: meters
             ) ?? built.audioMix
-            // 变速片段保持音调，跟导出时 atempo 的听感一致。
-            item.audioTimePitchAlgorithm = .spectral
+            // 变速片段保持音调：和成片的离线混音同一个算法（成片的声音就是这份混音读出来的）。
+            item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
             self.clock.attachItem(item)
             self.clock.seek(to: min(time, snapshot.duration), precise: true)
             if wasPlaying { self.clock.player.play() }

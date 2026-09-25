@@ -179,12 +179,92 @@ need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.c
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionAssetOpen\)' '开素材文件的计数'
 need Sources/SrtFlow/VideoEditAudioMeter.swift 'PerfCounters\.event\(\.meterTapCreate\)' '新建电平表 tap 的计数'
 need Sources/SrtFlow/VideoEditProject.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
-need Sources/SrtFlow/VideoEditView.swift 'PreviewBench\.startIfRequested\(project: project\)' '编辑器出现时启动性能测试的入口'
+# 编辑器出现时的开发钩子收在 DevHooks.editorAppeared 里（2026-09-24 从 VideoEditView 挪出去）：
+# 钉住两头 —— 视图调了钩子、钩子里启动了性能测试。
+need Sources/SrtFlow/VideoEditView.swift 'DevHooks\.editorAppeared\(project: project\)' '编辑器出现时调开发钩子'
+need Sources/SrtFlow/DevHooks.swift 'PreviewBench\.startIfRequested\(project: project\)' '开发钩子里启动性能测试的入口'
 # 后台读媒体的起止：少了它，测试会在缩略图 / 波形还没读完时就开始量，数时有时无。
 need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadBegan\(\)' '缩略图开始取图的登记'
 need Sources/SrtFlow/VideoEditTimelineThumbnails.swift 'PerfCounters\.backgroundReadEnded\(\)' '缩略图取完的登记'
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadBegan\(\)' '波形开始解码的登记'
 need Sources/SrtFlow/VideoEditWaveformData.swift 'PerfCounters\.backgroundReadEnded\(\)' '波形解码完的登记'
+
+echo "==> 时间线上的块：不订阅工程、按值比较"
+# 块订阅整个工程（@ObservedObject var project）的话，工程里任何一处变化 —— 点选一段 ——
+# 都让全部块重算、全部音量线重画；块的输入里带闭包，SwiftUI 比不出「没变」，时间线
+# 每重算一次（拖动每动一下）全部块也都跟着重算。所以块只收算好的值（`ClipBlockContext`）、
+# 自己实现 `==`、调用处套 `.equatable()`。三条都钉住：
+# docs/architecture/preview-perf-ratchet.md「时间线上的块」，案例
+# docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md。
+# 格式：<块所在文件>|<视图名>|<构造它的文件>
+for spec in \
+  'Sources/SrtFlow/VideoEditTimelineClipBlock.swift|ClipBlockView|Sources/SrtFlow/VideoEditTimelineView.swift' \
+  'Sources/SrtFlow/VideoEditTimelineTextRow.swift|TextBlockView|Sources/SrtFlow/VideoEditTimelineTextRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineShapeRow.swift|ShapeBlockView|Sources/SrtFlow/VideoEditTimelineShapeRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineFilterRow.swift|FilterBlockView|Sources/SrtFlow/VideoEditTimelineFilterRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift|SubtitleCueBlockView|Sources/SrtFlow/VideoEditTimelineSubtitleRow.swift' \
+  'Sources/SrtFlow/VideoEditTimelineRuler.swift|TimelinePinnedRuler|Sources/SrtFlow/VideoEditTimelineView.swift' \
+  'Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift|VolumeCurveOverlay|Sources/SrtFlow/VideoEditTimelineClipBlock.swift' \
+  'Sources/SrtFlow/VideoEditTransitionPicker.swift|TransitionCard|Sources/SrtFlow/VideoEditTransitionPicker.swift'; do
+  IFS='|' read -r file view host <<<"$spec"
+  if [ ! -f "$file" ] || [ ! -f "$host" ]; then echo "✗ 文件不在：$file / $host"; fail=1; continue; fi
+  if ! grep -cE "struct ${view}: View, Equatable" "$file" >/dev/null; then
+    echo "✗ ${view} 没有按值比较（要写成 struct ${view}: View, Equatable 并自己实现 ==）"; fail=1
+  fi
+  if grep -cE '@ObservedObject var project' "$file" >/dev/null; then
+    echo "✗ ${file} 里有块订阅了整个工程（@ObservedObject var project）：点选一段全部块都要重算"; fail=1
+  fi
+  # 构造处必须紧跟 .equatable()：找到「行首是 视图名(」的那一行，跳过到它同缩进的收尾 )
+  #（尾随闭包 `) {` 也算），之后（可以隔着注释、尾随闭包和别的修饰器）必须出现 .equatable()，
+  # 别的语句先来了就算没套。
+  sites="$(grep -cE "^[[:space:]]*${view}\(" "$host" || true)"
+  wrapped="$(awk -v view="$view" '
+    $0 ~ "^[[:space:]]*" view "\\(" { indent = match($0, /[^ ]/) - 1; call = 1; closed = 0; next }
+    call && !closed { if (match($0, /[^ ]/) - 1 == indent && $0 ~ /^[[:space:]]*\)/) closed = 1; next }
+    call && closed {
+      if ($0 ~ /^[[:space:]]*\/\//) next
+      if ($0 ~ /\.equatable\(\)/) { ok++; call = 0; next }
+      if ($0 ~ /^[[:space:]]*\./) next
+      # 尾随闭包的内容（更深的缩进）和它同缩进的收尾 } 都还是这一个构造表达式。
+      if (match($0, /[^ ]/) - 1 > indent) next
+      if (match($0, /[^ ]/) - 1 == indent && $0 ~ /^[[:space:]]*\}/) next
+      call = 0
+    }
+    END { print ok + 0 }' "$host")"
+  if [ "$sites" -lt 1 ] || [ "$wrapped" -ne "$sites" ]; then
+    echo "✗ ${host} 里 ${view}( 有 ${sites} 处，套了 .equatable() 的只有 ${wrapped} 处：没套的那处每次时间线重算都跟着重算"; fail=1
+  fi
+done
+# 音量线不是独立块（挂在剪辑块的波形上），但同样不许订阅工程：61 条线一起重画就是它。
+if grep -cE '@ObservedObject var project' Sources/SrtFlow/VideoEditTimelineVolumeCurve.swift >/dev/null; then
+  echo "✗ 音量线订阅了整个工程：点选一段每条线都重画"; fail=1
+fi
+
+echo "==> 「预览正在重建」只让那个转圈重算"
+# 这个开关放在工程上当 @Published，每次重建开始 / 结束整个编辑器各重算一轮；改成不发、视图却
+# 直接读它，转圈就停在最后一次被别的变化带着画出来的样子（2026-09-25 第一版这么写过：以为没有
+# 视图读它）。所以工程上不许有发通知的重建开关，视图只许经 PreviewRebuildSpinner 订阅
+# PreviewRebuildStatus（案例 docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md）。
+if grep -cE '@Published.*var isRebuilding' Sources/SrtFlow/VideoEditProject.swift >/dev/null; then
+  echo "✗ 工程上又有了发通知的重建开关：每次重建整个编辑器多算两轮"; fail=1
+fi
+need Sources/SrtFlow/VideoEditView.swift 'PreviewRebuildSpinner\(status: project\.rebuildStatus\)' '工具栏上订阅重建开关的转圈'
+# 读值的只许是不画界面的两处：工程自己（快路径让路）和性能测试的「落定」。
+readers="$(grep -lE 'rebuildStatus\.isRebuilding' $SWIFT_FILES | grep -vE '/(VideoEditProject|PreviewBench)\.swift$' || true)"
+if [ -n "$readers" ]; then
+  echo "✗ 这些文件直接读了重建开关（不订阅就不刷新，转圈会卡住）：${readers}"; fail=1
+fi
+
+echo "==> 时间线本体不许按值跳过根视图那一遍"
+# 每点一下时间线重算两遍，看着像能用 .equatable() 省掉第二遍 —— 实测块的选中高亮只在那一遍里更新
+#（时间线自己那一遍里 ForEach(rows) 被判成没变），省掉就点了哪段都不亮，读模型的冒烟照样全绿。
+# 见 docs/architecture/preview-perf-ratchet.md 第十一节；要改先把块的输入改成那一遍看得见的值。
+if grep -cE 'struct VideoEditTimelineView: View, Equatable|extension VideoEditTimelineView: .*Equatable' $SWIFT_FILES >/dev/null; then
+  echo "✗ VideoEditTimelineView 成了 Equatable：块的选中高亮会停在上一次（第十一节）"; fail=1
+fi
+if grep -cE 'VideoEditTimelineView\(project: project, clock: clock\)\.equatable\(\)' Sources/SrtFlow/VideoEditView.swift >/dev/null; then
+  echo "✗ 根视图给时间线套了 .equatable()：块的选中高亮会停在上一次（第十一节）"; fail=1
+fi
 
 if [ "${fail}" -eq 0 ]; then
   echo "✓ 预览性能计数全部接上"

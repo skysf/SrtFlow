@@ -50,6 +50,13 @@ struct VideoEditInspectorView: View {
             multiClipAnimationSection(pictures)
             Divider()
         }
+        // 批量套用声音场景：选中里有声音的段就给（VideoEditInspector+Sound.swift）。
+        let voiced = project.state.allClips.filter { project.selectedClipIDs.contains($0.id) && $0.hasAudio }.map(\.id)
+        if !voiced.isEmpty {
+            SoundSceneControls(project: project, ids: voiced,
+                               caption: String(format: L10n("Applies to all %d clips with sound selected"), voiced.count))
+            Divider()
+        }
         HStack {
             Button("Export…", systemImage: "square.and.arrow.up", action: onExport)
                 .instantHelp("Render just the selected clips to a video file")
@@ -235,64 +242,14 @@ struct VideoEditInspectorView: View {
             }
         }
 
-        // 音量：视频自带的声音或音频段都能调。
+        // 声音：音量、渐入渐出、声音场景（视频自带的声音或音频段都有，VideoEditInspector+Sound.swift）。
+        // 画了曲线的段，音量滑杆跟着播放头显示线上的值；没画的段不必每一跳都重算这一块。
         if clip.hasAudio {
             Divider()
-            VStack(alignment: .leading, spacing: 6) {
-                HStack {
-                    Text("Volume").font(.callout).fontWeight(.medium)
-                    Spacer()
-                    Toggle("Mute", isOn: muteBinding(clip))
-                        .controlSize(.small)
-                }
-                HStack(spacing: 6) {
-                    // 滑杆走 dB 刻度：线性幅度对听感太不均匀，−20dB 在 0…2 的
-                    // 线性滑杆上只占 5%，根本没法调。
-                    Slider(
-                        value: liveVolumeDecibelBinding(clip),
-                        in: AudioGain.minimumDB...AudioGain.maximumDB,
-                        onEditingChanged: { editing in
-                            if !editing { project.endLiveEdit() }
-                        }
-                    )
-                    Text(AudioGain.label(forLinear: clip.isMuted ? 0 : AudioGain.linear(
-                        fromDecibels: volumeReferenceDecibels(clip))))
-                        .font(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(clip.isMuted ? .tertiary : .secondary)
-                        .frame(width: 58, alignment: .trailing)
-                    Button {
-                        project.resetVolume(clip.id)
-                    } label: {
-                        Image(systemName: "arrow.uturn.backward")
-                    }
-                    .buttonStyle(.borderless)
-                    .controlSize(.small)
-                    .disabled(abs(clip.volume - 1) < 0.0001 && !clip.hasVolumeCurve)
-                    .instantHelp(clip.hasVolumeCurve
-                                 ? "Remove the volume curve and go back to 0 dB"
-                                 : "Back to 0 dB (original level)")
-                }
-                .disabled(clip.isMuted)
-                // 画了曲线时滑杆是「整条一起抬 / 压」：说清楚它现在管的是什么。
-                if clip.hasVolumeCurve {
-                    Text(String(format: L10n("Volume curve with %d points. The slider raises or lowers the whole curve."),
-                                clip.volumeCurve.keys.count))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // 渐入渐出：秒数按时间线算（变速之后），0 = 关。
-                fadeRow(clip, edge: .fadeIn, title: "Fade in")
-                fadeRow(clip, edge: .fadeOut, title: "Fade out")
-                if let note = fadeNote(clip, location: location) {
-                    Text(note)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
+            ClipSoundSection(
+                project: project, clip: clip, location: location,
+                playhead: clip.hasVolumeCurve ? clock.time : clip.timelineStart
+            )
         }
 
         // 转场：只在主轨且后面还有一段时有意义。
@@ -329,53 +286,6 @@ struct VideoEditInspectorView: View {
         .controlSize(.small)
     }
 
-    /// 一行渐变时长。数值框走 Inspector 数值框合同：文本/箭头走 `setAudioFade`
-    /// （一步一记），横向拖调走 begin/live/end（整次拖动一步）。
-    private func fadeRow(
-        _ clip: EditClip, edge: AudioFadeEdge, title: LocalizedStringKey
-    ) -> some View {
-        HStack(spacing: 6) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 4)
-            InspectorScrubbableNumberField(
-                value: fadeBinding(clip, edge: edge),
-                // 上限是段长：整段淡入淡出是合理诉求，比这更长没有意义。
-                range: 0...max(0.1, clip.timelineDuration),
-                fractionDigits: 1,
-                width: 54,
-                onScrubBegin: { project.beginLiveEdit() },
-                onScrubChanged: { project.liveSetAudioFade(clip.id, edge: edge, seconds: $0) },
-                onScrubEnd: { project.endLiveEdit() },
-                onScrubCancel: { project.cancelLiveEdit() }
-            )
-            Text("s")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-        }
-        .disabled(clip.isMuted)
-        .instantHelp(edge == .fadeIn
-            ? LocalizedStringKey("Seconds to ramp the sound up from silence")
-            : LocalizedStringKey("Seconds to ramp the sound down to silence"))
-    }
-
-    /// 主轨接缝上有转场时，那一边的渐变不生效（转场自己在做交叉淡变）——
-    /// 用户设了却听不到差别，必须当场说清楚，不能让人以为是坏了。
-    /// 判据与合成/导出同一个来源：`transitionOverlap`。
-    private func fadeNote(_ clip: EditClip, location: ClipLocation?) -> LocalizedStringKey? {
-        guard let location, location.track.isMain else { return nil }
-        let fades = clip.audioFades
-        let index = location.clipIndex
-        let suppressedIn = index > 0
-            && project.state.transitionOverlap(afterMainIndex: index - 1) > 0
-            && fades.fadeIn > 0
-        let suppressedOut = project.state.transitionOverlap(afterMainIndex: index) > 0
-            && fades.fadeOut > 0
-        guard suppressedIn || suppressedOut else { return nil }
-        return "A transition already cross-fades the sound at that seam, so the fade on that side is skipped."
-    }
-
     // MARK: - 形状
 
     @ViewBuilder
@@ -394,35 +304,34 @@ struct VideoEditInspectorView: View {
             labelledSlider(
                 "Line width",
                 value: liveShapeBinding(shape, \.lineWidth),
-                range: 1...24,
-                format: { String(format: "%.0f", $0) }
+                range: 1...24
             )
             if shape.kind == .line {
                 labelledSlider(
                     "Length",
                     value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
                 labelledSlider(
                     "Angle",
                     value: liveShapeBinding(shape, \.rotationDegrees),
                     range: -90...90,
-                    format: { String(format: "%.0f°", $0) }
+                    unit: "°"
                 )
             } else {
                 labelledSlider(
                     shape.kind == .square ? "Side length" : "Width",
                     value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
-                    format: { String(format: "%.0f%%", $0 * 100) }
+                    scale: 100, unit: "%"
                 )
                 if shape.kind == .rectangle {
                     labelledSlider(
                         "Height",
                         value: liveShapeBinding(shape, \.height),
                         range: 0.02...1,
-                        format: { String(format: "%.0f%%", $0 * 100) }
+                        scale: 100, unit: "%"
                     )
                 }
             }
@@ -434,11 +343,13 @@ struct VideoEditInspectorView: View {
             HStack {
                 Text("Shows for").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Text(String(format: "%.1fs", shape.duration))
-                    .font(.caption)
-                    .monospacedDigit()
-                Stepper("", value: shapeDurationBinding(shape), in: 0.2...600, step: 0.5)
-                    .labelsHidden()
+                InspectorDurationField(
+                    value: shapeDurationBinding(shape),
+                    onLiveChange: { seconds in
+                        project.liveApply { $0.updateShape(shape.id) { $0.duration = seconds } }
+                    },
+                    project: project
+                )
             }
             Text("Drag the shape on the preview to place it; drag its block on the timeline to retime it.")
                 .font(.caption2)
@@ -455,31 +366,26 @@ struct VideoEditInspectorView: View {
         .instantHelp("Remove this shape from the timeline", shortcut: .plain("⌫"))
     }
 
+    /// 标题 + 滑杆 + 能打字的数值框（`InspectorSliderRow`，InspectorSliderRow.swift）。
     /// 扩展文件（VideoEditInspector+Text*.swift）也用它，所以不是 private。
-    /// - Parameter rebuildsPreview: 松手时要不要重建预览合成。默认 false ——
+    /// - Parameter rebuildsPreview: 松手 / 提交时要不要重建预览合成。默认 false ——
     ///   形状/文字这些叠层自己会跟着状态重画，重建只会让画面闪一下。
     ///   **画面段的属性要传 true**：它们的效果长在 AVFoundation 合成里，
     ///   不重建就永远看不到改动。
+    /// - Parameter scale: 模型值 × scale = 框里的数（0…1 的百分比传 100）。
     func labelledSlider(
         _ title: LocalizedStringKey,
         value: Binding<Double>,
         range: ClosedRange<Double>,
         rebuildsPreview: Bool = false,
-        format: @escaping (Double) -> String
+        scale: Double = 1,
+        fractionDigits: Int = 0,
+        unit: String = ""
     ) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
-            Slider(value: value, in: range, onEditingChanged: { editing in
-                if !editing { project.endLiveEdit(rebuildsPreview: rebuildsPreview) }
-            })
-            Text(format(value.wrappedValue))
-                .font(.caption)
-                .monospacedDigit()
-                .frame(width: 40, alignment: .trailing)
-        }
+        InspectorSliderRow(
+            title: title, value: value, range: range, rebuildsPreview: rebuildsPreview,
+            scale: scale, fractionDigits: fractionDigits, unit: unit, project: project
+        )
     }
 
     // MARK: - 滤镜
@@ -513,7 +419,7 @@ struct VideoEditInspectorView: View {
                 "Strength",
                 value: liveFilterStrengthBinding(filter),
                 range: 0...1,
-                format: { String(format: "%.0f", $0 * 100) }
+                scale: 100
             )
         }
 
@@ -652,60 +558,6 @@ struct VideoEditInspectorView: View {
         Binding(
             get: { project.state.clip(with: clip.id)?.speed ?? clip.speed },
             set: { project.setSpeed(clip.id, speed: $0) }
-        )
-    }
-
-    /// 滑杆读写的是 dB，落盘的仍是线性幅度 —— 换算只有 `AudioGain` 一份。
-    ///
-    /// **画了音量曲线的段**：滑杆显示播放头处（播放头不在段里就取段起点）线上的值，
-    /// 拖它 = 整条曲线一起平移、形状不变（「这段整体太响」是最常见的需求，逐点拖太累）。
-    /// 每一拍都从手势起手那一份算（`liveApply` 从快照重放），不在上一拍上叠加。
-    private func liveVolumeDecibelBinding(_ clip: EditClip) -> Binding<Double> {
-        Binding(
-            get: {
-                volumeReferenceDecibels(project.state.clip(with: clip.id) ?? clip)
-            },
-            set: { newValue in
-                let reference = volumeReferenceTime(clip)
-                project.liveApply { state in
-                    state.update(clip.id) { live in
-                        if live.hasVolumeCurve {
-                            live.shiftWholeVolume(byDecibels: newValue - live.volumeLineDecibels(atTimeline: reference))
-                        } else {
-                            live.volume = AudioGain.linear(fromDecibels: newValue)
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    /// 音量滑杆的参照时刻：播放头在段里就是播放头，不在就是段起点。
-    private func volumeReferenceTime(_ clip: EditClip) -> Double {
-        clip.contains(time: project.clock.time) ? project.clock.time : clip.timelineStart
-    }
-
-    /// 滑杆上显示的值（dB）：没曲线就是 `volume`，有曲线是参照时刻线上的值。
-    private func volumeReferenceDecibels(_ clip: EditClip) -> Double {
-        clip.volumeLineDecibels(atTimeline: volumeReferenceTime(clip))
-    }
-
-    /// 渐变时长：读的是**存下来的**值（不是夹紧后的生效值），不然把段拉短再
-    /// 拉长，框里的数字会被段长悄悄改写。
-    private func fadeBinding(_ clip: EditClip, edge: AudioFadeEdge) -> Binding<Double> {
-        Binding(
-            get: {
-                let live = project.state.clip(with: clip.id) ?? clip
-                return edge == .fadeIn ? live.fadeInDuration : live.fadeOutDuration
-            },
-            set: { project.setAudioFade(clip.id, edge: edge, seconds: $0) }
-        )
-    }
-
-    private func muteBinding(_ clip: EditClip) -> Binding<Bool> {
-        Binding(
-            get: { project.state.clip(with: clip.id)?.isMuted ?? clip.isMuted },
-            set: { project.setMuted(clip.id, muted: $0) }
         )
     }
 

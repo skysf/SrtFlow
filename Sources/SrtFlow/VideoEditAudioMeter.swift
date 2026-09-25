@@ -223,17 +223,19 @@ final class AudioMeterEngine: @unchecked Sendable {
     }
 
     /// 某条合成音轨的 tap：同一条合成里**复用同一个**（换 mix 时新建 tap 会让播放卡住），
-    /// 只把它背后的增益表、归属和总推子换掉。
-    func tap(trackID: Int32, key: MeterKey, table: GainTable, master: Float) -> MTAudioProcessingTap? {
+    /// 只把它背后的增益表、归属、总推子和声音场景换掉。
+    func tap(
+        trackID: Int32, key: MeterKey, table: GainTable, master: Float, scenes: SceneTrackConfig? = nil
+    ) -> MTAudioProcessingTap? {
         let sampler = table.sampler()
         return lock.withLock { state -> MTAudioProcessingTap? in
             if let context = state.contexts[trackID], let tap = state.taps[trackID] {
-                context.configure(key: key, sampler: sampler, master: master)
+                context.configure(key: key, sampler: sampler, master: master, scenes: scenes)
                 return tap
             }
             PerfCounters.event(.meterTapCreate)
             let context = TapContext(engine: self)
-            context.configure(key: key, sampler: sampler, master: master)
+            context.configure(key: key, sampler: sampler, master: master, scenes: scenes)
             guard let tap = context.makeTap() else { return nil }
             state.contexts[trackID] = context
             state.taps[trackID] = tap
@@ -311,27 +313,40 @@ final class AudioMeterEngine: @unchecked Sendable {
 
 // MARK: - tap
 
-/// 一条合成音轨的 tap 背后的东西：归属（哪条表）、增益表、总推子、预分配的草稿缓冲。
+/// 一条合成音轨的 tap 背后的东西：归属（哪条表）、增益表、总推子、声音场景、预分配的草稿缓冲。
 /// 配置由主线程在换 mix 时写、音频线程在回调里读 —— 用它自己的一把锁（很短）。
+///
+/// 两件事：**改声音**（挂了声音场景的轨，`SceneTrackRenderer` 原地处理）和**记电平**（只看不改）。
+/// 成片的离线读没有电平表（`engine` 为 nil），只剩改声音那一件（`standaloneTap`）。
 final class TapContext: @unchecked Sendable {
     private struct Config {
         var key: MeterKey = .master
         var sampler = GainTable.Sampler(points: [])
         var master: Float = 1
+        var hasScenes = false
     }
 
     private weak var engine: AudioMeterEngine?
     private let config = OSAllocatedUnfairLock(initialState: Config())
+    private let scenes = SceneTrackRenderer()
     fileprivate var sampleRate = SampleRing.rate
     fileprivate var gains: [Float] = []
     fileprivate var positions: [Int64] = []
 
-    init(engine: AudioMeterEngine) {
+    init(engine: AudioMeterEngine?) {
         self.engine = engine
     }
 
-    func configure(key: MeterKey, sampler: GainTable.Sampler, master: Float) {
-        config.withLock { $0 = Config(key: key, sampler: sampler, master: master) }
+    /// 成片离线读用的 tap：只跑声音场景，不记电平。每次导出新建（离线读不存在「换 mix 卡顿」）。
+    static func standaloneTap(scenes: SceneTrackConfig) -> MTAudioProcessingTap? {
+        let context = TapContext(engine: nil)
+        context.configure(key: .master, sampler: GainTable.Sampler(points: []), master: 1, scenes: scenes)
+        return context.makeTap()
+    }
+
+    func configure(key: MeterKey, sampler: GainTable.Sampler, master: Float, scenes sceneConfig: SceneTrackConfig? = nil) {
+        if let sceneConfig { scenes.configure(sceneConfig) }
+        config.withLock { $0 = Config(key: key, sampler: sampler, master: master, hasScenes: sceneConfig != nil) }
     }
 
     func makeTap() -> MTAudioProcessingTap? {
@@ -352,10 +367,21 @@ final class TapContext: @unchecked Sendable {
         return status == noErr ? tap : nil
     }
 
-    fileprivate func prepare(maxFrames: Int, sampleRate: Double) {
-        self.sampleRate = sampleRate > 0 ? sampleRate : SampleRing.rate
+    fileprivate func prepare(maxFrames: Int, format: AudioStreamBasicDescription) {
+        sampleRate = format.mSampleRate > 0 ? format.mSampleRate : SampleRing.rate
         gains = Array(repeating: 1, count: max(1, maxFrames))
         positions = Array(repeating: 0, count: max(1, maxFrames))
+        scenes.prepare(format: format, maxFrames: max(1, maxFrames))
+    }
+
+    /// 一次回调：挂了场景的轨先原地改声音，再记电平（电平表看的是改完的声音）。
+    /// `start` 为 nil = 这一拍时间无效（开播第一拍、暂停后的空转）。
+    fileprivate func process(_ buffers: UnsafeMutableAudioBufferListPointer, frames: Int, start: Double?) {
+        if config.withLock({ $0.hasScenes }) {
+            scenes.process(buffers, frames: frames, start: start)
+        }
+        guard let start else { return }
+        consume(buffers, frames: frames, start: start)
     }
 
     /// 一次回调：算出每个采样此刻的增益（按 32 帧一小段插值，斜坡是平滑的），
@@ -407,7 +433,7 @@ private let meterTapFinalize: MTAudioProcessingTapFinalizeCallback = { tap in
 
 private let meterTapPrepare: MTAudioProcessingTapPrepareCallback = { tap, maxFrames, format in
     Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-        .prepare(maxFrames: Int(maxFrames), sampleRate: format.pointee.mSampleRate)
+        .prepare(maxFrames: Int(maxFrames), format: format.pointee)
 }
 
 private let meterTapUnprepare: MTAudioProcessingTapUnprepareCallback = { _ in }
@@ -417,9 +443,9 @@ private let meterTapProcess: MTAudioProcessingTapProcessCallback = { tap, frames
     var got: CMItemCount = 0
     let status = MTAudioProcessingTapGetSourceAudio(tap, frames, bufferList, flagsOut, &range, &got)
     framesOut.pointee = got
+    guard status == noErr, got > 0 else { return }
     // 开播后第一拍时间无效、暂停后空转的回调时长为 0：都不是真在播的声音。
-    guard status == noErr, got > 0, range.start.isValid, range.duration.isValid,
-          range.duration.seconds > 0 else { return }
+    let valid = range.start.isValid && range.duration.isValid && range.duration.seconds > 0
     Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-        .consume(UnsafeMutableAudioBufferListPointer(bufferList), frames: Int(got), start: range.start.seconds)
+        .process(UnsafeMutableAudioBufferListPointer(bufferList), frames: Int(got), start: valid ? range.start.seconds : nil)
 }

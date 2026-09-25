@@ -21,8 +21,10 @@ enum TimelineRowSelection {
     /// `RowSpec.selectionRow`，nil 就是「这一行没有可选的东西」）。
     enum Row {
         case track(TrackSlot)
-        /// 文字行的层号。层号是按时间重叠算出来的**显示**层，不进模型。
-        case textLevel(Int)
+        /// 文字行的行号（`TextOverlay.row`，进模型）。
+        case textRow(Int)
+        /// 滤镜行的层号（`FilterClip.layer`）。滤镜 2026-09-25 起可以多选，行头点得出整层。
+        case filterLayer(Int)
         case shapes
         case subtitle(SubtitleRowKind)
     }
@@ -34,6 +36,7 @@ enum TimelineRowSelection {
         case shapes
         case texts
         case subtitleCues
+        case filters
     }
 
     struct Result {
@@ -53,14 +56,13 @@ enum TimelineRowSelection {
             guard !state.isLaneHidden(slot) else { return Result(category: .clips, ids: []) }
             return Result(category: .clips, ids: Set(state[track: slot].map(\.id)))
 
-        case .textLevel(let level):
-            // 层号由时间重叠算出来，和 `RowSpec` 那边用的是同一个函数 ——
-            // 各算各的话，重叠一变，点第二行选中的就是第一行的文字。
-            let levels = TextOverlayStacking.levels(for: state.textOverlays)
-            let ids = state.textOverlays.indices
-                .filter { levels[$0] == level }
-                .map { state.textOverlays[$0].id }
-            return Result(category: .texts, ids: Set(ids))
+        case .filterLayer(let layer):
+            return Result(category: .filters, ids: Set(state.filters(onLayer: layer).map(\.id)))
+
+        case .textRow(let row):
+            // 和 `RowSpec` 那边读的是同一个字段（`TextOverlay.row`），点第几行选中的
+            // 就是画在第几行的那些字。
+            return Result(category: .texts, ids: Set(state.textOverlays(onRow: row).map(\.id)))
 
         case .shapes:
             return Result(category: .shapes, ids: Set(state.shapes.map(\.id)))

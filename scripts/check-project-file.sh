@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
@@ -54,6 +55,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextNumber.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextRows.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
@@ -69,6 +71,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/VideoEditProjectFile.swift \
+  Sources/SrtFlow/VideoEditMediaBookmarkCache.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \
   Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/VideoEditSelection.swift \
@@ -80,6 +83,13 @@ xcrun swiftc \
   Sources/SrtFlow/AppLanguage.swift \
   checks/ProjectFile/main.swift \
   checks/ProjectFile/VolumeCurve.swift \
+  checks/ProjectFile/RowHeights.swift \
+  checks/ProjectFile/SoundScene.swift \
+  checks/ProjectFile/BookmarkCache.swift \
+  checks/ProjectFile/NumberDelay.swift \
+  checks/ProjectFile/TextRows.swift \
+  checks/ProjectFile/SelectAll.swift \
+  checks/ProjectFile/SplitGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -161,6 +171,25 @@ require "⌫ 的按键守卫要问 EditSelection 自己（放行「只选中了�
   Sources/SrtFlow/VideoEditView.swift 'guard !project\.selection\.isEmpty'
 require "M 必须接上打标记" \
   Sources/SrtFlow/VideoEditView.swift 'addMarkerAtPlayhead\(\)'
+# ⌘A 全选 / ⌘⇧A 取消（2026-09-25 用户拍板）：接在同一个本地监听里，且要在「带修饰键一律放行」
+# 那道闸门之前；全选走框选的那一个混选入口（applyBoxSelection），滤镜也进框选。
+require "⌘A 必须接上全选（selectAllOnTimeline）" \
+  Sources/SrtFlow/VideoEditView.swift 'project\.selectAllOnTimeline\(\)'
+require "⌘⇧A 必须接上取消选择" \
+  Sources/SrtFlow/VideoEditView.swift 'modifiers == \[\.command, \.shift\]'
+require "全选走框选那一个混选入口" \
+  Sources/SrtFlow/VideoEditProject+Selection.swift 'applyBoxSelection\('
+require "框选把滤镜段也交给选择" \
+  Sources/SrtFlow/VideoEditTimelineMarqueeGesture.swift 'filters: session\.hit\.filters'
+# 滤镜块的选中态 = 模型里的多选 + 拖框中的实时高亮。2026-09-25 起实时高亮不再经时间线的
+# isSelected(filter:)，块自己从拖动盒子里收框选命中（五种块的收法都钉在
+# checks/timeline-drag-wiring/drag-box.sh；这里只钉滤镜这一类还在多选、还看框）。
+require "滤镜块的选中态走模型里的多选（selectedFilterIDs）" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'isSelected: project\.selectedFilterIDs\.contains\(filter\.id\)'
+require "滤镜块拖框中实时高亮（从拖动盒子里收框选命中的滤镜）" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift '\$0\.filters\.contains\(filter\.id\)'
+require "滤镜行的轨道头点得出整层" \
+  Sources/SrtFlow/VideoEditTimelineRowSpec.swift 'return \.filterLayer\(filterLayer\)'
 require "工具栏垃圾桶的置灰判据必须和 ⌫ 是同一个表达式" \
   Sources/SrtFlow/VideoEditView.swift '\.disabled\(project\.selection\.isEmpty\)'
 # 按钮亮不亮和真正会打在哪几段，必须是同一个函数算出来的。
@@ -171,6 +200,20 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
   Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
+# 标记的点击语义（2026-09-24 用户拍板）：单击只选中、双击才弹面板、右键有菜单。
+# **单击不许弹面板**：面板一开，里面的备注框就成了第一响应者，⌫ 全进了输入框，标记怎么都
+# 删不掉（docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md）。
+MARKERS="Sources/SrtFlow/VideoEditTimelineMarkers.swift"
+require "标记双击弹面板（count: 2 的手势在前）" "$MARKERS" '\.onTapGesture\(count: 2\)'
+require "标记右键菜单（删除 / 换色 / 编辑备注）" "$MARKERS" '\.contextMenu \{'
+SINGLE_TAP="$(awk '/^ *\.onTapGesture \{$/ { inside = 1; next } inside && /^ *\}$/ { exit } inside { print }' "$MARKERS")"
+if [ -z "$SINGLE_TAP" ]; then
+  echo "✗ 接线守卫：标记的单击手势（.onTapGesture {）不见了：单击选不中" >&2
+  WIRING_FAIL=1
+elif grep -c 'editing' <<<"$SINGLE_TAP" >/dev/null; then
+  echo "✗ 接线守卫：标记单击又弹面板了（单击手势里出现了 editing）：备注框会把 ⌫ 吃掉" >&2
+  WIRING_FAIL=1
+fi
 # 标记的帽子是可命中的子视图，但容器那圈 onContinuousHover 不会因为指针压在子视图
 # 上就停发（2026-09-21 起扫帧 peek 的唯一所有者是时间线容器）。没有这道让位，
 # 鼠标悬在标记上时容器下一拍就会把画面从标记那一帧拽回指针底下。

@@ -1,0 +1,30 @@
+# 行数超过上限（600 行）的老代码文件，**行数只许降不许涨**。格式：行数 路径。
+# 由 checks/source-file-size.sh 维护：变短了跑 `checks/source-file-size.sh --update` 改小，
+# 降到上限以内会自动删掉这一行；它不会替新的超标文件登记，也不会替长了的文件抬线。
+# 改名时手改路径。规范见 docs/architecture/coding-standards.md。
+612 Sources/SrtFlow/BurnInPreviewArea.swift
+623 Sources/SrtFlow/BurnInView.swift
+692 Sources/SrtFlow/ScreenRecordingCoordinator+Setup.swift
+803 Sources/SrtFlow/ScreenRecordingCoordinator.swift
+638 Sources/SrtFlow/ScreenRecordingWriter.swift
+645 Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift
+1043 Sources/SrtFlow/VideoEditCompositionBuilder.swift
+785 Sources/SrtFlow/VideoEditExportGraph.swift
+616 Sources/SrtFlow/VideoEditInspector.swift
+717 Sources/SrtFlow/VideoEditMediaFileDrop.swift
+1413 Sources/SrtFlow/VideoEditModels.swift
+1473 Sources/SrtFlow/VideoEditProject.swift
+632 Sources/SrtFlow/VideoEditProjectDocument.swift
+629 Sources/SrtFlow/VideoEditTimelineEdits.swift
+698 Sources/SrtFlow/VideoEditTimelineView.swift
+908 Sources/SrtFlow/VideoEditView.swift
+978 Sources/SrtFlowCore/ScreenRecordingModels.swift
+1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
+1159 Sources/SrtFlowCoreChecks/main.swift
+625 checks/Filters/main.swift
+885 checks/PreviewComposition/main.swift
+2656 checks/ProjectFile/main.swift
+749 checks/TextRender/main.swift
+1781 checks/TimelineSnap/main.swift
+708 checks/VideoFade/main.swift
+972 checks/timeline-drag-wiring.sh

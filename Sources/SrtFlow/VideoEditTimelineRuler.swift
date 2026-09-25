@@ -18,7 +18,7 @@ import SrtFlowCore
 /// 是**仅有的两处**订阅 `TimelineScrollGeometry` 的地方 —— 时间线主体只用 `@State`
 /// 持有它、不订阅，否则滚动的每一帧都要重建整棵时间线视图树
 /// （docs/architecture/timeline-drag-gestures.md §5c）。
-struct TimelinePinnedRuler: View {
+struct TimelinePinnedRuler: View, Equatable {
     let pps: Double
     let duration: Double
     /// 工程帧率：放大到一秒放不下两个标签时，刻度按帧走（`mm:ss:ff`）。
@@ -31,9 +31,20 @@ struct TimelinePinnedRuler: View {
     @ObservedObject var geometry: TimelineScrollGeometry
     let onSeek: (Double, Bool) -> Void
 
+    /// 按值比较（调用方套 `.equatable()`）：输入里有 `onSeek` 这个闭包，比不出「没变」的话
+    /// 拖动每动一下时间线一重算，标尺就跟着重算、重画一遍（2026-09-24 实测）。闭包不用比：
+    /// 它捕获的是时间线视图，读的是最新状态。滚动量走 `geometry` 的订阅，不经这里。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.pps == rhs.pps && lhs.duration == rhs.duration && lhs.frameRate == rhs.frameRate
+            && lhs.rowSpacing == rhs.rowSpacing && lhs.playheadX == rhs.playheadX
+            && lhs.geometry === rhs.geometry
+    }
+
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         TimelineRuler(pps: pps, duration: duration, frameRate: frameRate, onSeek: onSeek)
+            // 滚动一帧这一层就重算一次（它订阅滚动量），刻度本身没变就别跟着重画。
+            .equatable()
             // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
             // 底下，挡住了就点不动播放头了。
             .overlay(alignment: .topLeading) {
@@ -65,11 +76,16 @@ struct TimelinePinnedRuler: View {
 /// `context.clipBoundingRect` 那一段**（整宽画的话每滚 128pt 就把整条刻度重算一遍，
 /// 见 docs/architecture/audio-waveform.md）。放大到一秒放不下两个标签时，刻度改按帧走、
 /// 标签写成 `mm:ss:ff`。
-struct TimelineRuler: View {
+struct TimelineRuler: View, Equatable {
     let pps: Double
     let duration: Double
     let frameRate: ProjectFrameRate
     let onSeek: (Double, Bool) -> Void
+
+    /// 刻度只由这三个值决定；闭包比不了也不用比（同 `TimelinePinnedRuler`）。
+    nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.pps == rhs.pps && lhs.duration == rhs.duration && lhs.frameRate == rhs.frameRate
+    }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)

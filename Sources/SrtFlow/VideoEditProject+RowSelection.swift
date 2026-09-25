@@ -28,6 +28,9 @@ extension VideoEditProject {
         case .subtitleCues:
             selectedSubtitleCueIDs = TimelineRowSelection.applying(
                 result.ids, to: selectedSubtitleCueIDs, additive: additive)
+        case .filters:
+            selectedFilterIDs = TimelineRowSelection.applying(
+                result.ids, to: selectedFilterIDs, additive: additive)
         }
     }
 }

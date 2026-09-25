@@ -32,7 +32,7 @@ struct VideoEditProjectFile: Codable {
     var rowHeights: TimelineRowHeights
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 19
+    static let latestFormatVersion = 21
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
     /// `...7` … `...14`（登记清单在那边）。
@@ -66,6 +66,8 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion17
         _ = timeline.requiresFormatVersion18
         _ = timeline.requiresFormatVersion19
+        _ = timeline.requiresFormatVersion20
+        _ = timeline.requiresFormatVersion21
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
@@ -125,11 +127,9 @@ struct MediaRecord: Codable, Sendable {
     init(url: URL, projectDirectory: URL?, previous: MediaRecord? = nil) {
         path = url.path
         fileName = url.lastPathComponent
-        let fresh = try? url.bookmarkData(
-            options: [],
-            includingResourceValuesForKeys: nil,
-            relativeTo: nil
-        )
+        // 同一个文件（同一个 inode）这次会话里建过书签就用旧的：建书签很贵，自动保存
+        // 每次都重建的话主线程每次卡约 55ms（`MediaBookmarkCache`）。
+        let fresh = MediaBookmarkCache.bookmark(for: url)
         bookmark = fresh ?? previous?.bookmark
         // 相对路径纯粹是路径运算，文件在不在都算得出来，可以放心重算。
         relativePath = projectDirectory.flatMap { MediaRecord.relativePath(from: $0, to: url) }
@@ -257,6 +257,8 @@ enum VideoEditProjectIO {
         }
         // 关联字幕（v4）：译文/cueMeta 必须锚在现有原文 cue 上，坏数据当场清掉。
         timeline.normalizeSubtitleCompanion()
+        // 老工程没有行号：按当年的自动排布补上（VideoEditTextRows.swift）。
+        timeline.normalizeTextRows()
         // 老版本存盘的主轨数组可能乱序（磁吸关掉的拖动不重排），打开时治好。
         timeline.sortMainClipsByStart()
         // 轨道颜色：v9 及更早没有 colorIndex 键，按当时的行序补一次。补在读盘

@@ -280,6 +280,7 @@
 "Increase by 1" = "增加 1";
 "Decrease by 1" = "减少 1";
 "Could not prepare the animated clip %@ for export." = "动画片段 %@ 导出预渲染失败。";
+"Could not mix the timeline’s sound for export." = "导出时没能把时间线的声音混出来。";
 "Line" = "线条";
 "Rectangle" = "长方形";
 "Square" = "正方形";
@@ -611,6 +612,8 @@
 /* 时间线标记、字幕与导出 */
 "Add Marker at Playhead" = "在播放头处添加标记";
 "Delete Marker" = "删除标记";
+"Colour" = "颜色";
+"Edit Note…" = "编辑备注…";
 "Note" = "备注";
 "Burn subtitles into the video" = "把字幕烧录进视频";
 "Every subtitle track is hidden — nothing will be burned." = "所有字幕轨都隐藏了 —— 不会烧录任何字幕。";
@@ -724,6 +727,8 @@
 "Odometer" = "老虎机";
 "Count up changes the whole number; Odometer rolls each digit on its own wheel" = "数值递增让整个数字连续变化；老虎机让每一位在自己的数字带上滚";
 "Roll for" = "滚动时长";
+"Delay" = "等待";
+"Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting" = "段开始后先等这么久再开始滚动；等待期间显示起始值";
 "Decimals" = "小数位";
 "Thousands" = "千分位";
 "Group thousands with commas" = "用逗号按三位分组";
@@ -861,3 +866,25 @@
 "Write the checked subtitle files into the export folder" = "把勾选的字幕文件写进导出文件夹";
 "%d of these files are already in this folder. Exporting will replace them." = "其中 %d 个文件这个文件夹里已经有了，导出会替换它们。";
 "Replace %d subtitle files?" = "替换 %d 个字幕文件？";
+
+/* 声音场景（VideoEditSoundScene.swift / VideoEditInspector+Sound.swift） */
+"Sound scene" = "声音场景";
+"Speaker" = "喇叭";
+"Indoor" = "室内";
+"Outdoor" = "室外";
+"Telephone" = "电话";
+"Megaphone" = "扩音器";
+"Radio" = "收音机";
+"Room" = "房间";
+"Bathroom" = "浴室";
+"Hall" = "大厅";
+"Open air" = "空旷室外";
+"Forest" = "森林";
+"Valley echo" = "山谷回声";
+"Distortion" = "失真";
+"Tone" = "音质";
+"Room size" = "空间大小";
+"Distance" = "距离";
+"Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "让声音听起来像从喇叭里出来、在室内或在室外。只能加空间感，去不掉素材里本来的回声。";
+"Put this scene’s sliders back to their defaults" = "把这个场景的滑杆恢复成默认值";
+"Applies to all %d clips with sound selected" = "套用到选中的 %d 个有声音的段";

@@ -7,9 +7,10 @@ import SrtFlowCore
 
 // MARK: - 时间线这一族文件的分工
 //
-// 这个文件只留「骨架」：行模型（`RowSpec` / `rowLayouts`）、轨道头列、滚动容器、
+// 这个文件只留「骨架」：行的排列（`rows` / `rowLayouts`）、轨道头列、滚动容器、
 // 轨道行、播放头。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
 //
+// - `VideoEditTimelineRowSpec.swift`        一行的描述（`TimelineRowSpec`，纯值）
 // - `VideoEditTimelineMarqueeGesture.swift` 框选接线
 // - `VideoEditTimelineDragWiring.swift`     四类块共用的拖动接线
 // - `VideoEditTimelineClipBlock.swift`      剪辑块
@@ -25,6 +26,9 @@ import SrtFlowCore
 // - `VideoEditTimelineInsertGap.swift`      插入缝的停顿计时、拉开、缝里那条线
 // - `VideoEditTimelineLaneOrder.swift`      整条轨换位置的落点算法（纯值）
 // - `VideoEditTimelineLaneReorder.swift`    整条轨换位置的会话与位移（手势在轨道头列里）
+// - `VideoEditTimelineDragBox.swift`        拖动 / 拉框进行中的视图状态（时间线持有、不订阅）
+// - `VideoEditTimelineDragOverlay.swift`    拖动中画的覆盖层（对齐线、占位框、框选矩形；订阅盒子）
+// - `VideoEditTimelineEmptyState.swift`     工程为空时那块虚线提示
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -36,16 +40,23 @@ struct VideoEditTimelineView: View {
     /// 光观察 project 的话时钟跳动不会触发重绘 —— 播放头就会僵在原地。
     @ObservedObject var clock: PlayerClock
 
-    /// 正在进行的剪辑拖动。**拖动中不写 `TimelineState`**：块画在哪只由它的
-    /// `offset` 决定，松手才 `commitMove` 落一次（见
-    /// docs/architecture/timeline-drag-gestures.md）。
-    @State var clipDrag: ClipDragSession?
-    /// 正在拉的选择框。同一条约束：**拖框中不写 `project`**，高亮谁只由它的
-    /// `hit` 决定，松手才 `applyBoxSelection` 落一次。
-    @State var marquee: TimelineMarquee.Session?
-    /// 正在被拖的字幕 cue。剪辑/形状块各自是独立视图、用自己的 `isMoving`
-    /// 标记起手，cue 块是 `ForEach` 里的裸图形，只能在这一层按 id 记。
-    @State var movingCueID: UUID?
+    /// 一轮拖动 / 拉框**进行中**的全部视图状态：块的位移、框选命中、瞄准的目标行、文字块的
+    /// 目标行、cue 起手的记号（`VideoEditTimelineDragBox.swift`）。**拖动中不写 `TimelineState`**，
+    /// 松手才 `commitDrag` / `applyBoxSelection` 落一次（docs/architecture/timeline-drag-gestures.md §0）。
+    ///
+    /// **用 `@State` 持有、不订阅，body 里一个字都不读它**（§0b）：拖动每一拍变的只有正在动的块
+    /// （各自 `onReceive` 自己那份位移）和 `TimelineDragOverlay`（`@ObservedObject` 这个盒子）。
+    /// 2026-09-25 之前这些是这里的 `@State`，每一拍整条时间线的 body 都重算一次，AttributeGraph
+    /// 的更新和布局占拖动中主线程约 75%。和 `scrollGeometry` 完全同一个模式。
+    @State var dragBox = TimelineDragBox()
+    /// 拖动中的**弹性尾部**：自由落点的轨道允许把块拖到现有内容之外，内容宽度按需长出去。
+    /// 按半个视口一档往上跳（`updateClipDrag`），不跟着每一拍变 —— 跟着变就是每一拍重算整条
+    /// 时间线。松手归零，由新的 `project.duration` 接管。
+    @State var dragTailWidth: Double = 0
+    /// 这一轮拖动的成员（含被拖的那个）。**一轮只写两次**（起手、松手）：成员的块才订阅盒子里的
+    /// 位移，别的块拿一个永远不发的发布者 —— 全部块都订阅的话每一拍 SwiftUI 要把 150 个节点各标
+    /// 脏一遍（§0b）。
+    @State var dragMembers: Set<UUID> = []
     /// 指针正悬在某枚标记帽子上时，那枚标记所在的时间线时刻；nil = 没悬着。
     /// **扫帧 peek 的仲裁位**（合同见 `hoverPeek` / `markerPeek`）。
     ///
@@ -61,8 +72,6 @@ struct VideoEditTimelineView: View {
     @State var editingCue: EditingCue?
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
-    /// 垂直拖动瞄准的目标行（高亮它）。落进拉开的缝时 id 是 "seam"。
-    @State var dragTargetRow: (id: String, target: VideoEditProject.RowTarget)?
     /// 此刻拉开的那条插入缝（§5h）。**只是视图状态**：拖动中不写 `TimelineState`，
     /// 行的位置全由 `TimelineSeams.layout` 按它算，轨道头列和轨道行垫同一段。
     @State var openSeam: TimelineSeam?
@@ -109,94 +118,33 @@ struct VideoEditTimelineView: View {
 
     /// 内容总宽度：留出结尾空白，方便把素材拖到最后。
     ///
-    /// 拖动中额外给一段**弹性尾部**：自由落点的轨道（上层轨/音频/磁吸关掉的主轨/
-    /// 形状）允许把块拖到现有内容之外，内容宽度按投影落点临时长出去，还留半个
-    /// 视口好继续拖；松手后由新的 `project.duration` 接管，没落地就自己缩回来。
-    /// 磁吸主轨**不给** —— 它最终只能插进现有故事线的某条缝，扩太远只会把真正的
-    /// 插入指示线滚出视野。
+    /// 拖动中额外给一段**弹性尾部**（`dragTailWidth`）：自由落点的轨道（上层轨/音频/磁吸关掉的
+    /// 主轨/形状）允许把块拖到现有内容之外，内容宽度按投影落点长出去，还留半个视口好继续拖；
+    /// 松手后由新的 `project.duration` 接管，没落地就自己缩回来。磁吸主轨**不给** —— 它最终
+    /// 只能插进现有故事线的某条缝，扩太远只会把真正的插入指示线滚出视野。
     var contentWidth: Double {
-        let base = max(600, project.duration * pps + 320)
-        guard let drag = clipDrag, drag.allowsFreeLanding else { return base }
-        return max(base, drag.end * pps + max(320, viewportWidth * 0.5))
+        contentBaseWidth + dragTailWidth
+    }
+
+    /// 没在拖动时的内容宽度（弹性尾部按它算「还差多少」）。
+    var contentBaseWidth: Double {
+        max(600, project.duration * pps + 320)
     }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         if project.state.isEmpty {
-            emptyState
+            TimelineEmptyState()
         } else {
             timeline
         }
     }
 
-    // MARK: - 空状态
-
-    private var emptyState: some View {
-        VStack {
-            Spacer()
-            HStack(spacing: 10) {
-                Image(systemName: "film")
-                    .foregroundStyle(.secondary)
-                Text("Drag material here and start to create")
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 36)
-            .overlay(
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
-                    .foregroundStyle(.quaternary)
-            )
-            .padding(.horizontal, 24)
-            Spacer()
-        }
-    }
-
     // MARK: - 时间线
 
-    /// 行的描述，轨道头列和滚动区共用，保证两边行高对得上。
-    struct RowSpec: Identifiable {
-        var id: String
-        var icon: String
-        var height: Double
-        var slot: TrackSlot?
-        /// 这一行的行高存在哪（nil = 这一行的高度不可调）。键是轨道身份不是
-        /// 行号，见 `TimelineRowHeights`。
-        var heightKey: TimelineRowHeightKey?
-        var isRuler = false
-        var isShapes = false
-        /// 文字行的层号（nil = 不是文字行）。重叠的文字自动多分一层，
-        /// 层号由 `TextOverlayStacking` 算出来，不进模型。
-        var textLevel: Int?
-        /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
-        var subtitleKind: SubtitleRowKind?
-        /// 滤镜行的层号（nil = 不是滤镜行）。**和文字行不同，层号进模型**
-        ///（`FilterClip.layer`）—— LUT 不可交换，现算的层号会在拖动别的段时
-        /// 重排，画面跟着变。
-        var filterLayer: Int?
-        /// 整轨隐藏中（灰显，不可编辑）。
-        var isHidden = false
-
-        /// 轨道头点一下要选中谁；nil = 这一行没有可选的东西（标尺）。
-        /// 判据本体在 `TimelineRowSelection` —— 这里只做「行 → 身份」的翻译，
-        /// 一条规则都不许在这儿写（空轨、隐藏轨那些边界都归它判）。
-        var selectionRow: TimelineRowSelection.Row? {
-            if isRuler { return nil }
-            // 滤镜行的轨道头点不出选择：滤镜是单选的（`EditSelection.filterID`），
-            // 「整行一起选」没地方放。点行头什么都不做，好过选中一批 ⌫ 删不掉的东西。
-            if filterLayer != nil { return nil }
-            if let slot { return .track(slot) }
-            if let subtitleKind { return .subtitle(subtitleKind) }
-            if let textLevel { return .textLevel(textLevel) }
-            if isShapes { return .shapes }
-            return nil
-        }
-
-        /// 纯值排布用的这一行（`TimelineSeams`）。
-        var seamRow: TimelineSeams.Row {
-            TimelineSeams.Row(slot: slot, height: height, sitsAboveTracks: isRuler || filterLayer != nil)
-        }
-    }
+    /// 行的描述（`TimelineRowSpec`，VideoEditTimelineRowSpec.swift）。别的文件按
+    /// `VideoEditTimelineView.RowSpec` 叫它，名字留着。
+    typealias RowSpec = TimelineRowSpec
 
     var rows: [RowSpec] {
         var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
@@ -223,10 +171,11 @@ struct VideoEditTimelineView: View {
                 isHidden: project.state.overlayTracks[index].isHidden
             ))
         }
-        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序，而文字压在形状之上。
-        for level in (0..<TextOverlayStacking.levelCount(for: project.state.textOverlays)).reversed() {
+        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序（行号大的在上、画在上面），
+        // 而文字压在形状之上。
+        for row in (0..<project.state.textRowCount).reversed() {
             result.append(RowSpec(
-                id: "text-\(level)", icon: "textformat", height: 26, slot: nil, textLevel: level
+                id: "text-\(row)", icon: "textformat", height: 26, slot: nil, textRow: row
             ))
         }
         if !project.state.shapes.isEmpty {
@@ -279,12 +228,7 @@ struct VideoEditTimelineView: View {
     }
 
     /// 每行的纵向位置（垂直拖动找目标行用），和 VStack 的排布严格一致。
-    struct RowLayout {
-        var spec: RowSpec
-        var minY: Double
-        var midY: Double
-        var maxY: Double
-    }
+    typealias RowLayout = TimelineRowLayout
 
     /// 此刻画出来的排布（缝开着就是拉开之后的）。位置只从 `TimelineSeams.layout` 来：
     /// 画框、命中判定、轨道头列三处用同一份（§5h）。
@@ -342,16 +286,15 @@ struct VideoEditTimelineView: View {
                     // 不收的话影子指针留在屏幕上、画面僵在那一帧。
                     clock.endPeek()
                     markerPeekTime = nil
-                    clipDrag = nil
-                    dragTargetRow = nil
+                    // 拖动 / 拉框的会话连同手势的「起手标记」一起清。留着 cue 的记号的话，
+                    // 视图回来之后再拖**同一条** cue，第一拍会因为 id 还相等而跳过
+                    // beginCueDrag —— 整次拖动没有会话，等于白拖一回。
+                    dragBox.reset()
+                    dragTailWidth = 0
+                    dragMembers = []
                     seamDwell.cancel()
                     openSeam = nil
                     laneReorder = nil
-                    marquee = nil
-                    // 手势的「起手标记」也要一起清。留着的话，视图回来之后
-                    // 再拖**同一条** cue，第一拍会因为 id 还相等而跳过
-                    // beginCueDrag —— 整次拖动没有会话，等于白拖一回。
-                    movingCueID = nil
                 }
             }
         }
@@ -429,28 +372,6 @@ struct VideoEditTimelineView: View {
             .padding(.vertical, TimelineRowMetrics.inset)
             .padding(.bottom, gap.atEnd ? TimelineSeams.gapExtra : 0)
 
-            // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
-            // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
-            TimelineAlignmentGuides(
-                times: clipDrag?.guides ?? filterDrop?.guides ?? audioLibraryDrop?.guides
-                    ?? mediaFileDrop?.guides ?? [],
-                pixelsPerSecond: pps
-            )
-
-            // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
-            // 一眼看出这 6 秒会占到哪里（时刻和宽度由 TimelineSnap.mainInsertion
-            // 算，落地同一个函数 —— 框指哪儿、有多长，落地就是哪儿、就那么长）。
-            if let span = mainInsertionSpan,
-               let layout = rowLayouts().first(where: { $0.spec.slot == .main }) {
-                dropPlaceholder(span: span, y: layout.minY, height: layout.spec.height)
-            }
-
-            // 跨轨拖动：目标行上画出松手后的真实落点（等长占位框，位置与
-            // relocateClip 共用同一份挤开算法 —— 框不说谎）。
-            if let ghost = crossTrackGhost {
-                dropPlaceholder(span: ghost.span, y: ghost.y, height: ghost.height)
-            }
-
             // 拖音频库素材进来时的落点框。**复用剪辑拖动那个虚线框** ——
             // 落下去就是一个普通的音频块，没道理让用户学第二种落点语言。
             if let audioLibraryDrop {
@@ -484,30 +405,24 @@ struct VideoEditTimelineView: View {
             TimelineScrollViewAccessor(geometry: scrollGeometry, scroller: autoScroller)
                 .frame(width: 0, height: 0)
 
-            // 垂直拖动的目标行高亮：现有行描边。落进缝里的不描边 —— 缝里那条插入线
-            // （下面）和缩略框已经说清楚了。
-            if let target = dragTargetRow, target.target.insertion == nil,
-               let layout = rowLayouts().first(where: { $0.spec.id == target.id }) {
-                RoundedRectangle(cornerRadius: 4)
-                    .strokeBorder(Color.teal, lineWidth: 2)
-                    .frame(width: contentWidth, height: layout.spec.height)
-                    .offset(y: layout.minY)
-                    .allowsHitTesting(false)
-            }
             // 拉开的缝里那条插入线：三种拖动（素材块 / 文件 / 音频库）都画这一条。
             if let top = gap.top {
                 TimelineInsertLine(gapTop: top, width: contentWidth)
             }
 
-            // 正在拉的选择框。画在播放头之下、块之上，不拦事件。
-            if let marquee, marquee.rect.width > 0 || marquee.rect.height > 0 {
-                Rectangle()
-                    .fill(Color.teal.opacity(0.12))
-                    .overlay(Rectangle().strokeBorder(Color.teal.opacity(0.9), lineWidth: 1))
-                    .frame(width: marquee.rect.width, height: marquee.rect.height)
-                    .offset(x: marquee.rect.minX, y: marquee.rect.minY)
-                    .allowsHitTesting(false)
-            }
+            // 拖动 / 拉框进行中画的东西（对齐线、占位框、目标轨描边、文字换行指示、框选矩形）
+            // 全在这一张覆盖层里：只有它订阅 `dragBox`，拖动每一拍时间线本体不重算（§0b）。
+            // 三套拖放（滤镜 / 音频库 / 文件）的对齐线不走盒子，从这儿传进去。
+            TimelineDragOverlay(
+                drag: dragBox,
+                layouts: rowLayouts(),
+                gapTop: gap.top,
+                contentWidth: contentWidth,
+                pps: pps,
+                magnet: project.magnetEnabled,
+                fallbackGuides: filterDrop?.guides ?? audioLibraryDrop?.guides ?? mediaFileDrop?.guides ?? [],
+                project: project
+            )
 
             hoverPointer
             playhead
@@ -577,12 +492,13 @@ struct VideoEditTimelineView: View {
                     seekFromTimeline(time: time, precise: precise)
                 }
             )
+            .equatable()
         } else if let layer = row.filterLayer {
             filterRow(layer: layer)
         } else if row.isShapes {
             shapesRow
-        } else if let level = row.textLevel {
-            textRow(level: level)
+        } else if let textRow = row.textRow {
+            self.textRow(row: textRow)
         } else if let kind = row.subtitleKind {
             subtitleRow(kind: kind)
         } else if let slot = row.slot {
@@ -597,14 +513,17 @@ struct VideoEditTimelineView: View {
             RoundedRectangle(cornerRadius: 4)
                 .fill(.quaternary.opacity(0.35))
                 .frame(width: contentWidth)
+            let context = ClipBlockContext(slot: slot, project: project)
             ForEach(project.state[track: slot]) { clip in
                 ClipBlockView(
                     clip: clip,
                     slot: slot,
                     height: height,
                     pps: pps,
-                    isSelected: isSelected(clip: clip.id),
-                    dragOffset: dragOffset(for: clip),
+                    isSelected: project.selectedClipIDs.contains(clip.id),
+                    drag: dragBox,
+                    isDragMember: dragMembers.contains(clip.id),
+                    context: context,
                     project: project,
                     onDragBegin: { beginClipDrag(clip, slot: slot) },
                     onDragChange: { translation, pointerViewport in
@@ -619,6 +538,8 @@ struct VideoEditTimelineView: View {
                     },
                     onMarkerPeek: { markerPeek($0) }
                 )
+                // 按值比较：只有画面用得到的输入变了才重算（见 `ClipBlockContext`）。
+                .equatable()
             }
             // 隐藏的轨：灰显、去色、点不动。
             .opacity(hidden ? 0.35 : 1)
@@ -687,7 +608,7 @@ struct VideoEditTimelineView: View {
             // 播放中、拖块、拖框、裁切（`liveEditOrigin`：连续修改的快照还挂着）
             // 都不扫帧。裁切那条只能从 project 上判 —— `isTrimming` 是块内的
             // @State，容器看不见。
-            guard !clock.isPlaying, clipDrag == nil, marquee == nil,
+            guard !clock.isPlaying, dragBox.clipDrag == nil, dragBox.marquee == nil,
                   project.liveEditOrigin == nil, !project.isDraggingVolume else { return }
             // 标记正接管着 peek，别把画面从标记那一帧拽回指针底下。
             guard markerPeekTime == nil else { return }
@@ -717,7 +638,7 @@ struct VideoEditTimelineView: View {
     /// 扫帧接回去；指针要是已经走了，画面也不会僵在标记那一帧。
     func markerPeek(_ time: Double?) {
         markerPeekTime = time
-        guard !clock.isPlaying, clipDrag == nil, marquee == nil,
+        guard !clock.isPlaying, dragBox.clipDrag == nil, dragBox.marquee == nil,
               project.liveEditOrigin == nil else { return }
         if let time {
             clock.peek(at: time)

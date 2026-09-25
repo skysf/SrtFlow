@@ -82,131 +82,6 @@ func makeTone(_ name: String, withVideo: Bool, sampleRate: Int = 48_000, channel
     return url
 }
 
-// MARK: - 量包络
-
-/// 把文件解成单声道 f32 PCM。
-func decodePCM(_ url: URL) -> [Float] {
-    let raw = root.appendingPathComponent("pcm-\(UUID().uuidString).raw")
-    let (code, log) = run(ffmpegPath, [
-        "-y", "-hide_banner", "-loglevel", "error",
-        "-i", url.path, "-map", "0:a",
-        "-f", "f32le", "-ac", "1", "-ar", "48000", raw.path,
-    ])
-    guard code == 0, let data = try? Data(contentsOf: raw) else {
-        print("解码失败：\(log)")
-        return []
-    }
-    return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
-}
-
-/// 预览侧：从真实合成 + audioMix 里读 PCM（单声道 f32）。
-func previewPCM(_ built: VideoEditCompositionBuilder.Built) async -> [Float] {
-    await previewPCM(built.composition, mix: built.audioMix)
-}
-
-func previewPCM(_ asset: AVMutableComposition, mix: AVMutableAudioMix?) async -> [Float] {
-    guard let tracks = try? await asset.loadTracks(withMediaType: .audio), !tracks.isEmpty,
-          let reader = try? AVAssetReader(asset: asset) else { return [] }
-    let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVLinearPCMBitDepthKey: 32,
-        AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-        AVSampleRateKey: 48_000,
-        AVNumberOfChannelsKey: 1,
-    ])
-    output.audioMix = mix
-    guard reader.canAdd(output) else { return [] }
-    reader.add(output)
-    guard reader.startReading() else { return [] }
-
-    var samples: [Float] = []
-    while let buffer = output.copyNextSampleBuffer() {
-        guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-        let length = CMBlockBufferGetDataLength(block)
-        var bytes = [UInt8](repeating: 0, count: length)
-        guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: &bytes)
-                == kCMBlockBufferNoErr else { continue }
-        bytes.withUnsafeBytes { raw in
-            samples.append(contentsOf: raw.bindMemory(to: Float.self))
-        }
-    }
-    return samples
-}
-
-/// 一个时间窗内的 RMS（48kHz 单声道）。
-func rms(_ samples: [Float], from: Double, to: Double) -> Double {
-    let rate = 48_000.0
-    let start = max(0, Int(from * rate))
-    let end = min(samples.count, Int(to * rate))
-    guard end > start else { return 0 }
-    var sum = 0.0
-    for index in start..<end {
-        let value = Double(samples[index])
-        sum += value * value
-    }
-    return (sum / Double(end - start)).squareRoot()
-}
-
-/// 一个时间窗内的**峰值**。RMS 会把几毫秒的爆音摊平（100ms 窗里的 2ms 满幅
-/// 只把 RMS 抬到 0.14），抓瞬态必须看峰值。
-func peak(_ samples: [Float], from: Double, to: Double) -> Double {
-    let rate = 48_000.0
-    let start = max(0, Int(from * rate))
-    let end = min(samples.count, Int(to * rate))
-    guard end > start else { return 0 }
-    return samples[start..<end].map { Double(abs($0)) }.max() ?? 0
-}
-
-/// 一条包络的四个采样点，全部**相对满音量**归一化 —— 这样断言不依赖编码器
-/// 的绝对增益，也不依赖素材音量。
-struct Envelope {
-    var head: Double    // 0.00–0.10s
-    var quarter: Double // 0.20–0.30s（1 秒渐入的四分之一处）
-    var half: Double    // 0.45–0.55s
-    var body: Double    // 2.00–2.10s（满音量参照）
-    var tail: Double    // 3.90–4.00s
-
-    init(_ samples: [Float]) {
-        let full = rms(samples, from: 2.0, to: 2.1)
-        body = full
-        let scale = full > 0 ? full : 1
-        head = rms(samples, from: 0, to: 0.1) / scale
-        quarter = rms(samples, from: 0.2, to: 0.3) / scale
-        half = rms(samples, from: 0.45, to: 0.55) / scale
-        tail = rms(samples, from: 3.9, to: 4.0) / scale
-    }
-
-    var description: String {
-        String(
-            format: "head=%.3f quarter=%.3f half=%.3f tail=%.3f (满音量 RMS %.3f)",
-            head, quarter, half, tail, body
-        )
-    }
-}
-
-/// 一条**线性**渐入 1s / 渐出 1s 的包络该长什么样。
-func checkFadedEnvelope(_ envelope: Envelope, _ label: String) {
-    check(envelope.body > 0.01, "\(label)：中段必须真的有声音（量到 \(envelope.description)）")
-    // 0–0.1s：增益 0→0.1，RMS 比例 ≈ 0.058。
-    check(envelope.head < 0.15, "\(label)：开头必须几乎无声（\(envelope.description)）")
-    // 0.2–0.3s：增益 0.2→0.3，RMS 比例 ≈ 0.25。
-    check(envelope.quarter > 0.12 && envelope.quarter < 0.40,
-          "\(label)：渐入四分之一处应在四分之一音量附近（\(envelope.description)）")
-    // 0.45–0.55s：增益 ≈ 0.5 —— 线性曲线的判据，换成等功率曲线这条会红。
-    check(envelope.half > 0.38 && envelope.half < 0.62,
-          "\(label)：渐入中点应是半音量（线性曲线；\(envelope.description)）")
-    check(envelope.tail < 0.15, "\(label)：结尾必须几乎无声（\(envelope.description)）")
-}
-
-/// 反例对照：没设渐变的同一条时间线，开头结尾都必须是满音量。
-func checkFlatEnvelope(_ envelope: Envelope, _ label: String) {
-    check(envelope.body > 0.01, "\(label)：中段必须真的有声音（\(envelope.description)）")
-    check(envelope.head > 0.85, "\(label)：没设渐变时开头就该是满音量（\(envelope.description)）")
-    check(envelope.tail > 0.85, "\(label)：没设渐变时结尾就该是满音量（\(envelope.description)）")
-}
-
 // MARK: - 时间线
 
 // 纯音频段的 info 本来就是 nil（时长走 audioAssetDuration），只有带画面的
@@ -552,6 +427,9 @@ func main() async {
     // 恰恰是唯一不触发跳变的形状（第一轮就是被这个形状骗过去的）。
     await checkPinnedFromZero(seamState, "主轨接缝 · A/B 两条合成轨")
 
+    // 2026-09-24 以前这里数的是导出滤镜图里有几条 afade、有没有 acrossfade（导出自己搭一套
+    // 声音链时，转场那条边要「让位」给 acrossfade）。之后成片的声音就是预览那份混音离线读出来的
+    // （ExportAudioMixdown）：图里不许再有任何声音滤镜，接缝上听到的必须和预览逐窗一致。
     let seamOutput = root.appendingPathComponent("seam.mp4")
     do {
         let plan = try await VideoEditExportGraph.plan(
@@ -563,18 +441,25 @@ func main() async {
         )
         defer { try? FileManager.default.removeItem(at: plan.workspace) }
         let joined = plan.arguments.joined(separator: " ")
-        checkEqual(joined.components(separatedBy: "afade=t=in").count - 1, 1,
-                   "接缝上有转场时，全图只应有一条 afade=t=in（第二段的渐入让给 acrossfade）")
-        checkEqual(joined.components(separatedBy: "afade=t=out").count - 1, 1,
-                   "同理只应有一条 afade=t=out（第一段的渐出让给 acrossfade）")
-        check(joined.contains("acrossfade"), "转场自己的交叉淡变还得在")
+        for filter in ["afade=", "acrossfade=", "amix=", "atempo=", "aeval=", "adelay=", "atrim="] {
+            check(!joined.contains(filter),
+                  "导出图里又出现了 \(filter)：成片的声音只能是预览那份混音（ExportAudioMixdown），"
+                  + "图里另搭一段声音链就是两份账")
+        }
+        check(joined.contains("-f f32le"), "混音文件要作为一路 f32le 输入接进导出")
 
-        // 参数对了还不够，真跑一遍确认这张滤镜图能编出成品。
+        // 参数对了还不够，真跑一遍确认能编出成品，再逐窗对预览。
         let (code, out) = run(ffmpegPath, plan.arguments)
-        check(code == 0, "带转场 + 渐变的滤镜图必须能跑通：\(out.suffix(500))")
+        check(code == 0, "带转场 + 渐变的导出必须能跑通：\(out.suffix(500))")
+        if code == 0, let preview = await previewSamples(seamState, name: "接缝 · 预览") {
+            checkSameEnvelope(decodePCM(plan.tempOutput), preview, from: 0.1, to: 6.9, "接缝 · 成片 vs 预览")
+        }
     } catch {
         check(false, "接缝用例的 plan() 失败：\(error)")
     }
+
+    // ---- 6b. 正在播的预览换上的那份 mix，和成片是同一份（展开过转场的几何）----
+    await checkLiveMixFollowsExpandedSeams(videoSource: videoSource)
 
     // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
     await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
@@ -582,6 +467,9 @@ func main() async {
     // ---- 8. 电平表（checks/AudioFade/Meter.swift）----
     await checkMeters(audioSource: audioSource, videoSource: videoSource)
     await checkMetersAcrossFormatChange(audioSource: audioSource, videoSource: videoSource)
+
+    // ---- 9. 声音场景（checks/AudioFade/SoundScene.swift）----
+    await checkSoundScenes(videoSource: videoSource)
 
     print("\(checks) checks, \(failures) failures")
     if failures == 0 { print("All checks passed") }

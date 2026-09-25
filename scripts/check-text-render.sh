@@ -12,6 +12,8 @@
 #   3. 压在形状之上；
 #   4. 空文字不进导出；
 #   5. 位图是包络大小，不是整幅画布。
+# 另有一组纯值的（checks/TextRender/HitGeometry.swift）：预览上的可点范围 —— 看得见的
+# 都点得着、没选中时不按 80% 宽的整框判（2026-09-24）。
 #
 # 用法：
 #   scripts/check-text-render.sh
@@ -39,6 +41,12 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
+  Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTrack.swift \
+  Sources/SrtFlow/VideoEditSoundSceneTails.swift \
+  Sources/SrtFlow/VideoEditAudioMix.swift \
+  Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
   Sources/SrtFlow/VideoEditFilterModels.swift \
@@ -58,8 +66,10 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextNumber.swift \
   Sources/SrtFlow/VideoEditTextNumberRenderer.swift \
   Sources/SrtFlow/VideoEditTextModels.swift \
+  Sources/SrtFlow/VideoEditTextRows.swift \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
+  Sources/SrtFlow/VideoEditTextHitGeometry.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
@@ -67,8 +77,12 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
-  Sources/SrtFlow/VideoEditExportAudioGain.swift \
+  Sources/SrtFlow/VideoEditExportFilterScript.swift \
+  Sources/SrtFlow/VideoEditExportMixdown.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditMediaAssetCache.swift \
+  Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
@@ -77,6 +91,10 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/TextRender/main.swift \
+  checks/TextRender/Assertions.swift \
+  checks/TextRender/HitGeometry.swift \
+  checks/TextRender/NumberDelay.swift \
+  checks/TextRender/TextRows.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

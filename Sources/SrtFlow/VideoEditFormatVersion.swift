@@ -284,6 +284,27 @@ extension TimelineState {
         hasVolumeCurves || hasMixerSettings
     }
 
+    /// v20：`EditClip.soundScene` —— 段上的声音场景（喇叭 / 室内 / 室外）。
+    ///
+    /// 为什么要抬：它**直接决定成片里的声音**。只认 v19 的旧版照常打开，场景整个消失，
+    /// 随手编辑触发自动保存即永久丢失。**按需**：没挂场景的段不写这个键（`EditClip` 的 encode
+    /// 按同一判据跳过）。合同见 docs/architecture/sound-scenes.md。
+    var requiresFormatVersion20: Bool { hasSoundScenes }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v21-only 持久数据。
+    ///
+    /// **登记清单（新增 v21-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.row` —— 文字在时间线上哪一行，**行序就是画面上的叠放序**
+    ///    （无条件落盘，有文字就是 v21 数据）。
+    /// 2. `NumberRoll.delay` —— 数字元件先等几秒再滚（按需写入：0 不落键）。
+    ///
+    /// 为什么要升版本：两样都**直接决定成片**。只认 v20 的旧版打开后行号消失、重叠的
+    /// 文字按时间重新排布，谁压谁跟着变；等待消失、数字从段起点就开始滚 —— 随手编辑
+    /// 触发自动保存即永久丢失。
+    var requiresFormatVersion21: Bool {
+        !textOverlays.isEmpty
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

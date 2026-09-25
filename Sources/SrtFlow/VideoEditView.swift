@@ -85,31 +85,8 @@ struct VideoEditView: View {
             toolchain.resolveIfNeeded()
             project.undoManager = undoManager
             installEventMonitor()
-            // GUI 冒烟测试的导入钩子：环境变量不设就完全不生效。
-            // 可以用 : 分隔多个路径（PATH 惯例），addMedia 按类型分流 —— 想验
-            // 字幕相关的界面就再挂一个 .srt，否则拿不到「有字幕」的状态。
-            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_VIDEO"],
-               !smoke.isEmpty, project.state.isEmpty {
-                let urls = smoke.split(separator: ":")
-                    .map { URL(fileURLWithPath: String($0)) }
-                project.addMedia(urls: urls)
-            }
-            // 同一套钩子，打开一份**已存在的工程**。
-            //
-            // 为什么非要有它：音频库素材的重链接（`remoteKey` → 缓存 → R2）只在
-            // **打开工程**这条路径上跑，而那条路自动化进不去 —— 临时目录里 ad-hoc
-            // 签名的调试拷贝没在 LaunchServices 注册文档类型，命令行参数、
-            // `open -a`、AppleScript 的 `open` 三条路 2026-09-22 实测全部打不开它，
-            // 而 NSOpenPanel 的自动化本来就不可靠（见 gui-smoke-testing.md）。
-            // 没有这个钩子，「清掉缓存还找不找得回来」这条就永远只能靠人手点。
-            if let smoke = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_PROJECT"],
-               !smoke.isEmpty, project.state.isEmpty {
-                let url = URL(fileURLWithPath: smoke)
-                Task { await project.openProject(at: url) }
-            }
-            // 预览性能测试：只有 CI 上 scripts/check-preview-perf.sh 起的 App 才带
-            // `SRTFLOW_BENCH_OUT`，平时是空操作（PreviewBench.swift）。
-            PreviewBench.startIfRequested(project: project)
+            // GUI 冒烟 / 性能测试的环境变量钩子，不设就完全不生效（DevHooks.swift）。
+            DevHooks.editorAppeared(project: project)
         }
         .onDisappear {
             if let eventMonitor { NSEvent.removeMonitor(eventMonitor) }
@@ -237,6 +214,18 @@ struct VideoEditView: View {
             // 快捷键：⌫ 把正在编辑的 cue 整条从轨上删掉，空格开播、V 切段的显隐。
             // 草稿随提交（回车/失焦）清空，不会长期挡住快捷键。
             if project.subtitleDraft != nil { return event }
+            // ⌘A 选中时间线上的一切、⌘⇧A 取消（2026-09-25 用户拍板）。放在修饰键那道闸门
+            // **前面**：带 ⌘ 的组合默认放行给系统，这两个是例外；正在打字时上面已经让路了
+            //（输入框里的 ⌘A 仍是全选文字）。按 keyCode 认（0 = A），不看输入法。
+            let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+            if event.keyCode == 0, modifiers == [.command] {
+                project.selectAllOnTimeline()
+                return nil
+            }
+            if event.keyCode == 0, modifiers == [.command, .shift] {
+                project.clearSelection()
+                return nil
+            }
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
@@ -478,9 +467,8 @@ struct VideoEditView: View {
             .disabled(recordingCoordinator.isBusy)
             .instantHelp("Project frame rate — preview, export and keyframes all follow it")
 
-            if project.isRebuildingPreview {
-                ProgressView().controlSize(.mini)
-            }
+            // 只有它订阅「正在重建」：放在工程上发的话，每次重建整个编辑器多算两轮。
+            PreviewRebuildSpinner(status: project.rebuildStatus)
 
             if project.importingCount > 0 {
                 HStack(spacing: 4) {
@@ -752,68 +740,6 @@ struct VideoEditView: View {
 
 // MARK: - 工具栏的小件
 
-private struct ToolbarIcon: View {
-    let icon: String
-    let help: LocalizedStringKey
-    /// 快捷键：显示在提示右边的键帽，能挂等价符的顺手挂上。
-    let shortcut: HelpShortcut?
-    /// 这个动作正在后台跑：图标原地换成转圈。
-    let isBusy: Bool
-    let action: () -> Void
-
-    init(
-        icon: String, help: LocalizedStringKey, shortcut: HelpShortcut? = nil,
-        isBusy: Bool = false, action: @escaping () -> Void
-    ) {
-        self.icon = icon
-        self.help = help
-        self.shortcut = shortcut
-        self.isBusy = isBusy
-        self.action = action
-    }
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        Button(action: action) {
-            // 忙的时候原地换成转圈。**尺寸写在外层、和图标完全一样** ——
-            // 写在分支里的话两种内容的固有尺寸不同，工具栏会在转圈出现和消失时
-            // 各跳一下。
-            Group {
-                if isBusy {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: icon)
-                }
-            }
-            .frame(width: 20, height: 18)
-        }
-        .buttonStyle(.borderless)
-        .instantHelp(help, shortcut: shortcut)
-    }
-}
-
-private struct ToolbarToggle: View {
-    let icon: String
-    let help: LocalizedStringKey
-    var shortcut: HelpShortcut?
-    @Binding var isOn: Bool
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        Toggle(isOn: $isOn) {
-            Image(systemName: icon)
-                .frame(width: 20, height: 18)
-        }
-        .toggleStyle(.button)
-        .buttonStyle(.borderless)
-        .tint(.teal)
-        .instantHelp(help, shortcut: shortcut)
-    }
-}
-
-// MARK: - 形状叠层
-
-/// 画面上的形状：按归一化坐标画在预览框里，选中可拖动。
 private struct ShapeOverlayCanvas: View {
     @ObservedObject var project: VideoEditProject
     /// 必须直接订阅时钟（和 `ClipTransformCanvas` 同款）：形状的出没跟着
