@@ -76,7 +76,10 @@ CI 的性能测试早就量着这个数（main 36138775232 的 `preview-perf` �
 - 回归面：`checks/timeline-drag-wiring.sh`（播放头把手钉在标尺上那一节改盯新文件）、
   `scripts/check-project-file.sh`（「预览字幕走两只眼睛推导」那一条改盯新文件）、
   `checks/subtitle-editing-wiring.sh`、`checks/transition-handles-wiring.sh`、本地化覆盖、
-  文件行数（三个老文件变短，基线改小）都绿。CI 的性能 ratchet 见 PR。
+  文件行数（三个老文件变短，基线改小）都绿。
+- **CI 的性能 ratchet**（PR #73 首跑，只红在「进步了没登记」，没有一项退步，同一个 PR 里把基线改小）：
+  busy 场景时钟跳 60 下 body 10313 → 1109、AppKit 控件更新 1081 → 1；basic 场景 3000 → 870。
+  现在每一跳最多的是按钮判据小修饰器（busy 里 6 个：工具栏 5 个 + 检查器的「分割」，各算一个布尔）和电平表。
 
 ## 教训 / 防回归
 
