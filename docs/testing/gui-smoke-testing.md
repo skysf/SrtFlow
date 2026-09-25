@@ -279,8 +279,11 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
 3. **单击要等过系统的双击间隔**：同一个视图上还挂着双击手势时（时间线的块、预览上的文字），
    SwiftUI 要先排除「这是双击的第一下」才落单击。`click` 已经等了 `doubleClickInterval + 0.15`
    秒；等少了读到的是点之前的状态，会误判成「点了没反应」。
-4. **「⌘ 点 / ⇧ 点加选」驱不动**：鼠标事件直接交给窗口，不会成为 `NSApp.currentEvent`，而点选时
-   判加选读的就是它。要多选就用框选（`drag` 从空白处起手）或 ⌘A。
+4. **带修饰键的加选都驱不动**：⌘ 点 / ⇧ 点判加选读 `NSApp.currentEvent`，鼠标事件直接交给窗口、
+   不会成为它；⌘ 拖框读的是 `NSEvent.modifierFlags`（此刻键盘上真按着什么），`drag` 的 `flags`
+   带不进去 —— 驱动出来的都是**不加选**的那一种（2026-09-25 实测：⌘ 拖框照样把选择整个换掉，
+   别当成 bug）。要多选就用不带修饰键的框选（`drag` 从空白处起手）或 ⌘A；加选的逻辑靠纯值自检
+   （`checks/TimelineSnap/Marquee.swift`）。
 5. **键盘事件投进事件队列**（`NSApp.postEvent`）：编辑器的本地按键监听（⌫、M、⌘A）只在
    `NSApp.sendEvent` 那一关看得见事件。滚轮直接交给指针下的视图（走队列会按屏幕位置找窗口，
    用户的窗口正好盖在上面时就送错了人）。

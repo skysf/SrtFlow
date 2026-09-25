@@ -374,6 +374,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-24 点了标记按 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) — 单击就弹出带备注框的面板，备注框成了第一响应者把 ⌫ 吃掉；点别处关面板又把选择清了。改成单击只选中、双击弹面板、右键菜单（守卫钉着）。**点一下就弹带输入框的面板 = 交出键盘**；冒烟驱动的工程拷贝要放在 Downloads / Desktop / Documents 之外（TCC 每次重编都重新弹，App 卡在 `getxattr` 里像是工程没打开）。
 - [2026-09-24 改得勤就隔一会儿卡一下：自动保存每次重建书签](docs/bugfixes/2026-09-24-autosave-rebuilds-bookmarks-every-save.md) — 存盘给每个素材现建系统书签，57 个约 55ms、每 2 秒一次；缓存按「路径 + inode + 卷」认，同名换文件必须重建。
 - [2026-09-25 裁切不跟链接：视频裁短了，链接的音频留在原长](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md) — 挪、切、删都走 `linkedClipIDs`，唯独把手的裁切没走；裁的算法现在只有 `TimelineTrim` 一份，链接伙伴 / 选中的一组同一个量、谁先到头整组一起停。
+- [2026-09-25 ⌘ 拖框加选把原来选中的滤镜段丢了](docs/bugfixes/2026-09-25-marquee-additive-drops-filters.md) — 框选结果 `TimelineMarquee.Hit` 的五类都带 `= []`，滤镜段进框选时加选的 `union` 和起手的 `base` 都漏了 `filters`、照样编过。去掉默认值（漏写一类就编不过）+ 夹具每一类都不空的往返自检。**带默认值的字段 + 成员初始化器，加字段时编译器一声不吭**；⌘ 拖框在进程内冒烟里驱不动（读的是真键盘）。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 

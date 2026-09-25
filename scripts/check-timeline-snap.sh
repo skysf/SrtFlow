@@ -71,6 +71,7 @@ xcrun swiftc \
   checks/TimelineSnap/main.swift \
   checks/TimelineSnap/SnapBasics.swift \
   checks/TimelineSnap/Trim.swift \
+  checks/TimelineSnap/Marquee.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

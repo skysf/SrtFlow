@@ -96,12 +96,16 @@ enum TimelineMarquee {
     }
 
     /// 一次框选的结果。
+    ///
+    /// 五类**故意不给默认值**：逐类拼一个 `Hit` 的地方（`union`、起手时的 `base`）漏写一类就编不过。
+    /// 带着 `= []` 的时候，滤镜段进框选那次两处都漏了 `filters` 照样编过，⌘ 拖框加选把已经选中的
+    /// 滤镜段丢了（docs/bugfixes/2026-09-25-marquee-additive-drops-filters.md）。空的用 `Hit()`。
     struct Hit: Equatable {
-        var clips: Set<UUID> = []
-        var shapes: Set<UUID> = []
-        var texts: Set<UUID> = []
-        var cues: Set<UUID> = []
-        var filters: Set<UUID> = []
+        var clips: Set<UUID>
+        var shapes: Set<UUID>
+        var texts: Set<UUID>
+        var cues: Set<UUID>
+        var filters: Set<UUID>
 
         var isEmpty: Bool { clips.isEmpty && shapes.isEmpty && texts.isEmpty && cues.isEmpty && filters.isEmpty }
 
@@ -111,7 +115,8 @@ enum TimelineMarquee {
                 clips: clips.union(other.clips),
                 shapes: shapes.union(other.shapes),
                 texts: texts.union(other.texts),
-                cues: cues.union(other.cues)
+                cues: cues.union(other.cues),
+                filters: filters.union(other.filters)
             )
         }
     }
@@ -193,5 +198,12 @@ enum TimelineMarquee {
             }
         }
         return hit
+    }
+}
+
+extension TimelineMarquee.Hit {
+    /// 什么都没框中。写在扩展里：写进类型本体的话，逐类列全的那个成员初始化器就没了。
+    init() {
+        self.init(clips: [], shapes: [], texts: [], cues: [], filters: [])
     }
 }

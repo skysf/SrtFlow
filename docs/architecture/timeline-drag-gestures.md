@@ -225,6 +225,10 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 - 滤镜行 2026-09-25 起也给框选产出 item（`TimelineMarquee.Kind.filter`，命中区按画出来的块：
   `filterTopInset` / `filterHeight`，和 `FilterBlockMetrics` 共用一份常量），`applyBoxSelection`
   多一个 `filters:`。点选滤镜仍和别的互斥（理由见 `EditSelection.filterIDs`）。
+- **`TimelineMarquee.Hit` 的五类不给默认值**（空的用 `Hit()`）：逐类拼 `Hit` 的地方 —— 加选的
+  `union`、拉框起手记下的 `base` —— 漏写一类就编不过。带着默认值时这两处都漏了 `filters`，⌘ 拖框
+  加选把原来选中的滤镜段丢了（[案例](../bugfixes/2026-09-25-marquee-additive-drops-filters.md)）。
+  以后再加一类，`checks/TimelineSnap/Marquee.swift` 的往返用例（夹具每一类都不许空）也要跟上。
 - **⌘A** = `selectAllOnTimeline`：时间线上的一切（含隐藏轨上的剪辑、滤镜段），走 `applyBoxSelection`
   这一个混选入口，所以标记和转场的选择照样清掉 —— 它们跟着段走。**⌘⇧A** = `clearSelection`。
   两个键接在 `VideoEditView.handleEvent` 里、排在「带修饰键一律放行」之前；正在打字时让路。

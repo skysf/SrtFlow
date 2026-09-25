@@ -47,7 +47,8 @@ extension VideoEditTimelineView {
                 clips: project.selectedClipIDs,
                 shapes: project.selectedShapeIDs,
                 texts: project.selectedTextIDs,
-                cues: project.selectedSubtitleCueIDs
+                cues: project.selectedSubtitleCueIDs,
+                filters: project.selectedFilterIDs
             )
         )
     }
