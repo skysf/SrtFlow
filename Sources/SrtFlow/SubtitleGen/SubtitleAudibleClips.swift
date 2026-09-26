@@ -29,7 +29,11 @@ enum SubtitleAudibleClips {
 
     /// 出声 clip 清单 —— 与预览/导出同一份「实际可听」合同
     /// （VideoEditCompositionBuilder 先例）：mainHidden 跳过整个主轨、
-    /// isHidden 的 lane 当不存在、静音或音量为 0 的 clip 不算出声。
+    /// isHidden 的 lane 当不存在、**按 V 藏起来的段**（`ClipVisibility.visible`，
+    /// 预览 / 导出同一个过滤）不存在、静音或音量为 0 的 clip 不算出声。
+    ///
+    /// 单段的 V 是 2026-09-18 加的，这里当时没跟上，藏起来的段照样被转写
+    /// （docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md）。
     ///
     /// **字幕生成一侧的所有素材消费者都必须从这里取**（转写、探针、音轨
     /// metadata、面板的可用性判断）。任何「我只要主轨和音频轨就够了」的
@@ -66,13 +70,13 @@ enum SubtitleAudibleClips {
             ))
         }
         if !state.mainHidden {
-            for clip in state.mainClips { add(clip, laneRank: 0) }
+            for clip in ClipVisibility.visible(state.mainClips) { add(clip, laneRank: 0) }
         }
         for (index, lane) in state.overlayTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips { add(clip, laneRank: 1 + index) }
+            for clip in ClipVisibility.visible(lane.clips) { add(clip, laneRank: 1 + index) }
         }
         for (index, lane) in state.audioTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips {
+            for clip in ClipVisibility.visible(lane.clips) {
                 add(clip, laneRank: 1 + state.overlayTracks.count + index)
             }
         }

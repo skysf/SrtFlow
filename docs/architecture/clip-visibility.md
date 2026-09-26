@@ -46,6 +46,10 @@
 | ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills`；叠上层轨和逐帧预渲染**都只走 `overlayVisible`**，不许按轨去 `lane.clips` 里取段（[2026-09-26 案例](../bugfixes/2026-09-26-hidden-upper-clip-still-exported.md)） |
 | 只导出选中的 | `TimelineState.selectionForExport` |
 | 定格 | `isFreezeEligible`：藏起来的段没有「这一帧」可言 |
+| 字幕生成（转写哪些声音） | `SubtitleAudibleClips.soundClips` 走 `ClipVisibility.visible`：藏起来的段听不见，不转写（[2026-09-26 案例](../bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)）；生成之后再藏的段，已有的字幕不动 |
+
+**加新的消费者时先对一遍这张表**：隐藏的合同改了一次（2026-09-18 加单段的 V），字幕生成那份可听快照
+没跟上，藏起来的段照样被转写了八天。
 
 隐藏的段**仍然占着时间线的位置**（时长、后面段的落点都不变），留下的那段空当在
 预览和成片里就是黑场 —— 和「删掉它」是两回事，这正是隐藏的意义。
@@ -121,6 +125,7 @@
 | 真导出抽帧：上层轨上按 V 藏的段（含带入场动画、走预渲染的）和整条藏起来的轨都不进成片，外加一份没藏的对照 | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
 | 一侧藏起来的缝不展开：纯值断言 + 真导出在藏起来那一格取样是黑（两个方向） | 同上 |
 | 两条渲染链路、V 键、右键项、定格、块灰显的接线 | `scripts/check-project-file.sh` 的扫描守卫段 |
+| 字幕生成的可听快照不含藏起来的段（主轨 / 上层轨 / 音频轨），分离出来还显示着的音频照样进 | `scripts/check-project-file.sh`（`checks/ProjectFile/HiddenItems.swift`）+ 扫描守卫 |
 | 文字 / 形状 / 滤镜段：跨类的切换规则、`rendered*` 清单（顺序不变、藏起来的不在）、此刻生效的滤镜、存盘按需写键 / 缺键 / 往返 / v22 | `scripts/check-project-file.sh`（`checks/ProjectFile/HiddenItems.swift`） |
 | 文字 / 形状 / 滤镜段藏起来之后导出图里没有它们（外加一份没藏的对照） | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
 | 四种块共用一份灰显、V 也切文字 / 形状 / 滤镜段、预览和导出都读 `rendered*` | `scripts/check-project-file.sh` 的扫描守卫段 |

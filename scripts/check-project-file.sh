@@ -378,6 +378,9 @@ require "可听快照必须用 clip.hasAudio" \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'guard clip\.hasAudio else'
 forbid "不许再把 info == nil 当成「有声音」" \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'if let info = clip\.info, !info\.hasAudio'
+# 按 V 藏起来的段在预览 / 成片里连声音都没有，字幕生成同一个过滤（2026-09-26 案例）。
+require "可听快照必须滤掉按 V 藏起来的段（ClipVisibility.visible）" \
+  Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'ClipVisibility\.visible\('
 
 # 同语种判据只有一份：TranslationPreflight 委托到 Core，不许自己再写一遍。
 require "TranslationPreflight 必须委托 Core 的 languageKey" \
