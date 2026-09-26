@@ -85,16 +85,20 @@ public enum SubtitleSegmenter {
 
     // MARK: 边界合同（计划 5.3）
 
-    /// 词归属：timeRange 中点落在窗口的半开源区间内才归本窗口；
-    /// 归属后 clamp 到区间；clamp 出零时长的丢弃。
+    /// 词归属：说话中点落在窗口的半开源区间内才归本窗口；归属后 clamp 到区间；clamp 出零时长的丢弃。
+    ///
+    /// 「说话中点」和开口时间来自 `SubtitleSpeechOnset`：停顿后面第一个词被识别器往前拉长了
+    /// （静音算进了它的开头），拿整段的中点判，片段从静音后面切开时这个词会被判到片段外面
+    /// （2026-09-26：「That's」丢了）；拿整段的开头当字幕起点，字幕会比声音早（「At」早 0.9 秒）。
+    /// 普通的词两样都跟以前一样（中点、识别器给的开头）。
     public static func attributeWords(
         _ words: [TimedWord], to window: SubtitleClipWindow
     ) -> [TimedWord] {
-        words.compactMap { word in
-            let mid = (word.start + word.end) / 2
-            guard mid >= window.sourceStart, mid < window.sourceEnd else { return nil }
+        let sorted = words.sorted { $0.start < $1.start }
+        return zip(sorted, SubtitleSpeechOnset.estimate(sorted)).compactMap { word, timing in
+            guard timing.center >= window.sourceStart, timing.center < window.sourceEnd else { return nil }
             var clamped = word
-            clamped.start = max(word.start, window.sourceStart)
+            clamped.start = max(timing.onset, window.sourceStart)
             clamped.end = min(word.end, window.sourceEnd)
             guard clamped.end > clamped.start else { return nil }
             return clamped
@@ -124,8 +128,12 @@ public enum SubtitleSegmenter {
             }
         // ③ 成句，④ 句内按逗号分小句、太短的并、放不下的在最好的地方切，⑤ 去标点成字幕。
         var result = SegmentedSubtitles()
-        for sentence in SubtitleBreaks.sentences(placed, pauseThreshold: config.pauseThreshold) {
-            for range in SubtitleBreaks.pieces(of: sentence, config: config) {
+        let sentences = SubtitleBreaks.sentences(placed, pauseThreshold: config.pauseThreshold)
+        for (index, sentence) in sentences.enumerated() {
+            // 这句话后面最晚能显示到哪：下一句开口，或者这段素材在时间线上的结尾。
+            let availableEnd = index + 1 < sentences.count
+                ? sentences[index + 1][0].start : window.timelineEnd
+            for range in SubtitleBreaks.pieces(of: sentence, availableEnd: availableEnd, config: config) {
                 appendCue(sentence[range], window: window, config: config, into: &result)
             }
         }

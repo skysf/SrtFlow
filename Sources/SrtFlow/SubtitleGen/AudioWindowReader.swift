@@ -112,4 +112,17 @@ enum AudioWindowReader {
         if let error = reader.error { throw error }
         return fileURL
     }
+
+    /// 启动残留清理：上次崩溃 / 强退留下的 SrtFlow-ASR-* 临时目录（转写抽出来的音频窗口都写在这种目录里）。
+    /// 2026-09-26 从 TranscriptionTask 搬来（那个文件贴着 600 行的上限）。
+    static func sweepTempResidue() {
+        let manager = FileManager.default
+        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
+        guard let items = try? manager.contentsOfDirectory(
+            at: temp, includingPropertiesForKeys: nil
+        ) else { return }
+        for item in items where item.lastPathComponent.hasPrefix("SrtFlow-ASR-") {
+            try? manager.removeItem(at: item)
+        }
+    }
 }

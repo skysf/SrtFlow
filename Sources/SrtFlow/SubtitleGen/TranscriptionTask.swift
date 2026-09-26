@@ -330,16 +330,23 @@ final class TranscriptionTask: ObservableObject {
 
         // 探针素材先定下来，而且是**真的抽一次音频**才算定下 ——「文件在」不等于
         // 「音轨读得出来」。读不了的往下顺延，metadata 的查询顺序再以最终选中的
-        // 那一段为首（PR#22 复审第二轮 P2）。
+        // 那一段为首（PR#22 复审第二轮 P2）。还要**有人声**：长的先，每段先用一个已装语言短转写
+        // 听一听，音效、纯音乐拿去检测必然失败（2026-09-26 案例）。
+        let screening = await SpeechTranscriptionService.screeningLocale()
+        let service = self.service
         let probe = try await SubtitleAudibleClips.selectProbe(
             in: clips, probeSeconds: Self.detectionProbeSeconds,
-            isCancelled: { token.isCancelled }
-        ) { clip, range in
-            try await AudioWindowReader.extract(
-                assetURL: clip.url, range: range, into: tempDirectory,
-                isCancelled: { token.isCancelled }
-            )
-        }
+            isCancelled: { token.isCancelled },
+            extract: { clip, range in
+                try await AudioWindowReader.extract(
+                    assetURL: clip.url, range: range, into: tempDirectory, isCancelled: { token.isCancelled }
+                )
+            },
+            hasSpeech: { _, file, range in
+                guard let screening else { return true }
+                return try await service.hasSpeech(fileURL: file, locale: screening, sourceOffset: range.start)
+            }
+        )
         // nil 只可能是「确实全都读不出音频」（selectProbe 返回 nil 前自己查过
         // 取消）。这里再查一遍是同一条纪律的第二道：**每个 await 前后**都要问，
         // 别让取消被翻译成失败文案。
@@ -454,7 +461,7 @@ final class TranscriptionTask: ObservableObject {
         setProgress(0.1)
 
         // ② 逐素材：账本查缺 → 抽音频 → 转写 → 合并落 sidecar。
-        Self.sweepTempResidue()
+        AudioWindowReader.sweepTempResidue()
         let tempDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("SrtFlow-ASR-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true)
@@ -581,17 +588,5 @@ final class TranscriptionTask: ObservableObject {
 
     private func setProgress(_ value: Double) {
         progress = max(progress, min(value, 1))
-    }
-
-    /// 启动残留清理：上次崩溃/强退留下的 SrtFlow-ASR-* 目录。
-    static func sweepTempResidue() {
-        let manager = FileManager.default
-        let temp = URL(fileURLWithPath: NSTemporaryDirectory())
-        guard let items = try? manager.contentsOfDirectory(
-            at: temp, includingPropertiesForKeys: nil
-        ) else { return }
-        for item in items where item.lastPathComponent.hasPrefix("SrtFlow-ASR-") {
-            try? manager.removeItem(at: item)
-        }
     }
 }
