@@ -11,6 +11,7 @@ func runSubtitleSegmentationChecks() {
     checkChineseBreaks()
     checkLineFitAndConfig()
     checkDisplayTiming()
+    checkSourceOverlap()    // SubtitleSourceOverlapChecks.swift
 }
 
 private func window(

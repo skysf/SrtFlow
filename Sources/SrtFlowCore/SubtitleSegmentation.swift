@@ -11,8 +11,9 @@ import Foundation
 // 分两步：
 // - `segment`：一段素材的词切成一条条字幕（在哪断：`SubtitleBreaks`；去标点：`SubtitlePunctuation`）。
 //   每条的开始 = 第一个词开口，结束 = 最后一个词说完。
-// - `assemble`：几段素材的字幕合成一条轨，再统一排显示时间（`SubtitleCueTiming`）—— 两条之间留多少、
-//   说完延多久要看整条轨上的前后邻居，不看它是哪段素材来的。
+// - `assemble`：几段素材的字幕合成一条轨 —— 同时有字的只留一条（`SubtitleSourceOverlap`，主流剪辑软件
+//   出来的都是一条不重叠的字幕），再统一排显示时间（`SubtitleCueTiming`）：两条之间留多少、说完延多久
+//   要看整条轨上的前后邻居，不看它是哪段素材来的。
 // 全部纯函数，SrtFlowCoreChecks 有变速、边界、断句、显示时间的用例。
 
 /// 一个带时间的词（素材源时间，秒）。text 保持识别器原样
@@ -132,7 +133,7 @@ public enum SubtitleSegmenter {
         return result
     }
 
-    /// 几段素材的字幕合成一条轨：按排序合同排好，再统一排显示时间、标阅读速度告警。
+    /// 几段素材的字幕合成一条轨：同时有字的只留一条，按排序合同排好，再统一排显示时间、标阅读速度告警。
     /// - Parameter windows: 这几段素材（轨道秩给排序合同；时间线上的结尾是它的字幕最晚收到哪）。
     public static func assemble(
         _ parts: [SegmentedSubtitles],
@@ -149,9 +150,12 @@ public enum SubtitleSegmenter {
         func window(of cue: SubtitleCue) -> SubtitleClipWindow? {
             meta[cue.id]?.provenance?.clipID.flatMap { windowByClip[$0] }
         }
-        cues = SubtitleOverlap.ordered(cues, meta: meta) { clipID in
-            clipID.flatMap { windowByClip[$0]?.laneRank } ?? -1
-        }
+        let laneRank: (UUID?) -> Int = { clipID in clipID.flatMap { windowByClip[$0]?.laneRank } ?? -1 }
+        // 几段素材同时有字：只留一条（谁识别得更清楚留谁）；丢掉的连旁表一起丢。
+        cues = SubtitleSourceOverlap.resolve(cues, meta: meta, laneRank: laneRank, config: config)
+        let keptIDs = Set(cues.map(\.id))
+        meta = meta.filter { keptIDs.contains($0.key) }
+        cues = SubtitleOverlap.ordered(cues, meta: meta, laneRank: laneRank)
         var limits: [UUID: Double] = [:]
         for cue in cues {
             if let window = window(of: cue) { limits[cue.id] = window.timelineEnd }
