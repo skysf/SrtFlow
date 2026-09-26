@@ -26,6 +26,8 @@ struct VideoEditSubtitleCueRow: View {
     let meta: CueMeta?
     /// 译文句：原文改过字、这句过期了（现算，`SubtitleCompanion.isTranslationStale`）。
     let isStale: Bool
+    /// 这一句单独藏起来了（V）：照样能改，只是预览、烧录、导出的字幕文件里都没有它。
+    let isHidden: Bool
     /// 播放头此刻正落在这句上。
     let isCurrent: Bool
     let isSelected: Bool
@@ -111,6 +113,11 @@ struct VideoEditSubtitleCueRow: View {
 
     @ViewBuilder private var badges: some View {
         HStack(spacing: 4) {
+            if isHidden {
+                Image(systemName: "eye.slash")
+                    .foregroundStyle(.secondary)
+                    .instantHelp("Hidden line — not shown, burned in or exported")
+            }
             if isStale {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .foregroundStyle(.orange)

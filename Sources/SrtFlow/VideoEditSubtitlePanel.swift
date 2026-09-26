@@ -258,6 +258,7 @@ struct VideoEditSubtitlePanel: View {
             meta: track == .original ? companion?.cueMeta[cue.id] : nil,
             isStale: track == .translation
                 && companion?.isTranslationStale(cue.id, original: project.state.subtitle) == true,
+            isHidden: companion?.hiddenCueIDs.contains(cue.id) == true,
             isCurrent: currentCueIDs.contains(cue.id),
             isSelected: project.selectedSubtitleCueIDs.contains(cue.id),
             canEdit: project.state.canEditSubtitleTrack(track),

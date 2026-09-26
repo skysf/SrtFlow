@@ -31,6 +31,7 @@ extension VideoEditTimelineView {
                     pps: pps,
                     tint: tint,
                     isSelected: project.selectedSubtitleCueIDs.contains(cue.id),
+                    isHidden: project.state.isSubtitleCueHidden(cue.id),
                     drag: dragBox,
                     isDragMember: dragMembers.contains(cue.id),
                     onTap: {
@@ -71,7 +72,11 @@ extension VideoEditTimelineView {
                         )
                     },
                     // 字幕不参与 AV 合成，收尾不用重建预览。
-                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) },
+                    onToggleHidden: {
+                        project.selectSubtitleCue(cue.id)
+                        project.toggleHiddenForSelection()
+                    }
                 )
                 // 按值比较：拖动每动一下时间线都重算，没变的 cue 别跟着重算
                 //（见 `SubtitleCueBlockView` 文件头）。

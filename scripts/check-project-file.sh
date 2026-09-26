@@ -283,8 +283,15 @@ require "藏起来的滤镜块要灰显" \
   Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'timelineHiddenLook\(filter\.isHidden\)'
 # 进预览和成片的清单只有一份（ClipVisibility 那个文件里的 rendered*）：预览和导出都读它，
 # 直接读 state.shapes / textOverlaysInStackingOrder / orderedFilters 去渲染就会漏过 V。
-require "V 也切文字 / 形状 / 滤镜段" \
-  Sources/SrtFlow/VideoEditProject.swift 'selectedTextIDs\.union\(selectedShapeIDs\)\.union\(selectedFilterIDs\)'
+require "V 也切文字 / 形状 / 滤镜段 / 字幕单句" \
+  Sources/SrtFlow/VideoEditProject.swift 'selectedTextIDs\.union\(selectedShapeIDs\)\.union\(selectedFilterIDs\)\.union\(selectedSubtitleCueIDs\)'
+require "藏起来的字幕句要灰显" \
+  Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift 'timelineHiddenLook\(isHidden\)'
+# 字幕单句的过滤只有一处（renderedSubtitleCues）：画面上排块（预览 + 烧录）和导出字幕文件都读它。
+require "画面上的字幕块不含藏起来的句子" \
+  Sources/SrtFlow/VideoEditSubtitleDocuments.swift 'showsOriginal \? renderedSubtitleCues\(of: \.original\)'
+require "导出的字幕文件不含藏起来的句子" \
+  Sources/SrtFlow/VideoEditSubtitleDocuments.swift 'document\.cues = renderedSubtitleCues\(of: track\)'
 require "预览上的形状读 renderedShapes" \
   Sources/SrtFlow/VideoEditProject.swift 'state\.renderedShapes\.filter'
 require "预览上的文字读 renderedTextOverlays" \

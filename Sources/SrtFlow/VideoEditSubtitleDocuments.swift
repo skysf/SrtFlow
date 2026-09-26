@@ -88,6 +88,11 @@ extension TimelineState {
         allSubtitleCues.first { $0.id == id }
     }
 
+    /// 这一句单独藏起来了吗（V，2026-09-26）。藏起来的仍可点可拖可改，只是不进预览、烧录和导出的字幕文件。
+    func isSubtitleCueHidden(_ id: UUID) -> Bool {
+        subtitleCompanion?.hiddenCueIDs.contains(id) == true
+    }
+
     /// 这条轨的眼睛关着吗。
     func isSubtitleTrackHidden(_ track: SubtitleTrack) -> Bool {
         track == .original ? subtitleHidden : translationHidden
@@ -125,8 +130,8 @@ extension TimelineState {
     func subtitleScreenBlocks() -> [SubtitleScreenBlock] {
         let showsOriginal = !subtitleHidden && subtitle != nil
         let showsTranslation = hasVisibleTranslation
-        let original = showsOriginal ? orderedSubtitleCues(of: .original) : []
-        let translation = showsTranslation ? orderedSubtitleCues(of: .translation) : []
+        let original = showsOriginal ? renderedSubtitleCues(of: .original) : []
+        let translation = showsTranslation ? renderedSubtitleCues(of: .translation) : []
         if showsOriginal, showsTranslation, translationLayout == nil {
             return [SubtitleScreenBlock(tracks: [.original, .translation], layers: [original, translation], layout: subtitleLayout)]
         }
@@ -150,12 +155,18 @@ extension TimelineState {
         return SubtitleOverlap.ordered(subtitleCues(of: track), meta: meta) { subtitleLaneRank(of: $0) }
     }
 
-    /// 导出成独立字幕文件的那一份（数据面，**不受眼睛影响** —— 导出 .srt/.vtt 是对数据的显式操作）。
-    /// 这条轨不存在就是 nil。
+    /// 进预览、烧录、导出字幕文件的句子：按重叠合同排好、单句藏起来的（V）不算。
+    func renderedSubtitleCues(of track: SubtitleTrack) -> [SubtitleCue] {
+        let hidden = subtitleCompanion?.hiddenCueIDs ?? []
+        return orderedSubtitleCues(of: track).filter { !hidden.contains($0.id) }
+    }
+
+    /// 导出成独立字幕文件的那一份（数据面，**不受眼睛影响** —— 导出 .srt/.vtt 是对数据的显式操作；
+    /// 但单句藏起来的不写进去，用户拍板「导出的字幕文件也没有」）。这条轨不存在就是 nil。
     func subtitleDocument(for track: SubtitleTrack) -> SubtitleDocumentModel? {
         let base = track == .original ? subtitle : subtitleCompanion?.translation
         guard var document = base else { return nil }
-        document.cues = orderedSubtitleCues(of: track)
+        document.cues = renderedSubtitleCues(of: track)
         document.reindex()
         return document
     }

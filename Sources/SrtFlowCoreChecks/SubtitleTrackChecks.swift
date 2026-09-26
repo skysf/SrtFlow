@@ -35,6 +35,53 @@ func runSubtitleTrackChecks() {
     checkTrackStructure(f)
     checkTrackMigration(f)
     checkTrackCodable(f)
+    checkTrackHidden(f)
+}
+
+/// 单句藏起来（V）的名单：拆、合并、删、全部重译都要跟着记对（2026-09-26）。
+private func checkTrackHidden(_ f: TrackFixture) {
+    do {
+        var (original, companion) = f.make()
+        companion.hiddenCueIDs = [f.a.id, f.tb.id]
+        let aHalf = UUID(), tHalf = UUID()
+        SubtitleTrackEditing.splitCue(id: f.a.id, at: 1, newID: aHalf, original: &original, companion: &companion)
+        SubtitleTrackEditing.splitCue(id: f.tb.id, at: 3, newID: tHalf, original: &original, companion: &companion)
+        check(companion.hiddenCueIDs.isSuperset(of: [f.a.id, aHalf, f.tb.id, tHalf]), "拆：藏着的句子两半都藏着")
+        SubtitleTrackEditing.splitCue(id: f.c.id, at: 5, newID: UUID(), original: &original, companion: &companion)
+        checkEqual(companion.hiddenCueIDs.count, 4, "拆：没藏的句子拆完也没藏")
+
+        SubtitleTrackEditing.mergeCues(ids: [f.a.id, aHalf], original: &original, companion: &companion)
+        check(companion.hiddenCueIDs.contains(f.a.id) && !companion.hiddenCueIDs.contains(aHalf),
+              "合并：全都藏着 → 合出来的藏着，被并掉的从名单里去掉")
+        SubtitleTrackEditing.mergeCues(ids: [f.a.id, f.b.id], original: &original, companion: &companion)
+        check(!companion.hiddenCueIDs.contains(f.a.id), "合并：有一句看得见 → 合出来的看得见")
+
+        SubtitleTrackEditing.removeCues(ids: [tHalf], original: &original, companion: &companion)
+        check(!companion.hiddenCueIDs.contains(tHalf), "删：从名单里去掉")
+
+        var rebuilt = companion
+        SubtitleRetranslation.apply([f.a.id: "新"], snapshot: [f.a.id: original.cues[0].text], scope: .all,
+                                    original: original, companion: &rebuilt)
+        check(!rebuilt.hiddenCueIDs.contains(f.tb.id), "全部重译：旧译文句连同藏着的记号一起清掉")
+    }
+    do {
+        // 编解码：排好序的 uuidString 数组；坏 ID 丢掉；空的不落键。
+        let (_, companion) = f.make()
+        var hidden = companion
+        hidden.hiddenCueIDs = [f.a.id, f.tc.id]
+        let data = try JSONEncoder().encode(hidden)
+        checkEqual(try JSONDecoder().decode(SubtitleCompanion.self, from: data).hiddenCueIDs, hidden.hiddenCueIDs, "藏着的名单往返无损")
+        let raw = try JSONSerialization.jsonObject(with: JSONEncoder().encode(companion)) as? [String: Any]
+        check(raw?["hiddenCueIDs"] == nil, "没藏过：不落 hiddenCueIDs 键")
+        let json = #"{"hiddenCueIDs": ["bad", "6BA7B810-9DAD-11D1-80B4-00C04FD430C8"]}"#
+        checkEqual(try JSONDecoder().decode(SubtitleCompanion.self, from: Data(json.utf8)).hiddenCueIDs.count, 1, "坏 ID 丢掉")
+        var pruned = hidden
+        pruned.hiddenCueIDs.insert(UUID())
+        pruned.normalize(originalCueIDs: [f.a.id, f.b.id, f.c.id])
+        checkEqual(pruned.hiddenCueIDs, [f.a.id, f.tc.id], "规范化：名单只留两条轨上还在的")
+    } catch {
+        check(false, "藏着的名单编解码抛错：\(error)")
+    }
 }
 
 private func checkTrackTimeAndText(_ f: TrackFixture) {

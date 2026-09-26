@@ -20,6 +20,8 @@ struct SubtitleCueBlockView: View, Equatable {
     let tint: Color
     /// 模型里的选中。拉框进行中的实时高亮另走 `marqueeHit`（看框不看模型）。
     let isSelected: Bool
+    /// 这一句单独藏起来了（V）：灰显 + 斜杠眼睛，但照样点得中、拖得动（同别的块）。
+    let isHidden: Bool
     /// 拖动 / 拉框的会话盒子：只 `onReceive` 自己那份位移和框选命中（同 `ClipBlockView`）。
     let drag: TimelineDragBox
     /// 在不在这一轮拖动的成员里（时间线按 `dragMembers` 算好传进来，一轮只变两次）：
@@ -36,6 +38,8 @@ struct SubtitleCueBlockView: View, Equatable {
     /// (leading, 手势开始以来的总位移秒数)。落到工程的 `liveTrim`。
     let onTrim: (Bool, Double) -> Void
     let onTrimEnd: () -> Void
+    /// 右键「隐藏 / 显示」：和 V 同一个动作，先替用户选中这一句（同别的块的右键项）。
+    let onToggleHidden: () -> Void
 
     /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
     @State private var dragOffset: Double?
@@ -49,13 +53,20 @@ struct SubtitleCueBlockView: View, Equatable {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.cue == rhs.cue && lhs.pps == rhs.pps && lhs.tint == rhs.tint
             && lhs.isSelected == rhs.isSelected && lhs.drag === rhs.drag && lhs.isDragMember == rhs.isDragMember
-            && lhs.canTrim == rhs.canTrim
+            && lhs.canTrim == rhs.canTrim && lhs.isHidden == rhs.isHidden
     }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         RoundedRectangle(cornerRadius: 3)
             .fill(tint.opacity(highlighted ? 0.8 : 0.45))
+            .overlay(alignment: .leading) {
+                // 灰显本身还不够（同剪辑块）：得看得出这一句是按 V 藏起来的。块太窄就不画。
+                if isHidden, width > 16 {
+                    Image(systemName: "eye.slash").font(.system(size: 7)).foregroundStyle(.white).padding(.leading, 3)
+                }
+            }
+            .timelineHiddenLook(isHidden)
             .overlay(
                 RoundedRectangle(cornerRadius: 3)
                     .strokeBorder(.white, lineWidth: highlighted ? 1.2 : 0)
@@ -72,6 +83,9 @@ struct SubtitleCueBlockView: View, Equatable {
             )
             .zIndex(dragOffset != nil ? 10 : 0)
             .onTapGesture(perform: onTap)
+            .contextMenu {
+                Button(isHidden ? "Show Line" : "Hide Line", action: onToggleHidden)
+            }
             .gesture(
                 // 与剪辑/形状块同一套：坐标系钉在不动的滚动视口上
                 //（块会在手指底下挪窝，自动滚动还会把内容抽走）。

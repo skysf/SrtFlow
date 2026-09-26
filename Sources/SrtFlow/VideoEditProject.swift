@@ -1203,7 +1203,7 @@ final class VideoEditProject {
         if linkageEnabled {
             for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
         }
-        ids.formUnion(selectedTextIDs.union(selectedShapeIDs).union(selectedFilterIDs))
+        ids.formUnion(selectedTextIDs.union(selectedShapeIDs).union(selectedFilterIDs).union(selectedSubtitleCueIDs))
         guard !ids.isEmpty else { return }
         let hidden = ClipVisibility.nextHidden(for: ids, in: state)
         // 文字、形状是叠层，滤镜挂在播放器视图上，都不在 AV 合成里：没有剪辑就别重建预览（画面会黑一下）。

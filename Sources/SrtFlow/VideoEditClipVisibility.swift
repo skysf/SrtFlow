@@ -6,7 +6,8 @@ import Foundation
 //
 // - 整轨：轨道头那只眼睛（`mainHidden` / `EditLane.isHidden`）。隐藏的轨灰显且
 //   **不可编辑**。
-// - 单个：选中按 V（`EditClip.isHidden`；2026-09-26 起文字 / 形状 / 滤镜段也有自己的 `isHidden`）。
+// - 单个：选中按 V（`EditClip.isHidden`；2026-09-26 起文字 / 形状 / 滤镜段也有自己的 `isHidden`，
+//   字幕单句记在 `SubtitleCompanion.hiddenCueIDs`）。
 //   藏起来的灰显但**仍可编辑** —— 按完 V 还点得中它，才按得了第二下。
 //
 // 两级的渲染语义是同一条：**不进预览、不进成片**（剪辑连画面带声音）。进预览和成片的清单
@@ -21,12 +22,13 @@ enum ClipVisibility {
     /// 错的：一批里有藏有显时按一下 V，用户会看到一半藏起来、另一半冒出来，
     /// 再按一下又换一批 —— 永远回不到「全显示」。
     ///
-    /// 一批里可以混着剪辑、文字、形状、滤镜段（框选、⌘A 都能一次选中几类）：一起算。
+    /// 一批里可以混着剪辑、文字、形状、滤镜段、字幕句（框选、⌘A 都能一次选中几类）：一起算。
     static func nextHidden(for ids: Set<UUID>, in state: TimelineState) -> Bool {
         state.allClips.contains { ids.contains($0.id) && !$0.isHidden }
             || state.textOverlays.contains { ids.contains($0.id) && !$0.isHidden }
             || state.shapes.contains { ids.contains($0.id) && !$0.isHidden }
             || state.filters.contains { ids.contains($0.id) && !$0.isHidden }
+            || state.allSubtitleCues.contains { ids.contains($0.id) && !state.isSubtitleCueHidden($0.id) }
     }
 
     /// 真正会进预览 / 成片的段。
@@ -53,6 +55,12 @@ extension TimelineState {
         }
         for index in filters.indices where ids.contains(filters[index].id) {
             filters[index].isHidden = hidden
+        }
+        let cues = Set(allSubtitleCues.map(\.id)).intersection(ids)
+        if !cues.isEmpty {
+            editSubtitleTracks { _, companion in
+                if hidden { companion.hiddenCueIDs.formUnion(cues) } else { companion.hiddenCueIDs.subtract(cues) }
+            }
         }
     }
 

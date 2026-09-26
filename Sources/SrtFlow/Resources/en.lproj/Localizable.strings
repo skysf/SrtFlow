@@ -908,3 +908,6 @@
 "Retranslate every line?" = "Retranslate every line?";
 "Retranslate All" = "Retranslate All";
 "The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced." = "The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced.";
+"Hide Line" = "Hide Line";
+"Show Line" = "Show Line";
+"Hidden line — not shown, burned in or exported" = "Hidden line — not shown, burned in or exported";

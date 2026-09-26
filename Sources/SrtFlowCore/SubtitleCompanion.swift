@@ -100,6 +100,9 @@ public struct SubtitleCompanion: Hashable, Sendable {
     public var cueMeta: [UUID: CueMeta]
     /// 译文的来源表，键 = **译文** cue 的 ID（v23，SubtitleTranslationLink.swift）。
     public var translationLinks: [UUID: TranslationLink]
+    /// 单句藏起来（V）的字幕，两条轨的都在这里（v23，2026-09-26）。藏起来的仍可点可拖可改，
+    /// 只是预览、烧录、导出的字幕文件里都没有它。拆 / 合并 / 删跟着记（`SubtitleTrackEditing`）。
+    public var hiddenCueIDs: Set<UUID>
 
     public init(
         translation: SubtitleDocumentModel? = nil,
@@ -108,7 +111,8 @@ public struct SubtitleCompanion: Hashable, Sendable {
         origin: SubtitleCompanionOrigin = .generated,
         generation: GenerationSnapshot? = nil,
         cueMeta: [UUID: CueMeta] = [:],
-        translationLinks: [UUID: TranslationLink] = [:]
+        translationLinks: [UUID: TranslationLink] = [:],
+        hiddenCueIDs: Set<UUID> = []
     ) {
         self.translation = translation
         self.targetLanguage = targetLanguage
@@ -117,19 +121,20 @@ public struct SubtitleCompanion: Hashable, Sendable {
         self.generation = generation
         self.cueMeta = cueMeta
         self.translationLinks = translationLinks
+        self.hiddenCueIDs = hiddenCueIDs
     }
 
     /// 是否存有「旧版打开会被静默丢掉」的数据 —— formatVersion 按需写 4 的判据之一。
     /// origin 单独不算数据：没有任何实质字段时整个 companion 视同不存在。
     public var hasPersistentData: Bool {
-        translation != nil || !cueMeta.isEmpty || !translationLinks.isEmpty || generation != nil
-            || sourceLanguage != nil || targetLanguage != nil
+        translation != nil || !cueMeta.isEmpty || !translationLinks.isEmpty || !hiddenCueIDs.isEmpty
+            || generation != nil || sourceLanguage != nil || targetLanguage != nil
     }
 
     /// 规范化（读盘后、老工程拆开之后调用）：
     /// - 译文 cue 的 ID 撞上原文 ID 的（外部改动、半截迁移）换一个新 ID —— 选择按 ID 认，
     ///   两条轨上同一个 ID 会让点一句选中两句；
-    /// - 来源表只留译文轨上还在的句子，`cueMeta` 只留原文轨上还在的；
+    /// - 来源表只留译文轨上还在的句子，`cueMeta` 只留原文轨上还在的，藏起来的名单只留两条轨上还在的；
     /// - 译文轨清空后归 nil。
     /// 来源表里指向已删原文的 ID **不清**：原文删了译文不跟着删（悬空，重译不碰它）。
     public mutating func normalize(originalCueIDs: Set<UUID>, newID: () -> UUID = { UUID() }) {
@@ -145,6 +150,7 @@ public struct SubtitleCompanion: Hashable, Sendable {
         let translationIDs = Set((translation?.cues ?? []).map(\.id))
         translationLinks = translationLinks.filter { translationIDs.contains($0.key) }
         cueMeta = cueMeta.filter { originalCueIDs.contains($0.key) }
+        hiddenCueIDs = hiddenCueIDs.filter { originalCueIDs.contains($0) || translationIDs.contains($0) }
     }
 }
 
@@ -248,7 +254,7 @@ extension GenerationSnapshot: Codable {
 
 extension SubtitleCompanion: Codable {
     private enum CodingKeys: String, CodingKey {
-        case translation, targetLanguage, sourceLanguage, origin, generation, cueMeta, translationLinks
+        case translation, targetLanguage, sourceLanguage, origin, generation, cueMeta, translationLinks, hiddenCueIDs
     }
 
     public init(from decoder: Decoder) throws {
@@ -273,7 +279,8 @@ extension SubtitleCompanion: Codable {
             origin: try c.decodeIfPresent(SubtitleCompanionOrigin.self, forKey: .origin) ?? .generated,
             generation: try c.decodeIfPresent(GenerationSnapshot.self, forKey: .generation),
             cueMeta: meta,
-            translationLinks: links
+            translationLinks: links,
+            hiddenCueIDs: Set((try c.decodeIfPresent([String].self, forKey: .hiddenCueIDs) ?? []).compactMap(UUID.init(uuidString:)))
         )
     }
 
@@ -291,6 +298,9 @@ extension SubtitleCompanion: Codable {
         if !translationLinks.isEmpty {
             let raw = Dictionary(uniqueKeysWithValues: translationLinks.map { ($0.key.uuidString, $0.value) })
             try c.encode(raw, forKey: .translationLinks)
+        }
+        if !hiddenCueIDs.isEmpty {   // 排好序再写：同一份状态每次存出来的字节一样（自动保存不白改文件）
+            try c.encode(hiddenCueIDs.map(\.uuidString).sorted(), forKey: .hiddenCueIDs)
         }
     }
 }

@@ -49,6 +49,8 @@ public enum SubtitleRetranslation {
     ) {
         var doc = companion.translation ?? SubtitleDocumentModel(format: original.format)
         if scope == .all {
+            // 整条重建：旧译文句连同它们「藏起来」的记号一起清掉（新句子是新的 ID）。
+            companion.hiddenCueIDs.subtract(doc.cues.map(\.id))
             doc.cues = []
             companion.translationLinks = [:]
         }
@@ -80,6 +82,7 @@ public enum SubtitleRetranslation {
                 }.map(\.id)
                 doc.removeCues(ids: Set(extras))
                 for id in extras { companion.translationLinks.removeValue(forKey: id) }
+                companion.hiddenCueIDs.subtract(extras)
             } else if !covered.contains(source.id) || scope == .all {
                 let id = newID()
                 doc.cues.append(SubtitleCue(id: id, start: source.start, end: source.end, text: text))

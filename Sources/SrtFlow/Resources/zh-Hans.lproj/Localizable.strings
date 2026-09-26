@@ -908,3 +908,6 @@
 "Retranslate every line?" = "全部重新翻译？";
 "Retranslate All" = "全部重新翻译";
 "The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced." = "译文轨会清空重建。手动改过字、挪过时间、拆过合过或自己加的译文都会被换掉。";
+"Hide Line" = "隐藏这句字幕";
+"Show Line" = "显示这句字幕";
+"Hidden line — not shown, burned in or exported" = "这句藏起来了：预览、烧录和导出的字幕文件里都没有它";

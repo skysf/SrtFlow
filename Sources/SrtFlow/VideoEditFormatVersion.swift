@@ -324,11 +324,14 @@ extension TimelineState {
     /// 1. 译文轨本身 —— 2026-09-26 起译文 cue 有**自己的 ID 和时间**（字幕拆成两条独立轨），
     ///    从哪句原文翻来记在 `SubtitleCompanion.translationLinks`。
     /// 2. `translationLayout` —— 译文在画面上自己的位置和大小（按需写入：叠在原文下面时不落键）。
+    /// 3. `SubtitleCompanion.hiddenCueIDs` —— 字幕单句藏起来（V，按需写入：没藏过的不落键）。同一个 PR 里
+    ///    和前两项一起进的 v23（没有单独发布过只认前两项的版本），所以不另开一版。
     ///
     /// 为什么要抬：只认 v22 的旧版把译文当成原文的镜像、按 ID 对原文，新工程里的译文一句都对不上，
-    /// 读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失。
+    /// 读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失；藏起来的字幕句在旧版里全部回到画面上。
     var requiresFormatVersion23: Bool {
         subtitleCompanion?.translation != nil || translationLayout != nil
+            || subtitleCompanion?.hiddenCueIDs.isEmpty == false
     }
 
     /// 读盘后的规范化。

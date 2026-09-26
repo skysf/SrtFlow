@@ -93,6 +93,7 @@ public enum SubtitleTrackEditing {
             companion.cueMeta.removeValue(forKey: id)
             companion.translationLinks.removeValue(forKey: id)
         }
+        companion.hiddenCueIDs.subtract(ids)
     }
 
     /// 新加一句到指定的轨，按时间顺序插入。返回新 cue 的 ID（时长不为正就是 nil）。
@@ -147,6 +148,7 @@ public enum SubtitleTrackEditing {
     /// 文字默认整句留在前半、后半空着（可用 `texts` 指定两半）。
     /// - 原文：两半的置信度都作废（`cueMeta` 抄一份给后半）；它们的译文照样各自现算过期 / 缺。
     /// - 译文：两半都算「拆合过」，从此不自动更新（来源照留，那句原文仍算有译文）。
+    /// 藏起来的句子拆完两半都藏着。
     @discardableResult
     public static func splitCue(
         id: UUID, at time: TimeInterval, newID: UUID = UUID(),
@@ -159,6 +161,7 @@ public enum SubtitleTrackEditing {
             meta.recognitionConfidence = nil
             companion.cueMeta[id] = meta
             companion.cueMeta[newID] = meta
+            if companion.hiddenCueIDs.contains(id) { companion.hiddenCueIDs.insert(newID) }
             return true
         }
         guard var doc = companion.translation,
@@ -169,6 +172,7 @@ public enum SubtitleTrackEditing {
             companion.translationLinks[id] = link
             companion.translationLinks[newID] = link
         }
+        if companion.hiddenCueIDs.contains(id) { companion.hiddenCueIDs.insert(newID) }
         return true
     }
 
@@ -177,6 +181,7 @@ public enum SubtitleTrackEditing {
     /// - 原文：被并掉的那几句原文，指向它们的译文来源改指向留下的这句（重译时它们会被收成一句，
     ///   见 `SubtitleRetranslation`）；留下这句的置信度作废。
     /// - 译文：来源取并集、算「拆合过」，从此不自动更新。
+    /// 合出来的这句只有在并进来的全都藏着时才藏着（有一句看得见，合完就看得见）。
     @discardableResult
     public static func mergeCues(
         ids: Set<UUID>,
@@ -186,6 +191,7 @@ public enum SubtitleTrackEditing {
         let inTranslation = (companion.translation?.cues ?? []).filter { ids.contains($0.id) }.count
         if inOriginal >= 2, inTranslation == 0 {
             guard let (kept, dropped) = merge(ids: ids, in: &original) else { return false }
+            mergeHidden(kept: kept, dropped: dropped, companion: &companion)
             var meta = companion.cueMeta[kept] ?? CueMeta()
             meta.recognitionConfidence = nil
             companion.cueMeta[kept] = meta
@@ -199,6 +205,7 @@ public enum SubtitleTrackEditing {
         guard inTranslation >= 2, inOriginal == 0, var doc = companion.translation,
               let (kept, dropped) = merge(ids: ids, in: &doc) else { return false }
         companion.translation = doc
+        mergeHidden(kept: kept, dropped: dropped, companion: &companion)
         let links = ([kept] + dropped).compactMap { companion.translationLinks[$0] }
         for id in dropped { companion.translationLinks.removeValue(forKey: id) }
         if !links.isEmpty {
@@ -287,6 +294,12 @@ public enum SubtitleTrackEditing {
         doc.removeCues(ids: Set(dropped))
         normalizeOrder(&doc)
         return (kept, dropped)
+    }
+
+    private static func mergeHidden(kept: UUID, dropped: [UUID], companion: inout SubtitleCompanion) {
+        let allHidden = ([kept] + dropped).allSatisfy { companion.hiddenCueIDs.contains($0) }
+        companion.hiddenCueIDs.subtract(dropped)
+        if !allHidden { companion.hiddenCueIDs.remove(kept) }
     }
 
     private static func uniqued(_ ids: [UUID]) -> [UUID] {

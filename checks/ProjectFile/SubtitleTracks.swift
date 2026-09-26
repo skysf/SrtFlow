@@ -11,6 +11,7 @@ import SrtFlowCore
 //   3. v22 及更早：译文与原文同 ID 的镜像对，打开时拆成两条独立轨；v23 文件里撞了 ID 的也换新。
 //   4. `translationLayout` 按需落键、往返无损；`requiresFormatVersion23` 的判据。
 //   5. 没有原文轨时，编辑入口不许凭空垫一条空轨（`editSubtitleTracks` 的 creatingOriginal）。
+//   6. 字幕单句藏起来（V）：画面上的块和导出的字幕文件都没有它、跨类的切换规则、往返与 v23 判据。
 
 func checkSubtitleTracks(root: URL) throws {
     let dir = root.appendingPathComponent("subtitle-tracks")
@@ -119,6 +120,24 @@ func checkSubtitleTracks(root: URL) throws {
     checkEqual(collided.subtitleCompanion?.translation?.cues.count, 2, "v23 撞 ID：句子不丢")
     check(collided.subtitleCompanion?.translation?.cues.allSatisfy { $0.id != cueA.id && $0.id != cueB.id } == true,
           "v23 撞 ID：换成新 ID（点一句不会选中两句）")
+
+    // ---- 6. 字幕单句藏起来 ----
+    var hidden = both
+    check(ClipVisibility.nextHidden(for: [cueA.id, tB.id], in: hidden), "有看得见的字幕句：按 V 是藏")
+    hidden.setHidden(true, ids: [cueA.id, tB.id])
+    check(!ClipVisibility.nextHidden(for: [cueA.id, tB.id], in: hidden), "全藏着：再按 V 是放出来")
+    checkEqual(hidden.subtitleScreenBlocks().first?.text(at: 1.5), nil, "藏着的原文、译文都不进画面（此刻两句都藏了）")
+    checkEqual(hidden.subtitleScreenBlocks().first?.text(at: 0.5), "你好", "叠在一起时另一条轨照常（原文那句藏了，译文补位）")
+    checkEqual(hidden.subtitleDocument(for: .original)?.cues.map(\.id), [cueB.id], "导出的原文字幕文件不含藏着的句子")
+    checkEqual(hidden.subtitleDocument(for: .translation)?.cues.map(\.id), [tA.id], "导出的译文字幕文件不含藏着的句子")
+    checkEqual(hidden.subtitleCue(cueA.id)?.text, "hello", "藏着的句子数据还在（仍可编辑）")
+    var hiddenOnly = noTranslation
+    hiddenOnly.setHidden(true, ids: [cueB.id])
+    check(hiddenOnly.requiresFormatVersion23, "只藏了原文句（没有译文轨）：v23 判据照样为真")
+    try VideoEditProjectIO.save(hiddenOnly, to: project)
+    checkEqual(try VideoEditProjectIO.load(from: project).timeline.isSubtitleCueHidden(cueB.id), true, "藏着的句子往返存住")
+    hiddenOnly.setHidden(false, ids: [cueB.id])
+    check(hiddenOnly.subtitleCompanion == nil, "放出来之后名单空了：没有别的数据的 companion 收回 nil")
 
     // ---- 5. 没有原文轨时不凭空垫一条 ----
     var empty = TimelineState()

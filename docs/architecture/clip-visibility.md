@@ -15,6 +15,7 @@
 | 整轨 | 轨道头那只眼睛 | `mainHidden` / `EditLane.isHidden` | **不能**（灰显且关命中） |
 | 单段 | 选中后按 **V**（或右键 Hide Clip） | `EditClip.isHidden` | **能**（只是灰显 + 斜杠眼睛角标） |
 | 单个文字 / 形状 / 滤镜段（2026-09-26） | 选中后按 **V**（或右键 Hide Text / Shape / Filter） | `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` | **能**（同上；照样占着自己那一行 / 那一层） |
+| 字幕单句（2026-09-26，原文 / 译文两条轨都行） | 选中后按 **V**（或右键 Hide Line） | `SubtitleCompanion.hiddenCueIDs`（`SubtitleCue` 是 SrtFlowCore 的通用类型，不往它身上加字段） | **能**（块灰显 + 斜杠眼睛，字幕表那一行带斜杠眼睛，照样能改字、挪、裁） |
 
 两级**互不覆盖**：轨藏起来时段上的标记原样留着，轨放出来之后单独藏的段还是藏着。
 
@@ -74,6 +75,12 @@
 `state.shapes` / `textOverlaysInStackingOrder` / `orderedFilters` 去渲染就会漏过 V（扫描守卫钉着）。
 藏起来的文字在预览上也没有选中框、点不着 —— 它不在画面上；要改它走检查器。
 
+**字幕单句同一个道理**：`TimelineState.renderedSubtitleCues(of:)` 是唯一的过滤点，画面上排块
+（`subtitleScreenBlocks`，预览和烧录共用）和导出字幕文件（`subtitleDocument(for:)`）都读它 ——
+用户拍板「导出的字幕文件也没有」，所以数据面这一次**也**跟着隐藏走（眼睛不影响文件导出，V 影响）。
+拆一句藏着的，两半都藏着；合并时只有并进来的全藏着，合出来的才藏着；删了就从名单里去掉
+（`SubtitleTrackEditing` 里维护，那边有自检）。「全部翻译」整条重建时旧译文句连同藏着的记号一起没了。
+
 ## 切换规则：一批里只要还有显示的，就全部隐藏
 
 `ClipVisibility.nextHidden` 是唯一判据：选中的这一批里只要还有一个是显示的，按 V
@@ -84,10 +91,11 @@
 链接开着时（`linkageEnabled`）连带分离出来的音频一起切，和删除 / 变速同一份
 `linkedClipIDs` 展开规则。
 
-## 存盘：v16（剪辑）/ v22（文字、形状、滤镜段），按需写键
+## 存盘：v16（剪辑）/ v22（文字、形状、滤镜段）/ v23（字幕单句），按需写键
 
 文字、形状、滤镜段的 `isHidden` 是 **v22** 字段，规矩和剪辑的 v16 一模一样：按需写键、缺键读作 false、
-旧版打开会把藏起来的东西放回成片 —— 所以必须抬版本。
+旧版打开会把藏起来的东西放回成片 —— 所以必须抬版本。字幕单句的 `hiddenCueIDs` 跟着同一个 PR 里的
+「字幕拆成两条独立轨」进了 **v23**（没藏过就不落键）。
 
 `EditClip.isHidden` 是 **v16-only** 持久字段（登记清单在
 `VideoEditFormatVersion.swift`，版本史在
@@ -112,6 +120,8 @@
 | 文字 / 形状 / 滤镜段：跨类的切换规则、`rendered*` 清单（顺序不变、藏起来的不在）、此刻生效的滤镜、存盘按需写键 / 缺键 / 往返 / v22 | `scripts/check-project-file.sh`（`checks/ProjectFile/HiddenItems.swift`） |
 | 文字 / 形状 / 滤镜段藏起来之后导出图里没有它们（外加一份没藏的对照） | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
 | 四种块共用一份灰显、V 也切文字 / 形状 / 滤镜段、预览和导出都读 `rendered*` | `scripts/check-project-file.sh` 的扫描守卫段 |
+| 字幕单句：拆 / 合并 / 删 / 全部重译怎么维护藏着的名单、编解码 | `swift run SrtFlowCoreChecks`（`SubtitleTrackChecks.swift`） |
+| 字幕单句：画面上的块和导出的字幕文件都不含藏着的、跨类切换规则、往返 / v23 | `scripts/check-project-file.sh`（`checks/ProjectFile/SubtitleTracks.swift`） |
 
 **人工回归清单**（自动化够不着，发版前实机验证）：
 
@@ -127,3 +137,6 @@
       导出的成片里也没有；再按一次 V 回来。右键「隐藏这段文字 / 这个形状 / 这段滤镜」同一个动作。
 - [ ] 框选一片（剪辑 + 文字 + 形状 + 滤镜段）按 V：一起藏；再按一次一起回来。
 - [ ] 点文字行的轨道头选中整行 + V：整行的文字都藏起来。
+- [ ] 点一句字幕（原文或译文）按 V：块灰显 + 斜杠眼睛、字幕表那一行也有斜杠眼睛；预览上那一句没了
+      （叠在一起时另一条轨的那句照常，位置往下补）；导出的成片和导出的 .srt / .vtt 里都没有它。
+      右键「隐藏这句字幕」同一个动作；藏着的照样能改字、能拖、能裁。
