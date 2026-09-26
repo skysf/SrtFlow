@@ -95,6 +95,7 @@ xcrun swiftc \
   checks/ProjectFile/SplitGroups.swift \
   checks/ProjectFile/HiddenItems.swift \
   checks/ProjectFile/SubtitleTracks.swift \
+  checks/ProjectFile/SubtitleSources.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -381,6 +382,11 @@ forbid "不许再把 info == nil 当成「有声音」" \
 # 按 V 藏起来的段在预览 / 成片里连声音都没有，字幕生成同一个过滤（2026-09-26 案例）。
 require "可听快照必须滤掉按 V 藏起来的段（ClipVisibility.visible）" \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'ClipVisibility\.visible\('
+# 「只用选中的片段」：转写和分段必须认同一份范围，不然转写了 A、分段却去找 B 的词流（2026-09-26）。
+require "转写只认面板定下的范围" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift 'soundClips\(in: state, only: onlyClipIDs\)'
+require "分段只认面板定下的范围" \
+  Sources/SrtFlow/SubtitleGen/SubtitleGenerationAssembly.swift 'soundClips\(in: state, only: onlyClipIDs\)'
 
 # 同语种判据只有一份：TranslationPreflight 委托到 Core，不许自己再写一遍。
 require "TranslationPreflight 必须委托 Core 的 languageKey" \

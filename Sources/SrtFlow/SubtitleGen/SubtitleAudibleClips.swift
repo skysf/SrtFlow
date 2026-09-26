@@ -38,9 +38,12 @@ enum SubtitleAudibleClips {
     /// **字幕生成一侧的所有素材消费者都必须从这里取**（转写、探针、音轨
     /// metadata、面板的可用性判断）。任何「我只要主轨和音频轨就够了」的
     /// 简化都会重新分叉出一份无视眼睛/静音的声音来源。
-    static func soundClips(in state: TimelineState) -> [SoundClip] {
+    ///
+    /// - Parameter only: 面板勾了「只用选中的片段」时，只留这几段（`selectedSoundClipIDs` 算的）；nil = 全部。
+    static func soundClips(in state: TimelineState, only: Set<UUID>? = nil) -> [SoundClip] {
         var result: [SoundClip] = []
         func add(_ clip: EditClip, laneRank: Int) {
+            if let only, !only.contains(clip.id) { return }
             guard !clip.isMuted, clip.volume > 0, clip.stillImageURL == nil else { return }
             // **判「有没有声音」只认 `EditClip.hasAudio`** —— 与
             // CompositionBuilder / VideoEditExportGraph 同一个属性。
@@ -81,6 +84,21 @@ enum SubtitleAudibleClips {
             }
         }
         return result
+    }
+
+    /// 「只用选中的片段」（2026-09-26）：选中的片段里听得见的那几段。
+    ///
+    /// 主流剪辑软件排除某个声音靠「只选某些片段」（Final Cut Pro 只转写选中的、剪映右键「识别字幕」），
+    /// 想跳过录屏原声、背景歌时只选旁白那几段就行。链接开着时连带链接组（选中视频 = 连它分离出来的
+    /// 音频一起），和删除、变速、隐藏同一个口径。
+    static func selectedSoundClipIDs(
+        in state: TimelineState, selected: Set<UUID>, includingLinked: Bool
+    ) -> Set<UUID> {
+        var ids = selected
+        if includingLinked {
+            for id in selected { ids.formUnion(state.linkedClipIDs(of: id)) }
+        }
+        return Set(soundClips(in: state, only: ids).map(\.clipID))
     }
 
     // MARK: - 自动检测的探针来源

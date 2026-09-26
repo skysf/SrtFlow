@@ -15,6 +15,7 @@ func runSplitOutGroups(root: URL) {
         ("全选与滤镜多选", checkSelectAll),           // 33：SelectAll.swift
         ("单个隐藏（剪辑 / 文字 / 形状 / 滤镜）", checkHiddenItems),  // 24：HiddenItems.swift
         ("两条字幕轨", checkSubtitleTracks),           // 34：SubtitleTracks.swift
+        ("字幕生成：只用选中的片段", checkSubtitleSources),  // 35：SubtitleSources.swift
     ]
     for group in groups {
         do {

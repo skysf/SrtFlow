@@ -77,11 +77,13 @@ final class TranscriptionTask: ObservableObject {
 
     /// 面板确认过替换后调用。串行：在跑就忽略。
     /// - Parameter lineFitEms: 一行在画面上放得下几个字号宽（`SubtitleLineFit`），生成时按它封顶。
+    /// - Parameter onlyClipIDs: 「只用选中的片段」那几段（`SubtitleAudibleClips.selectedSoundClipIDs`）；nil = 全部。
     func start(
         project: VideoEditProject,
         sourceLocaleID: String,
         targetLanguageID: String?,
-        lineFitEms: Double = .infinity
+        lineFitEms: Double = .infinity,
+        onlyClipIDs: Set<UUID>? = nil
     ) {
         guard !isRunning else { return }
         let token = ExportCancellationToken()
@@ -103,7 +105,7 @@ final class TranscriptionTask: ObservableObject {
             }
             do {
                 let harvest = try await self.transcribe(
-                    state: state, sourceLocaleID: sourceLocaleID, token: token
+                    state: state, onlyClipIDs: onlyClipIDs, sourceLocaleID: sourceLocaleID, token: token
                 )
                 guard project.isCurrentGeneration(generation) else {
                     self.stage = .cancelled
@@ -121,6 +123,7 @@ final class TranscriptionTask: ObservableObject {
                     state: project.state,
                     entries: harvest.entries,
                     skippedFingerprints: harvest.skippedFingerprints,
+                    onlyClipIDs: onlyClipIDs,
                     localeIdentifier: harvest.locale.identifier,
                     config: .generation(
                         languageCode: harvest.locale.language.languageCode?.identifier,
@@ -224,6 +227,7 @@ final class TranscriptionTask: ObservableObject {
 
     private func transcribe(
         state: TimelineState,
+        onlyClipIDs: Set<UUID>?,
         sourceLocaleID: String,
         token: ExportCancellationToken
     ) async throws -> Harvest {
@@ -232,7 +236,7 @@ final class TranscriptionTask: ObservableObject {
                 "Speech transcription isn't available on this Mac."
             ))
         }
-        let clips = SubtitleAudibleClips.soundClips(in: state)
+        let clips = SubtitleAudibleClips.soundClips(in: state, only: onlyClipIDs)
         guard !clips.isEmpty else {
             throw TaskError(message: L10n("No audible clips to transcribe."))
         }

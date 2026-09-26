@@ -34,14 +34,16 @@ enum SubtitleGenerationAssembly {
     /// - Parameters:
     ///   - entries: 这次转写的词流账本（按素材指纹）；没有的从磁盘缓存补。
     ///   - skippedFingerprints: 转写时读不了、跳过的素材。
+    ///   - onlyClipIDs: 「只用选中的片段」那几段；nil = 全部（和转写时同一份，任务开始时定下）。
     static func build(
         state: TimelineState,
         entries: [String: TranscriptCacheEntry],
         skippedFingerprints: Set<String>,
+        onlyClipIDs: Set<UUID>?,
         localeIdentifier: String,
         config: SubtitleSegmentationConfig
     ) throws -> (document: SubtitleDocumentModel, meta: [UUID: CueMeta]) {
-        let clips = SubtitleAudibleClips.soundClips(in: state)
+        let clips = SubtitleAudibleClips.soundClips(in: state, only: onlyClipIDs)
             .filter { !skippedFingerprints.contains($0.fingerprint) }
         guard !clips.isEmpty else { throw Failure.noAudibleClips }
         var parts: [SegmentedSubtitles] = []

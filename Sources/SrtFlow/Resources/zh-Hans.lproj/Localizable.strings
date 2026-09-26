@@ -378,6 +378,7 @@
 "Couldn't confidently detect the spoken language. Pick it in the panel and generate again." = "无法可靠地检测音频语言。请在面板里手动选择后重新生成。";
 "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded." = "无法检测音频语言 —— 本机没有已安装的语音模型。请手动选择语言以便下载对应模型。";
 "Translate after generating" = "生成后顺便翻译";
+"Only the selected clips (%d)" = "只用选中的片段（%d 段）";
 "Generate Subtitles" = "生成字幕";
 "Replace the current subtitle track?" = "替换当前的字幕轨？";
 "Replace" = "替换";
@@ -495,6 +496,7 @@
 "Only translate lines with no translation, or whose source text changed" = "只翻译还没有译文、或原文改过的那些条";
 "Cancel subtitle generation" = "取消这次字幕生成";
 "Transcribe the audio on the timeline into a subtitle track" = "把时间线上的声音转写成字幕轨";
+"Transcribe only the selected clips, for example just the voiceover, leaving out a screen recording's own sound or background music" = "只转写选中的片段，比如只选旁白，不转写录屏自带的声音和背景音乐";
 "Break the selected line in two" = "把选中的这一条拆成两条";
 "Delete the selected lines from every track" = "从所有轨上删除选中的这些条";
 "Close the subtitle editor" = "关闭字幕编辑器";
