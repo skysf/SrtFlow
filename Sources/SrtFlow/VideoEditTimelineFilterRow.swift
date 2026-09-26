@@ -37,6 +37,8 @@ struct FilterBlockView: View, Equatable {
     let canTrim: Bool
     let onTrim: (Bool, Double) -> Void
     let onTrimEnd: () -> Void
+    /// 右键「隐藏 / 显示」：和 V 同一个动作，先替用户选中这一个（同剪辑块的右键项）。
+    let onToggleHidden: () -> Void
 
     /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
     @State private var dragOffset: Double?
@@ -62,6 +64,10 @@ struct FilterBlockView: View, Equatable {
             Text(filter.displayName)
                 .font(.system(size: 9))
                 .lineLimit(1)
+            // 灰显本身还不够（同剪辑块）：得看得出这一个是按 V 藏起来的。
+            if filter.isHidden {
+                Image(systemName: "eye.slash").font(.system(size: 8))
+            }
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 5)
@@ -70,6 +76,7 @@ struct FilterBlockView: View, Equatable {
             RoundedRectangle(cornerRadius: 4)
                 .fill(TrackPalette.filterBlock)
         )
+        .timelineHiddenLook(filter.isHidden)
         .overlay {
             if highlighted {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
@@ -84,6 +91,9 @@ struct FilterBlockView: View, Equatable {
         )
         .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
+        .contextMenu {
+            Button(filter.isHidden ? "Show Filter" : "Hide Filter", action: onToggleHidden)
+        }
         .gesture(
             // 同剪辑块：块会在手指底下挪窝、自动滚动还会把内容抽走，
             // 坐标系必须钉在不动的滚动视口上，不能用 .local。
@@ -167,7 +177,11 @@ extension VideoEditTimelineView {
                         project.liveTrimFilter(filter.id, leading: leading, deltaSeconds: delta)
                     },
                     // 滤镜不参与 AV 合成（调色挂在播放器视图上），收尾不用重建预览。
-                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) }
+                    onTrimEnd: { project.endLiveEdit(rebuildsPreview: false) },
+                    onToggleHidden: {
+                        project.selectFilter(filter.id, additive: false)
+                        project.toggleHiddenForSelection()
+                    }
                 )
                 // 按值比较：拖动每动一下时间线都重算，没变的块别跟着重算（见 `ClipBlockContext`）。
                 .equatable()

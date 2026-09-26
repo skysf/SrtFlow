@@ -892,3 +892,11 @@
 /* 播放键的提示：回到开头（Return / Home）没有自己的按钮 */
 "Pause (Return goes back to the start)" = "暂停（按回车回到开头）";
 "Play (Return goes back to the start)" = "播放（按回车回到开头）";
+
+/* 文字 / 形状 / 滤镜块的右键：和 V 同一个动作（2026-09-26） */
+"Hide Text" = "隐藏这段文字";
+"Show Text" = "显示这段文字";
+"Hide Shape" = "隐藏这个形状";
+"Show Shape" = "显示这个形状";
+"Hide Filter" = "隐藏这段滤镜";
+"Show Filter" = "显示这段滤镜";

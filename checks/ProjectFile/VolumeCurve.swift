@@ -300,7 +300,7 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     try VideoEditProjectIO.save(rich, to: file)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
     // 数字写死 19，不引用 latestFormatVersion：拿常量跟自己比是自反断言。
-    checkEqual(raw?["formatVersion"] as? Int, 21, "带曲线 / 推子的工程写 latest（v21）")
+    checkEqual(raw?["formatVersion"] as? Int, 22, "带曲线 / 推子的工程写 latest（v22）")
     let loaded = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(loaded.audioTracks.first?.clips.first?.volumeCurve, ramp.volumeCurve, "曲线往返保真")
     checkEqual(loaded.audioTracks.first?.volume, 0.4, "轨道推子往返保真")

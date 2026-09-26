@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
@@ -91,6 +92,7 @@ xcrun swiftc \
   checks/ProjectFile/TextRows.swift \
   checks/ProjectFile/SelectAll.swift \
   checks/ProjectFile/SplitGroups.swift \
+  checks/ProjectFile/HiddenItems.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -266,8 +268,33 @@ require "链接开着时 V 连带分离出来的音频一起切" \
   Sources/SrtFlow/VideoEditProject.swift 'if linkageEnabled \{'
 require "定格不给隐藏的段（它在预览和成片里都不存在）" \
   Sources/SrtFlow/VideoEditFreezeFrame.swift '!clip\.isHidden'
-require "隐藏的段在时间线上要灰显（否则看不出它不会进成片）" \
-  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'clip\.isHidden \? 0\.4 : 1'
+# 灰显只有一份实现（`timelineHiddenLook`，剪辑块那个文件里）：四种块都用它，2026-09-26 起文字 / 形状 / 滤镜也能藏。
+require "单个隐藏的灰显只有一处实现" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'opacity\(hidden \? 0\.4 : 1\)'
+require "藏起来的剪辑在时间线上要灰显（否则看不出它不会进成片）" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'timelineHiddenLook\(clip\.isHidden\)'
+require "藏起来的文字块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineTextRow.swift 'timelineHiddenLook\(overlay\.isHidden\)'
+require "藏起来的形状块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineShapeRow.swift 'timelineHiddenLook\(shape\.isHidden\)'
+require "藏起来的滤镜块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'timelineHiddenLook\(filter\.isHidden\)'
+# 进预览和成片的清单只有一份（ClipVisibility 那个文件里的 rendered*）：预览和导出都读它，
+# 直接读 state.shapes / textOverlaysInStackingOrder / orderedFilters 去渲染就会漏过 V。
+require "V 也切文字 / 形状 / 滤镜段" \
+  Sources/SrtFlow/VideoEditProject.swift 'selectedTextIDs\.union\(selectedShapeIDs\)\.union\(selectedFilterIDs\)'
+require "预览上的形状读 renderedShapes" \
+  Sources/SrtFlow/VideoEditProject.swift 'state\.renderedShapes\.filter'
+require "预览上的文字读 renderedTextOverlays" \
+  Sources/SrtFlow/VideoEditProject+Text.swift 'state\.renderedTextOverlays\.filter'
+require "预览的调色读不含隐藏的 activeFilters" \
+  Sources/SrtFlow/VideoEditFilterModels.swift 'renderedFilters\.filter \{ \$0\.contains\(time: time\) \}'
+require "导出的形状读 renderedShapes" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedShapes\.enumerated\(\)'
+require "导出的文字读 renderedTextOverlays" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedTextOverlays, canvas:'
+require "导出的调色读 renderedFilters" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedFilters\.filter'
 require "轨道头的眼睛仍是整轨显隐的入口" \
   Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleLaneHidden\('
 

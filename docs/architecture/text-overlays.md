@@ -96,7 +96,9 @@
 
 `TextOverlay.row`：0 = 最下面那条文字行（紧挨形状行），越大越靠上。**行序就是画面上的
 叠放序**：行号大的画在上面，同一行按数组顺序；预览叠层（`visibleTextOverlays`）和导出
-（`VideoEditExportGraph`）都按 `TimelineState.textOverlaysInStackingOrder` 这一份序。
+（`VideoEditExportGraph`）都按 `TimelineState.textOverlaysInStackingOrder` 这一份序 —— 准确地说都读它去掉
+藏起来的（V，2026-09-26）之后的 `renderedTextOverlays`，藏起来的文字照样占着自己那一行
+（[段的显隐](clip-visibility.md)）。
 规矩都在 `VideoEditTextRows.swift`：
 
 | 事 | 规矩 |

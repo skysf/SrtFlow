@@ -151,7 +151,7 @@ enum VideoEditExportGraph {
 
         // 形状 → 整幅透明 PNG。
         var shapeFiles: [(shape: ShapeAnnotation, filename: String)] = []
-        for (index, shape) in state.shapes.enumerated() {
+        for (index, shape) in state.renderedShapes.enumerated() {  // 藏起来的（V）不进成片
             let filename = "shape\(index).png"
             guard let png = ShapePNGRenderer.render(shape, canvas: renderSize) else { continue }
             try png.write(to: workspace.appendingPathComponent(filename))
@@ -161,7 +161,7 @@ enum VideoEditExportGraph {
         // 文字 → 包络大小的透明 PNG（**不是**整幅画布，理由见 TextOverlayExport）。
         // 画面由 `TextRenderer.render` 出，和预览是同一个函数。
         let textFiles = try TextOverlayExport.renderFiles(
-            state.textOverlaysInStackingOrder, canvas: renderSize,  // 叠放序同预览：行号小的先贴
+            state.renderedTextOverlays, canvas: renderSize,  // 叠放序同预览：行号小的先贴；藏起来的不算
             frameRate: state.frameRate, into: workspace
         )
 
@@ -496,7 +496,7 @@ enum VideoEditExportGraph {
         //
         // 强度 0 的段整条跳过：那是「先关掉看看」，成片应当和原片逐像素相同，
         // 而不是白跑一遍恒等表（预览侧 `FilterStack` 有同一条短路）。
-        let gradeFilters = state.orderedFilters.filter {
+        let gradeFilters = state.renderedFilters.filter {  // 按 orderedFilters 的顺序、藏起来的不算
             $0.strength > 0.0005 && $0.timelineEnd > 0 && $0.timelineStart < total
         }
         if !gradeFilters.isEmpty {

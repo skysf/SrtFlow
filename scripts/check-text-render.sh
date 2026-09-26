@@ -41,6 +41,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
   Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
   Sources/SrtFlow/VideoEditSoundSceneTrack.swift \

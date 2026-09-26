@@ -305,6 +305,19 @@ extension TimelineState {
         !textOverlays.isEmpty
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v22-only 持久数据。
+    ///
+    /// **登记清单（新增 v22-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` —— 文字、形状、滤镜段
+    ///    单个藏起来（V，2026-09-26；**按需写入**：没藏过的不落键）。
+    ///
+    /// 为什么要抬：它们**直接决定成片里有没有这一个**。只认 v21 的旧版打开后藏起来的文字、形状、调色
+    /// 全部回到画面上，随手编辑触发自动保存即永久抹掉，只能一个个重新找出来再藏一遍（同 v16 的剪辑）。
+    var requiresFormatVersion22: Bool {
+        textOverlays.contains(where: \.isHidden) || shapes.contains(where: \.isHidden)
+            || filters.contains(where: \.isHidden)
+    }
+
     /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
     /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
     mutating func normalizeSubtitleCompanion() {

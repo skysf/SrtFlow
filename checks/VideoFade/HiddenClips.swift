@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // 藏起来的上层段不进成片：真导出、抽帧量像素。
 // 管什么：上层视频轨上「整轨藏起来」和「单段按 V 藏起来」在 ffmpeg 导出里的样子。
@@ -14,6 +15,7 @@ import Foundation
 func checkHiddenClips(white: URL, black: URL, info: MediaInfo) async {
     await checkHiddenUpperClips(white: white, black: black, info: info)
     await checkTransitionIntoHiddenClip(white: white, black: black, info: info)
+    await checkHiddenOverlaysStayOutOfExport(white: white, info: info)
 }
 
 /// 白色主轨上叠一段黑色上层视频（等比铺满画布）。四份：
@@ -96,6 +98,47 @@ func checkTransitionIntoHiddenClip(white: URL, black: URL, info: MediaInfo) asyn
         let own = survivorFirst ? 1.0 : 3.0
         if let level = pixel(product, x: 32, y: 18, at: own, name: "\(name)-own") {
             check(level > 0.7, "\(name)：\(own)s 是活着的那段自己的位置，应当是白，实测 \(level)")
+        }
+    }
+}
+
+/// 文字、形状、滤镜段按 V 藏起来（2026-09-26）：导出图里一点都不许有它们 —— 文字 PNG、形状 PNG、
+/// lut3d 都不进参数。先跑一份都显示着的**对照**，证明这三样在这个场景里本来都会进图，否则「藏了之后
+/// 没有」什么也说明不了。预览那一侧读的是同一份 `rendered*` 清单（工程自检第 24 组钉着）。
+func checkHiddenOverlaysStayOutOfExport(white: URL, info: MediaInfo) async {
+    for hidden in [false, true] {
+        var state = TimelineState()
+        state.mainClips = [EditClip(sourceURL: white, sourceDuration: 4, timelineStart: 0, info: info)]
+        var text = TextOverlay(text: "Hi", timelineStart: 0, duration: 4)
+        var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 0, duration: 4)
+        var filter = FilterClip(preset: .tealOrange, timelineStart: 0, duration: 4)
+        text.isHidden = hidden
+        shape.isHidden = hidden
+        filter.isHidden = hidden
+        state.textOverlays = [text]
+        state.shapes = [shape]
+        state.filters = [filter]
+        let name = hidden ? "overlays-hidden" : "overlays-visible"
+        let output = root.appendingPathComponent("\(name).mp4")
+        guard let plan = try? await VideoEditExportGraph.plan(
+            state: state, settings: VideoEncodeSettings(), subtitleStyle: BurnInStyle(name: "check"),
+            subtitleFontURL: nil, output: output
+        ) else {
+            check(false, "\(name) 的 plan() 失败")
+            continue
+        }
+        try? FileManager.default.removeItem(at: plan.workspace)
+        let args = plan.arguments
+        for (label, present) in [
+            ("文字 PNG", args.contains { $0.hasPrefix("text0") }),
+            ("形状 PNG", args.contains { $0.hasPrefix("shape0") }),
+            ("lut3d 调色", args.contains { $0.contains("lut3d") })
+        ] {
+            if hidden {
+                check(!present, "\(name)：藏起来的\(label)不许进导出图")
+            } else {
+                check(present, "\(name)（对照）：没藏的\(label)应当在导出图里")
+            }
         }
     }
 }

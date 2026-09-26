@@ -124,8 +124,7 @@ struct ClipBlockView: View, Equatable {
                 background
                 content
             }
-            .opacity(clip.isHidden ? 0.4 : 1)
-            .saturation(clip.isHidden ? 0 : 1)
+            .timelineHiddenLook(clip.isHidden)
             if highlighted {
                 // 白框 + 青色光晕：选中的是谁一目了然。
                 RoundedRectangle(cornerRadius: 5)
@@ -428,5 +427,14 @@ struct ClipBlockView: View, Equatable {
         [clip.stillImageURL, clip.sourceURL]
             .compactMap { $0 }
             .first { FileManager.default.fileExists(atPath: $0.path) }
+    }
+}
+
+extension View {
+    /// 单个藏起来（V）的块：内容灰显去色，但**不关命中** —— 还得点得中、拖得动、能再按一次 V 放出来
+    /// （整轨藏起来那边才是「灰显且不可编辑」）。选中框挂在这之后、不跟着变淡，否则「藏着而且正选中」
+    /// 看不出来。剪辑、文字、形状、滤镜块共用这一份（docs/architecture/clip-visibility.md）。
+    func timelineHiddenLook(_ hidden: Bool) -> some View {
+        opacity(hidden ? 0.4 : 1).saturation(hidden ? 0 : 1)
     }
 }

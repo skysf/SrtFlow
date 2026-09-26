@@ -4,36 +4,6 @@ import AppKit
 import SwiftUI
 import SrtFlowCore
 
-/// 时间线的鼠标工具（对齐 CapCut：选择 A / 分割 B）。
-enum TimelineTool: String, CaseIterable, Identifiable {
-    case select
-    case split
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .select: return "Select"
-        case .split: return "Split"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .select: return "cursorarrow"
-        case .split: return "rectangle.split.2x1"
-        }
-    }
-
-    /// 菜单里展示的单键快捷键。
-    var shortcutLabel: String {
-        switch self {
-        case .select: return "A"
-        case .split: return "B"
-        }
-    }
-}
-
 /// 视频编辑器的全部可变状态。
 ///
 /// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
@@ -1271,7 +1241,7 @@ final class VideoEditProject {
         perform { $0.frameRate = rate }
     }
 
-    /// V 键：切换**选中的那几段**的显隐（2026-09-18 用户拍板）。
+    /// V 键：切换**选中的那几个**的显隐（2026-09-18 用户拍板；2026-09-26 起文字、形状、滤镜段也算）。
     ///
     /// 什么都没选时**什么都不做** —— 以前这里是「没选就切主轨」，那是在用户没
     /// 指定对象时替他挑了一个最大的目标。整轨显隐现在只有轨道头那只眼睛一个入口。
@@ -1280,13 +1250,15 @@ final class VideoEditProject {
     /// 切成什么由 `ClipVisibility.nextHidden` 定：一批里只要还有显示的就全部
     /// 隐藏 —— 逐个翻转会让混合状态永远回不到「全显示」。
     func toggleHiddenForSelection() {
-        guard !selectedClipIDs.isEmpty else { return }
         var ids = selectedClipIDs
         if linkageEnabled {
             for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
         }
+        ids.formUnion(selectedTextIDs.union(selectedShapeIDs).union(selectedFilterIDs))
+        guard !ids.isEmpty else { return }
         let hidden = ClipVisibility.nextHidden(for: ids, in: state)
-        perform { $0.setHidden(hidden, ids: ids) }
+        // 文字、形状是叠层，滤镜挂在播放器视图上，都不在 AV 合成里：没有剪辑就别重建预览（画面会黑一下）。
+        perform(rebuildsPreview: !selectedClipIDs.isEmpty) { $0.setHidden(hidden, ids: ids) }
     }
 
     /// 主轨 ↔ 上层视频轨。
@@ -1348,9 +1320,9 @@ final class VideoEditProject {
         selection.pruneShapes { $0 != id }
     }
 
-    /// 此刻画面上该显示的形状。
+    /// 此刻画面上该显示的形状（藏起来的不算，和导出同一份 `renderedShapes`）。
     func visibleShapes(at time: Double) -> [ShapeAnnotation] {
-        state.shapes.filter { $0.contains(time: time) }
+        state.renderedShapes.filter { $0.contains(time: time) }
     }
 
     // MARK: - 吸附
