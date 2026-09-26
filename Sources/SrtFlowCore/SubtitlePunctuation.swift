@@ -138,13 +138,17 @@ public enum SubtitlePunctuation {
         char.isASCII && (char.isLetter || char.isNumber)
     }
 
-    /// 连着的空格并成一个，去掉首尾空白（Netflix：不许出现两个连着的空格）。
+    /// 前面不留空格的全角标点：中文转写把问号、叹号吐成带前导空格的一个词（「大小呢 ？」）。
+    static let noSpaceBefore: Set<Character> = ["？", "！", "、", "…", "”", "’", "」", "』", "）", "》"]
+
+    /// 连着的空格并成一个，全角标点前面的空格去掉，去掉首尾空白（Netflix：不许出现两个连着的空格）。
     private static func collapsingSpaces(_ chars: [Character]) -> String {
         var result = ""
         for char in chars {
             if char == " " || char == "\t" {
                 if result.last != " " { result.append(" ") }
             } else {
+                if noSpaceBefore.contains(char), result.last == " " { result.removeLast() }
                 result.append(char)
             }
         }

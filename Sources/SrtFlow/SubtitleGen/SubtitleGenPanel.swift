@@ -393,7 +393,13 @@ private struct TranscriptionSection: View {
             project: project,
             sourceLocaleID: sourceLocaleID,
             targetLanguageID: translateAfter && !targetLanguageID.isEmpty
-                ? targetLanguageID : nil
+                ? targetLanguageID : nil,
+            // 按当前字幕样式和画面宽度算一行放得下多少（竖屏更短），生成的每条都不折行。
+            lineFitEms: SubtitleLineFit.ems(
+                style: EncodeQueue.burnIn.burnInStyle,
+                layout: project.state.subtitleLayout,
+                renderSize: project.renderSize
+            )
         )
     }
 

@@ -76,11 +76,12 @@ final class TranscriptionTask: ObservableObject {
     // MARK: 入口
 
     /// 面板确认过替换后调用。串行：在跑就忽略。
+    /// - Parameter lineFitEms: 一行在画面上放得下几个字号宽（`SubtitleLineFit`），生成时按它封顶。
     func start(
         project: VideoEditProject,
         sourceLocaleID: String,
         targetLanguageID: String?,
-        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
+        lineFitEms: Double = .infinity
     ) {
         guard !isRunning else { return }
         let token = ExportCancellationToken()
@@ -114,8 +115,18 @@ final class TranscriptionTask: ObservableObject {
                 // 让用户重跑 —— 账本保证重跑只补新缺口，秒级。（评审 P1）
                 self.stage = .segmenting
                 self.setProgress(0.85)
-                let result = try self.finalize(
-                    project: project, harvest: harvest, config: config
+                // 分段与合成永远基于**当前**时间线（SubtitleGenerationAssembly）；按转写实际用的语言
+                // 选每行字数和阅读速度，两条之间的空按工程帧率（docs/architecture/subtitle-generation-style.md）。
+                let result = try SubtitleGenerationAssembly.build(
+                    state: project.state,
+                    entries: harvest.entries,
+                    skippedFingerprints: harvest.skippedFingerprints,
+                    localeIdentifier: harvest.locale.identifier,
+                    config: .generation(
+                        languageCode: harvest.locale.language.languageCode?.identifier,
+                        frameDuration: project.state.frameRate.secondsPerFrame,
+                        maxLineEms: lineFitEms
+                    )
                 )
                 guard project.isCurrentGeneration(generation) else {
                     self.stage = .cancelled
@@ -198,11 +209,6 @@ final class TranscriptionTask: ObservableObject {
     /// 素材侧的可听快照与探针挑选在 `SubtitleAudibleClips`（纯值逻辑，
     /// 自检编得动 —— 见那边的文件头）。这里只借个短名字。
     typealias SoundClip = SubtitleAudibleClips.SoundClip
-
-    private struct GenerationResult {
-        var document: SubtitleDocumentModel
-        var meta: [UUID: CueMeta]
-    }
 
     private struct TaskError: LocalizedError {
         var message: String
@@ -565,64 +571,6 @@ final class TranscriptionTask: ObservableObject {
             locale: locale, entries: entries, skippedFingerprints: skippedFingerprints
         )
 
-    }
-
-    /// 分段与装配 —— 永远基于**当前**时间线（转写期间的裁切/移动/变速都被
-    /// 尊重）。当前需要的区间必须已被账本覆盖：新裁进未转写段落时如实报
-    /// 「时间线已变」，重跑只补新缺口。
-    private func finalize(
-        project: VideoEditProject,
-        harvest: Harvest,
-        config: SubtitleSegmentationConfig
-    ) throws -> GenerationResult {
-        let clips = SubtitleAudibleClips.soundClips(in: project.state)
-            .filter { !harvest.skippedFingerprints.contains($0.fingerprint) }
-        guard !clips.isEmpty else {
-            throw TaskError(message: L10n("No audible clips to transcribe."))
-        }
-        let timelineChanged = TaskError(message: L10n(
-            "The timeline changed while generating. Generate again — cached transcription makes rerunning fast."
-        ))
-        var parts: [SegmentedSubtitles] = []
-        for clip in clips {
-            let entry = harvest.entries[clip.fingerprint] ?? TranscriptSidecarStore.load(
-                fingerprint: clip.fingerprint,
-                localeIdentifier: harvest.locale.identifier,
-                transcriber: SpeechTranscriptionService.transcriberKind,
-                configVersion: 1
-            )
-            guard let entry else { throw timelineChanged }
-            let desired = SourceRange(
-                start: clip.sourceStart, end: clip.sourceStart + clip.sourceDuration
-            )
-            guard TranscriptLedger.gaps(desired: [desired], covered: entry.covered).isEmpty else {
-                throw timelineChanged
-            }
-            let window = SubtitleClipWindow(
-                clipID: clip.clipID,
-                assetFingerprint: clip.fingerprint,
-                sourceStart: clip.sourceStart,
-                sourceEnd: clip.sourceStart + clip.sourceDuration,
-                timelineStart: clip.timelineStart,
-                speed: clip.speed,
-                laneRank: clip.laneRank
-            )
-            parts.append(SubtitleSegmenter.segment(
-                words: entry.words, window: window, config: config
-            ))
-        }
-        let ranks: [UUID: Int] = Dictionary(
-            uniqueKeysWithValues: clips.map { ($0.clipID, $0.laneRank) }
-        )
-        let assembled = SubtitleSegmenter.assemble(parts) { clipID in
-            clipID.flatMap { ranks[$0] } ?? -1
-        }
-        guard !assembled.document.cues.isEmpty else {
-            throw TaskError(message: L10n(
-                "No speech was recognized. Try another source language."
-            ))
-        }
-        return GenerationResult(document: assembled.document, meta: assembled.meta)
     }
 
     // MARK: 工具

@@ -53,7 +53,7 @@ func runSubtitleLayoutChecks() {
     // 生成默认单行（2026-08-09 产品决定）：默认配置行数 1、参数集版本随之升 2。
     let defaults = SubtitleSegmentationConfig()
     checkEqual(defaults.maxLineCount, 1, "分段：默认单行")
-    checkEqual(SubtitleSegmentationConfig.version, 2, "分段：默认值变更必须升参数集版本")
+    checkEqual(SubtitleSegmentationConfig.version, 3, "分段：默认值变更必须升参数集版本（v3：2026-09-26 按主流规范重定）")
 
     // 超长句在默认配置下拆成多条 cue，而不是折成第二行。
     let window = SubtitleClipWindow(
