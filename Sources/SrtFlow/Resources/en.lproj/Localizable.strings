@@ -378,6 +378,7 @@
 "Couldn't confidently detect the spoken language. Pick it in the panel and generate again." = "Couldn't confidently detect the spoken language. Pick it in the panel and generate again.";
 "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded." = "Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded.";
 "Translate after generating" = "Translate after generating";
+"Only the selected clips (%d)" = "Only the selected clips (%d)";
 "Generate Subtitles" = "Generate Subtitles";
 "Replace the current subtitle track?" = "Replace the current subtitle track?";
 "Replace" = "Replace";
@@ -495,6 +496,7 @@
 "Only translate lines with no translation, or whose source text changed" = "Only translate lines with no translation, or whose source text changed";
 "Cancel subtitle generation" = "Cancel subtitle generation";
 "Transcribe the audio on the timeline into a subtitle track" = "Transcribe the audio on the timeline into a subtitle track";
+"Transcribe only the selected clips, for example just the voiceover, leaving out a screen recording's own sound or background music" = "Transcribe only the selected clips, for example just the voiceover, leaving out a screen recording's own sound or background music";
 "Break the selected line in two" = "Break the selected line in two";
 "Delete the selected lines from every track" = "Delete the selected lines from every track";
 "Close the subtitle editor" = "Close the subtitle editor";

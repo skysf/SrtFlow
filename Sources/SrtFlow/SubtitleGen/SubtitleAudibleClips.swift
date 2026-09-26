@@ -29,14 +29,21 @@ enum SubtitleAudibleClips {
 
     /// 出声 clip 清单 —— 与预览/导出同一份「实际可听」合同
     /// （VideoEditCompositionBuilder 先例）：mainHidden 跳过整个主轨、
-    /// isHidden 的 lane 当不存在、静音或音量为 0 的 clip 不算出声。
+    /// isHidden 的 lane 当不存在、**按 V 藏起来的段**（`ClipVisibility.visible`，
+    /// 预览 / 导出同一个过滤）不存在、静音或音量为 0 的 clip 不算出声。
+    ///
+    /// 单段的 V 是 2026-09-18 加的，这里当时没跟上，藏起来的段照样被转写
+    /// （docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md）。
     ///
     /// **字幕生成一侧的所有素材消费者都必须从这里取**（转写、探针、音轨
     /// metadata、面板的可用性判断）。任何「我只要主轨和音频轨就够了」的
     /// 简化都会重新分叉出一份无视眼睛/静音的声音来源。
-    static func soundClips(in state: TimelineState) -> [SoundClip] {
+    ///
+    /// - Parameter only: 面板勾了「只用选中的片段」时，只留这几段（`selectedSoundClipIDs` 算的）；nil = 全部。
+    static func soundClips(in state: TimelineState, only: Set<UUID>? = nil) -> [SoundClip] {
         var result: [SoundClip] = []
         func add(_ clip: EditClip, laneRank: Int) {
+            if let only, !only.contains(clip.id) { return }
             guard !clip.isMuted, clip.volume > 0, clip.stillImageURL == nil else { return }
             // **判「有没有声音」只认 `EditClip.hasAudio`** —— 与
             // CompositionBuilder / VideoEditExportGraph 同一个属性。
@@ -66,17 +73,32 @@ enum SubtitleAudibleClips {
             ))
         }
         if !state.mainHidden {
-            for clip in state.mainClips { add(clip, laneRank: 0) }
+            for clip in ClipVisibility.visible(state.mainClips) { add(clip, laneRank: 0) }
         }
         for (index, lane) in state.overlayTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips { add(clip, laneRank: 1 + index) }
+            for clip in ClipVisibility.visible(lane.clips) { add(clip, laneRank: 1 + index) }
         }
         for (index, lane) in state.audioTracks.enumerated() where !lane.isHidden {
-            for clip in lane.clips {
+            for clip in ClipVisibility.visible(lane.clips) {
                 add(clip, laneRank: 1 + state.overlayTracks.count + index)
             }
         }
         return result
+    }
+
+    /// 「只用选中的片段」（2026-09-26）：选中的片段里听得见的那几段。
+    ///
+    /// 主流剪辑软件排除某个声音靠「只选某些片段」（Final Cut Pro 只转写选中的、剪映右键「识别字幕」），
+    /// 想跳过录屏原声、背景歌时只选旁白那几段就行。链接开着时连带链接组（选中视频 = 连它分离出来的
+    /// 音频一起），和删除、变速、隐藏同一个口径。
+    static func selectedSoundClipIDs(
+        in state: TimelineState, selected: Set<UUID>, includingLinked: Bool
+    ) -> Set<UUID> {
+        var ids = selected
+        if includingLinked {
+            for id in selected { ids.formUnion(state.linkedClipIDs(of: id)) }
+        }
+        return Set(soundClips(in: state, only: ids).map(\.clipID))
     }
 
     // MARK: - 自动检测的探针来源

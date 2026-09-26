@@ -120,7 +120,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 往检查器里加任何一行（标题 + 控件、下拉、滑杆行） | [检查器的排版](docs/architecture/inspector-layout.md)（固定窄栏，一行不许比它宽；菜单 Picker 不许 `.fixedSize()`）、[声音场景那一行把检查器撑宽](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) |
 | 定格、静帧、图片转视频 | [定格长期约束](docs/architecture/freeze-frame.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
-| 字幕生成、语言检测、翻译、任务取消 | [字幕语言流](docs/architecture/subtitle-language-flow.md)、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md) |
+| 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md) |
+| 生成出来的字幕长什么样：**去标点**、**断句**（逗号拆小句、太短的并、放不下的怎么切、中文按词边界）、**一行多长**（字数 + 画面宽度）、**显示时间**（最短、2 帧间隔、接上、说完多停）、**几段素材同时有字只留一条**、面板上「只用选中的片段」、机器翻译落字去标点 | [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md)（先断句后去标点、时间在整条轨上排；切法是动态规划不是贪心；中文按整句判语言；去重叠只比不同素材）、[方案与调研](docs/plans/2026-09-26-subtitle-generation-style.md)（别的剪辑软件怎么做、Netflix / BBC 的数字、用户逐条拍的板） |
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
@@ -142,6 +143,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   由一个叫 `check-all` 的汇总 job 给结论（分组、组数校验、汇总 job 为什么不能被跳过，见
   [构建与打包「CI」一节](docs/build/build-and-packaging.md)）。新加检查要放进某个 `shard`。
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
+- 生成的字幕长什么样（去标点、断句、一行多长、显示时间、几段素材同时有字只留一条，用例是用户工程里真实转写出来的句子）：
+  `SrtFlowCoreChecks` 的 `SubtitlePunctuationChecks` / `SubtitleSegmentationChecks` / `SubtitleSourceOverlapChecks`；
+  藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift` + 扫描守卫）。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
@@ -281,6 +285,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [时间线上的复制 / 剪切 / 粘贴 + 缩放以鼠标为中心 + 纵向缩放](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md) —
   2026-09-26 用户逐条拍的板（撞上了照拖文件往上抬一轨、单独的纵向缩放用 ⌥ 捏合、只动视频 / 音频轨、
   纵向缩放时全部统一成一样高、工具栏缩放钉播放头）、讨论时列的默认做法，以及我定的实现细节（Z1–Z7、C1–C9）。
+- [生成的字幕：去标点、按主流规范断句、同时有字只留一条、藏起来的不转写](docs/plans/2026-09-26-subtitle-generation-style.md) —
+  用户看着南极工程提的四件事（重叠、藏起来的还在生成、字幕不该有标点、长句拆开）、先查清的事实（重叠两个来源、翻译是一条一条送的）、
+  调研（Premiere / Resolve / FCP / 剪映 / Descript 怎么选声音和处理同时说话；Netflix 英文与简体中文、BBC 的数字）、
+  逐条拍的板（跟随素材「先不用」、双语顺序「不改」）和我定的实现细节。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -330,6 +338,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
   （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不读工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）、**点一下选中一段的时间花在哪**（第十一节：release 和 debug 一样慢、活在框架里；换 Observation 之前块的选中高亮只在根视图那一遍更新）、**播放头的每一跳只叫醒跟着它动的东西**（第十二节：订阅时钟按类型名单、大视图持有不订阅、只关心变没变的 `onReceive` 自己那份、停着才有意义的读 `PacedPlayhead`，守卫钉着）、**工程是 `@Observable`**（第十三节：body 读了什么就只被什么叫醒、按属性不按值、不驱动界面的存储 `@ObservationIgnored`、读撤销栈 / 最近列表这类不可观察的东西要自己找叫醒的来源、冒烟看 `event:project.changed.<属性>`、剩下的一半是命中测试）。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
+- [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md) — 先断句、后去标点、最后在整条轨上排时间；去标点的规则（句中换一个半角空格、行尾删，问号叹号引号书名号省略号列举顿号留着，数字缩写撇号不动，只在生成和机器翻译落字时去）；断句（逗号拆小句、太短的并、放不下的用动态规划挑切法、每一刀的代价表、中文按系统分词且按整句判语言）；一行多长（全角 1 半角 0.5 的字数 + 按字号和画面宽度的「放得下」，竖屏更短）；显示时间（5/6 秒、7 秒、2 帧、不到半秒接上、说完多停半秒、不越过素材结尾）；几段素材同时有字只留一条（零碎杂音、谁清楚留谁、同一段素材不算撞）；转写哪些声音（藏起来的不转、只用选中的片段）；已知不足、回归与人工清单。
 
 ## Bug 修复案例索引
 
@@ -418,6 +427,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-26 捏合放大时鼠标底下的内容跑掉](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md) — 「指针下缩放」2026-08-03 就写了，锚点那一步却从来没生效：找滚动视图时把根视图自己的坐标喂给了 `hitTest`（它要父视图坐标），SwiftUI 的根视图是翻转的，于是找的是上下镜像的那一处（预览区），找不到就静默跳过。改成从时间线自己的滚动几何量锚点，删掉 §5b 给捏合的「暂时豁免」。**`hitTest` 吃父视图坐标；已经有唯一真相时别用坐标找第二份；锚点对不对要看数字**（冒烟加了 `zoom` 步骤）。
 - [2026-09-26 纵向滚下去之后，轨道上的块画到钉住的标尺上面](docs/bugfixes/2026-09-26-tracks-cover-pinned-ruler.md) — 做纵向缩放时冒烟发现：2026-09-24 整轨换位给每一行都挂了带 `.zIndex` 的位移包装，**叠放次序只认最外面那一层**，标尺自己写的 `.zIndex(50)` 被盖成 0；左边的总推子则从加进标尺那一行起就跟着滚走。层级改在包装那一层给（`pinnedOnTop`），总推子同样钉住。**给每一行都挂带层级的包装，等于作废每一行自己的层级；钉住的东西要在真滚过的状态下看一眼。**
 - [2026-09-26 分割一段藏起来的素材，右半段冒回成片；音频库素材分割后右半段丢了身份](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md) — 写复制粘贴时读分割发现：`split` 手写逐字段构造右半段，后加进 `EditClip` 的 `isHidden`、`remoteKey` 都有默认值、没人补，编译器一声不吭。补上两处；复制粘贴那一路改走编码往返、不手写。**从旧段构造新段的地方加字段时都要过一遍，能不手写就不手写。**
+- [2026-09-26 按 V 藏起来的片段照样被转写成字幕](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md) — 字幕生成的可听快照（`SubtitleAudibleClips.soundClips`）是照着预览合成**抄**的一份合同，2026-09-18 加单段的 V 时预览、导出都接上了，它没人记得，藏起来的段照样被转写。改成调同一个 `ClipVisibility.visible`；落点表补上字幕生成这一行。**「复刻某某合同」的副本，合同一改就漏；能调同一个函数就调同一个。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

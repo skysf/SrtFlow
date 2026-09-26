@@ -1,12 +1,20 @@
 import Foundation
 
-// 字幕分段器（docs/plans/2026-08-06-native-subtitle-generation.md 第 5、6 节）。
+// 字幕分段器（docs/plans/2026-08-06-native-subtitle-generation.md 第 5、6 节；
+// 2026-09-26 起断句和显示时间按主流规范，docs/architecture/subtitle-generation-style.md）。
 //
 // 输入是**素材源时间**的词流（sidecar 缓存的形态，与时间线解耦）；
 // 每个 clip 实例先按边界合同截取词，映射到时间线，然后**全部约束在时间线
 // 时间上评估** —— 同一素材在不同 speed 的 clip 上产生不同分段是预期行为；
 // 极端变速下 CPS 无解时打 readingSpeedWarning，不假装满足。
-// 全部纯函数，SrtFlowCoreChecks 有 0.1×/1×/2×/8× 与边界用例。
+//
+// 分两步：
+// - `segment`：一段素材的词切成一条条字幕（在哪断：`SubtitleBreaks`；去标点：`SubtitlePunctuation`）。
+//   每条的开始 = 第一个词开口，结束 = 最后一个词说完。
+// - `assemble`：几段素材的字幕合成一条轨 —— 同时有字的只留一条（`SubtitleSourceOverlap`，主流剪辑软件
+//   出来的都是一条不重叠的字幕），再统一排显示时间（`SubtitleCueTiming`）：两条之间留多少、说完延多久
+//   要看整条轨上的前后邻居，不看它是哪段素材来的。
+// 全部纯函数，SrtFlowCoreChecks 有变速、边界、断句、显示时间的用例。
 
 /// 一个带时间的词（素材源时间，秒）。text 保持识别器原样
 /// （英文词自带前导空格、标点附着在词上），拼接时直接相连。
@@ -21,41 +29,6 @@ public struct TimedWord: Hashable, Sendable, Codable {
         self.start = start
         self.end = end
         self.confidence = confidence
-    }
-}
-
-/// 分段约束。全部按**时间线时长**评估；默认值是可调的产品参数（计划 17.3），
-/// 集中在这里，不散进逻辑。
-public struct SubtitleSegmentationConfig: Hashable, Sendable {
-    public var maxLineCount: Int
-    /// 每行最大字符数（去掉空白后计）。
-    public var maxLineLength: Int
-    public var minCueDuration: Double
-    public var maxCueDuration: Double
-    /// 阅读速度上限：字符/秒（去空白）。
-    public var maxCharactersPerSecond: Double
-    /// 词间停顿超过它就断句（时间线秒）。
-    public var pauseThreshold: Double
-
-    /// 参数集版本：进 GenerationSnapshot，缓存/重现用。
-    /// v2：默认单行（maxLineCount 2 → 1，2026-08-09 产品决定 —— 生成的字幕
-    /// 一律单行，行数上限只影响分段不影响词流缓存）。
-    public static let version = 2
-
-    public init(
-        maxLineCount: Int = 1,
-        maxLineLength: Int = 42,
-        minCueDuration: Double = 0.7,
-        maxCueDuration: Double = 7.0,
-        maxCharactersPerSecond: Double = 17,
-        pauseThreshold: Double = 0.6
-    ) {
-        self.maxLineCount = maxLineCount
-        self.maxLineLength = maxLineLength
-        self.minCueDuration = minCueDuration
-        self.maxCueDuration = maxCueDuration
-        self.maxCharactersPerSecond = maxCharactersPerSecond
-        self.pauseThreshold = pauseThreshold
     }
 }
 
@@ -91,9 +64,13 @@ public struct SubtitleClipWindow: Hashable, Sendable {
     public func timelineTime(atSource source: Double) -> Double {
         timelineStart + (source - sourceStart) / speed
     }
+
+    /// 这段素材在时间线上的结尾 —— 它的字幕最晚收到这里。
+    public var timelineEnd: Double { timelineTime(atSource: sourceEnd) }
 }
 
-/// 一个窗口的分段产物：cue + 旁表 meta（置信度/告警/provenance 已填好）。
+/// 一个窗口的分段产物：cue + 旁表 meta（置信度、provenance 已填好；
+/// 显示时间和阅读速度告警在 `assemble` 里定）。
 public struct SegmentedSubtitles: Sendable {
     public var cues: [SubtitleCue]
     public var meta: [UUID: CueMeta]
@@ -124,9 +101,9 @@ public enum SubtitleSegmenter {
         }
     }
 
-    // MARK: 分段主流程
+    // MARK: 分段
 
-    /// 源时间词流 → 本窗口的时间线 cue。
+    /// 源时间词流 → 本窗口的字幕（显示时间在 `assemble` 里排）。
     public static func segment(
         words: [TimedWord],
         window: SubtitleClipWindow,
@@ -145,55 +122,23 @@ public enum SubtitleSegmenter {
                     confidence: word.confidence
                 )
             }
-        guard !placed.isEmpty else { return SegmentedSubtitles() }
-
-        // ③ 语义成句：标点收尾或停顿超阈值就断句（时间线时间上判停顿）。
-        var sentences: [[PlacedWord]] = []
-        var current: [PlacedWord] = []
-        for (index, word) in placed.enumerated() {
-            current.append(word)
-            let endsSentence = word.text.reversed().first(where: { !$0.isWhitespace })
-                .map { Self.sentenceTerminators.contains($0) } ?? false
-            let pause = index + 1 < placed.count
-                ? placed[index + 1].start - word.end : 0
-            if endsSentence || pause > config.pauseThreshold {
-                sentences.append(current)
-                current = []
-            }
-        }
-        if !current.isEmpty { sentences.append(current) }
-
-        // ④ 句内按时间线约束切 cue，⑤ 折行，告警如实打标。
+        // ③ 成句，④ 句内按逗号分小句、太短的并、放不下的在最好的地方切，⑤ 去标点成字幕。
         var result = SegmentedSubtitles()
-        for sentence in sentences {
-            for chunk in packCues(sentence, config: config) {
-                appendCue(chunk, window: window, config: config, into: &result)
-            }
-        }
-
-        // 最短时长：能借到下一条开始前的空档就借（不改变顺序、不重叠）。
-        for i in result.cues.indices where result.cues[i].duration < config.minCueDuration {
-            let limit = i + 1 < result.cues.count
-                ? result.cues[i + 1].start
-                : window.timelineTime(atSource: window.sourceEnd)
-            result.cues[i].end = min(result.cues[i].start + config.minCueDuration, limit)
-        }
-        // 阅读速度告警按**借位后的最终时长**评定：借得到空档就是合法解，
-        // 借不到（后面顶着下一条）才是真无解 —— 如实打标，不假装满足。
-        for cue in result.cues {
-            let speed = Double(visibleCount(cue.text)) / max(cue.duration, 0.001)
-            if speed > config.maxCharactersPerSecond {
-                result.meta[cue.id]?.readingSpeedWarning = true
+        for sentence in SubtitleBreaks.sentences(placed, pauseThreshold: config.pauseThreshold) {
+            for range in SubtitleBreaks.pieces(of: sentence, config: config) {
+                appendCue(sentence[range], window: window, config: config, into: &result)
             }
         }
         for i in result.cues.indices { result.cues[i].index = i + 1 }
         return result
     }
 
-    /// 多窗口产物合成一份文档 + 旁表：按重叠排序合同排定顺序（SubtitleOverlap）。
+    /// 几段素材的字幕合成一条轨：同时有字的只留一条，按排序合同排好，再统一排显示时间、标阅读速度告警。
+    /// - Parameter windows: 这几段素材（轨道秩给排序合同；时间线上的结尾是它的字幕最晚收到哪）。
     public static func assemble(
         _ parts: [SegmentedSubtitles],
-        laneRank: (UUID?) -> Int
+        windows: [SubtitleClipWindow],
+        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
     ) -> (document: SubtitleDocumentModel, meta: [UUID: CueMeta]) {
         var meta: [UUID: CueMeta] = [:]
         var cues: [SubtitleCue] = []
@@ -201,7 +146,22 @@ public enum SubtitleSegmenter {
             cues.append(contentsOf: part.cues)
             meta.merge(part.meta) { a, _ in a }
         }
+        let windowByClip = Dictionary(windows.map { ($0.clipID, $0) }, uniquingKeysWith: { a, _ in a })
+        func window(of cue: SubtitleCue) -> SubtitleClipWindow? {
+            meta[cue.id]?.provenance?.clipID.flatMap { windowByClip[$0] }
+        }
+        let laneRank: (UUID?) -> Int = { clipID in clipID.flatMap { windowByClip[$0]?.laneRank } ?? -1 }
+        // 几段素材同时有字：只留一条（谁识别得更清楚留谁）；丢掉的连旁表一起丢。
+        cues = SubtitleSourceOverlap.resolve(cues, meta: meta, laneRank: laneRank, config: config)
+        let keptIDs = Set(cues.map(\.id))
+        meta = meta.filter { keptIDs.contains($0.key) }
         cues = SubtitleOverlap.ordered(cues, meta: meta, laneRank: laneRank)
+        var limits: [UUID: Double] = [:]
+        for cue in cues {
+            if let window = window(of: cue) { limits[cue.id] = window.timelineEnd }
+        }
+        SubtitleCueTiming.apply(to: &cues, limits: limits, config: config)
+        SubtitleCueTiming.markReadingSpeed(cues, meta: &meta, config: config)
         for i in cues.indices { cues[i].index = i + 1 }
         var document = SubtitleDocumentModel(cues: cues)
         document.reindex()
@@ -209,10 +169,6 @@ public enum SubtitleSegmenter {
     }
 
     // MARK: 内部
-
-    static let sentenceTerminators: Set<Character> = [
-        ".", "!", "?", "…", "。", "！", "？"
-    ]
 
     struct PlacedWord {
         var text: String
@@ -223,46 +179,17 @@ public enum SubtitleSegmenter {
         var confidence: Double?
     }
 
-    private static func visibleCount(_ text: String) -> Int {
-        text.unicodeScalars.lazy.filter { !CharacterSet.whitespacesAndNewlines.contains($0) }.count
-    }
-
-    /// 句子 → 若干 cue 的词块。加词会超（容量/最长时长）就在词边界收束，
-    /// 绝不切词。**CPS 不在这里管**：拆条不改变「字符/秒」，只有向后借位
-    /// 能救 —— 借位在 segment 的收尾做，救不回来的按最终时长如实告警。
-    private static func packCues(
-        _ sentence: [PlacedWord], config: SubtitleSegmentationConfig
-    ) -> [[PlacedWord]] {
-        let capacity = config.maxLineCount * config.maxLineLength
-        var chunks: [[PlacedWord]] = []
-        var current: [PlacedWord] = []
-        var currentChars = 0
-
-        for word in sentence {
-            let wordChars = visibleCount(word.text)
-            if !current.isEmpty {
-                let duration = word.end - current[0].start
-                if currentChars + wordChars > capacity || duration > config.maxCueDuration {
-                    chunks.append(current)
-                    current = []
-                    currentChars = 0
-                }
-            }
-            current.append(word)
-            currentChars += wordChars
-        }
-        if !current.isEmpty { chunks.append(current) }
-        return chunks
-    }
-
     private static func appendCue(
-        _ chunk: [PlacedWord],
+        _ chunk: ArraySlice<PlacedWord>,
         window: SubtitleClipWindow,
         config: SubtitleSegmentationConfig,
         into result: inout SegmentedSubtitles
     ) {
         guard let first = chunk.first, let last = chunk.last else { return }
-        let text = wrapLines(chunk, config: config)
+        // 断完句、切完条才去标点（断句要看标点）；排成几行也按去完标点的字量。
+        let lines = SubtitleBreaks.lines(for: chunk, config: config)
+            ?? [SubtitlePunctuation.strip(chunk.map(\.text).joined())]
+        let text = lines.joined(separator: "\n")
         guard !text.isEmpty else { return }
 
         let confidences = chunk.compactMap(\.confidence)
@@ -279,27 +206,6 @@ public enum SubtitleSegmenter {
                 sourceEnd: last.sourceEnd
             )
         )
-    }
-
-    /// 词边界折行：贪心塞满每行，超行数就不再折（容量在 packCues 已经保证，
-    /// 这里只处理排版）。
-    private static func wrapLines(_ chunk: [PlacedWord], config: SubtitleSegmentationConfig) -> String {
-        var lines: [String] = []
-        var line = ""
-        for word in chunk {
-            let candidate = line + word.text
-            let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
-            if visibleCount(trimmed) > config.maxLineLength,
-               !line.isEmpty, lines.count + 1 < config.maxLineCount {
-                lines.append(line.trimmingCharacters(in: .whitespacesAndNewlines))
-                line = word.text
-            } else {
-                line = candidate
-            }
-        }
-        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { lines.append(trimmed) }
-        return lines.joined(separator: "\n")
     }
 }
 
