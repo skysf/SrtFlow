@@ -357,12 +357,16 @@ func markdownSummary(_ verdict: Verdict, baseline: Baseline, runs: [[Run]], fing
             lines.append("| `\(key)` | \(values.first ?? "—") | \(values.dropFirst().first ?? "—") |")
         }
     }
-    // 时钟连跳时每个视图重算了几次：退步时一眼看出是谁。
+    // 时钟连跳、换选中时每个视图重算了几次：退步时一眼看出是谁。次数和 PreviewBench 的
+    // tickCount / selectCount 对得上（这个脚本单独编，读不到那两个常量）。
     for pair in runs {
-        guard let first = pair.first, let ticks = first.breakdown["\(first.scenario).ticks"] else { continue }
-        lines += ["", "\(first.scenario)：时钟连跳 60 下，各项计数", "", "| 项 | 次数 |", "| --- | ---: |"]
-        for (key, count) in ticks.sorted(by: { ($1.value, $0.key) < ($0.value, $1.key) }) {
-            lines.append("| `\(key)` | \(count) |")
+        guard let first = pair.first else { continue }
+        for (phase, title) in [("ticks", "时钟连跳 60 下"), ("select", "换选中 8 次")] {
+            guard let counts = first.breakdown["\(first.scenario).\(phase)"] else { continue }
+            lines += ["", "\(first.scenario)：\(title)，各项计数", "", "| 项 | 次数 |", "| --- | ---: |"]
+            for (key, count) in counts.sorted(by: { ($1.value, $0.key) < ($0.value, $1.key) }) {
+                lines.append("| `\(key)` | \(count) |")
+            }
         }
     }
     return lines.joined(separator: "\n") + "\n"
