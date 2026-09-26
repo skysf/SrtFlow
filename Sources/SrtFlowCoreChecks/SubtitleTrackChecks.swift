@@ -175,6 +175,33 @@ private func checkTrackStructure(_ f: TrackFixture) {
               "加一句：零时长拒绝")
     }
 
+    // 粘贴一句现成的（2026-09-26 时间线复制粘贴）：字和样式照带、用给的 ID，旁表同「新加一句」。
+    do {
+        var (original, companion) = f.make()
+        var pasted = f.b
+        pasted.id = UUID()
+        pasted.start = 10
+        pasted.end = 11.5
+        let id = SubtitleTrackEditing.insertCue(pasted, into: .original, original: &original, companion: &companion)
+        checkEqual(id, pasted.id, "粘原文：用给的 ID（调用方已经换成新的）")
+        checkEqual(original.cues.last?.text, f.b.text, "粘原文：字照带")
+        checkEqual(original.cues.last?.id, pasted.id, "粘原文：按时间顺序落位（10 秒在最后）")
+        checkEqual(companion.cueMeta[pasted.id]?.origin, .editedManually, "粘原文：出处人工")
+        var translated = f.tb
+        translated.id = UUID()
+        translated.start = 2.5
+        translated.end = 3.5
+        SubtitleTrackEditing.insertCue(translated, into: .translation, original: &original, companion: &companion)
+        checkEqual(companion.translation?.cues.first { $0.id == translated.id }?.text, f.tb.text, "粘译文：字照带")
+        checkEqual(companion.translationLinks[translated.id]?.sourceIDs, [f.b.id], "粘译文：来源 = 重叠最多的那句原文")
+        checkEqual(companion.translationLinks[translated.id]?.restructured, true, "粘译文：粘过来的永远不自动更新")
+        var empty = f.a
+        empty.id = UUID()
+        empty.end = empty.start
+        check(SubtitleTrackEditing.insertCue(empty, into: .original, original: &original, companion: &companion) == nil,
+              "粘一句：零时长拒绝")
+    }
+
     // 拆：只拆这句所在的那条轨。
     do {
         var (original, companion) = f.make()

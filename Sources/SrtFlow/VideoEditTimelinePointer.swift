@@ -69,7 +69,12 @@ enum TimelineContextClick {
     }
 
     static func note(_ event: NSEvent) {
-        window = event.window
-        point = event.locationInWindow
+        note(window: event.window, point: event.locationInWindow)
+    }
+
+    /// 同上，直接给窗口坐标（进程内冒烟的 `paste` 步骤用：右键菜单驱不动）。
+    static func note(window: NSWindow?, point: NSPoint) {
+        self.window = window
+        self.point = point
     }
 }

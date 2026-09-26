@@ -381,6 +381,8 @@ struct ClipBlockView: View, Equatable {
 
     @ViewBuilder
     private var contextMenu: some View {
+        TimelineClipboardMenu.items { project.runClipboardCommand($0, on: .clip(clip.id)) }
+        Divider()
         Button("Split at Playhead") {
             project.select(clip.id, additive: false)
             project.splitAtPlayhead()

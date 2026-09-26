@@ -911,3 +911,8 @@
 "Hide Line" = "Hide Line";
 "Show Line" = "Show Line";
 "Hidden line — not shown, burned in or exported" = "Hidden line — not shown, burned in or exported";
+
+/* 时间线右键菜单：剪切 / 拷贝 / 粘贴（2026-09-26） */
+"Cut" = "Cut";
+"Copy" = "Copy";
+"Paste" = "Paste";

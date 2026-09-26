@@ -18,7 +18,7 @@
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 989 Sources/SrtFlowCoreChecks/main.swift
-625 checks/Filters/main.swift
+602 checks/Filters/main.swift
 885 checks/PreviewComposition/main.swift
 2495 checks/ProjectFile/main.swift
 749 checks/TextRender/main.swift

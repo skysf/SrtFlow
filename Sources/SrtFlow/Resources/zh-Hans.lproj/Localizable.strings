@@ -911,3 +911,8 @@
 "Hide Line" = "隐藏这句字幕";
 "Show Line" = "显示这句字幕";
 "Hidden line — not shown, burned in or exported" = "这句藏起来了：预览、烧录和导出的字幕文件里都没有它";
+
+/* 时间线右键菜单：剪切 / 拷贝 / 粘贴（2026-09-26） */
+"Cut" = "剪切";
+"Copy" = "拷贝";
+"Paste" = "粘贴";

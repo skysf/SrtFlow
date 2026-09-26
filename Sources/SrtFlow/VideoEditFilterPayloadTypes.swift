@@ -1,13 +1,12 @@
 import Foundation
 
-/// 滤镜有**两种**载荷，各有各的类型标识。
+/// 滤镜卡片拖放的类型标识。
 ///
-/// 放在同一个地方是为了一眼看出它们不一样：同一个标识两种载荷，迟早有人把拖卡片
-/// 的载荷（只有预设名）当成剪贴板的载荷（带强度和时长）去解，解出来是空的。
-/// `checks/Filters` 里有一条断言钉着这件事。
+/// 2026-09-26 之前这里还有第二个（剪贴板里的一段滤镜，`com.srtflow.filter-clip`）：滤镜段的复制粘贴
+/// 并进了时间线的剪贴板（`TimelineClipboard`，`com.srtflow.timeline-items`，每一样都是完整的一份），
+/// 那个标识连同 Info.plist 里的声明一起删了。拖卡片的载荷只是预设名，和剪贴板的载荷不是一回事 ——
+/// 别拿同一个标识装两种载荷。
 enum FilterPayloadType {
     /// 从滤镜库拖一张卡片到时间线。载荷是预设的 rawValue。
     static let drag = "com.srtflow.filter"
-    /// 剪贴板里的一段滤镜。载荷是 `FilterClipboard.Payload` 的 JSON。
-    static let clipboard = "com.srtflow.filter-clip"
 }

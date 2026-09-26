@@ -413,7 +413,17 @@ struct VideoEditTimelineView: View {
                 }
             )
             .equatable()
-        } else if let layer = row.filterLayer {
+        } else {
+            // 轨道空白处右键：「粘贴」落在右键按下的那一处（块上各有自己的菜单，里面的先认）。
+            // 标尺上没有：落在标尺上的粘贴只能退回播放头，说不清。
+            laneRow(row)
+                .contextMenu { TimelineClipboardMenu.pasteOnly { project.pasteFromContextMenu() } }
+        }
+    }
+
+    @ViewBuilder
+    private func laneRow(_ row: RowSpec) -> some View {
+        if let layer = row.filterLayer {
             filterRow(layer: layer)
         } else if row.isShapes {
             shapesRow

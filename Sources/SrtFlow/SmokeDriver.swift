@@ -123,6 +123,8 @@ enum SmokeDriver {
             note(events.describeHit(at: try SmokeStep.point(step.at, "hit.at")))
         case .zoom:
             note(try await SmokeTimelineSteps.zoom(step, project: project, window: window))
+        case .copy, .cut, .paste:
+            note(try SmokeTimelineSteps.clipboard(step, project: project, window: window))
         case .toggles:
             // 三个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨。
             if let magnet = step.magnet { project.magnetEnabled = magnet }

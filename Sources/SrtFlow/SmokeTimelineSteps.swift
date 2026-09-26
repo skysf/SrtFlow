@@ -1,14 +1,18 @@
 import AppKit
 
-// MARK: - 冒烟驱动：时间线上的缩放
+// MARK: - 冒烟驱动：时间线上的缩放、复制粘贴
 //
-// 管什么：`zoom` 这一步 —— 按捏合处理器同样的调用（`TimelineZoom.pointerAnchor` / `verticalAnchor` 起手
-// 定锚点，再逐拍 `horizontal` / `vertical`）缩放，前后各量一次指针底下是第几秒、哪一行的第几成，写进日志。
-// 真捏合公开 API 造不出来、合成的 Ctrl + 滚轮又绕不过本地事件监视器（驱动把滚轮直接交给视图），
-// 所以这里从捏合处理器的下一层进：事件路由那一截（magnify → 监视器）没变过，变的是锚点那一截。
+// 管什么：
+// - `zoom`：按捏合处理器同样的调用（`TimelineZoom.pointerAnchor` / `verticalAnchor` 起手定锚点，再逐拍
+//   `horizontal` / `vertical`）缩放，前后各量一次指针底下是第几秒、哪一行的第几成，写进日志。真捏合公开 API
+//   造不出来、合成的 Ctrl + 滚轮又绕不过本地事件监视器（驱动把滚轮直接交给视图），所以从捏合处理器的下一层进。
+// - `copy` / `cut` / `paste`：窗口永远不是 key，⌘C ⌘V 这类菜单快捷键驱不动（gui-smoke-testing.md 第 14 条），
+//   所以直接调工程上的动作；`paste` 带 `at` 时按右键菜单那条路走（把那一点记成右键按下的地方），验「窗口里这一点
+//   → 哪一刻、哪一行」的换算和落点，落在哪看后面的 `state`。
 // 不管什么：步骤表的格式（SmokeScript）、执行和事件（SmokeDriver / SmokeEvents）。
 //
 //   {"do": "zoom", "at": [x, y], "factor": 2, "steps": 10, "vertical": false}
+//   {"do": "copy"} / {"do": "cut"} / {"do": "paste", "at": [x, y]}
 
 @MainActor
 enum SmokeTimelineSteps {
@@ -40,6 +44,24 @@ enum SmokeTimelineSteps {
         try await Task.sleep(for: .milliseconds(300))
         let after = probe(location, window: window, project: project, geometry: geometry)
         return "缩放（\(vertical ? "纵向" : "横向") ×\(factor)，\(steps) 拍）指针底下：\(before) → \(after)"
+    }
+
+    static func clipboard(_ step: SmokeStep, project: VideoEditProject, window: NSWindow) throws -> String {
+        switch step.action {
+        case .copy:
+            return "拷贝：\(project.copySelection())，选中 \(project.selection.count) 个"
+        case .cut:
+            project.cutSelection()
+            return "剪切之后选中 \(project.selection.count) 个"
+        default:
+            let at = try SmokeStep.point(step.at, "paste.at")
+            TimelineContextClick.note(window: window, point: NSPoint(x: at.x, y: window.frame.height - at.y))
+            let hit = TimelinePointer.hit(.contextClick, project: project)
+            let pasted = project.pasteTimelineItems(at: .contextMenu)
+            let row = hit?.row?.id ?? (hit == nil ? "（不在轨道上 → 播放头）" : "（空白）")
+            return "粘贴在 (\(at.x), \(at.y))：t=\(hit.map { round3($0.time) } ?? -1) 行=\(row) → \(pasted)，"
+                + "选中 \(project.selection.count) 个"
+        }
     }
 
     /// 指针底下是第几秒、哪一行的第几成，外加比例和滚动量。

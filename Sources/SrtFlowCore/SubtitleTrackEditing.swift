@@ -109,7 +109,22 @@ public enum SubtitleTrackEditing {
     ) -> UUID? {
         guard duration > 0 else { return nil }
         let start = max(0, time)
-        let cue = SubtitleCue(id: id, start: start, end: start + duration, text: "")
+        return insertCue(
+            SubtitleCue(id: id, start: start, end: start + duration, text: ""),
+            into: track, original: &original, companion: &companion
+        )
+    }
+
+    /// 同上，但加的是一句现成的字幕（字、样式都带着）—— 时间线上粘贴走这里（上面那个是它的空文本特例）。
+    /// 旁表的记法一模一样：原文轨记成人工；译文轨的来源记成重叠最多的那句原文并算「拆合过」，
+    /// 粘过来的译文永远不自动更新。时长不为正就不加（nil）；ID 由调用方给（粘贴时已换成新的）。
+    @discardableResult
+    public static func insertCue(
+        _ cue: SubtitleCue, into track: SubtitleTrack,
+        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
+    ) -> UUID? {
+        guard cue.end > cue.start else { return nil }
+        let id = cue.id
         switch track {
         case .original:
             insert(cue, into: &original)

@@ -21,6 +21,7 @@ import Foundation
 //   {"do": "open", "path": "/abs/Other.srtflowproj"} 换一个工程（走「打开工程」同一个入口）
 //   {"do": "menu", "path": ["File", "Open Recent"]}  日志里记下这一层菜单的每一项和它亮不亮（菜单点不了，只能读）
 //   {"do": "zoom", "at": [x, y], "factor": 2, "steps": 10, "vertical": false}   以这一点为锚缩放（SmokeTimelineSteps）
+//   {"do": "copy"} / {"do": "cut"} / {"do": "paste", "at": [x, y]}  拷贝 / 剪切选中的；粘到窗口里这一点（右键菜单那条路）
 //   {"do": "perfReset"} / {"do": "perf", "label": "拖动"}   计数清零 / 记一份快照
 //   {"do": "state", "label": "拖完"}                 记下工程此刻的样子（选择、各段位置）
 //   {"do": "snapshot", "name": "after-drag"}         请外面拍一张窗口截图（见 SmokeDriver）
@@ -31,6 +32,7 @@ import Foundation
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
         case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles, open, menu, zoom
+        case copy, cut, paste
         case perfReset, perf, state, snapshot, quit
     }
 
