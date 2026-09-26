@@ -888,3 +888,7 @@
 "Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "让声音听起来像从喇叭里出来、在室内或在室外。只能加空间感，去不掉素材里本来的回声。";
 "Put this scene’s sliders back to their defaults" = "把这个场景的滑杆恢复成默认值";
 "Applies to all %d clips with sound selected" = "套用到选中的 %d 个有声音的段";
+
+/* 播放键的提示：回到开头（Return / Home）没有自己的按钮 */
+"Pause (Return goes back to the start)" = "暂停（按回车回到开头）";
+"Play (Return goes back to the start)" = "播放（按回车回到开头）";

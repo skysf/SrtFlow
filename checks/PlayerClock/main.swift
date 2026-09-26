@@ -68,6 +68,9 @@ clock.endPeek()
 // 9. 播放头的慢读法（检查器、素材库那一栏读它，不被播放一跳一跳叫醒）
 checkPacedPlayhead()
 
+// 10. 回到开头（Return / Home）：只有它请时间线滚回最左
+checkGoToStart()
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 exit(failures == 0 ? 0 : 1)

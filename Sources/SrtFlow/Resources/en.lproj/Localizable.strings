@@ -888,3 +888,7 @@
 "Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording.";
 "Put this scene’s sliders back to their defaults" = "Put this scene’s sliders back to their defaults";
 "Applies to all %d clips with sound selected" = "Applies to all %d clips with sound selected";
+
+/* 播放键的提示：回到开头（Return / Home）没有自己的按钮 */
+"Pause (Return goes back to the start)" = "Pause (Return goes back to the start)";
+"Play (Return goes back to the start)" = "Play (Return goes back to the start)";

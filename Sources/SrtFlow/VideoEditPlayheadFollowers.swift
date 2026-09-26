@@ -61,7 +61,12 @@ struct TransportPlayButton: View {
         }
         .buttonStyle(.borderless)
         .disabled(isDisabled)
-        .instantHelp(isPlaying ? LocalizedStringKey("Pause") : LocalizedStringKey("Play"), shortcut: .plain("Space"))
+        // 回到开头没有自己的按钮，键写在这句提示里才找得到（Return / Home 在 VideoEditView.handleEvent 里接）。
+        .instantHelp(
+            isPlaying ? LocalizedStringKey("Pause (Return goes back to the start)")
+                : LocalizedStringKey("Play (Return goes back to the start)"),
+            shortcut: .plain("Space")
+        )
         .onReceive(clock.$isPlaying.removeDuplicates()) { isPlaying = $0 }
     }
 }

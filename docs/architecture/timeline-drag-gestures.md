@@ -551,6 +551,15 @@ App 内的 `.onDrag` 拖动同样如此（用户实拖：文件落点垫在三�
 守卫：`checks/timeline-drag-wiring.sh` 的「点非素材处 = 把播放头挪过来」一节，
 连同 5e 的顺序断言（按行号比大小，对比的是**最后一个** `.contentShape`）。
 
+**回到开头**（2026-09-26 用户拍板）：Return / 小键盘 Enter / Home（fn ←）= `PlayerClock.goToStart()`，
+播放头回到 0（正在播就从开头接着播，停着就停在 0、再按空格从头播），时间线滚回最左。
+- 按键接在 `VideoEditView.handleEvent`，**只认主窗口**：sheet、弹窗、popover 里的 Return 是它们的默认按钮。
+- 时间线滚动只听专门的 `clock.wentToStart`，**不听 `placed`**：重建预览之后调用方会 seek 回原位，那一下也发
+  `placed`，拿它来滚的话每改一刀时间线都会被拽回播放头。
+- 没有自己的按钮，键写在播放键的提示里（「播放（按回车回到开头）」）。
+- 守卫：`scripts/check-player-clock.sh`（只有它发 `wentToStart`，普通 seek 不发）、`scripts/check-project-file.sh`
+  的接线扫描。
+
 ### 5g. 扫帧 peek（影子指针）也只有一个所有者
 
 2026-09-21 用户拍板：**鼠标扫过时间线任何地方，画面都去看一眼那一帧**。在那之前

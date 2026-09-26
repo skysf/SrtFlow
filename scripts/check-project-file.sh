@@ -248,6 +248,16 @@ require "「只导出选中的」也要滤掉隐藏的段" \
   Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
 require "V 键切的是选中的那几段" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelection\(\)'
+# 回到开头（Return / 小键盘 Enter / Home，2026-09-26）：按键在编辑器的监听里接、只认主窗口，
+# 时间线只听专门的 wentToStart 滚回最左 —— 听 placed 的话，重建后放回播放头那一下也会把时间线拽走。
+require "Return / Home 回到开头接在编辑器的按键监听上" \
+  Sources/SrtFlow/VideoEditView.swift 'clock\.goToStart\(\)'
+require "回到开头只认主窗口（sheet / 弹窗里的 Return 是它们的默认按钮）" \
+  Sources/SrtFlow/VideoEditView.swift 'event\.window\?\.isMainWindow == true'
+require "时间线听「回到开头」滚回最左" \
+  Sources/SrtFlow/VideoEditTimelinePlayhead.swift 'onReceive\(clock\.wentToStart\)'
+forbid "时间线不许听 placed 去滚（重建之后放回播放头也发 placed）" \
+  Sources/SrtFlow/VideoEditTimelinePlayhead.swift 'onReceive\(clock\.placed\)'
 forbid "V 不许再切整轨（整轨显隐只剩轨道头那只眼睛一个入口）" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelectionLane'
 require "V 的切换规则必须走纯值 ClipVisibility.nextHidden" \

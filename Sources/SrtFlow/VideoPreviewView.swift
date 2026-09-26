@@ -19,6 +19,10 @@ final class PlayerClock: ObservableObject {
 
     /// 播放头被放到了哪儿（`seek`、换片、卸片）。播放把它带着走的时间回调不发这里。
     let placed = PassthroughSubject<PlayheadPlacement, Never>()
+    /// 播放头被「回到开头」（Return / Home，2026-09-26 用户拍板）送到了 0：时间线要滚回最左、露出它。
+    /// **和 `placed` 分开**：重建预览之后调用方会 seek 回原位，那一下也发 `placed` —— 拿它来滚时间线的话，
+    /// 每改一刀时间线都会被拽回播放头。只有用户明确要「回到开头」时才发这里。
+    let wentToStart = PassthroughSubject<Void, Never>()
     /// 播放头的两种慢读法（见 `PacedPlayhead`）。懒建：烧字幕页的时钟用不上，不必挂订阅。
     lazy var whilePaused = PacedPlayhead(clock: self, pace: .whilePaused)
     lazy var atRest = PacedPlayhead(clock: self, pace: .atRest)
@@ -168,6 +172,13 @@ final class PlayerClock: ObservableObject {
         guard peekTime != nil else { return }
         peekTime = nil
         scrub(to: time)
+    }
+
+    /// Return / Home：播放头回到开头。正在播就从开头接着播（`seek` 不改播放状态），停着就停在 0，
+    /// 再按空格从头播。时间线听 `wentToStart` 滚回最左。
+    func goToStart() {
+        seek(to: 0)
+        wentToStart.send()
     }
 
     func togglePlayback() {

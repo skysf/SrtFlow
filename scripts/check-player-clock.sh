@@ -34,6 +34,7 @@ xcrun swiftc \
   Sources/SrtFlow/PerfCounters.swift \
   checks/PlayerClock/main.swift \
   checks/PlayerClock/PacedPlayheadChecks.swift \
+  checks/PlayerClock/GoToStartChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
