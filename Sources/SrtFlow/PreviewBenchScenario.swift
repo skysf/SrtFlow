@@ -32,6 +32,23 @@ enum PreviewBenchScenario: String, CaseIterable {
         }
     }
 
+    /// 「换选中」那一段在哪几个选择之间来回换（nil = 什么都不选）。**最后一个就是搭好场景时的选择**：
+    /// 这一段量完，后面几段的起点不变。busy 在主轨前两段之间换：换一段，检查器、转场库（换到那一段后面
+    /// 的缝）、预览上的选中框都跟着换。basic 只有一段，在「选中它」和「什么都不选」之间换（检查器在这一段
+    /// 和工程总览之间换）。
+    func selectTargets(in project: VideoEditProject) -> [UUID?] {
+        let main = project.state.mainClips.map(\.id)
+        switch self {
+        case .basic: return [main.first, nil]
+        case .busy: return [main[0], main[1]]
+        }
+    }
+
+    /// 选一个目标：点一段（`select`，和点块同一个入口），或者点空白（`clearSelection`）。
+    func select(_ target: UUID?, on project: VideoEditProject) {
+        if let target { project.select(target, additive: false) } else { project.clearSelection() }
+    }
+
     func build(on project: VideoEditProject, media: URL) async throws {
         let file = { (name: String) in media.appendingPathComponent(name) }
         switch self {

@@ -10,6 +10,9 @@
     "basic.idle.body" : 0,
     "basic.idle.canvas" : 0,
     "basic.idle.update" : 0,
+    "basic.select.body" : 512,
+    "basic.select.canvas" : 0,
+    "basic.select.update" : 520,
     "basic.ticks.body" : 870,
     "basic.ticks.canvas" : 120,
     "basic.ticks.update" : 0,
@@ -25,6 +28,9 @@
     "busy.idle.body" : 0,
     "busy.idle.canvas" : 0,
     "busy.idle.update" : 0,
+    "busy.select.body" : 996,
+    "busy.select.canvas" : 0,
+    "busy.select.update" : 96,
     "busy.ticks.body" : 1109,
     "busy.ticks.canvas" : 240,
     "busy.ticks.update" : 1,
@@ -33,8 +39,8 @@
     "busy.video.megapixelFrames" : 1983
   },
   "memory" : {
-    "basic.memory.peakMB" : 128,
-    "busy.memory.peakMB" : 285.7
+    "basic.memory.peakMB" : 141.2,
+    "busy.memory.peakMB" : 286.4
   },
   "memoryTolerance" : 0.1
 }

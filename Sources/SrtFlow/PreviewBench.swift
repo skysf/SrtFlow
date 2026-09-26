@@ -24,6 +24,8 @@ enum PreviewBench {
     /// 跳之间不按固定间隔，而是等界面停下来（见 `run`）。
     static let tickCount = 60
     static let tickInterval = 0.05
+    /// 换选中的次数：在两个目标之间来回换 8 次（和冒烟里量点选的步骤一样多）。
+    static let selectCount = 8
 
     /// 窗口尺寸钉死：画不画、画多少跟窗口多大有关（Canvas 只画看得见的部分），
     /// 本机的屏幕和 CI 的 1024×768 不一样大。
@@ -120,6 +122,31 @@ enum PreviewBench {
             throw Failure("时钟连跳记到的次数不对：\(ticks.counts) —— 计数没接上，数字不可信")
         }
         record(ticks, as: "\(name).ticks", into: &gated, &report, &breakdown)
+
+        // 换选中：走点选同一个入口，在两个目标之间来回换，每换一下等界面停下来 —— 量的是「点选一段，
+        // 界面要重算多少东西」。工程换成 @Observable 之后（2026-09-26），点一下只叫醒读了选择的视图
+        // （检查器、素材库、预览上的选中框、高亮变了的块）；这一段钉住它，不许花回去。
+        //
+        // 起手前把每个目标都先选一遍：换一段，转场库就换到那一段后面的缝，缝两边的帧第一次取要解码
+        // （`ClipThumbnailCache`，不登记后台读取，「落定」等不到它），拖过等待窗口的话数就随机器快慢变。
+        // 取过一遍进了缓存，之后每次换缝几毫秒就回来。最后一个目标就是搭场景时的选择，量完起点不变。
+        let targets = scenario.selectTargets(in: project)
+        let selects = try await measureSteadily("\(name).select", project: project, prepare: {
+            for target in targets {
+                scenario.select(target, on: project)
+                try await settle(project, quietFor: 0.6, timeout: 30)
+            }
+        }) {
+            for step in 1...selectCount {
+                scenario.select(targets[(step - 1) % targets.count], on: project)
+                try await settle(project, quietFor: 0.3, timeout: 30)
+            }
+        }
+        let finalTarget = targets[(selectCount - 1) % targets.count]
+        guard project.selectedClipIDs == Set([finalTarget].compactMap { $0 }) else {
+            throw Failure("换选中量完，选中的不是搭场景时的那一段：\(project.selectedClipIDs)")
+        }
+        record(selects, as: "\(name).select", into: &gated, &report, &breakdown)
 
         // 改几刀：重建合成、开素材、换播放条目、建 tap 各几次 —— 这些卡住。
         // 这一段的 body / Canvas 次数**只报不卡**：一刀下去是防抖、建合成、换条目、seek
