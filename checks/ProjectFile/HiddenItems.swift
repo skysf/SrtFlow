@@ -7,6 +7,49 @@ import SrtFlowCore
 func checkHiddenItems(root: URL) throws {
     try checkHiddenClips(root: root)
     try checkHiddenOverlays(root: root)
+    checkHiddenClipsNotTranscribed(root: root)
+}
+
+// 字幕生成：按 V 藏起来的段不许被转写（2026-09-26）。
+//
+// 隐藏 = 预览和成片里连声音都没有；字幕生成挑素材的可听快照（`SubtitleAudibleClips.soundClips`，
+// 探针、metadata、转写、分段全从它取）必须同一个口径。单段的 V 是 2026-09-18 加的，快照当时只滤
+// 整轨的眼睛，藏起来的段照样被转写成字幕
+// （docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md）。
+//
+// 链接关着时只藏了视频、分离出来的音频还显示着：那段声音听得见，照样转写（用户拍板）。
+private func checkHiddenClipsNotTranscribed(root: URL) {
+    let media = root.appendingPathComponent("hidden-voice.mp4")
+    makeFile(media)
+    func clip(at start: Double, hidden: Bool = false, audioOnly: Bool = false) -> EditClip {
+        var clip = EditClip(sourceURL: media, sourceDuration: 3, timelineStart: start)
+        clip.info = MediaInfo(
+            duration: 3, displaySize: CGSize(width: 1920, height: 1080), frameRate: 30,
+            videoCodec: "h264", audioCodec: "aac", hasAudio: true,
+            audioCanCopyToMP4: true, fileBytes: 2048
+        )
+        clip.isHidden = hidden
+        clip.isAudioOnly = audioOnly
+        return clip
+    }
+    let hiddenMain = clip(at: 0, hidden: true)
+    let shownMain = clip(at: 4)
+    let hiddenUpper = clip(at: 0, hidden: true)
+    let hiddenAudio = clip(at: 0, hidden: true, audioOnly: true)
+    let shownAudio = clip(at: 4, audioOnly: true)
+    // 分离过声音的视频（静音了）被藏起来，分离出来的那段音频还显示着。
+    var detachedVideo = clip(at: 8, hidden: true)
+    detachedVideo.isMuted = true
+    let detachedAudio = clip(at: 8, audioOnly: true)
+
+    var state = TimelineState()
+    state.mainClips = [hiddenMain, shownMain, detachedVideo]
+    state.overlayTracks = [EditLane(clips: [hiddenUpper])]
+    state.audioTracks = [EditLane(clips: [hiddenAudio, shownAudio, detachedAudio])]
+
+    let ids = SubtitleAudibleClips.soundClips(in: state).map(\.clipID)
+    checkEqual(Set(ids), [shownMain.id, shownAudio.id, detachedAudio.id],
+               "按 V 藏起来的段（主轨 / 上层轨 / 音频轨）不进字幕生成的可听快照；分离出来还显示着的音频照样进")
 }
 
 // 剪辑那一级（原第 24 组）：切换规则、渲染过滤、存盘往返与 v16 登记
