@@ -265,6 +265,21 @@ do {
 
 checkClipLanding()
 
+// MARK: - 4. 分割也不许丢段自己的标记（同一条教训：手写「照抄每个字段」迟早漏）
+//
+// 2026-09-26 写复制粘贴时发现：`split` 手写构造右半段，漏了 `isHidden`（藏着的段切开，右半冒进预览和成片）
+// 和 `remoteKey`（音频库素材的右半缓存一清就永久失链）。案例 docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md。
+do {
+    var state = TimelineState()
+    var hidden = EditClip(sourceURL: media, sourceDuration: 6, timelineStart: 0, remoteKey: "library-42")
+    hidden.isHidden = true
+    state.mainClips = [hidden]
+    state.split(clipID: hidden.id, at: 2)
+    checkEqual(state.mainClips.map(\.isHidden), [true, true], "藏着的段切开：两半都还藏着（右半不许冒进成片）")
+    checkEqual(state.mainClips.map(\.remoteKey), ["library-42", "library-42"],
+               "音频库素材切开：两半都带着 manifest 的键（重链接的第一层线索）")
+}
+
 // MARK: - 收尾
 
 print("TimelineClipboard checks: \(checks) 项，失败 \(failures) 项")

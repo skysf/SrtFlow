@@ -137,7 +137,7 @@ extension TimelineClipboardPayload {
 /// 同一样东西换一个身份：编码成 JSON、换掉顶层的 `id`、再解回来。
 ///
 /// 剪辑、文字、形状、滤镜段的 `id` 都是 `let`，手写「除了 id 以外的每个字段都照抄」迟早漏字段（分割那条路
-/// 至今就没带上 `remoteKey` 和 `isHidden`）；存盘的编码本来就是「这一样的全部」，走它就不会漏。
+/// 就漏过 `remoteKey` 和 `isHidden`，2026-09-26 才补上）；存盘的编码本来就是「这一样的全部」，走它就不会漏。
 /// 编码里没有 `id` 这个键（有人改了编码的键名）就是 nil —— 宁可粘不出来，也不许粘出两个同身份的东西。
 enum ClipboardIdentity {
     static func renewed<Value: Codable>(_ value: Value, id: UUID = UUID()) -> Value? {

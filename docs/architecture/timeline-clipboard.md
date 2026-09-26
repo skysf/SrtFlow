@@ -42,8 +42,8 @@
 [案例](../bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)）；行怎么排只有 `TimelineRowList` 一份。
 
 **换身份**：每一样粘出来都是新身份（`ClipboardIdentity.renewed`：编码、换掉顶层的 `id`、再解回来）。
-**别手写「除了 id 以外每个字段都照抄」**：`id` 是 `let`，手写迟早漏字段（分割那条路至今没带 `remoteKey` 和
-`isHidden`）；编码里没有 `id` 键就拒绝粘，宁可粘不出来也不许出两个同身份的东西。链接组换新组号（粘出来的
+**别手写「除了 id 以外每个字段都照抄」**：`id` 是 `let`，手写迟早漏字段（分割那条路就漏过 `remoteKey` 和
+`isHidden`，[案例](../bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)）；编码里没有 `id` 键就拒绝粘，宁可粘不出来也不许出两个同身份的东西。链接组换新组号（粘出来的
 一对彼此链接），只拷到组里一段时不留组号。
 
 **各类落到哪**（`TimelinePaste`，纯值）：

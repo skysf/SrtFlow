@@ -451,3 +451,50 @@ extension TimelineState {
         return expanded
     }
 }
+
+// MARK: - 主轨上哪儿牵扯着转场（定格按钮的判据）
+//
+// 2026-09-26 从 VideoEditTimelineEdits.swift 挪来（那个文件登记过超标、只许降）：两条判据都按渲染用的
+// 转场容量算（`effectiveTransitionDuration` / `transitionWindow`，就在这个文件里）。
+
+extension TimelineState {
+    /// 这一段在主轨上牵扯着转场吗（自己往后叠，或者被前一段叠上来）。
+    ///
+    /// **牵扯转场的段不给定格**。禁用最初是因为当年音频会联动顺推固定的定格
+    /// 时长，而转场时长有「不超过两边任一段 45%」的上限（`transitionOverlap`）：
+    /// 定格切短这一段后上限跟着缩，`packMain()` 让画面移动 2.325s、音频只推
+    /// 2.0s，声画从切口往后永久错开。2026-08-23 起定格不再联动音频（只动所在
+    /// 轨，见 docs/architecture/freeze-frame.md §4），错位的前提没了；禁用先
+    /// 保留 —— 定格切短目标后转场被重新限长，后面的画面位移不等于定格时长，
+    /// 落点不好预期。要放开是另一个产品决定，见 §4a。
+    func participatesInMainTransition(clipID: UUID) -> Bool {
+        guard let index = mainClips.firstIndex(where: { $0.id == clipID }) else { return false }
+        // 判据必须和**渲染**同一个：`transitionOverlap` 只看 `transitionAfter`
+        // 设没设，不管这条缝到底做不做得出转场。两段中间有间隙、或者借不到余料
+        // 时，成片里没有转场，这里却照样把两边的段判成「牵扯转场」，定格就被白
+        // 挡了一道（2026-09-20 用户撞到）。`effectiveTransitionDuration` 走的是
+        // 容量那一套，和 `expandingTransitionHandles` 同源。
+        if effectiveTransitionDuration(afterMainIndex: index) > 0 { return true }
+        if index > 0, effectiveTransitionDuration(afterMainIndex: index - 1) > 0 { return true }
+        return false
+    }
+
+    /// 播放头是不是落在主轨某个转场的**叠化区**里。
+    ///
+    /// 叠化区显示的是两段合成出来的画面，从单个源素材抽帧必然和眼睛看到的对不上
+    /// —— 定格按钮在这里要置灰。（`participatesInMainTransition` 已经覆盖了主轨的
+    /// 这一情形，但两条的理由不同，各留各的。）
+    func isInsideMainTransition(time: Double) -> Bool {
+        for index in mainClips.indices.dropLast() {
+            // 窗口交给 `transitionWindow` 算 —— 它按几何分两种：已相叠（磁吸排
+            // 的）时窗口就是重叠区 `[缝−d, 缝]`，首尾相接时转场跨在缝上、窗口是
+            // `[缝−d/2, 缝+d/2]`。这里以前写死了前一种，于是磁吸关着（默认）时
+            // 判出来的叠化区整体偏左半个转场。
+            guard let window = transitionWindow(afterMainIndex: index) else { continue }
+            if time > window.start - 0.001 && time < window.start + window.duration + 0.001 {
+                return true
+            }
+        }
+        return false
+    }
+}
