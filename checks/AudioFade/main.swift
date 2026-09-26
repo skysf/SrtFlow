@@ -464,7 +464,8 @@ func main() async {
     // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
     await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
 
-    // ---- 8. 电平表（checks/AudioFade/Meter.swift）----
+    // ---- 8. 电平表（checks/AudioFade/Meter.swift；环形缓冲收到 0 之前的位置：MeterRing.swift）----
+    checkMeterRingBeforeZero()
     await checkMeters(audioSource: audioSource, videoSource: videoSource)
     await checkMetersAcrossFormatChange(audioSource: audioSource, videoSource: videoSource)
 

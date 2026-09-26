@@ -103,6 +103,7 @@ run_check "shell-pipe-grep-q（扫描守卫）" checks/shell-pipe-grep-q.sh
 run_check "exported-types-declared（扫描守卫）" checks/exported-types-declared.sh
 run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
 run_check "hit-shape-before-offset（扫描守卫：可点范围写在 .offset 之前）" checks/hit-shape-before-offset.sh
+run_check "preference-reduce-keeps-value（扫描守卫：量出来的尺寸不许被默认值盖掉）" checks/preference-reduce-keeps-value.sh
 run_check "blocking-media-reads（扫描守卫）" checks/blocking-media-reads.sh
 run_check "export-audio-single-pipeline（扫描守卫：成片的声音就是预览那份混音）" checks/export-audio-single-pipeline.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh

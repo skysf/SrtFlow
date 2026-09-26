@@ -325,6 +325,18 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
    刚登记的撤销 `canUndo` 还是 false，撤销按钮也就还灰着 —— 真鼠标走 `NSApp`，每个事件末尾就关，不是 App 的 bug。
 14. **⌘Z 这类菜单快捷键没用**：窗口永远不是 key，菜单项的动作找不到响应者，按了什么都不发生
    （那个按键事件倒是会顺手把上一条说的撤销组关上）。
+15. **仓库里的 `vendor/ffmpeg` 也在 `~/Downloads` 下**（第 9 条的另一半，2026-09-26 实测）：工程和素材都搬出来了，
+   驱动照样可能停住 —— `sample` 看到两条线程停在 `FFmpegRuntime.probe` → `runCapturingOutput` → `read`：
+   新签名的 SrtFlowDev 去跑 `SRTFLOW_FFMPEG` 指的那个 ffmpeg，系统弹「想访问下载文件夹」，人不点，探测就一直
+   等在读管道上。前几轮没事、重编一次就可能卡。卡住了先 `pkill -P <App 的 pid>`、再杀 App，别让它在后台留着。
+16. **有 Touch Bar 的 Mac 上 SrtFlowDev 可能崩**（2026-09-26，同一天两次）：点完之后 AppKit 刷新 Touch Bar
+   （`NSTouchBarFinderTouchBarsForProviders`），SwiftUI 给分段选择器量尺寸时在 `DesignLibrary` 里空指针
+   （崩溃报告在 `~/Library/Logs/DiagnosticReports/SrtFlowDev-*.ips`）。正式版没报过、原因没查。一次是跑完
+   脚本、App 没退、几分钟后在后台崩的 —— 用户那边会弹「意外退出」，**跑完确认 App 已经退了**。
+   试过 `defaults write com.srtflow.SrtFlowDev NSFunctionBarAPIEnabled -bool false`，那之后一轮没崩，但那一轮卡在了
+   第 15 条，样本不够，算不上结论。
+17. **`state` 里的 `selection.cues` 是选中那几句的 id 前 8 位**（2026-09-26 起，以前是个数）：两条字幕轨独立之后，
+   选中的是原文还是译文要看得出来；和 `cueTimes` / `translationCueTimes` 里的 id 对。
 8. **坐标要避开块上叠着的东西，从截图上裁一块放大再量**：音频块中下部压着音量线（命中带只有
    几 pt 宽），落在那儿拖的是线不是块；裁切把手选中时只有 5 pt 宽，差 1 pt 就点进了块里。
    `state` 里每段带 `transition`（接缝上的转场）和 `volumePoints`（音量线上的点），验这两样

@@ -31,8 +31,6 @@ struct VideoEditView: View {
     /// 空格/V 快捷键的事件监听。捏合缩放由时间线里 TimelineMagnificationBridge
     /// 的 local monitor 处理，不在这里。
     @State private var eventMonitor: Any?
-    /// 每一块字幕此刻的实测高度（overlay 回报，字幕拖框定框用；两条轨分开摆时是两块）。
-    @State private var subtitleBlockHeights: SubtitleBlockHeights = [:]
     /// 预览里正在就地编辑的那条字幕（双击画面上的字幕进入）。
     @State private var previewEditingCueID: UUID?
 
@@ -334,7 +332,6 @@ struct VideoEditView: View {
                     clock: clock,
                     boxSize: size,
                     style: burnInQueue.burnInStyle,
-                    blockHeights: $subtitleBlockHeights,
                     editingCueID: $previewEditingCueID
                 )
             }

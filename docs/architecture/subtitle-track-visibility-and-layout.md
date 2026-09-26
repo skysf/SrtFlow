@@ -93,6 +93,11 @@
      （`SubtitlePreviewFrames`）。**一拖（移动 / 拉边 / 拉角）两条就此分开**：被拖的跟手，另一条换成
      自己的布局钉在原地、不跳（`liveSetSubtitleLayout(_:for:pinning:)`）。字幕表表头有个
      「译文叠回原文下面」的按钮（`translationLayout = nil`）。
+   - **拖框、点选、就地编辑全靠量出来的块高**（`SubtitleBlockSizeKey` → `SubtitleBlockMeasurements`）。量尺寸的
+     偏好值合并时**不许让默认值 `.zero` 盖掉量出来的值**（`checks/preference-reduce-keeps-value.sh` 钉着）：
+     盖掉了块高就一直是 0，拖框退回最小高度贴在块底 —— 单行时像是对的，叠成两行就只框住译文、点原文落到
+     译文上（[案例](../bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)）。量出来的高度由
+     预览字幕层自己持有，不放根视图（换一句字幕块高就变，放根视图就是整个编辑器跟着重算）。
 3. **覆盖一旦存在，锚定固定为底部中心**（ASS Alignment 2 + 非对称
    MarginL/R + MarginV）。全局样式的九宫格 position 从此不参与该工程排版；
    字体/颜色/描边等其余样式仍来自全局样式。字号走 `fontScale` 倍率，

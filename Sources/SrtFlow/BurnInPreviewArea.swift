@@ -533,80 +533,18 @@ struct BurnInSubtitleOverlay: View {
 }
 
 /// BurnInSubtitleOverlay 文本块实测尺寸（字幕拖框定高用）。
+///
+/// **合并时不许让零盖掉量出来的值**：SwiftUI 合并时，没写这个值的兄弟节点也会给出默认值 `.zero`，
+/// `value = nextValue()` 于是被它们盖成零 —— 块高一直是 0，拖框退回最小高度 24 点、贴在块底。单行字幕时
+/// 正好像是框对了，一直没人发现；原文、译文叠成两行之后，框只框住底下那行（译文），点原文、拖原文全落到
+/// 译文上（2026-09-26 案例 docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md）。
+/// 同文件夹里 `InlineEditorSizeKey` 早就是这么写的。
 private struct SubtitleBlockSizeKey: PreferenceKey {
     static let defaultValue: CGSize = .zero
     static func reduce(value: inout CGSize, nextValue: () -> CGSize) {
-        value = nextValue()
+        let next = nextValue()
+        if next != .zero { value = next }
     }
 }
 
-// MARK: - 边距参考线
-
-/// 边距参考线：两条竖线是左右边距（也就是长句换行的位置），一条横线是到边缘的距离。
-private struct MarginGuideOverlay: View {
-    let style: BurnInStyle
-    let scale: Double
-    let boxSize: CGSize
-
-    private var sideInset: Double { Double(style.marginHorizontal) * scale }
-    private var edgeInset: Double { Double(style.marginVertical) * scale }
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        ZStack(alignment: .topLeading) {
-            verticalGuide(at: sideInset, label: "\(style.marginHorizontal)", labelOnRight: true)
-            verticalGuide(at: boxSize.width - sideInset, label: "\(style.marginHorizontal)", labelOnRight: false)
-            if !style.position.isVerticallyCentered {
-                horizontalGuide(
-                    at: style.position.row == 0 ? boxSize.height - edgeInset : edgeInset,
-                    label: "\(style.marginVertical)"
-                )
-            }
-        }
-        .frame(width: boxSize.width, height: boxSize.height, alignment: .topLeading)
-        .allowsHitTesting(false)
-    }
-
-    private func verticalGuide(at x: Double, label: String, labelOnRight: Bool) -> some View {
-        let clamped = min(max(0, x), boxSize.width)
-        return ZStack(alignment: labelOnRight ? .topLeading : .topTrailing) {
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.9))
-                .frame(width: 1, height: boxSize.height)
-            GuideLabel(text: label)
-                .padding(.horizontal, 4)
-                .padding(.top, 4)
-        }
-        .frame(width: 60, alignment: labelOnRight ? .leading : .trailing)
-        .offset(x: labelOnRight ? clamped : clamped - 60)
-    }
-
-    private func horizontalGuide(at y: Double, label: String) -> some View {
-        let clamped = min(max(0, y), boxSize.height)
-        return ZStack(alignment: .bottomLeading) {
-            Rectangle()
-                .fill(Color.accentColor.opacity(0.9))
-                .frame(width: boxSize.width, height: 1)
-            GuideLabel(text: label)
-                .padding(.leading, 6)
-                .padding(.bottom, 3)
-        }
-        .frame(width: boxSize.width, height: 20, alignment: .bottomLeading)
-        .offset(y: clamped - 20)
-    }
-}
-
-private struct GuideLabel: View {
-    let text: String
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        Text(text)
-            .font(.caption2)
-            .monospacedDigit()
-            .foregroundStyle(.white)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 1)
-            .background(Color.accentColor.opacity(0.85), in: RoundedRectangle(cornerRadius: 3))
-    }
-}
+// 边距参考线（`MarginGuideOverlay`）在 BurnInMarginGuides.swift。
