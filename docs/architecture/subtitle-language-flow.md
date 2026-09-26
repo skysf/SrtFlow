@@ -71,6 +71,8 @@
    - **隐藏合同一改，这里跟着改。** 单段的 V（2026-09-18）加进预览和导出时这份快照没跟上，
      藏起来的段照样被转写成字幕（[案例](../bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)）。
      链接关着、只藏了视频时，分离出来还显示着的音频听得见，照样转写（用户拍板）。
+   - **面板勾了「只用选中的片段」时，快照只留那几段**（`soundClips(in:only:)`，2026-09-26）：检测、转写、分段
+     认同一份范围，任务开始时定下（[生成的字幕长什么样](subtitle-generation-style.md) 第七节）。
    - **判「有没有声音」只认 `EditClip.hasAudio`**，与 CompositionBuilder /
      VideoEditExportGraph 同一个属性。写成「info 存在且 hasAudio 为假才排除」
      等于把 `info == nil` 当成有声音 —— 宽容解码读回的老工程、探测还没回来的
