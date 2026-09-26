@@ -8,6 +8,7 @@ import SrtFlowCore
 // 规则见 docs/architecture/subtitle-generation-style.md「只用选中的片段」。
 
 func checkSubtitleSources(root: URL) throws {
+    checkProbeOrderPrefersLongClips(root: root)
     let media = root.appendingPathComponent("selected-voice.mp4")
     makeFile(media)
     func clip(at start: Double, audioOnly: Bool = false) -> EditClip {
@@ -50,4 +51,28 @@ func checkSubtitleSources(root: URL) throws {
     hidden.setHidden(true, ids: [recording.id])
     check(SubtitleAudibleClips.selectedSoundClipIDs(in: hidden, selected: [recording.id], includingLinked: false).isEmpty,
           "只用选中的：选中的段藏起来了，不算")
+}
+
+// 自动检测挑探针：长的先（2026-09-26 案例 docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md）。
+//
+// 探针原来按可听快照的顺序取第一段读得出来的 —— 主轨排在最前，南极工程的第一段是 6 秒的
+// 船撞冰音效，没有一个词，每个候选语言都是 0 分，检测「失败」。旁白、对白往往是长段，
+// 音效是短的，所以长的先；一样长的保持可听快照原序。
+private func checkProbeOrderPrefersLongClips(root: URL) {
+    let dir = root.appendingPathComponent("probe-order")
+    func sound(_ name: String, seconds: Double) -> SubtitleAudibleClips.SoundClip {
+        let url = dir.appendingPathComponent(name)
+        makeFile(url)
+        return SubtitleAudibleClips.SoundClip(
+            clipID: UUID(), name: name, url: url, fingerprint: name, knownAssetDuration: seconds,
+            sourceStart: 0, sourceDuration: seconds, timelineStart: 0, speed: 1, laneRank: 0
+        )
+    }
+    let shipCrash = sound("ship-crash.mp4", seconds: 6)
+    let voiceIntro = sound("voice-intro.mp3", seconds: 24.3)
+    let musicBed = sound("music-bed.mp3", seconds: 11)
+    let otherCrash = sound("ice-crack.mp4", seconds: 6)
+    checkEqual(SubtitleAudibleClips.probeOrder(in: [shipCrash, voiceIntro, musicBed, otherCrash]).map(\.name),
+               ["voice-intro.mp3", "music-bed.mp3", "ship-crash.mp4", "ice-crack.mp4"],
+               "探针候选：长的先（旁白往往长、音效短），一样长的保持原序")
 }

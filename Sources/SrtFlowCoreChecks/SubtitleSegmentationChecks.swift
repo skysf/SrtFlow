@@ -12,6 +12,7 @@ func runSubtitleSegmentationChecks() {
     checkLineFitAndConfig()
     checkDisplayTiming()
     checkSourceOverlap()    // SubtitleSourceOverlapChecks.swift
+    checkPauseAbsorbedIntoNextWord()
 }
 
 private func window(
@@ -256,4 +257,25 @@ private func checkDisplayTiming() {
     SubtitleCueTiming.markReadingSpeed([fastChinese, slowChinese], meta: &meta, config: zh)
     checkEqual(meta[fastChinese.id]?.readingSpeedWarning, true, "阅读速度：1 秒 13 个字超了")
     checkEqual(meta[slowChinese.id]?.readingSpeedWarning, false, "阅读速度：2 秒 13 个字没超")
+}
+
+/// 停顿后面第一个词被识别器往前拉长（2026-09-26 用户实测的两处；词和时间是南极工程的真转写，
+/// 真正开口的时刻是 ffmpeg silencedetect 量的）。
+/// 案例：docs/bugfixes/2026-09-26-pause-stretches-next-word.md。
+private func checkPauseAbsorbedIntoNextWord() {
+    // 「That's」识别成 0.559–1.759（静音算进了开头），声音 1.61 才有；片段从 1.5585 切开。
+    let thats = SubtitleSegmenter.segment(words: words([
+        ("That's", 0.559, 1.759), (" not", 1.759, 1.879), (" what", 1.879, 1.999), (" I", 1.999, 2.119),
+        (" wanted", 2.119, 2.239), (" to", 2.239, 2.419), (" hear.", 2.419, 2.839)
+    ]), window: window(src: 1.5585...5.0416, tlStart: 63.2028))
+    checkEqual(texts(thats), ["That's not what I wanted to hear"],
+               "停顿后第一个词：片段从静音后面切开，这个词还归这段（「That's」不许丢）")
+
+    // 「At」识别成 1.68–2.94，声音 2.83 才有：字幕不许早 0.9 秒出来，也不许晚于开口。
+    let bottom = SubtitleSegmenter.segment(words: words([
+        ("At", 1.680, 2.940), (" the", 2.940, 3.120), (" bottom", 3.120, 3.240), (" of", 3.240, 3.480),
+        (" the", 3.480, 3.600), (" world.", 3.600, 3.900)
+    ]), window: window(src: 0...10))
+    let start = bottom.cues.first?.start ?? 0
+    check(start >= 2.45 && start <= 2.83, "停顿后第一个词：字幕从开口前一点点出来（实测开口 2.83，得到 \(start)）")
 }
