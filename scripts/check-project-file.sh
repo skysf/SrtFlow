@@ -239,6 +239,11 @@ require "任一侧被隐藏的接缝不许挂转场（否则预览淡进黑场�
   Sources/SrtFlow/VideoEditCompositionBuilder.swift 'guard !state\.mainClips\[index - 1\]\.isHidden'
 require "ffmpeg 导出要滤掉隐藏的段" \
   Sources/SrtFlow/VideoEditExportGraph.swift 'ClipVisibility\.visible\('
+# 上面那条只证明「文件里出现过」：主轨那一行就满足了，叠上层轨那一圈照样按轨去 lane.clips 里取段，
+# 单段隐藏（V）漏进成片（2026-09-26 案例 hidden-upper-clip-still-exported）。真正的守卫是
+# check-video-fade.sh 的真导出抽帧；这条只挡「又回到按轨取段」的写法。
+forbid "ffmpeg 导出不许按轨去 lane.clips 里取段（走 overlayVisible 那一份清单）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift '^[^/]*in lane\.clips'
 require "「只导出选中的」也要滤掉隐藏的段" \
   Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
 require "V 键切的是选中的那几段" \

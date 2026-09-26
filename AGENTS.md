@@ -102,7 +102,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 从 Finder 拖文件 / ⌘V 粘贴文件进时间线、导入落点 | [拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[外部拖入被内层落点独占](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)（结论已更正）、[拖动手势](docs/architecture/timeline-drag-gestures.md)（主轨保序、§5e-2 唯一落点）、[视频轨对等化](docs/architecture/video-tracks.md) |
 | 时间线上的任何拖放落点（`.onDrop`：文件 / 滤镜 / 音频库 / 转场卡片）、新的自定义拖放 / 剪贴板类型 | [拖动手势 §5e-2](docs/architecture/timeline-drag-gestures.md)（整条时间线只许一个 `.onDrop`；自定义类型必须在 Info.plist 声明；不能放回 `.forbidden` 不回 `.cancel`）、[转场拖放被 `.cancel` 取消](docs/bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[自定义类型没声明](docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md)、[GUI 冒烟流程](docs/testing/gui-smoke-testing.md)（落点路由探针） |
 | 轨道模型、时间线行结构、轨道行高、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md)、[工程文件与素材重链接](docs/architecture/video-edit-project-file.md) |
-| 段的显隐（V / 眼睛）、隐藏段进不进预览和成片 | [段的显隐](docs/architecture/clip-visibility.md)、[视频轨对等化](docs/architecture/video-tracks.md) |
+| 段的显隐（V / 眼睛）、隐藏段进不进预览和成片 | [段的显隐](docs/architecture/clip-visibility.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[上层轨藏起来的段还在成片里](docs/bugfixes/2026-09-26-hidden-upper-clip-still-exported.md) |
 | 画面渐入渐出、alpha 斜坡、转场仲裁 | [画面渐入渐出](docs/architecture/video-fades.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
 | 主轨转场的容量、可用判定、借余料、首尾帧定格补足 | [主轨转场：借余料与定格补足](docs/architecture/transition-handles.md)、[转场预览有、成片没有](docs/bugfixes/2026-09-20-transition-preview-export-divergence.md) |
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
@@ -150,7 +150,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
 - 入场/出场动画的两条管线对账（预览取帧 vs 真导出抽帧）：`scripts/check-clip-animation.sh`。
-- 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧）：
+- 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧），以及上层轨藏起来的段不进成片：
   `scripts/check-video-fade.sh`。
 - 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
   下一次改动抹掉）：`checks/inspector-live-binding-wiring.sh`。
@@ -392,6 +392,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-25 播放的时候卡：时钟每跳一下，整个编辑器都重算一遍](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md) — 根视图、时间线本体、检查器、素材库、字幕列表都订阅着一秒二十跳的播放器时钟，一跳约 172 次 body；用户点名的左栏只占约 3%。跟着播放头动的拆成小视图各自订阅，停着才有意义的读播放头的慢读法（`PacedPlayhead`：只跟「放置」、播放中不跟、停下追上一次），按钮能不能点走 `.disabled(followingPlayhead:)`；真播放一跳降到约 25 次，一半是电平表。订阅时钟按类型名单钉着；**用户点名的地方不一定是大头，先看明细**。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
 - [2026-09-26 点一下选中一段，整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) — 工程是一个大 `ObservableObject`，33 处订阅，只改 `selection` 也全体重算；换成 `@Observable`（用户拍板「A」）、根视图不读选择、转场卡片两张帧一起换，每点一下 body 334 → 120、进程 CPU 和主线程各省约四分之一（剩下的一半是 SwiftUI 的命中测试，和重算几个视图无关）。**换机制后要把「以前被顺带刷新」的地方一个个找出来**：文件菜单的最近打开（反向验证：不显式读 `documentURL` 就一直停在启动时的「没有」）、撤销按钮（听撤销栈的通知，别听 Checkpoint）。冒烟驱动加了 `open` / `menu` 两步，并记下三个限制（点 AppKit 控件会卡死、合成事件关不上撤销组、菜单快捷键没用）。
+- [2026-09-26 上层轨上按 V 藏起来的段，成片里画面还在](docs/bugfixes/2026-09-26-hidden-upper-clip-still-exported.md) — 导出图算好了 `overlayVisible` 却只拿去判断「有没有画面」，叠上层轨和预渲染那两圈仍按轨去 `lane.clips` 里取段，只滤了藏起来的轨；声音走预览混音早就滤掉了，所以只漏画面。扫描守卫只查「出现过 `ClipVisibility.visible(`」、取帧自检只测预览 —— 补了真导出抽帧（带一份没藏的对照）。**过滤清单算出来了，就让每个消费者都走它。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

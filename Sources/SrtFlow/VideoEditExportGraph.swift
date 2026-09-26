@@ -279,20 +279,20 @@ enum VideoEditExportGraph {
                 into: workspace, cancellation: cancellation
             ))
         }
-        for lane in overlayLanes {
-            for clip in lane.clips where clip.needsPerFrameRender && !clip.needsStillConversion {
-                let pair = try await AnimatedClipPrerenderer.renderOverlay(
-                    clip: clip,
-                    // 上层视频轨没有轨内转场，那条边永远归用户的渐变管
-                    //（与预览合成的 `hasTransitionAfter` 同款注释）。
-                    fades: VideoFade.effective(
-                        clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
-                    ),
-                    renderSize: renderSize, frameRate: state.frameRate,
-                    into: workspace, cancellation: cancellation
-                )
-                prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
-            }
+        // 只走 overlayVisible：藏起来的轨、单独藏起来的段（V）、还在转静帧的都不进成片，
+        // 也就不必预渲染（清单只有一份，别再按轨去 lane.clips 里取 —— 那样漏过 V）。
+        for clip in overlayVisible where clip.needsPerFrameRender {
+            let pair = try await AnimatedClipPrerenderer.renderOverlay(
+                clip: clip,
+                // 上层视频轨没有轨内转场，那条边永远归用户的渐变管
+                //（与预览合成的 `hasTransitionAfter` 同款注释）。
+                fades: VideoFade.effective(
+                    clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
+                ),
+                renderSize: renderSize, frameRate: state.frameRate,
+                into: workspace, cancellation: cancellation
+            )
+            prerendered[clip.id] = .overlay(fill: pair.fill, matte: pair.matte)
         }
 
         // MARK: 每节的画面流
@@ -396,87 +396,86 @@ enum VideoEditExportGraph {
 
         // MARK: 上层视频轨
 
-        for lane in overlayLanes {
-            for clip in lane.clips where !clip.needsStillConversion {
-                let source = input(for: clip.sourceURL)
-                let scaled = nextLabel("ov")
-                let x: String
-                let y: String
-                if case .overlay(let fill, let matte) = prerendered[clip.id] {
-                    // 关键帧动画的上层轨段：fill（内容压黑底）+ matte（白块蒙版）
-                    // alphamerge 合回带 alpha 的整幅画布，原位叠放。
-                    // 位置/缩放/旋转/不透明度全在两条中间片里烘焙好了。
-                    //
-                    // fill 是压在黑底上合成出来的：边缘抗锯齿处的 RGB 已经是
-                    // 「真实色 × coverage × opacity」（黑底=0，预乘的定义），但 alphamerge
-                    // 只是把这份 RGB 原样接上 matte 给的 alpha，出来的流对
-                    // ffmpeg 来说是 straight alpha 语义。直接喂给 overlay 默认
-                    // 的 straight 混合，边缘的 alpha 会被多乘一次（50% 覆盖处
-                    // 只有该有亮度的一半，实测验证过）。overlay 自带的
-                    // alpha=premultiplied 选项在这张图上不生效（依赖帧的
-                    // alpha_mode 元数据协商，alphamerge 不会打这个标记，测过
-                    // 多种组合数值都不对）——改成显式按 matte 把 fill 除回
-                    // 真实色（真实色 = 255×fill/matte），这样交给 overlay 的
-                    // 就是名副其实的 straight alpha，用它默认的混合就对。
-                    let fillSource = input(for: fill)
-                    let matteSource = input(for: matte)
-                    let fillLabel = nextLabel("kf")
-                    let matteLabel = nextLabel("km")
-                    let matteRGBLabel = nextLabel("kmc")
-                    let straightLabel = nextLabel("ks")
-                    filters.append("[\(fillSource):v]fps=\(fps),setsar=1,format=rgb24[\(fillLabel)]")
-                    filters.append("[\(matteSource):v]fps=\(fps),setsar=1,format=gray[\(matteLabel)]")
-                    // matteRGB 单独从 matteSource 转，不能从 matteLabel 派生：
-                    // 同一条流喂给两个下游（这里 + alphamerge）会让 alphamerge
-                    // 拿到的 alpha 整段跑偏（实测 128 会变成 76），原因不明，
-                    // 两条各转各的就没事——踩过一次，别改回「省一次解码」的
-                    // 写法。
-                    filters.append("[\(matteSource):v]fps=\(fps),setsar=1,format=rgb24[\(matteRGBLabel)]")
-                    filters.append(
-                        "[\(fillLabel)][\(matteRGBLabel)]blend=all_expr=" +
-                        "'if(gt(B,0),min(255,255*A/B),0)'[\(straightLabel)]"
-                    )
-                    filters.append(
-                        "[\(straightLabel)][\(matteLabel)]alphamerge,format=rgba," +
-                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
-                    )
-                    x = "0"
-                    y = "0"
-                } else {
-                    // 上层视频轨的每一段都走完整变换链（中心定位）。
-                    //
-                    // 这里**只有一条路**：默认摆放已经和主轨同账（等比铺满居中），
-                    // `transformSteps` 从 `resolvedPlacement` 算框，摆没摆过都对。
-                    // 原来那条「没变换就走九宫格表达式」的分支跟着画中画一起删了
-                    // —— 留着它就是给同一件事留两份账，迟早分叉。
-                    //
-                    // 比例对不上时两侧留空，**不补 pad**：这里是 overlay 到已经
-                    // 累积好的画面上，补黑就把主轨遮死了。
-                    let end = clip.sourceStart + clip.sourceDuration
-                    // 上层轨还没有轨内转场，两条边都归用户设的渐变管。
-                    let transformed = transformSteps(
-                        clip: clip, renderSize: renderSize,
-                        fades: VideoFade.effective(
-                            clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
-                        )
-                    )
-                    let chain = transformed.chain
-                    x = transformed.overlayX
-                    y = transformed.overlayY
-                    filters.append(
-                        "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
-                        "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=\(fps)," +
-                        "\(chain)," +
-                        "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
-                    )
-                }
-                let outV = nextLabel("v")
+        // 同一份 overlayVisible（见上面预渲染那一圈）：轨按数组顺序、轨内按段的顺序，叠放次序不变。
+        for clip in overlayVisible {
+            let source = input(for: clip.sourceURL)
+            let scaled = nextLabel("ov")
+            let x: String
+            let y: String
+            if case .overlay(let fill, let matte) = prerendered[clip.id] {
+                // 关键帧动画的上层轨段：fill（内容压黑底）+ matte（白块蒙版）
+                // alphamerge 合回带 alpha 的整幅画布，原位叠放。
+                // 位置/缩放/旋转/不透明度全在两条中间片里烘焙好了。
+                //
+                // fill 是压在黑底上合成出来的：边缘抗锯齿处的 RGB 已经是
+                // 「真实色 × coverage × opacity」（黑底=0，预乘的定义），但 alphamerge
+                // 只是把这份 RGB 原样接上 matte 给的 alpha，出来的流对
+                // ffmpeg 来说是 straight alpha 语义。直接喂给 overlay 默认
+                // 的 straight 混合，边缘的 alpha 会被多乘一次（50% 覆盖处
+                // 只有该有亮度的一半，实测验证过）。overlay 自带的
+                // alpha=premultiplied 选项在这张图上不生效（依赖帧的
+                // alpha_mode 元数据协商，alphamerge 不会打这个标记，测过
+                // 多种组合数值都不对）——改成显式按 matte 把 fill 除回
+                // 真实色（真实色 = 255×fill/matte），这样交给 overlay 的
+                // 就是名副其实的 straight alpha，用它默认的混合就对。
+                let fillSource = input(for: fill)
+                let matteSource = input(for: matte)
+                let fillLabel = nextLabel("kf")
+                let matteLabel = nextLabel("km")
+                let matteRGBLabel = nextLabel("kmc")
+                let straightLabel = nextLabel("ks")
+                filters.append("[\(fillSource):v]fps=\(fps),setsar=1,format=rgb24[\(fillLabel)]")
+                filters.append("[\(matteSource):v]fps=\(fps),setsar=1,format=gray[\(matteLabel)]")
+                // matteRGB 单独从 matteSource 转，不能从 matteLabel 派生：
+                // 同一条流喂给两个下游（这里 + alphamerge）会让 alphamerge
+                // 拿到的 alpha 整段跑偏（实测 128 会变成 76），原因不明，
+                // 两条各转各的就没事——踩过一次，别改回「省一次解码」的
+                // 写法。
+                filters.append("[\(matteSource):v]fps=\(fps),setsar=1,format=rgb24[\(matteRGBLabel)]")
                 filters.append(
-                    "[\(video)][\(scaled)]overlay=x=\(x):y=\(y):eof_action=pass:" +
-                    "enable='between(t,\(fmt(clip.timelineStart)),\(fmt(clip.timelineEnd)))'[\(outV)]"
+                    "[\(fillLabel)][\(matteRGBLabel)]blend=all_expr=" +
+                    "'if(gt(B,0),min(255,255*A/B),0)'[\(straightLabel)]"
                 )
-                video = outV
+                filters.append(
+                    "[\(straightLabel)][\(matteLabel)]alphamerge,format=rgba," +
+                    "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                )
+                x = "0"
+                y = "0"
+            } else {
+                // 上层视频轨的每一段都走完整变换链（中心定位）。
+                //
+                // 这里**只有一条路**：默认摆放已经和主轨同账（等比铺满居中），
+                // `transformSteps` 从 `resolvedPlacement` 算框，摆没摆过都对。
+                // 原来那条「没变换就走九宫格表达式」的分支跟着画中画一起删了
+                // —— 留着它就是给同一件事留两份账，迟早分叉。
+                //
+                // 比例对不上时两侧留空，**不补 pad**：这里是 overlay 到已经
+                // 累积好的画面上，补黑就把主轨遮死了。
+                let end = clip.sourceStart + clip.sourceDuration
+                // 上层轨还没有轨内转场，两条边都归用户设的渐变管。
+                let transformed = transformSteps(
+                    clip: clip, renderSize: renderSize,
+                    fades: VideoFade.effective(
+                        clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
+                    )
+                )
+                let chain = transformed.chain
+                x = transformed.overlayX
+                y = transformed.overlayY
+                filters.append(
+                    "[\(source):v]trim=start=\(fmt(clip.sourceStart)):end=\(fmt(end))," +
+                    "setpts=(PTS-STARTPTS)/\(fmt(clip.speed)),fps=\(fps)," +
+                    "\(chain)," +
+                    "setpts=PTS+\(fmt(clip.timelineStart))/TB[\(scaled)]"
+                )
             }
+            let outV = nextLabel("v")
+            filters.append(
+                "[\(video)][\(scaled)]overlay=x=\(x):y=\(y):eof_action=pass:" +
+                "enable='between(t,\(fmt(clip.timelineStart)),\(fmt(clip.timelineEnd)))'[\(outV)]"
+            )
+            video = outV
         }
 
         // MARK: 滤镜（调色）

@@ -32,7 +32,7 @@
 | 链路 | 在哪过滤 |
 | --- | --- |
 | 预览合成 | `VideoEditCompositionBuilder`：主轨循环的 `guard`，上层轨/音频轨走 `ClipVisibility.visible` |
-| ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills` |
+| ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills`；叠上层轨和逐帧预渲染**都只走 `overlayVisible`**，不许按轨去 `lane.clips` 里取段（[2026-09-26 案例](../bugfixes/2026-09-26-hidden-upper-clip-still-exported.md)） |
 | 只导出选中的 | `TimelineState.selectionForExport` |
 | 定格 | `isFreezeEligible`：藏起来的段没有「这一帧」可言 |
 
@@ -83,6 +83,7 @@
 | --- | --- |
 | 切换规则、`visible` 过滤、只导出选中的（含起点与全隐藏）、存盘往返、按需写键、v16 登记 | `scripts/check-project-file.sh` |
 | 真取帧：藏起来的段所在时刻是黑场；任一侧被藏时接缝不挂淡变 | `scripts/check-preview-composition.sh` |
+| 真导出抽帧：上层轨上按 V 藏的段（含带入场动画、走预渲染的）和整条藏起来的轨都不进成片，外加一份没藏的对照 | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
 | 两条渲染链路、V 键、右键项、定格、块灰显的接线 | `scripts/check-project-file.sh` 的扫描守卫段 |
 
 **人工回归清单**（自动化够不着，发版前实机验证）：

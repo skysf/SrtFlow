@@ -88,6 +88,8 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/VideoFade/main.swift \
+  checks/VideoFade/Probes.swift \
+  checks/VideoFade/HiddenClips.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
