@@ -262,7 +262,8 @@ public enum SubtitleSegmenter {
         into result: inout SegmentedSubtitles
     ) {
         guard let first = chunk.first, let last = chunk.last else { return }
-        let text = wrapLines(chunk, config: config)
+        // 断完句、切完条才去标点（断句要看标点）。
+        let text = SubtitlePunctuation.strip(wrapLines(chunk, config: config))
         guard !text.isEmpty else { return }
 
         let confidences = chunk.compactMap(\.confidence)

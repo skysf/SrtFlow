@@ -56,7 +56,11 @@ public enum SubtitleRetranslation {
         }
         let covered = companion.coveredSourceIDs
         for source in original.cues {
-            guard let text = results[source.id] else { continue }
+            // 机器翻回来的字去标点（系统翻译会自己加逗号句号，2026-09-26 用户拍板字幕不要标点）。
+            // 只在这里去：手改译文走 `SubtitleTrackEditing.setText`，不碰。
+            guard let raw = results[source.id] else { continue }
+            let text = SubtitlePunctuation.strip(raw)
+            guard !text.isEmpty else { continue }
             let sourceText = snapshot[source.id] ?? source.text
             // 这句原文名下还会自动更新的译文，按时间先后。
             let followers = doc.cues
