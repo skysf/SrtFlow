@@ -60,8 +60,8 @@ struct TimelinePinnedRuler: View, Equatable {
                     .offset(y: -2)
             }
             .offset(y: geometry.offset.y)
-            // 盖在轨道行之上（VStack 按 zIndex 决定绘制与命中顺序）。
-            .zIndex(50)
+            // 盖在轨道行之上靠的是 VStack 那一层的 zIndex（`laneReorderOffset(…, pinnedOnTop:)`）：
+            // 叠放次序只认最外面那一层，写在这里会被每一行都挂的换位位移盖成 0（2026-09-26 案例）。
     }
 }
 

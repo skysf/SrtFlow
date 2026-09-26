@@ -65,9 +65,9 @@
 		</dict>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.srtflow.filter-clip</string>
+			<string>com.srtflow.timeline-items</string>
 			<key>UTTypeDescription</key>
-			<string>SrtFlow Filter Clip</string>
+			<string>SrtFlow Timeline Items</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.data</string>

@@ -257,8 +257,8 @@ extension TimelineState {
     /// 0 长度的畸形文件兜底的。
     static let minimumImportedDuration = 0.1
 
-    /// 某一级梯子上已经占着的区间。
-    private func occupiedSpans(on target: TrackDropTarget) -> [TimelineSpan] {
+    /// 某一级梯子上已经占着的区间（粘贴的落点也用它，`ClipPasteLanding`）。
+    func occupiedSpans(on target: TrackDropTarget) -> [TimelineSpan] {
         let clips: [EditClip]
         switch target {
         case .main:
@@ -273,8 +273,8 @@ extension TimelineState {
         return clips.map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
     }
 
-    /// 往一条现有的轨（按身份找）上放一段，轨里保持按时间排。
-    private mutating func appendImported(_ clip: EditClip, toLane id: UUID, audio: Bool) {
+    /// 往一条现有的轨（按身份找）上放一段，轨里保持按时间排（粘贴也走它，`insertPasted`）。
+    mutating func appendImported(_ clip: EditClip, toLane id: UUID, audio: Bool) {
         if audio {
             guard let index = audioTracks.firstIndex(where: { $0.id == id }) else { return }
             audioTracks[index].clips.append(clip)
@@ -287,8 +287,8 @@ extension TimelineState {
     }
 
     /// 这一段放得进这条轨吗。判据和 `TimelineState.fits` 一字不差（1ms 容差：
-    /// 首尾相接的两段不算重叠，浮点误差也不算）。
-    private static func fits(start: Double, duration: Double, among busy: [TimelineSpan]) -> Bool {
+    /// 首尾相接的两段不算重叠，浮点误差也不算）。粘贴的落点也用它（`ClipPasteLanding`）。
+    static func fits(start: Double, duration: Double, among busy: [TimelineSpan]) -> Bool {
         !busy.contains { $0.start < start + duration - 0.001 && start < $0.end - 0.001 }
     }
 }

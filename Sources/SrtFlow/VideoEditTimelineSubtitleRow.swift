@@ -76,7 +76,8 @@ extension VideoEditTimelineView {
                     onToggleHidden: {
                         project.selectSubtitleCue(cue.id)
                         project.toggleHiddenForSelection()
-                    }
+                    },
+                    onClipboard: { project.runClipboardCommand($0, on: .cue(cue.id)) }
                 )
                 // 按值比较：拖动每动一下时间线都重算，没变的 cue 别跟着重算
                 //（见 `SubtitleCueBlockView` 文件头）。

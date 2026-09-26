@@ -279,31 +279,8 @@ func model() {
     check(drop.freeFilterLayer(from: 5, start: 1, end: 3) == 2,
           "指到比现有层数还高的地方，夹回「新的一层」")
 
-    // 剪切板载荷：**只带「是一段什么样的滤镜」，不带它原来在哪**。
-    // 落点由播放头现算（同按 `+`），层号也是 —— 原来的层号在另一个工程里可能
-    // 根本不存在，硬套会凭空多出几条空行。
-    let source = FilterClip(
-        preset: .neon, strength: 0.42, timelineStart: 7.5, duration: 2.25, layer: 3
-    )
-    let payload = FilterClipboard.Payload(source)
-    checkEqual(payload.preset, .neon, "种类进了载荷")
-    checkEqual(payload.strength, 0.42, "强度进了载荷")
-    checkEqual(payload.duration, 2.25, "时长进了载荷")
-    if let encoded = FilterClipboard.data(for: source),
-       let back = try? JSONDecoder().decode(FilterClipboard.Payload.self, from: encoded) {
-        checkEqual(back, payload, "载荷 JSON 往返保真")
-        let text = String(data: encoded, encoding: .utf8) ?? ""
-        check(!text.contains("timelineStart") && !text.contains("layer"),
-              "载荷里不该有起点和层号（带了就会被误当成落点）")
-    } else {
-        check(false, "载荷编不出来或解不回来")
-    }
-    // 两个类型标识必须**不一样**：拖卡片那个载荷只是预设名，剪贴板这个带强度和
-    // 时长。同一个标识两种载荷，迟早有人读错。
-    check(FilterPayloadType.clipboard != FilterPayloadType.drag,
-          "剪贴板和拖放用的是两个类型标识")
-    checkEqual(FilterClipboard.typeIdentifier, FilterPayloadType.clipboard,
-               "剪贴板用的就是登记在册的那一个")
+    // 滤镜段的复制粘贴 2026-09-26 并进了时间线的剪贴板（每一样都是完整的一份，落点、层号在粘贴时现算）：
+    // 自检在 scripts/check-timeline-clipboard.sh。
 
     // 存盘、v17 登记与往返保真在 checks/ProjectFile/main.swift 第 25 节。
 

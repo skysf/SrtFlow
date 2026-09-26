@@ -51,7 +51,6 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditFilterLUT.swift \
   Sources/SrtFlow/VideoEditFilterPayloadTypes.swift \
-  Sources/SrtFlow/VideoEditFilterClipboard.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
   Sources/SrtFlow/VideoEditFadeWindow.swift \

@@ -255,7 +255,12 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
 
 - **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` /
   `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`，
-  以及 `open`（换一个工程，走「打开工程」同一个入口）和 `menu`（把某一层菜单的每一项和亮不亮写进日志）。
+  以及 `open`（换一个工程，走「打开工程」同一个入口）和 `menu`（把某一层菜单的每一项和亮不亮写进日志）、
+  `zoom`（以窗口里某一点为锚缩放，横向或 `"vertical": true` 纵向；和捏合处理器同样的调用，前后各记一次指针底下
+  是第几秒、哪一行的第几成 —— 锚点对不对看这两个数。合成的 Ctrl + 滚轮走不到本地事件监视器，见下面第 5 条，
+  所以从捏合处理器的下一层进）、`copy` / `cut` / `paste`（⌘C ⌘V 这类菜单快捷键在驱动里按不动（第 14 条）、
+  右键菜单也驱不动，所以直接调工程的动作；`paste` 带 `at` 时按右键菜单那条路走 —— 把那一点记成右键按下的地方，
+  日志里写出那一点换算成第几秒、哪一行，落在哪看后面的 `state`）。
   坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。**菜单只能读、不能点**；`menu` 读之前先让菜单的
   代理更新一遍（`menuNeedsUpdate`，AppKit 在菜单要打开时做的就是这个）—— SwiftUI 的 `Commands` 那时才把
   内容填进 `NSMenu`，直接读拿到的是上一次打开时的样子。

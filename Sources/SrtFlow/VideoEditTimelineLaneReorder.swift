@@ -97,10 +97,15 @@ extension View {
     /// 轨道头列和轨道行都挂这**一个**，两边才永远对得上。是函数不是修饰器：只用
     /// `.offset` / `.zIndex` / `.transaction` 这类不计数的原语，平时位移全是 0，
     /// 时钟每跳一下不多一次重算（preview-perf-ratchet.md）。
-    func laneReorderOffset(_ session: LaneReorderSession?, rowID: String) -> some View {
+    ///
+    /// `pinnedOnTop`：钉在视口顶上的标尺行（两边都是它）。**叠放次序只认最外面那一层 `.zIndex`**，
+    /// 这里给每一行都挂了一个，标尺自己里面写的 `.zIndex(50)` 就被盖成了 0 —— 纵向滚下去之后轨道行画到
+    /// 标尺上面（2026-09-26 案例 docs/bugfixes/2026-09-26-tracks-cover-pinned-ruler.md）。所以钉住的那一行
+    /// 的层级在这一层给。
+    func laneReorderOffset(_ session: LaneReorderSession?, rowID: String, pinnedOnTop: Bool = false) -> some View {
         let dragged = session?.rowID == rowID
         return offset(y: session?.offset(forRow: rowID) ?? 0)
-            .zIndex(dragged ? 1 : 0)
+            .zIndex(pinnedOnTop ? 50 : (dragged ? 1 : 0))
             .transaction { transaction in
                 if dragged { transaction.animation = nil }
             }

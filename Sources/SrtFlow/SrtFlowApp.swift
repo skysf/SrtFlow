@@ -10,7 +10,9 @@ enum WindowID {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
-    // MARK: - 剪切 / 拷贝 / 粘贴（目前只认剪辑页的滤镜段）
+    // MARK: - 剪切 / 拷贝 / 粘贴（剪辑页时间线上的东西，2026-09-26 起不止滤镜段）
+    //
+    // 动作本身在 `VideoEditTimelineClipboard.swift`（拿什么、落到哪、吸附、一步撤销）。
     //
     // **实现在 app delegate 上**，也就是响应链的最末端。两条理由：
     //
@@ -42,27 +44,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func copy(_ sender: Any?) {
         MainActor.assumeIsolated {
             guard pasteboardActionsApply else { return }
-            _ = VideoEditProject.shared.copySelectedFilter()
+            VideoEditProject.shared.copySelection()
         }
     }
 
     @objc func cut(_ sender: Any?) {
         MainActor.assumeIsolated {
             guard pasteboardActionsApply else { return }
-            _ = VideoEditProject.shared.cutSelectedFilter()
+            VideoEditProject.shared.cutSelection()
         }
     }
 
-    /// ⌘V 认两种东西：剪贴板上的**滤镜段**，和 Finder 复制的**文件**。
+    /// ⌘V 认两种东西：剪贴板上的**一批时间线内容**（剪辑、文字、形状、滤镜、字幕句），和 Finder 复制的**文件**。
+    /// 两种都落在鼠标那一处（鼠标在时间线的轨道区里），不在就落在播放头（2026-09-26 用户拍板）。
     ///
-    /// 顺序是滤镜优先 —— 它写的是自己的私有类型，只可能来自本 App 的 ⌘C，
+    /// 顺序是时间线内容优先 —— 它写的是自己的私有类型，只可能来自本 App 的 ⌘C，
     /// 意图比「剪贴板里恰好还躺着几个文件」明确。两者不会同时存在：
-    /// `FilterClipboard.write` 先 `clearContents()`。
+    /// `TimelineClipboard.write` 先 `clearContents()`。
     @objc func paste(_ sender: Any?) {
         MainActor.assumeIsolated {
             guard pasteboardActionsApply else { return }
-            if FilterClipboard.read() != nil {
-                VideoEditProject.shared.pasteFilter()
+            if TimelineClipboard.hasContent {
+                VideoEditProject.shared.pasteTimelineItems(at: .keyboard)
                 return
             }
             VideoEditProject.shared.pasteMediaFiles()
@@ -73,14 +76,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainActor.assumeIsolated {
             switch menuItem.action {
             case #selector(copy(_:)), #selector(cut(_:)):
-                return pasteboardActionsApply && VideoEditProject.shared.selectedFilter != nil
+                return pasteboardActionsApply && VideoEditProject.shared.canCopySelection
             case #selector(paste(_:)):
                 // 两种载荷任意一种都算 —— 菜单项的亮灭必须和 `paste(_:)` 认的
                 // 东西一致，否则要么点了没反应，要么明明能粘却是灰的。
                 // 这条判据必须是**同步**的（`validateMenuItem` 等不了异步），
                 // 所以文件那半边读的是 `NSPasteboard` 而不是 `NSItemProvider`。
                 return pasteboardActionsApply
-                    && (FilterClipboard.read() != nil || !MediaFileDrag.pasteboardURLs().isEmpty)
+                    && (TimelineClipboard.hasContent || !MediaFileDrag.pasteboardURLs().isEmpty)
             default:
                 return true
             }

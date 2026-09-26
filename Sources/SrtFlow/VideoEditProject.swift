@@ -351,12 +351,17 @@ final class VideoEditProject {
     }
 
     /// 拖轨道头调行高：**只动这一条轨**。
+    func setRowHeight(_ height: Double, for key: TimelineRowHeightKey, kind: TrackRowKind) {
+        updateRowHeights { $0.set(height, for: key, kind: kind) }
+    }
+
+    /// 改行高的唯一写入口（拖轨道头的下边缘、纵向缩放 `TimelineZoom.vertical`）。
     ///
     /// 不走 `perform` / `liveApply` —— 不进撤销栈、不重建预览、不碰磁吸，
     /// 只标脏让自动保存（2 秒去抖）把它带下去。
-    func setRowHeight(_ height: Double, for key: TimelineRowHeightKey, kind: TrackRowKind) {
+    func updateRowHeights(_ change: (inout TimelineRowHeights) -> Void) {
         var next = rowHeights
-        next.set(height, for: key, kind: kind)
+        change(&next)
         guard next != rowHeights else { return }
         rowHeights = next
         documentDidChange()
@@ -1040,42 +1045,6 @@ final class VideoEditProject {
                 state.update(member) { $0.speed = clamped }
             }
         }
-    }
-
-    func setTransition(after id: UUID, _ transition: ClipTransition, duration: Double? = nil) {
-        perform { state in
-            state.update(id) { clip in
-                clip.transitionAfter = transition
-                if let duration { clip.transitionDuration = min(max(duration, 0.1), 3) }
-            }
-        }
-    }
-
-    /// 把这一段的转场（类型 + 时长）套到主轨的每一个接缝上。
-    func applyTransitionToAll(like id: UUID) {
-        guard let clip = state.clip(with: id), clip.transitionAfter != .none else { return }
-        let transition = clip.transitionAfter
-        let duration = clip.transitionDuration
-        perform { state in
-            for index in state.mainClips.indices.dropLast() {
-                state.mainClips[index].transitionAfter = transition
-                state.mainClips[index].transitionDuration = duration
-            }
-        }
-    }
-
-    /// 清掉主轨上的所有转场。
-    func clearAllTransitions() {
-        perform { state in
-            for index in state.mainClips.indices {
-                state.mainClips[index].transitionAfter = .none
-            }
-        }
-    }
-
-    /// 主轨上还有没有任何转场（Clear all 的可用状态）。
-    var hasAnyTransition: Bool {
-        state.mainClips.contains { $0.transitionAfter != .none }
     }
 
     func setVolume(_ id: UUID, volume: Double) {

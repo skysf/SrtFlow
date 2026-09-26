@@ -180,6 +180,16 @@ struct ScreenRecordingSetupView: View {
     }
 }
 
+/// `sheet(item:)` 需要 Identifiable。`ScreenRecordingResult` 是纯值类型，
+/// 不给它硬塞 id —— 在这里包一层（编辑器根视图弹 partial 处置弹窗时用）。
+@available(macOS 15.0, *)
+struct IdentifiedRecording: Identifiable {
+    let result: ScreenRecordingResult
+    var id: String { result.mainURL.path }
+
+    init(_ result: ScreenRecordingResult) { self.result = result }
+}
+
 /// 本次录制 partial 的处置弹窗。文件**已经**在用户选的位置，只问要不要入轨。
 @available(macOS 15.0, *)
 struct ScreenRecordingPartialSheet: View {

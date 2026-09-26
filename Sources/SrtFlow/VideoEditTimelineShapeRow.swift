@@ -48,7 +48,8 @@ extension VideoEditTimelineView {
                     onToggleHidden: {
                         project.selectShape(shape.id, additive: false)
                         project.toggleHiddenForSelection()
-                    }
+                    },
+                    onClipboard: { project.runClipboardCommand($0, on: .shape(shape.id)) }
                 )
                 // 按值比较：拖动每动一下时间线都重算，没变的块别跟着重算（见 `ClipBlockContext`）。
                 .equatable()
@@ -82,6 +83,8 @@ private struct ShapeBlockView: View, Equatable {
     let onTrimEnd: () -> Void
     /// 右键「隐藏 / 显示」：和 V 同一个动作，先替用户选中这一个（同剪辑块的右键项）。
     let onToggleHidden: () -> Void
+    /// 右键「剪切 / 拷贝 / 粘贴」（`VideoEditProject.runClipboardCommand`：右键的这一块在选中集合里就作用于整个选择）。
+    let onClipboard: (TimelineClipboardCommand) -> Void
 
     /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
     @State private var dragOffset: Double?
@@ -134,6 +137,8 @@ private struct ShapeBlockView: View, Equatable {
         .zIndex(dragOffset != nil ? 10 : 0)
         .onTapGesture(perform: onSelect)
         .contextMenu {
+            TimelineClipboardMenu.items(onClipboard)
+            Divider()
             Button(shape.isHidden ? "Show Shape" : "Hide Shape", action: onToggleHidden)
         }
         .gesture(

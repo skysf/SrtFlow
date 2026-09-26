@@ -65,7 +65,8 @@ enum TimelineRowHeightKey: Hashable, Sendable {
     case lane(UUID)
 }
 
-/// 每条轨自己的行高。没有条目 = 跟这一类的默认值走（同 `colorIndex == nil`）。
+/// 每条轨自己的行高。没有条目 = 跟纵向缩放定的统一高度走，再没有就跟这一类的默认值走
+/// （同 `colorIndex == nil`）。
 ///
 /// **它不在 `TimelineState` 里**，因此不进撤销栈、不触发预览重建：行高是装饰
 /// 状态，进了撤销栈之后「调完行高按 ⌘Z」撤掉的是行高，而不是用户上一次真编辑。
@@ -75,13 +76,20 @@ struct TimelineRowHeights: Hashable, Sendable {
     var main: Double?
     /// 上层视频轨和音频轨，键是 `EditLane.id`。
     var lanes: [UUID: Double]
+    /// 纵向缩放（⌥ 捏合、⌘↑ ⌘↓）定的统一高度：视频轨和音频轨**全部**用它，除非之后又单独拖过
+    /// 某一条（2026-09-26 用户拍板：纵向缩放时所有轨变成一样高，单独调过的作废）。nil = 没缩放过。
+    var uniform: Double?
 
-    init(main: Double? = nil, lanes: [UUID: Double] = [:]) {
+    /// 统一高度的区间：视频轨和音频轨可调区间的交集 —— 「一样高」得两类都够得着。
+    static let uniformRange: ClosedRange<Double> = 28...200
+
+    init(main: Double? = nil, lanes: [UUID: Double] = [:], uniform: Double? = nil) {
         self.main = main
         self.lanes = lanes
+        self.uniform = uniform
     }
 
-    var isEmpty: Bool { main == nil && lanes.isEmpty }
+    var isEmpty: Bool { main == nil && lanes.isEmpty && uniform == nil }
 
     subscript(key: TimelineRowHeightKey) -> Double? {
         get {
@@ -98,18 +106,28 @@ struct TimelineRowHeights: Hashable, Sendable {
         }
     }
 
-    /// 这条轨该多高：自己调过就用自己的，没调过跟这一类的默认值走。
+    /// 这条轨该多高：自己调过就用自己的，没调过跟统一高度走，再没有跟这一类的默认值走。
     ///
-    /// `key` 为 nil（不给拖的行）时也走默认值 —— 调用方拿到的永远是个能用的高度。
+    /// `key` 为 nil（不给拖的行：标尺、字幕、文字、形状、滤镜）时只走默认值 —— 纵向缩放不碰那几条细行
+    /// （它们的行高和块高是写死的一对，框选的命中靠那个差）。调用方拿到的永远是个能用的高度。
     func height(for key: TimelineRowHeightKey?, fallback: Double) -> Double {
-        guard let key, let stored = self[key] else { return fallback }
-        return stored
+        guard let key else { return fallback }
+        return self[key] ?? uniform ?? fallback
     }
 
-    /// 写入一条轨的行高。夹紧在这里做，**这是唯一的写入口**。
+    /// 写入一条轨的行高。夹紧在这里做，**这是单独一条轨的唯一写入口**。
     mutating func set(_ height: Double, for key: TimelineRowHeightKey, kind: TrackRowKind) {
         guard let clamped = kind.clamped(height) else { return }
         self[key] = clamped
+    }
+
+    /// 纵向缩放：视频轨和音频轨统一成这个高度（夹进 `uniformRange`），**单独调过的全部作废**。
+    /// NaN / inf 什么都不做。
+    mutating func setUniform(_ height: Double) {
+        guard height.isFinite else { return }
+        uniform = min(max(height, Self.uniformRange.lowerBound), Self.uniformRange.upperBound)
+        main = nil
+        lanes = [:]
     }
 
     /// 丢掉已经不存在的轨。
@@ -118,7 +136,7 @@ struct TimelineRowHeights: Hashable, Sendable {
     /// 自动保存，若同时把内存里的条目也清了，用户 ⌘Z 把轨撤回来时高度就没了
     ///（`EditLane.id` 撤回来还是同一个 UUID，条目留着就能接上）。
     func pruned(keeping liveLanes: Set<UUID>) -> TimelineRowHeights {
-        TimelineRowHeights(main: main, lanes: lanes.filter { liveLanes.contains($0.key) })
+        TimelineRowHeights(main: main, lanes: lanes.filter { liveLanes.contains($0.key) }, uniform: uniform)
     }
 
     /// 行 → 存高度用的键。不可拖的行返回 nil。
@@ -141,7 +159,7 @@ struct TimelineRowHeights: Hashable, Sendable {
 // MARK: - 存盘
 
 extension TimelineRowHeights: Codable {
-    private enum CodingKeys: String, CodingKey { case main, lanes }
+    private enum CodingKeys: String, CodingKey { case main, lanes, uniform }
 
     /// 一条轨一条记录。
     ///
@@ -159,13 +177,19 @@ extension TimelineRowHeights: Codable {
         let entries = try c.decodeIfPresent([Entry].self, forKey: .lanes) ?? []
         self.init(
             main: try c.decodeIfPresent(Double.self, forKey: .main),
-            lanes: Dictionary(entries.map { ($0.id, $0.height) }, uniquingKeysWith: { a, _ in a })
+            lanes: Dictionary(entries.map { ($0.id, $0.height) }, uniquingKeysWith: { a, _ in a }),
+            // 缺键 = 没纵向缩放过（2026-09-26 之前的工程）。旧版读到这个键会忽略它 —— 丢的只是高度，
+            // 成片一帧不变，所以不开新的 formatVersion（同 rowHeights 这一段本身的口径）。
+            uniform: try c.decodeIfPresent(Double.self, forKey: .uniform).flatMap { height in
+                height.isFinite ? min(max(height, Self.uniformRange.lowerBound), Self.uniformRange.upperBound) : nil
+            }
         )
     }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encodeIfPresent(main, forKey: .main)
+        try c.encodeIfPresent(uniform, forKey: .uniform)
         if !lanes.isEmpty {
             let entries = lanes
                 .map { Entry(id: $0.key, height: $0.value) }

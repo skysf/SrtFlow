@@ -110,6 +110,7 @@ run_check "check-script-source-lists（扫描守卫）" checks/check-script-sour
 run_check "docs-index-drift（扫描守卫）" checks/docs-index-drift.sh
 run_check "source-file-size（扫描守卫：代码文件行数上限，老文件只许降）" checks/source-file-size.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
+run_check "timeline-clipboard-wiring（扫描守卫：复制粘贴的接线、落点鼠标优先）" checks/timeline-clipboard-wiring.sh
 run_check "instant-tooltip-wiring（扫描守卫）" checks/instant-tooltip-wiring.sh
 run_check "transition-handles-wiring（扫描守卫）" checks/transition-handles-wiring.sh
 run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wiring.sh
@@ -131,6 +132,7 @@ shard 2
 run_check "preview-perf-compare（性能 ratchet 的比对规则）" scripts/check-preview-perf.sh --self-test
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
+run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认）" scripts/check-timeline-zoom.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh
@@ -158,6 +160,7 @@ run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" script
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh
+run_check "timeline-clipboard（复制粘贴：拿什么、换身份、撞上了往上抬、几组保住上下关系）" scripts/check-timeline-clipboard.sh
 
 echo ""
 echo "════════════════════════════════════════"

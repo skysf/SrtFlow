@@ -99,45 +99,8 @@ extension VideoEditProject {
         liveTrim(anchor: TimelineTrim.Member(id: id, kind: .filter), leading: leading, deltaSeconds: deltaSeconds)
     }
 
-    // MARK: - 复制 / 剪切 / 粘贴
-    //
-    // 只认滤镜段。编辑器里别的东西（剪辑、形状、文字、字幕）**本来就没有**
-    // 复制粘贴 —— `handleEvent` 凡带 ⌘/⌥/⌃ 一律放行给系统，从来没人接过。
-    // 这一刀只按用户点的范围补滤镜；接别的类型是另一件事（剪辑还牵着素材引用、
-    // 链接音频和转场），不顺手做。
-
-    /// ⌘C。没选中滤镜段就返回 nil —— 调用方据此让菜单项变灰。
-    func copySelectedFilter() -> FilterClip? {
-        guard let filter = selectedFilter else { return nil }
-        FilterClipboard.write(filter)
-        return filter
-    }
-
-    /// ⌘X = 复制 + 删除。
-    func cutSelectedFilter() -> FilterClip? {
-        guard let filter = copySelectedFilter() else { return nil }
-        deleteFilter(filter.id)
-        return filter
-    }
-
-    /// ⌘V。落点和按 `+` 完全一致：从播放头起，落在这段时间内空着的最低层。
-    ///
-    /// **层号不跟着复制走**：原来那一层在另一个工程（甚至同一个工程的另一处）
-    /// 可能根本不存在，硬套会凭空多出几条空行。时长和强度照抄 —— 那才是用户
-    /// 「调好了想再来一份」要的东西。
-    @discardableResult
-    func pasteFilter() -> UUID? {
-        guard let payload = FilterClipboard.read() else { return nil }
-        let start = max(0, clock.displayTime)
-        let layer = state.lowestFreeFilterLayer(start: start, end: start + payload.duration)
-        let filter = FilterClip(
-            preset: payload.preset, strength: payload.strength,
-            timelineStart: start, duration: payload.duration, layer: layer
-        )
-        perform(rebuildsPreview: false) { $0.filters.append(filter) }
-        selectFilter(filter.id)
-        return filter.id
-    }
+    // 复制 / 剪切 / 粘贴 2026-09-26 并进了时间线的剪贴板（VideoEditTimelineClipboard.swift）：
+    // 滤镜段和剪辑、文字、字幕一起拷，落点鼠标优先、层号从原来那一层起往上找空的。
 
     // MARK: - 删
 

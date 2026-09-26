@@ -661,15 +661,15 @@ extension VideoEditProject {
         })
     }
 
-    /// ⌘V：把剪贴板上的文件落到播放头上。
-    ///
-    /// 落点口径和拖放共用一套（撞上了就往上抬一轨），差别只有锚点 ——
-    /// 没有指针，所以第一段的**起点**就是播放头（同按 `+`）。
+    /// ⌘V：把剪贴板上的文件落到鼠标那一处（鼠标在时间线的轨道区里：左边缘对齐指针、指着的轨优先，同拖放），
+    /// 不在就落到播放头（同按 `+`）。落点口径和拖放共用一套（撞上了就往上抬一轨）；2026-09-26 起鼠标优先。
     @discardableResult
     func pasteMediaFiles() -> Bool {
         let urls = MediaFileDrag.pasteboardURLs()
         guard !urls.isEmpty else { return false }
-        importFiles(urls: urls, anchor: .start(clock.time), preferring: nil)
+        let hit = TimelinePointer.hit(.now, project: self)
+        let anchor: MediaImportAnchor = hit.map { .pointer($0.time) } ?? .start(clock.time)
+        importFiles(urls: urls, anchor: anchor, preferring: hit?.row?.slot.map(TrackDropTarget.init))
         return true
     }
 
