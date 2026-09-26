@@ -208,7 +208,7 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 ### 整组一起移动
 
 拖任意一个被选中的东西，整片跟着走：三类改的字段不同（剪辑/形状改
-`timelineStart`，cue 要两轨同步走 `LinkedSubtitleEditing.setStarts`），
+`timelineStart`，cue 走 `SubtitleTrackEditing.setStarts`：两条轨各挪各的、挪完重排），
 但**位移只有一个**，统一在 `TimelineState.move(_:by:)` 里。
 
 **「拖任意一个」要求三类都真的有移动手势**：cue 曾经只有点选手势，于是这句话
@@ -277,8 +277,8 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 `VideoEditTimelineTrim.swift`：
 
 - **裁的算法只有一份**（`TimelineState.trim(_:leading:by:)`）：五种块各自改各自的字段，
-  剪辑改素材范围（按 `speed` 换算）、叠层类只改起点和时长、cue 走 `LinkedSubtitleEditing.setTime`
-  （两轨镜像一起改、改完重排）。「裁到播放头」（`trimToPlayhead`）也走它。
+  剪辑改素材范围（按 `speed` 换算）、叠层类只改起点和时长、cue 走 `SubtitleTrackEditing.setTime`
+  （只改这句所在的那条轨、改完重排；2026-09-26 起字幕块自己也有左右把手）。「裁到播放头」（`trimToPlayhead`）也走它。
 - **一段能裁多少**（`trimRange`）：起点端往左最多退到素材开头 / 时间线 0，往右最多缩到最短
   （剪辑 0.1s、叠层 0.2s、cue 0.1s）；终点端反之，剪辑受素材余量限制，叠层类没有素材边界。
 - **整组一起停**（`trimGroup`）：每个成员的范围取交集，再把手势的量夹进去，谁先到头整组一起停；

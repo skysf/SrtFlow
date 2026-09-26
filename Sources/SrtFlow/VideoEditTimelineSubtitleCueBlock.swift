@@ -3,10 +3,10 @@ import SrtFlowCore
 
 // MARK: - 时间线上的字幕 cue 块
 //
-// 管什么：一条 cue 在字幕行上画成什么样（色块、选中描边、拖动中的渲染位移）、收点击
-// 和移动手势、悬停的提示文字。
-// 不管什么：点了选谁、拖到哪、两轨镜像怎么同步 —— 全在行（`subtitleRow`）和
-// `VideoEditTimelineDragWiring.swift` 里，块只往外回调。
+// 管什么：一条 cue 在字幕行上画成什么样（色块、选中描边、拖动中的渲染位移）、收点击、
+// 移动手势和两头的裁切把手（2026-09-26 加，同形状块）、悬停的提示文字。
+// 不管什么：点了选谁、拖到哪、裁多少 —— 全在行（`subtitleRow`）、`VideoEditTimelineDragWiring.swift`
+// 和工程的 `liveTrim` 里，块只往外回调。
 //
 // 从 `subtitleRow` 的 ForEach 里拆出来（2026-09-24）：写在行里的话它就是时间线 body 的
 // 一部分，拖动每动一下时间线一重算，几十条 cue 连同各自的提示修饰器全部跟着重算
@@ -31,18 +31,25 @@ struct SubtitleCueBlockView: View, Equatable {
     /// 这里判 —— 判据要带上「有没有活着的会话」，块里的一个布尔值判不了。
     let onDragChange: (CGSize, CGPoint) -> Void
     let onDragEnd: () -> Void
+    /// 分割工具下不给把手（与剪辑 / 形状块同规矩）：父级传 `activeTool == .select`。
+    let canTrim: Bool
+    /// (leading, 手势开始以来的总位移秒数)。落到工程的 `liveTrim`。
+    let onTrim: (Bool, Double) -> Void
+    let onTrimEnd: () -> Void
 
     /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
     @State private var dragOffset: Double?
     /// 拉框进行中这块在不在框里；nil = 没在拉框、或者和模型里一样，按 `isSelected` 画。
     @State private var marqueeHit: Bool?
     private var highlighted: Bool { marqueeHit ?? isSelected }
+    private var width: Double { max(TimelineMarquee.cueMinimumWidth, (cue.end - cue.start) * pps) }
 
     /// 只比画面用得到的输入（同 `ClipBlockView`）。闭包比不了、也不用比：它们捕获的是
     /// 时间线视图，读的是它的 `@State` 和工程对象，永远是最新的。
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.cue == rhs.cue && lhs.pps == rhs.pps && lhs.tint == rhs.tint
             && lhs.isSelected == rhs.isSelected && lhs.drag === rhs.drag && lhs.isDragMember == rhs.isDragMember
+            && lhs.canTrim == rhs.canTrim
     }
 
     var body: some View {
@@ -55,10 +62,10 @@ struct SubtitleCueBlockView: View, Equatable {
             )
             // 宽和高都与框选的命中判定共用常量：画多大就该按多大判，
             // 否则一条 0.05 秒的 cue 框得中却看不见、或反过来。
-            .frame(
-                width: max(TimelineMarquee.cueMinimumWidth, (cue.end - cue.start) * pps),
-                height: TimelineMarquee.cueHeight
-            )
+            .frame(width: width, height: TimelineMarquee.cueHeight)
+            // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑 / 形状块）。
+            .overlay(alignment: .leading) { trimHandle(leading: true) }
+            .overlay(alignment: .trailing) { trimHandle(leading: false) }
             .offset(
                 x: (cue.start + (dragOffset ?? 0)) * pps,
                 y: TimelineMarquee.cueTopInset
@@ -83,5 +90,24 @@ struct SubtitleCueBlockView: View, Equatable {
                 let mine = hit.map { $0.cues.contains(cue.id) }.flatMap { $0 == isSelected ? nil : $0 }
                 if mine != marqueeHit { marqueeHit = mine }
             }
+    }
+
+    /// 与形状块的裁切把手同款：太窄不给（点不到移动区），手势必须用 .global
+    /// —— 把手挂在块边缘，.local 会随裁切生效跟着块边移动，位移被自己抵消。
+    @ViewBuilder
+    private func trimHandle(leading: Bool) -> some View {
+        if width > 26, canTrim {
+            Rectangle()
+                .fill(highlighted ? .white.opacity(0.85) : .white.opacity(0.001))
+                .frame(width: highlighted ? 4 : 7)
+                .clipShape(RoundedRectangle(cornerRadius: 2))
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 2, coordinateSpace: .global)
+                        .onChanged { value in onTrim(leading, value.translation.width / pps) }
+                        .onEnded { _ in onTrimEnd() }
+                )
+                .pointerStyle(.columnResize)
+        }
     }
 }

@@ -112,7 +112,7 @@ struct VideoEditTimelineView: View {
     /// 就地编辑浮层的落点：哪一条 cue、开在哪一行上。
     struct EditingCue: Equatable {
         var id: UUID
-        var kind: SubtitleRowKind
+        var kind: SubtitleTrack
     }
 
     var pps: Double { project.pixelsPerSecond }
@@ -191,8 +191,8 @@ struct VideoEditTimelineView: View {
             heightKey: mainRow.key,
             isHidden: project.state.mainHidden
         ))
-        // 一个语言一条字幕轨：原文一行，有译文再来一行。显示什么由这两只
-        // 眼睛推导（TimelineState.visibleSubtitleChoice），没有额外的模式选择器。
+        // 一个语言一条字幕轨：原文一行，有译文再来一行，各自一只眼睛、各自的句子
+        // （2026-09-26 起两条轨独立；画面上怎么排见 TimelineState.subtitleScreenBlocks）。
         if project.state.subtitle != nil {
             result.append(RowSpec(
                 id: "subtitle-original", icon: "captions.bubble", height: 22, slot: nil,

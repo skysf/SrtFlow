@@ -98,8 +98,7 @@ extension TimelineState {
         case .filter:
             return filters.first { $0.id == member.id }.map { TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd) }
         case .cue:
-            let cues = (subtitle?.cues ?? []) + (subtitleCompanion?.translation?.cues ?? [])
-            return cues.first { $0.id == member.id }.map { TimelineSpan(start: $0.start, end: $0.end) }
+            return subtitleCue(member.id).map { TimelineSpan(start: $0.start, end: $0.end) }
         }
     }
 }

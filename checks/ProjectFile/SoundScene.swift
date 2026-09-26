@@ -91,7 +91,7 @@ func checkSoundScenes(root: URL) throws {
     let text = try String(contentsOf: file, encoding: .utf8)
     checkEqual(text.components(separatedBy: "\"soundScene\"").count - 1, 1, "只有挂了场景的那一段写这个键")
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 22, "带场景的工程写 latest（v22）")
+    checkEqual(raw?["formatVersion"] as? Int, 23, "带场景的工程写 latest（v23）")
     let loaded = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(loaded.clip(with: voice.id)?.soundScene, state.clip(with: voice.id)?.soundScene, "场景往返保真")
 

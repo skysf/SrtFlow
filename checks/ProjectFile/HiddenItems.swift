@@ -164,7 +164,7 @@ private func checkHiddenOverlays(root: URL) throws {
     check(state.requiresFormatVersion22, "藏了文字 / 形状的工程 → v22 判据为真")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 22, "带隐藏的文字 / 形状 / 滤镜的工程写 v22")
+    checkEqual(raw?["formatVersion"] as? Int, 23, "带隐藏的文字 / 形状 / 滤镜的工程写 latest（v23）")
     let back = try VideoEditProjectIO.load(from: path).timeline
     checkEqual(back.shapes.first { $0.id == box.id }?.isHidden, true, "往返不丢形状的隐藏")
     checkEqual(back.textOverlays.first { $0.id == low.id }?.isHidden, false, "放出来的文字往返后照旧显示")

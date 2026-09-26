@@ -107,7 +107,7 @@ extension TimelineState {
             return overlayRange(start: filter.timelineStart, duration: filter.duration,
                                 minimum: FilterClip.minimumDuration, leading: leading)
         case .cue:
-            guard let cue = subtitle?.cues.first(where: { $0.id == member.id }) else { return nil }
+            guard let cue = subtitleCue(member.id) else { return nil }
             return overlayRange(start: cue.start, duration: cue.end - cue.start,
                                 minimum: TimelineTrim.cueMinimumDuration, leading: leading)
         }
@@ -158,17 +158,16 @@ extension TimelineState {
                 if leading { filter.timelineStart += delta; filter.duration -= delta } else { filter.duration += delta }
             }
         case .cue:
-            guard var original = subtitle, let cue = original.cues.first(where: { $0.id == member.id }) else { return }
-            var companion = subtitleCompanion ?? SubtitleCompanion()
-            // 两轨镜像一起改（和挪 cue 同一份合同）；改完重排 + 重编号在 setTime 里。
-            LinkedSubtitleEditing.setTime(
-                id: member.id,
-                start: leading ? cue.start + delta : cue.start,
-                end: leading ? cue.end : cue.end + delta,
-                original: &original, companion: &companion
-            )
-            subtitle = original
-            subtitleCompanion = companion.hasPersistentData ? companion : nil
+            guard let cue = subtitleCue(member.id) else { return }
+            // 只改这句所在的那条轨（和挪 cue 同一份合同）；改完重排 + 重编号在 setTime 里。
+            editSubtitleTracks {
+                SubtitleTrackEditing.setTime(
+                    id: member.id,
+                    start: leading ? cue.start + delta : cue.start,
+                    end: leading ? cue.end : cue.end + delta,
+                    original: &$0, companion: &$1
+                )
+            }
         }
     }
 }

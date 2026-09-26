@@ -32,7 +32,7 @@ func checkNumberDelay(root: URL) throws {
     let delayFile = dir.appendingPathComponent("delay.srtflowproj")
     try VideoEditProjectIO.save(state, to: delayFile)
     let delayRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: delayFile)) as? [String: Any]
-    checkEqual(delayRaw?["formatVersion"] as? Int, 22, "带等待的工程写 latest（v22）")
+    checkEqual(delayRaw?["formatVersion"] as? Int, 23, "带等待的工程写 latest（v23）")
     let back = try VideoEditProjectIO.load(from: delayFile).timeline.textOverlays.first?.number
     checkEqual(back?.delay, 1.5, "等待往返不变")
     checkEqual(back?.duration, 2, "滚动时长不受等待影响")

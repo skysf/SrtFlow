@@ -43,11 +43,12 @@ struct SubtitleExportOptions {
     var burnIn = true
     var files: Set<FileItem> = []
 
-    /// 烧录进滤镜图的文档：**与预览同一份合同**（两只眼睛推导），
-    /// 关掉总开关或两只眼睛都关就是 nil。
-    func burnDocument(state: TimelineState) -> SubtitleDocumentModel? {
-        guard burnIn else { return nil }
-        return state.visibleSubtitleDocument()
+    /// 把「烧不烧」落到要导出的那份时间线上：不烧 = 两只眼睛都关。烧什么、怎么排**与预览同一份合同**
+    /// （导出图读 `subtitleScreenBlocks`，眼睛说了算），这里不另算一份文档。
+    func applyBurnChoice(to state: inout TimelineState) {
+        guard !burnIn else { return }
+        state.subtitleHidden = true
+        state.translationHidden = true
     }
 }
 
@@ -234,7 +235,8 @@ struct SubtitleFilesExport: View {
         var written: [URL] = []
         do {
             for target in targets {
-                guard let document = exportState.subtitleDocument(for: target.item.track) else { continue }
+                let track: SubtitleTrack = target.item.track == .translation ? .translation : .original
+                guard let document = exportState.subtitleDocument(for: track) else { continue }
                 try SubtitleExportPlanner.writeValidated(document, format: target.item.format, to: target.url)
                 written.append(target.url)
             }

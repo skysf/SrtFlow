@@ -130,8 +130,7 @@ enum TimelineSnap {
         }
         // 字幕 cue（原文、译文两条轨）和标记也是对齐点，同样不进 `end`（它们不算时间线总长）。
         // 字幕全算：几百条可能让拖动变粘，用户知道，先做再看手感（2026-09-25）。
-        for cue in (state.subtitle?.cues ?? []) + (state.subtitleCompanion?.translation?.cues ?? [])
-        where !movingIDs.contains(cue.id) {
+        for cue in state.allSubtitleCues where !movingIDs.contains(cue.id) {
             result.append(cue.start)
             result.append(cue.end)
         }

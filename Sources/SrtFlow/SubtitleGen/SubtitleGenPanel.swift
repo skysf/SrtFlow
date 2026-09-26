@@ -58,6 +58,8 @@ private struct SubtitleGenPanelContent: View {
     @State private var targetLanguageIsUserPicked = false
     /// 冒烟发现的缺口：翻译成功要有回执，不能静默回到空闲。
     @State private var lastTranslatedCount: Int?
+    /// 「全部翻译」会清空译文轨整条重建；有手改过的译文时先问一声（2026-09-26 用户拍板）。
+    @State private var confirmsRebuild = false
 
     private var hasSubtitle: Bool { project.state.subtitle != nil }
     private var hasTranslation: Bool {
@@ -140,12 +142,23 @@ private struct SubtitleGenPanelContent: View {
             } else {
                 HStack {
                     Button("Translate All") {
-                        translate(scope: .all)
+                        // 清空重建会把手改过的（改过字、挪过时间、拆合过、自己加的）一起冲掉。
+                        if project.state.subtitleCompanion?.hasManualTranslationEdits == true {
+                            confirmsRebuild = true
+                        } else {
+                            translate(scope: .all)
+                        }
                     }
                     .disabled(targetLanguageID.isEmpty)
                     .instantHelp("Retranslate every line, replacing what is already there")
+                    .alert("Retranslate every line?", isPresented: $confirmsRebuild) {
+                        Button("Retranslate All", role: .destructive) { translate(scope: .all) }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced.")
+                    }
                     Button("Translate Missing & Stale") {
-                        translate(scope: .staleOrMissing)
+                        translate(scope: .missingAndStale)
                     }
                     .disabled(targetLanguageID.isEmpty)
                     .instantHelp("Only translate lines with no translation, or whose source text changed")
@@ -168,7 +181,7 @@ private struct SubtitleGenPanelContent: View {
         }
     }
 
-    private func translate(scope: SubtitleTranslationService.Scope) {
+    private func translate(scope: SubtitleRetranslation.Scope) {
         let target = targetLanguageID
         let source = sourceLanguage
         lastTranslatedCount = nil

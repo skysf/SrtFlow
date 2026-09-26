@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
@@ -93,6 +94,7 @@ xcrun swiftc \
   checks/ProjectFile/SelectAll.swift \
   checks/ProjectFile/SplitGroups.swift \
   checks/ProjectFile/HiddenItems.swift \
+  checks/ProjectFile/SubtitleTracks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -314,13 +316,14 @@ forbid "预览轨道模式选择器已删除，不许复活" \
   Sources/SrtFlow/VideoEditView.swift 'subtitlePreviewTrack'
 forbid "面板不许再有 Preview track 选择器" \
   Sources/SrtFlow/SubtitleGen/SubtitleGenPanel.swift 'subtitlePreviewTrack'
-# 预览上的字幕 2026-09-25 从根视图搬进了 PreviewSubtitleLayer（根视图不再订阅时钟）。
-forbid "旧的按选择取可见文档的入口已废弃（会绕开眼睛推导）" \
-  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(for:'
-require "预览必须走两只眼睛推导出的合同" \
-  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(\)'
+# 预览上的字幕 2026-09-25 从根视图搬进了 PreviewSubtitleLayer（根视图不再订阅时钟），2026-09-26
+# 两条轨独立后改成「画面上排成几块」：预览和烧录读同一份 subtitleScreenBlocks，不许各算一份。
+require "预览必须走眼睛推导出的字幕块（和烧录同一份）" \
+  Sources/SrtFlow/VideoEditPreviewSubtitleLayer.swift 'project\.state\.subtitleScreenBlocks\(\)'
 require "烧录必须与预览同一份合同（眼睛说了算）" \
-  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'state\.visibleSubtitleDocument\(\)'
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.subtitleScreenBlocks\(\)\.map\(\\\.renderBlock\)'
+forbid "导出面板不许另算一份要烧的文档（关掉烧录 = 关眼睛）" \
+  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'func burnDocument'
 forbid "导出面板不许再自己选烧哪条轨" \
   Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'enum Burn'
 require "时间线要给译文轨一只自己的眼睛" \

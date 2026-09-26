@@ -26,7 +26,7 @@ enum TimelineRowSelection {
         /// 滤镜行的层号（`FilterClip.layer`）。滤镜 2026-09-25 起可以多选，行头点得出整层。
         case filterLayer(Int)
         case shapes
-        case subtitle(SubtitleRowKind)
+        case subtitle(SubtitleTrack)
     }
 
     /// 选中项的类别。一行只产出**一类**，所以点选的互斥规则（`EditSelection`）
@@ -67,16 +67,10 @@ enum TimelineRowSelection {
         case .shapes:
             return Result(category: .shapes, ids: Set(state.shapes.map(\.id)))
 
-        case .subtitle(let kind):
-            let hidden = kind == .original ? state.subtitleHidden : state.translationHidden
-            guard !hidden else { return Result(category: .subtitleCues, ids: []) }
-            // 译文轨是原文轨的镜像（同 ID 同时间），所以点哪一行选中的是同一批
-            // cue —— 这里照样按行取各自的 cue 表，镜像关系由
-            // `LinkedSubtitleEditing` 保证，不在这儿假设。
-            let cues = kind == .original
-                ? state.subtitle?.cues
-                : state.subtitleCompanion?.translation?.cues
-            return Result(category: .subtitleCues, ids: Set((cues ?? []).map(\.id)))
+        case .subtitle(let track):
+            guard !state.isSubtitleTrackHidden(track) else { return Result(category: .subtitleCues, ids: []) }
+            // 两条轨各自的句子（2026-09-26 起互相独立），点哪一行就选哪一行的。
+            return Result(category: .subtitleCues, ids: Set(state.subtitleCues(of: track).map(\.id)))
         }
     }
 

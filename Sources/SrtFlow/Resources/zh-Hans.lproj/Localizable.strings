@@ -338,7 +338,6 @@
 "Show or hide the subtitle list" = "显示或隐藏字幕列";
 "Close the subtitle list and show the inspector" = "关闭字幕列，回到检查器";
 "Generate or translate subtitle tracks" = "生成或翻译字幕轨";
-"Add a line at the playhead" = "在播放头处加一行";
 "Every subtitle track is hidden — turn an eye back on to edit." = "两条字幕轨都藏起来了 —— 打开任一只眼睛才能编辑。";
 "Write One Line" = "手写一行";
 "Start a subtitle track by hand, at the playhead" = "在播放头处手写一行，开一条字幕轨";
@@ -496,7 +495,6 @@
 "Only translate lines with no translation, or whose source text changed" = "只翻译还没有译文、或原文改过的那些条";
 "Cancel subtitle generation" = "取消这次字幕生成";
 "Transcribe the audio on the timeline into a subtitle track" = "把时间线上的声音转写成字幕轨";
-"Join the selected lines into one" = "把选中的几条合并成一条";
 "Break the selected line in two" = "把选中的这一条拆成两条";
 "Delete the selected lines from every track" = "从所有轨上删除选中的这些条";
 "Close the subtitle editor" = "关闭字幕编辑器";
@@ -900,3 +898,13 @@
 "Show Shape" = "显示这个形状";
 "Hide Filter" = "隐藏这段滤镜";
 "Show Filter" = "显示这段滤镜";
+
+/* 字幕拆成两条独立轨（2026-09-26） */
+"Original track" = "原文轨";
+"Translated track" = "译文轨";
+"Add a line at the playhead, on the selected line’s track" = "在播放头处加一行，加到选中那句所在的轨";
+"Join the selected lines into one (on the same track)" = "把选中的几句合成一句（同一条轨上的）";
+"Put the translation back under the original on the video" = "画面上把译文叠回原文下面";
+"Retranslate every line?" = "全部重新翻译？";
+"Retranslate All" = "全部重新翻译";
+"The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced." = "译文轨会清空重建。手动改过字、挪过时间、拆过合过或自己加的译文都会被换掉。";

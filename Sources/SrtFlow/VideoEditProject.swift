@@ -28,13 +28,11 @@ final class VideoEditProject {
         }
     }
 
-    /// 选中的 cue 还在不在当前原文轨上；不在就摘掉选择。
+    /// 选中的 cue 还在不在（原文、译文哪条轨上都算）；不在就摘掉选择。
     /// 只在真的选着 cue 时才遍历，拖布局框那种高频写入不额外付代价。
     private func pruneSubtitleCueSelection() {
         guard !selection.subtitleCueIDs.isEmpty else { return }
-        selection.pruneSubtitleCues { id in
-            state.subtitle?.cues.contains { $0.id == id } == true
-        }
+        selection.pruneSubtitleCues { state.subtitleTrack(of: $0) != nil }
     }
 
     /// 选中的标记还在不在（段被删、标记被删、撤销、被裁出窗口）。同样收在这个
@@ -596,7 +594,7 @@ final class VideoEditProject {
     /// 两轨镜像：译文行的块和原文行同 ID 同时间，从哪一行起拖都是同一条 cue，
     /// 落地走 `LinkedSubtitleEditing.setStarts` 一起挪（`TimelineState.move`）。
     func cueDragPlan(cueID id: UUID) -> ClipDragPlan? {
-        guard let cue = state.subtitle?.cues.first(where: { $0.id == id }) else { return nil }
+        guard let cue = state.subtitleCue(id) else { return nil }
         let span = TimelineSpan(start: cue.start, end: cue.end)
         let clipIDs = state.draggingClipIDs(
             seed: selectedSubtitleCueIDs.contains(id) ? selectedClipIDs : [],
@@ -923,28 +921,6 @@ final class VideoEditProject {
         return state.selectionForExport(ids: selectedClipIDs)
     }
 
-    func attachSubtitle(_ url: URL) {
-        do {
-            let document = try SubtitleLoader.load(url)
-            perform { state in
-                state.subtitle = document
-                state.subtitleURL = url
-                // 换了原文轨（新 cue ID），旧译文/cueMeta 全部失锚，同一事务清掉。
-                state.subtitleCompanion = nil
-            }
-        } catch {
-            notice = error.localizedDescription
-        }
-    }
-
-    func removeSubtitle() {
-        perform { state in
-            state.subtitle = nil
-            state.subtitleURL = nil
-            state.subtitleCompanion = nil
-        }
-    }
-
     // MARK: - 剪辑操作
 
     /// 播放头落在主轨哪一段上（分割、裁切的默认对象）。
@@ -1049,12 +1025,8 @@ final class VideoEditProject {
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
             if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
             if !filterIDs.isEmpty { state.filters.removeAll { filterIDs.contains($0.id) }; state.compactFilterLayers() }
-            if !cueIDs.isEmpty, var original = state.subtitle {
-                // 两轨 + meta 同删，走和字幕面板一样的那份合同。
-                var companion = state.subtitleCompanion ?? SubtitleCompanion()
-                LinkedSubtitleEditing.removeCues(ids: cueIDs, original: &original, companion: &companion)
-                state.subtitle = original
-                state.subtitleCompanion = companion.hasPersistentData ? companion : nil
+            if !cueIDs.isEmpty {   // 各删各的轨，走和字幕面板一样的那份合同
+                state.editSubtitleTracks { SubtitleTrackEditing.removeCues(ids: cueIDs, original: &$0, companion: &$1) }
             }
         }
         selection.clear()
@@ -1185,36 +1157,6 @@ final class VideoEditProject {
                     state.audioTracks[index].isHidden.toggle()
                 }
             }
-        }
-    }
-
-    /// **原文**字幕轨的眼睛。语义与其他轨道一致：预览和烧录都跳过。
-    /// 字幕不参与 AV 合成，不用重建预览播放器。
-    func toggleSubtitleHidden() {
-        perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
-    }
-
-    /// **译文**字幕轨的眼睛。一个语言一条轨，两只眼睛推导出预览/烧录内容
-    /// （`TimelineState.visibleSubtitleChoice`）—— 没有额外的模式选择器。
-    func toggleTranslationHidden() {
-        perform(rebuildsPreview: false) { $0.translationHidden.toggle() }
-    }
-
-    /// 预览拖框实时写入工程级字幕布局（liveApply 连续编辑，松手
-    /// endLiveEdit(rebuildsPreview: false) 合成一步撤销；字幕不参与 AV 合成）。
-    func liveSetSubtitleLayout(_ layout: SubtitleLayout) {
-        liveApply { $0.subtitleLayout = layout }
-    }
-
-    /// 点选字幕 cue：与剪辑、形状选择都互斥（互斥规则在 `EditSelection`）。
-    /// ⌘/⇧ 点是加选或取消，和剪辑、形状一致。
-    func selectSubtitleCue(_ id: UUID, additive: Bool = false) {
-        if additive {
-            var ids = selectedSubtitleCueIDs
-            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-            selectedSubtitleCueIDs = ids
-        } else {
-            selectedSubtitleCueIDs = [id]
         }
     }
 

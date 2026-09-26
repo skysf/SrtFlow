@@ -113,15 +113,15 @@ enum VideoEditExportGraph {
 
         // 工作目录：字幕 ASS、字体软链、形状 PNG 都放这儿，进程工作目录设成它。
         let workspace: URL
-        if let subtitle = state.subtitle, !subtitle.cues.isEmpty {
+        // 要烧的字幕 = 预览那份「看得见的排成几块」（关了烧录 = 调用方关眼睛 = 空的），见 subtitleScreenBlocks。
+        let burnBlocks = state.subtitleScreenBlocks().map(\.renderBlock).filter { !$0.cues.isEmpty }
+        if !burnBlocks.isEmpty {
             let prepared = try BurnInWorkspace.create(
-                cues: subtitle.cues,
+                blocks: burnBlocks,
                 style: subtitleStyle,
                 fontFileURL: subtitleFontURL,
                 aspectRatio: renderSize.width / max(1, renderSize.height),
-                title: state.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow",
-                // 工程级布局覆盖：与预览的 BurnInSubtitleOverlay.layout 同一份。
-                layout: state.subtitleLayout
+                title: state.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow"
             )
             workspace = prepared.directory
         } else {
@@ -590,7 +590,7 @@ enum VideoEditExportGraph {
 
         // MARK: 字幕（最后烧，压在所有画面之上）
 
-        if let subtitle = state.subtitle, !subtitle.cues.isEmpty {
+        if !burnBlocks.isEmpty {
             let paths = FFmpegCommand.BurnIn()
             let outV = nextLabel("v")
             filters.append(

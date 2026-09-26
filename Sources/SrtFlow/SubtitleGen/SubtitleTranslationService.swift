@@ -3,22 +3,13 @@ import Translation
 import SrtFlowCore
 
 // 字幕翻译服务（macOS 15+）：把原文轨的 cue 文本按句喂给 Translation Host，
-// 译文回写 companion（同 ID、同时间，硬约束）。三档重译（计划 8.7）：
-// 全部 / 只翻过期或缺译 / 指定选区。
+// 译文回写译文轨。两个按钮（2026-09-26 起两条轨独立，规则本体在 SrtFlowCore 的
+// `SubtitleRetranslation`）：全部重建 / 只补缺的、只换原文改过字的。
 
 @available(macOS 15.0, *)
 @MainActor
 final class SubtitleTranslationService: ObservableObject {
     static let shared = SubtitleTranslationService()
-
-    enum Scope: Equatable {
-        /// 全部 cue 重译。
-        case all
-        /// 只翻 stale 或还没有译文的。
-        case staleOrMissing
-        /// 显式选中的。
-        case cues(Set<UUID>)
-    }
 
     /// 一次翻译的明确结局 —— 取消/失败不得伪装成成功（调用方据此定 UI）。
     enum Outcome: Equatable {
@@ -43,7 +34,7 @@ final class SubtitleTranslationService: ObservableObject {
     @discardableResult
     func translateCurrentSubtitle(
         project: VideoEditProject,
-        scope: Scope,
+        scope: SubtitleRetranslation.Scope,
         sourceLanguage: String?,
         targetLanguage: String
     ) async -> Outcome {
@@ -75,22 +66,10 @@ final class SubtitleTranslationService: ObservableObject {
                 return .failed(message)
             }
         }
-        let companion = project.state.subtitleCompanion
-        let translatedIDs = Set((companion?.translation?.cues ?? []).map(\.id))
         let generation = project.documentGeneration
-
-        let targets = original.cues.filter { cue in
-            guard !SubtitleSerializer.plainText(cue.text).isEmpty else { return false }
-            switch scope {
-            case .all:
-                return true
-            case .staleOrMissing:
-                let stale = companion?.cueMeta[cue.id]?.translationStale ?? false
-                return stale || !translatedIDs.contains(cue.id)
-            case .cues(let ids):
-                return ids.contains(cue.id)
-            }
-        }
+        let targets = SubtitleRetranslation.sources(
+            for: scope, original: original, companion: project.state.subtitleCompanion
+        )
         guard !targets.isEmpty else { return .nothingToDo }
         let snapshot: [UUID: String] = Dictionary(
             uniqueKeysWithValues: targets.map { ($0.id, $0.text) }
@@ -118,6 +97,8 @@ final class SubtitleTranslationService: ObservableObject {
             }
             project.applyTranslations(
                 valid,
+                snapshot: snapshot,
+                scope: scope,
                 sourceLanguage: sourceLanguage,
                 targetLanguage: targetLanguage
             )

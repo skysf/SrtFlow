@@ -161,55 +161,6 @@ struct ClipPlacement: Hashable, Sendable {
     }
 }
 
-// MARK: - 四边裁切
-
-/// 画面段的四边裁切：每边裁掉源画面（按显示方向）的归一化比例，0…0.45。
-/// 裁完剩下的画面填进摆放框；默认摆放框本身也按裁后的宽高比算。
-struct ClipCrop: Hashable, Sendable {
-    var top: Double
-    var bottom: Double
-    var leading: Double
-    var trailing: Double
-
-    init(top: Double = 0, bottom: Double = 0, leading: Double = 0, trailing: Double = 0) {
-        self.top = min(max(top, 0), 0.45)
-        self.bottom = min(max(bottom, 0), 0.45)
-        self.leading = min(max(leading, 0), 0.45)
-        self.trailing = min(max(trailing, 0), 0.45)
-    }
-
-    var isEmpty: Bool {
-        top < 0.0005 && bottom < 0.0005 && leading < 0.0005 && trailing < 0.0005
-    }
-
-    /// 在给定显示尺寸上的裁切矩形（像素）。
-    func rect(in display: CGSize) -> CGRect {
-        CGRect(
-            x: leading * display.width,
-            y: top * display.height,
-            width: max(1, display.width * (1 - leading - trailing)),
-            height: max(1, display.height * (1 - top - bottom))
-        )
-    }
-
-    /// 把源画面居中裁到目标宽高比（Inspector 里的比例预设）。
-    static func centered(aspect: Double, in display: CGSize) -> ClipCrop {
-        guard display.width > 0, display.height > 0, aspect > 0 else { return ClipCrop() }
-        let current = display.width / display.height
-        if current > aspect {
-            // 太宽：裁左右。
-            let keep = aspect / current
-            let inset = (1 - keep) / 2
-            return ClipCrop(leading: inset, trailing: inset)
-        } else {
-            // 太高：裁上下。
-            let keep = current / aspect
-            let inset = (1 - keep) / 2
-            return ClipCrop(top: inset, bottom: inset)
-        }
-    }
-}
-
 // MARK: - 画布比例
 
 /// 输出画面的宽高比。`auto` 跟随主轨第一段素材。
@@ -571,9 +522,11 @@ struct TimelineState: Hashable, Sendable {
     /// 「只有原文」，升级不该把谁的成片悄悄变成双语（迁移在
     /// `VideoEditProjectIO.load`）。
     var translationHidden = false
-    /// 工程级字幕布局覆盖（预览拖框的产物，SrtFlowCore/SubtitleLayout）。
-    /// nil = 全局烧录样式原样；预览和烧录共用同一份。
+    /// 原文字幕（以及叠在它下面的译文）在画面上的布局（预览拖框的产物，SrtFlowCore/SubtitleLayout）。
+    /// nil = 全局烧录样式原样；预览和烧录共用同一份（`subtitleScreenBlocks`）。
     var subtitleLayout: SubtitleLayout?
+    /// 译文字幕自己的布局（v23）。nil = 叠在原文下面、和原文排成一块；有值 = 各摆各的。
+    var translationLayout: SubtitleLayout?
     var subtitleURL: URL?
     /// 原文字幕的伴随状态（译文轨/cueMeta/生成参数）。原文永远在 `subtitle`；
     /// 这是 v4-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
@@ -965,30 +918,6 @@ extension ClipPlacement: Codable {
     }
 }
 
-extension ClipCrop: Codable {
-    private enum CodingKeys: String, CodingKey {
-        case top, bottom, leading, trailing
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        self.init(
-            top: try c.decodeIfPresent(Double.self, forKey: .top) ?? 0,
-            bottom: try c.decodeIfPresent(Double.self, forKey: .bottom) ?? 0,
-            leading: try c.decodeIfPresent(Double.self, forKey: .leading) ?? 0,
-            trailing: try c.decodeIfPresent(Double.self, forKey: .trailing) ?? 0
-        )
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(top, forKey: .top)
-        try c.encode(bottom, forKey: .bottom)
-        try c.encode(leading, forKey: .leading)
-        try c.encode(trailing, forKey: .trailing)
-    }
-}
-
 extension EditClip: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, sourceURL, isAudioOnly, sourceStart, sourceDuration, speed, timelineStart
@@ -1146,7 +1075,7 @@ extension TimelineState: Codable {
         case mainClips, mainHidden, overlayTracks, audioTracks
         case mainVolume, masterVolume
         case subtitle, subtitleHidden, translationHidden
-        case subtitleLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
+        case subtitleLayout, translationLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
         case frameRate, filters
     }
 
@@ -1164,6 +1093,7 @@ extension TimelineState: Codable {
         subtitleHidden = try c.decodeIfPresent(Bool.self, forKey: .subtitleHidden) ?? false
         translationHidden = try c.decodeIfPresent(Bool.self, forKey: .translationHidden) ?? false
         subtitleLayout = try c.decodeIfPresent(SubtitleLayout.self, forKey: .subtitleLayout)
+        translationLayout = try c.decodeIfPresent(SubtitleLayout.self, forKey: .translationLayout)
         subtitleURL = try c.decodeIfPresent(URL.self, forKey: .subtitleURL)
         subtitleCompanion = try c.decodeIfPresent(SubtitleCompanion.self, forKey: .subtitleCompanion)
         shapes = try c.decodeIfPresent([ShapeAnnotation].self, forKey: .shapes) ?? []
@@ -1189,6 +1119,7 @@ extension TimelineState: Codable {
         try c.encode(subtitleHidden, forKey: .subtitleHidden)
         try c.encode(translationHidden, forKey: .translationHidden)
         try c.encodeIfPresent(subtitleLayout, forKey: .subtitleLayout)
+        try c.encodeIfPresent(translationLayout, forKey: .translationLayout)
         try c.encodeIfPresent(subtitleURL, forKey: .subtitleURL)
         // 空 companion 不落盘：否则一个从未用过新功能的工程也会被抬进 v4。
         if subtitleCompanion?.hasPersistentData == true {

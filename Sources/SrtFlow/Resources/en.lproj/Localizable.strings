@@ -338,7 +338,6 @@
 "Show or hide the subtitle list" = "Show or hide the subtitle list";
 "Close the subtitle list and show the inspector" = "Close the subtitle list and show the inspector";
 "Generate or translate subtitle tracks" = "Generate or translate subtitle tracks";
-"Add a line at the playhead" = "Add a line at the playhead";
 "Every subtitle track is hidden — turn an eye back on to edit." = "Every subtitle track is hidden — turn an eye back on to edit.";
 "Write One Line" = "Write One Line";
 "Start a subtitle track by hand, at the playhead" = "Start a subtitle track by hand, at the playhead";
@@ -496,7 +495,6 @@
 "Only translate lines with no translation, or whose source text changed" = "Only translate lines with no translation, or whose source text changed";
 "Cancel subtitle generation" = "Cancel subtitle generation";
 "Transcribe the audio on the timeline into a subtitle track" = "Transcribe the audio on the timeline into a subtitle track";
-"Join the selected lines into one" = "Join the selected lines into one";
 "Break the selected line in two" = "Break the selected line in two";
 "Delete the selected lines from every track" = "Delete the selected lines from every track";
 "Close the subtitle editor" = "Close the subtitle editor";
@@ -900,3 +898,13 @@
 "Show Shape" = "Show Shape";
 "Hide Filter" = "Hide Filter";
 "Show Filter" = "Show Filter";
+
+/* 字幕拆成两条独立轨（2026-09-26） */
+"Original track" = "Original track";
+"Translated track" = "Translated track";
+"Add a line at the playhead, on the selected line’s track" = "Add a line at the playhead, on the selected line’s track";
+"Join the selected lines into one (on the same track)" = "Join the selected lines into one (on the same track)";
+"Put the translation back under the original on the video" = "Put the translation back under the original on the video";
+"Retranslate every line?" = "Retranslate every line?";
+"Retranslate All" = "Retranslate All";
+"The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced." = "The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced.";

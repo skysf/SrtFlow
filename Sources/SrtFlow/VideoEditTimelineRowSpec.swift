@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // MARK: - 时间线上的一行
 //
@@ -35,7 +36,7 @@ struct TimelineRowSpec: Identifiable, Equatable {
     /// 那条文字行），行序就是画面上的叠放序（VideoEditTextRows.swift）。
     var textRow: Int?
     /// 字幕行属于哪条字幕轨（nil = 不是字幕行）。一个语言一条轨。
-    var subtitleKind: SubtitleRowKind?
+    var subtitleKind: SubtitleTrack?
     /// 滤镜行的层号（nil = 不是滤镜行）。**和文字行不同，层号进模型**
     ///（`FilterClip.layer`）—— LUT 不可交换，现算的层号会在拖动别的段时
     /// 重排，画面跟着变。

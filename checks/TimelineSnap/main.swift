@@ -584,7 +584,7 @@ do {
     state.subtitle = doc
     var companion = SubtitleCompanion()
     var translation = SubtitleDocumentModel()
-    translation.cues = [SubtitleCue(id: cueID, index: 1, start: 1, end: 3, text: "你好")]
+    translation.cues = [SubtitleCue(index: 1, start: 1, end: 3, text: "你好")]   // 译文有自己的 ID（两条轨独立）
     companion.translation = translation
     state.subtitleCompanion = companion
 
@@ -608,8 +608,8 @@ do {
     checkClose(next.textOverlays.first?.timelineStart ?? -1, 5, "文字跟着挪同一个 delta")
     checkClose(next.subtitle?.cues.first?.start ?? -1, 5, "原文 cue 跟着挪")
     checkClose(next.subtitle?.cues.first?.end ?? -1, 7, "cue 时长不变")
-    checkClose(next.subtitleCompanion?.translation?.cues.first?.start ?? -1, 5,
-               "译文轨同 ID 同时间（两轨必须同步，否则烧录时译文对不上口型）")
+    checkClose(next.subtitleCompanion?.translation?.cues.first?.start ?? -1, 1,
+               "译文轨是独立的轨：原文那句挪了，没被选中的译文不动（2026-09-26 起）")
 
     // 下界是**整组**的：最早的成员顶到 0 就整组停下，不许各夹各的
     //（各夹各的会把选中项之间的相对错位当场压扁）。

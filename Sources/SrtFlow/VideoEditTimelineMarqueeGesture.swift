@@ -113,12 +113,9 @@ extension VideoEditTimelineView {
                 items = project.state.textOverlays(onRow: row).map {
                     TimelineMarquee.Item(id: $0.id, start: $0.timelineStart, end: $0.timelineEnd, kind: .text)
                 }
-            } else if let kind = spec.subtitleKind {
-                // 译文轨是原文轨的镜像（同 ID 同时间），从哪一行框中的都是同一条 cue。
-                let cues = kind == .original
-                    ? project.state.subtitle?.cues
-                    : project.state.subtitleCompanion?.translation?.cues
-                items = (cues ?? []).map {
+            } else if let track = spec.subtitleKind {
+                // 两条轨各自的句子（2026-09-26 起互相独立），框中哪一行的就是哪一行的。
+                items = project.state.subtitleCues(of: track).map {
                     TimelineMarquee.Item(id: $0.id, start: $0.start, end: $0.end, kind: .subtitleCue)
                 }
             } else if let layer = spec.filterLayer {
