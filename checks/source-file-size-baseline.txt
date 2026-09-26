@@ -2,7 +2,6 @@
 # 由 checks/source-file-size.sh 维护：变短了跑 `checks/source-file-size.sh --update` 改小，
 # 降到上限以内会自动删掉这一行；它不会替新的超标文件登记，也不会替长了的文件抬线。
 # 改名时手改路径。规范见 docs/architecture/coding-standards.md。
-612 Sources/SrtFlow/BurnInPreviewArea.swift
 623 Sources/SrtFlow/BurnInView.swift
 692 Sources/SrtFlow/ScreenRecordingCoordinator+Setup.swift
 803 Sources/SrtFlow/ScreenRecordingCoordinator.swift
@@ -16,7 +15,7 @@
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 626 Sources/SrtFlow/VideoEditTimelineEdits.swift
 648 Sources/SrtFlow/VideoEditTimelineView.swift
-674 Sources/SrtFlow/VideoEditView.swift
+671 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 989 Sources/SrtFlowCoreChecks/main.swift

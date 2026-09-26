@@ -16,6 +16,22 @@ import SrtFlowCore
 /// 预览上每一块字幕此刻量出来的高度（点）。键见 `SubtitleScreenBlock.measureKey` / `tailMeasureKey`。
 typealias SubtitleBlockHeights = [String: Double]
 
+/// 量出来的高度存在这里：**一个引用类型，由 `PreviewSubtitleLayer` 持有**（以前是根视图的 `@State`）。
+///
+/// 两个理由：量出来的高度只有这一层用，放在根视图上的话每换一句字幕、块高一变，整个编辑器跟着重算一遍
+/// （以前块高一直是 0、从来不变，所以没显出来 —— 见 `SubtitleBlockSizeKey` 的说明）；几块字幕（叠在一起时
+/// 还有一块只量不画的）各自回报，回报的闭包是按值比较的文字视图上**旧的**那一个，经它去「读字典、改一格、
+/// 整个写回」有冲掉别的块的风险 —— 引用类型上原地改一格，谁也冲不掉谁。
+@MainActor
+final class SubtitleBlockMeasurements: ObservableObject {
+    @Published private(set) var heights: SubtitleBlockHeights = [:]
+
+    /// 高度没变就不写：写一次这一层就重算一遍。
+    func record(_ height: Double, for key: String) {
+        if heights[key] != height { heights[key] = height }
+    }
+}
+
 extension SubtitleScreenBlock {
     /// 这一块在预览上量高度用的键：块里有哪几条轨。
     var measureKey: String { tracks.map(\.rawValue).joined(separator: "+") }
@@ -66,10 +82,10 @@ struct PreviewSubtitleLayer: View {
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize
     let style: BurnInStyle
-    /// 每一块字幕此刻的实测高度（定框用），由文字那几块回报。
-    @Binding var blockHeights: SubtitleBlockHeights
     /// 预览里正在就地编辑的那句字幕（双击画面上的字幕进入）。
     @Binding var editingCueID: UUID?
+    /// 每一块字幕此刻的实测高度（定框用），由文字那几块回报。引用类型、这一层自己持有（见类型的说明）。
+    @StateObject private var measurements = SubtitleBlockMeasurements()
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
@@ -82,14 +98,14 @@ struct PreviewSubtitleLayer: View {
             if let text = block.text(at: time) {
                 PreviewSubtitleText(
                     text: text, style: style, scale: scale, boxSize: boxSize, layout: block.layout,
-                    onBlockSize: { record($0.height, for: block.measureKey) }
+                    onBlockSize: { [measurements] in measurements.record($0.height, for: block.measureKey) }
                 )
                 .equatable()
                 if block.isStacked, let tail = block.text(of: .translation, at: time) {
                     // 只量不画：译文那几行单独多高，拖框按它把整块切成上下两截。
                     PreviewSubtitleText(
                         text: tail, style: style, scale: scale, boxSize: boxSize, layout: block.layout,
-                        onBlockSize: { record($0.height, for: block.tailMeasureKey) }
+                        onBlockSize: { [measurements] in measurements.record($0.height, for: block.tailMeasureKey) }
                     )
                     .equatable()
                     .opacity(0)
@@ -97,7 +113,7 @@ struct PreviewSubtitleLayer: View {
             }
         }
         if blocks.contains(where: { $0.text(at: time) != nil }) {
-            let frames = SubtitlePreviewFrames(boxSize: boxSize, style: style, heights: blockHeights, time: time)
+            let frames = SubtitlePreviewFrames(boxSize: boxSize, style: style, heights: measurements.heights, time: time)
             // 画面上的字幕：单击选中这句、双击就地改字（输入框浮在字幕下方）。
             // 夹在叠层和拖框中间 —— 见该文件的层序说明。
             SubtitlePreviewEditLayer(
@@ -120,15 +136,11 @@ struct PreviewSubtitleLayer: View {
             }
         }
     }
-
-    /// 高度没变就不写：写一次根视图就重算一遍。
-    private func record(_ height: Double, for key: String) {
-        if blockHeights[key] != height { blockHeights[key] = height }
-    }
 }
 
 /// 画面字幕的文字那一块，按值比较：描边是同一段字画九遍，跟着时钟每一跳重排一遍不便宜。
-/// 文字、样式、尺寸没变就不重算；回报块高的闭包不比（它写的是根视图的 @State，永远是最新的）。
+/// 文字、样式、尺寸没变就不重算；回报块高的闭包不比 —— 所以它可能是**旧的**那一个，只能往引用类型里写
+/// （`SubtitleBlockMeasurements`），不许捎带读写值类型的状态。
 private struct PreviewSubtitleText: View, Equatable {
     let text: String
     let style: BurnInStyle

@@ -46,7 +46,7 @@ enum SmokeStateDump {
             ["id": short(filter.id), "start": round3(filter.timelineStart),
              "duration": round3(filter.duration), "layer": filter.layer]
         }
-        // 字幕 cue 的起止，两条轨各一份：验「拖了 cue 落在哪」、译文有没有跟着原文走（同 id、同时间）。
+        // 字幕 cue 的起止，两条轨各一份：验「拖了 cue 落在哪」（2026-09-26 起两条轨独立，各是各的 id）。
         func cueTimes(_ document: SubtitleDocumentModel?) -> [[String: Any]] {
             (document?.cues ?? []).map { ["id": short($0.id), "start": round3($0.start), "end": round3($0.end)] }
         }
@@ -56,7 +56,8 @@ enum SmokeStateDump {
                 "clips": selection.clipIDs.map(short).sorted(),
                 "shapes": selection.shapeIDs.map(short).sorted(),
                 "texts": selection.textIDs.map(short).sorted(),
-                "cues": selection.subtitleCueIDs.count,
+                // 选中的是哪几句（id 前 8 位）：两条轨独立之后「选中的是原文还是译文」要看得出来。
+                "cues": selection.subtitleCueIDs.map(short).sorted(),
                 "marker": selection.markerRef.map { short($0.markerID) } ?? "",
                 "transition": selection.transitionSeamID.map(short) ?? "",
                 "filters": selection.filterIDs.map(short).sorted(),
