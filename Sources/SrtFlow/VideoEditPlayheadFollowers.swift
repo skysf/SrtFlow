@@ -107,7 +107,7 @@ struct TransportTimeLabel: View {
 /// 滤镜挂在播放器视图自己身上，所以预览 ZStack 里它**上面**的叠层（形状 / 文字 / 字幕 / 变换框）
 /// 天然不吃调色 —— 与导出滤镜链里「滤镜插在画面合成之后、形状之前」一字不差。
 struct PreviewPlayerSurface: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject var clock: PlayerClock
 
     var body: some View {
@@ -126,7 +126,7 @@ struct PreviewPlayerSurface: View {
 /// body 直接给出这几层、不包容器：它们和以前一样是预览 ZStack 的孩子（层序见
 /// `VideoEditSubtitlePreviewEditor.swift` 的说明）。
 struct PreviewSubtitleLayer: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize
     let style: BurnInStyle

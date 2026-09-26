@@ -36,7 +36,7 @@ import SrtFlowCore
 
 /// 时间线区域：左边一列轨道头图标，右边横向滚动的标尺 + 各轨 + 播放头。
 struct VideoEditTimelineView: View {
-    @ObservedObject var project: VideoEditProject
+    @Bindable var project: VideoEditProject
     /// 播放器时钟：**持有不订阅**。播放时它每 0.05 秒一跳，订阅了的话整条时间线每一跳都重算一遍
     /// （2026-09-25 前就是这样，播放卡的大头之一）。跟着它跳的只有播放头那两根线
     /// （`TimelinePlayheadLines`）和标尺上的把手（`TimelinePlayheadHandle`），它们自己订阅；

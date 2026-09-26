@@ -20,7 +20,7 @@ enum SubtitleFieldFocus: Hashable {
 /// 显示和把焦点变化转成「开草稿 / 落草稿」。这样保存、切工程、退出都能在读模型之前
 /// 同步落定，不依赖失焦回调的时机（复审 P1）；dirty 判定与 CAS 也一并在那边。
 struct VideoEditSubtitleCueRow: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     let cue: SubtitleCue
     let meta: CueMeta?
     /// 播放头此刻正落在这条上。

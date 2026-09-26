@@ -12,7 +12,7 @@ import SwiftUI
 /// **自己不画标题行**：这一栏顶上那个「转场 / 滤镜」分段切换就是标题
 ///（见 `VideoEditLibraryColumn.swift`），再画一行就是一栏里两行标题。
 struct TransitionLibraryPanel: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 没有选中片段时目标接缝是「播放头最近的那条」—— 这里的播放头是**停稳了的**那个
     /// （`clock.atRest`，不是时钟本身）：播放中、拖播放头的过程中这一栏一动不动，停稳了刷新一次
     /// （2026-09-25 用户拍板）。点卡片套到的也是这里显示的那条缝，看到哪条改哪条。

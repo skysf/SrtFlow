@@ -4,7 +4,7 @@ import SrtFlowCore
 /// 右侧检查器：选中什么就调什么 —— 剪辑给变速/音量/转场/变换/渐变，
 /// 形状给颜色/线宽/大小，文字给内容/字体/外观，什么都没选给项目总览。
 struct VideoEditInspectorView: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 关键帧的 ◇ 实心态和数值都跟着播放头走：body 里读 `clock.time` 的现值，但**不订阅时钟** ——
     /// 播放时它一秒跳二十下，检查器跟着重算就是十几个数值框连同底下的 AppKit 控件一秒更新二十遍
     /// （播放卡的大头之一）。重算的时机交给 `playhead`（`clock.whilePaused`）：停着时播放头放到哪儿

@@ -11,7 +11,7 @@ import SwiftUI
 // 省下一层控件。196pt 里已经有分段切换 + 搜索框 + 筛选条了。
 
 struct AudioLibraryPanel: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject private var store = AudioLibraryStore.music
     @ObservedObject private var cache = AudioLibraryCache.shared
     @ObservedObject private var audition = AudioLibraryAudition.shared

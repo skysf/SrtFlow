@@ -14,7 +14,7 @@ import SrtFlowCore
 /// 编辑哪条轨跟着眼睛走（隐藏 = 不可编辑），实际写入走
 /// `SubtitleInlineEditor` 里的合同入口。
 struct SubtitlePreviewEditLayer: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize
     let style: BurnInStyle

@@ -14,7 +14,7 @@ import SrtFlowCore
 /// 同一份选择（`EditSelection`）与同一批合同，合同见
 /// docs/architecture/subtitle-track-visibility-and-layout.md。
 struct VideoEditSubtitlePanel: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 播放器时钟：**持有不订阅**。这一列要跟着播放高亮「正在说的那句」，可一句通常好几秒 ——
     /// 订阅时钟就是整张表（每一行连同输入框）一秒重算二十遍。改成只在换句时写 `currentCueID`
     /// （docs/architecture/preview-perf-ratchet.md 第十二节）。

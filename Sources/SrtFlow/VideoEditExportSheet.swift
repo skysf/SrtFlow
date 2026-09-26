@@ -9,7 +9,7 @@ import SrtFlowCore
 /// 产品决策与理由：docs/plans/2026-09-24-export-panel.md；
 /// 长期约束（只放管线真消费的设置、撞名、记住与重置）：docs/architecture/export-settings.md。
 struct VideoEditExportSheet: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @ObservedObject var exporter: VideoEditExporter
     @ObservedObject private var burnInQueue = EncodeQueue.burnIn
     @StateObject private var fontCatalog = FontCatalogStore.shared

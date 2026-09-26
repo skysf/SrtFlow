@@ -125,7 +125,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
-| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不订阅工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md) |
+| 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头）；**在视图 body 里读工程的属性、给 `VideoEditProject` 加属性**（工程是 `@Observable`） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不读工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**、**第十三节：body 读了什么就只被什么叫醒，大视图少读、不驱动界面的存储 `@ObservationIgnored`、读不可观察的东西要自己找叫醒的来源**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md)、[点一下选中一段整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
@@ -223,7 +223,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   （CI 虚拟机上的已知干扰），认法和处理见架构文档「已知的偶发误报」。每个视图、
   `updateNSView`、Canvas 都接了计数：`checks/preview-perf-wiring.sh`；新写视图漏了计数，
   跑 `checks/preview-perf-wiring.sh --fix` 自动补上。同一个守卫还钉着**时间线上的块不许
-  订阅工程、必须 `Equatable` 且构造处套 `.equatable()`**，以及**订阅播放器时钟的只许是名单里跟着播放头动的
+  读工程的属性、必须 `Equatable` 且构造处套 `.equatable()`**，以及**订阅播放器时钟的只许是名单里跟着播放头动的
   小视图**（根视图、时间线本体、检查器、素材库、字幕列表都持有不订阅）。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
@@ -308,7 +308,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md) — 量的是活不是 CPU、**每个视图 body
   第一行计数**（守卫钉着，`--fix` 自动补）、时钟连跳走真播放的入口、合成负载当 GPU 代理数字、要有两遍
   一模一样、计数逐项相等（进步必须登记）、基线只许降（抬基线的 PR 不许动产品代码）、**已知的偶发误报**
-  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不订阅工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）、**点一下选中一段的时间花在哪**（第十一节：release 和 debug 一样慢、活在框架里；时间线本体不许套 `.equatable()`，块的选中高亮靠根视图那一遍）、**播放头的每一跳只叫醒跟着它动的东西**（第十二节：订阅时钟按类型名单、大视图持有不订阅、只关心变没变的 `onReceive` 自己那份、停着才有意义的读 `PacedPlayhead`，守卫钉着）。
+  （检查器数值框和时间线缩放桥接多一轮 → 重跑）、盲区、**时间线上的块不读工程、按值比较**（守卫钉着）、**只有一个小视图关心的状态不放在工程上发**（第十节，「正在重建」的转圈）、**点一下选中一段的时间花在哪**（第十一节：release 和 debug 一样慢、活在框架里；换 Observation 之前块的选中高亮只在根视图那一遍更新）、**播放头的每一跳只叫醒跟着它动的东西**（第十二节：订阅时钟按类型名单、大视图持有不订阅、只关心变没变的 `onReceive` 自己那份、停着才有意义的读 `PacedPlayhead`，守卫钉着）、**工程是 `@Observable`**（第十三节：body 读了什么就只被什么叫醒、按属性不按值、不驱动界面的存储 `@ObservationIgnored`、读撤销栈 / 最近列表这类不可观察的东西要自己找叫醒的来源、冒烟看 `event:project.changed.<属性>`、剩下的一半是命中测试）。
 - [导出设置](docs/architecture/export-settings.md) — 分辨率档位封的是**短边**（竖屏 1080×1920 的 1080p 就是它本身）、只降不升、各管线在哪一步缩；**面板上只放这条管线真消费的设置**（按管线声明，不按控件加开关）；标题→文件名只有一个函数、导出位置的记忆链、视频和字幕文件同一条撞名规则、记住与恢复默认，以及人工回归清单。
 
 ## Bug 修复案例索引
@@ -391,6 +391,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-25 老虎机数字 365 → 90 停在「090」上](docs/bugfixes/2026-09-25-odometer-leading-zero.md) — 位数少的那一头，多出来的高位被 `?? 0` 编成了 0（逗号、负号也照样留着）；改成那一格滚成空白、宽度收掉。**缺省值替缺失的数据说了话**；自检只测了位数最多的那一头。第一版照居中重排，自检全绿、一渲用户的真工程「90」和「° SOUTH」之间空出半格 —— 居中和右对齐改成右边不动；第二版正在滚走的「1」蹭到「3」跟前像个逗号 —— 改成原地滚走。
 - [2026-09-25 播放的时候卡：时钟每跳一下，整个编辑器都重算一遍](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md) — 根视图、时间线本体、检查器、素材库、字幕列表都订阅着一秒二十跳的播放器时钟，一跳约 172 次 body；用户点名的左栏只占约 3%。跟着播放头动的拆成小视图各自订阅，停着才有意义的读播放头的慢读法（`PacedPlayhead`：只跟「放置」、播放中不跟、停下追上一次），按钮能不能点走 `.disabled(followingPlayhead:)`；真播放一跳降到约 25 次，一半是电平表。订阅时钟按类型名单钉着；**用户点名的地方不一定是大头，先看明细**。
 - [2026-09-24 预览里想拖文字，一按下去变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) — 旋转把手的 `contentShape` 写在 `.offset` 之后，可点的圆留在字的正中心（看不见的 22pt 旋转区），黄点本身反倒点不动；顺带把没选中的字的可点范围从 80% 宽的整框收到看得见的部分。单行样本放过了写反的 y 轴翻转 —— 反向验证时才发现，补了不对称的样本。
+- [2026-09-26 点一下选中一段，整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) — 工程是一个大 `ObservableObject`，33 处订阅，只改 `selection` 也全体重算；换成 `@Observable`（用户拍板「A」）、根视图不读选择、转场卡片两张帧一起换，每点一下 body 334 → 120、进程 CPU 和主线程各省约四分之一（剩下的一半是 SwiftUI 的命中测试，和重算几个视图无关）。**换机制后要把「以前被顺带刷新」的地方一个个找出来**：文件菜单的最近打开（反向验证：不显式读 `documentURL` 就一直停在启动时的「没有」）、撤销按钮（听撤销栈的通知，别听 Checkpoint）。冒烟驱动加了 `open` / `menu` 两步，并记下三个限制（点 AppKit 控件会卡死、合成事件关不上撤销组、菜单快捷键没用）。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

@@ -27,7 +27,7 @@ struct RowHeightDragModifier: ViewModifier {
     /// 这一行对应哪条轨。nil = 这一行没有可调的高度（标尺 / 滤镜 / 文字 /
     /// 形状 / 字幕行），整条手势都不挂。
     let key: TimelineRowHeightKey?
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     @Binding var session: RowHeightDragState?
 
     func body(content: Content) -> some View {

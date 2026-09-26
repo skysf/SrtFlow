@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftUI
 
 // MARK: - 进程内的 GUI 冒烟驱动：不接管鼠标、不抢焦点
@@ -45,11 +44,6 @@ enum SmokeDriver {
     private static var wallStartedAt = Date()
     private static var states: [String: Any] = [:]
     private static var perfStartedAt = 0.0
-    /// 工程发了几次「要变了」（`objectWillChange`）：订阅整个工程的视图每一次都要重算，
-    /// 所以这个数往往比 body 次数更能说明「谁在白白叫醒大家」。`perf` 快照里记成
-    /// `event:project.willChange`。
-    private static var projectChanges = 0
-    private static var projectChangeWatch: AnyCancellable?
 
     /// 编辑器出现时调（`DevHooks.editorAppeared`）。没设脚本就什么都不做。
     static func startIfRequested(project: VideoEditProject) {
@@ -75,7 +69,8 @@ enum SmokeDriver {
                 // 提示这些都会被真事件叫醒，量出来的数就不是脚本的了（2026-09-24 一次拖动多出
                 // 两千多次重算，就是这么来的）。合成事件是直接交给窗口的，不受影响。
                 window.ignoresMouseEvents = true
-                projectChangeWatch = project.objectWillChange.sink { _ in projectChanges += 1 }
+                // 工程的哪个属性变了几轮（`event:project.changed.<属性>`，见 SmokeProjectChanges.swift）。
+                try SmokeProjectChanges.start(project)
                 for (index, step) in steps.enumerated() {
                     note("第 \(index + 1) 步：\(step.action.rawValue)")
                     if try await run(step, project: project, window: window, output: output) { break }
@@ -132,6 +127,13 @@ enum SmokeDriver {
             if let snapping = step.snapping { project.snappingEnabled = snapping }
             if let linkage = step.linkage { project.linkageEnabled = linkage }
             note("开关：磁吸 \(project.magnetEnabled) 吸附 \(project.snappingEnabled) 链接 \(project.linkageEnabled)")
+        case .open:
+            guard case .file(let file) = step.path else { throw SmokeScriptError("open 要写 \"path\": \"/绝对路径\"") }
+            await project.openProject(at: URL(fileURLWithPath: file))
+            note("打开了 \(project.documentURL?.lastPathComponent ?? "nil")")
+        case .menu:
+            guard case .titles(let titles) = step.path else { throw SmokeScriptError("menu 要写 \"path\": [\"File\", …]") }
+            note(describeMenu(titles))
         case .focus:
             // 排查「⌫ 被谁吃了」：编辑器的按键监听在第一响应者是 NSTextView 时让路。
             let keyWindow = NSApp.keyWindow.map { "\(type(of: $0)) #\($0.windowNumber)" } ?? "nil"
@@ -142,11 +144,11 @@ enum SmokeDriver {
             PerfCounters.reset()
             perfStartedAt = PreviewBench.cpuTimeMs()
             wallStartedAt = Date()
-            projectChanges = 0
+            SmokeProjectChanges.reset()
         case .perf:
             let label = step.label ?? "perf\(perf.count + 1)"
             var counts = PerfCounters.snapshot()
-            counts["event:project.willChange"] = projectChanges
+            counts.merge(SmokeProjectChanges.snapshot()) { $1 }
             perf[label] = counts
             cpu[label] = (PreviewBench.cpuTimeMs() - perfStartedAt).rounded()
             wall[label] = (Date().timeIntervalSince(wallStartedAt) * 1000).rounded()
@@ -172,6 +174,23 @@ enum SmokeDriver {
             try await Task.sleep(for: .milliseconds(100))
         }
         note("截图 \(name) 等了 15 秒没等到，跳过")
+    }
+
+    /// 顺着标题一层层往下找，写出最后那一层的每一项（标题 + 亮不亮）。每一层先让菜单的代理更新一遍
+    /// （`menuNeedsUpdate`，AppKit 在菜单要打开时做的就是这个）：SwiftUI 的 `Commands` 是那时才把
+    /// 内容填进 `NSMenu` 的，直接读拿到的是上一次打开时的样子（2026-09-25 实测）。
+    private static func describeMenu(_ titles: [String]) -> String {
+        var menu = NSApp.mainMenu
+        for title in titles {
+            if let menu { menu.delegate?.menuNeedsUpdate?(menu) }
+            guard let item = menu?.items.first(where: { $0.title == title }) else {
+                return "菜单 \(titles)：找不到「\(title)」"
+            }
+            menu = item.submenu
+        }
+        if let menu { menu.delegate?.menuNeedsUpdate?(menu) }
+        let items = (menu?.items ?? []).map { $0.isSeparatorItem ? "—" : "\($0.title)\($0.isEnabled ? "" : "（灰）")" }
+        return "菜单 \(titles.joined(separator: " ▸ "))：\(items)"
     }
 
     // MARK: - 结果

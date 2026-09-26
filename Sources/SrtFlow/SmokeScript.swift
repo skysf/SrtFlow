@@ -18,6 +18,8 @@ import Foundation
 //   {"do": "hit", "at": [x, y]}                      日志里记下这一点命中的是哪个 NSView（排查用）
 //   {"do": "focus"}                                  日志里记下此刻的 key 窗口和第一响应者（排查按键被谁吃了）
 //   {"do": "toggles", "magnet": true, "snapping": false, "linkage": true}   直接拨工具栏的三个开关（省得去点图标）
+//   {"do": "open", "path": "/abs/Other.srtflowproj"} 换一个工程（走「打开工程」同一个入口）
+//   {"do": "menu", "path": ["File", "Open Recent"]}  日志里记下这一层菜单的每一项和它亮不亮（菜单点不了，只能读）
 //   {"do": "perfReset"} / {"do": "perf", "label": "拖动"}   计数清零 / 记一份快照
 //   {"do": "state", "label": "拖完"}                 记下工程此刻的样子（选择、各段位置）
 //   {"do": "snapshot", "name": "after-drag"}         请外面拍一张窗口截图（见 SmokeDriver）
@@ -27,7 +29,7 @@ import Foundation
 
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
-        case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles
+        case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles, open, menu
         case perfReset, perf, state, snapshot, quit
     }
 
@@ -54,11 +56,12 @@ struct SmokeStep: Decodable {
     var magnet: Bool?
     var snapping: Bool?
     var linkage: Bool?
+    var path: SmokeStepPath?
 
     private enum CodingKeys: String, CodingKey {
         case action = "do"
         case seconds, quiet, timeout, width, height, time, at, from, to, count, steps, hold
-        case dx, dy, code, chars, flags, label, name, magnet, snapping, linkage
+        case dx, dy, code, chars, flags, label, name, magnet, snapping, linkage, path
     }
 
     static func load(from url: URL) throws -> [SmokeStep] {
@@ -69,6 +72,17 @@ struct SmokeStep: Decodable {
     static func point(_ pair: [Double]?, _ what: String) throws -> CGPoint {
         guard let pair, pair.count == 2 else { throw SmokeScriptError("\(what) 要写成 [x, y]") }
         return CGPoint(x: pair[0], y: pair[1])
+    }
+}
+
+/// `path` 两种写法：`open` 给一个文件路径，`menu` 给一串菜单标题。
+enum SmokeStepPath: Decodable {
+    case file(String)
+    case titles([String])
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let file = try? container.decode(String.self) { self = .file(file) } else { self = .titles(try container.decode([String].self)) }
     }
 }
 

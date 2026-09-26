@@ -10,7 +10,7 @@ import SwiftUI
 /// 拖动过程只动框和 `state`（liveApply），松手才重建 AV 合成 —— 画面本身
 /// 要等一拍才跟上，但框是即时的。
 struct ClipTransformCanvas: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
     /// 必须直接订阅时钟：播放头动了，画面上是谁在显示会跟着变。
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize

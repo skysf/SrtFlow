@@ -221,8 +221,8 @@ if BODY="$(require_func 'private mutating func move(' "$EDITS")"; then
 fi
 
 # ── 4c. 框选：拖框过程中一个字都不许写进 project ───────────────────────
-# 和拖块同一条约束。每一拍写 @Published 的选择会连带预览区、检查器、所有块
-# 连同缩略图与波形重建，还要重挂一次自动保存，框立刻跟不上光标。
+# 和拖块同一条约束。每一拍写工程上的选择会连带预览区、检查器、所有读选择的视图
+# 重算，还要重挂一次自动保存，框立刻跟不上光标。
 for entry in 'private func updateMarquee' 'private func applyMarqueePoint'; do
   if BODY="$(require_func "$entry" "$MARQUEE_VIEW")"; then
     for forbidden in 'applyBoxSelection' 'project.select' 'clearSelection' 'project.perform' 'liveApply'; do
@@ -432,11 +432,11 @@ fi
 # 默认**只开吸附**：磁吸会自动合拢主轨空档，而这个用户就是要留着间隙剪；链接会
 # 把分离出来的音频一起拖走。三个都不持久化，所以这里的字面量就是每次启动的状态
 # —— 顺手「改回 true」会静默改掉整个剪辑手感。
-grep_code '@Published var magnetEnabled = false' "$PROJECT" \
+grep_code '^    var magnetEnabled = false' "$PROJECT" \
   || fail "磁吸的默认值不是关：用户的剪法要留间隙，默认合拢会把间隙吃掉"
-grep_code '@Published var snappingEnabled = true' "$PROJECT" \
+grep_code '^    var snappingEnabled = true' "$PROJECT" \
   || fail "吸附的默认值不是开：三个开关里只有它该默认开着"
-grep_code '@Published var linkageEnabled = false' "$PROJECT" \
+grep_code '^    var linkageEnabled = false' "$PROJECT" \
   || fail "链接的默认值不是关：默认会把分离出来的音频一起拖走"
 
 # ── 12. 播放头的把手跟标尺一起钉住 ─────────────────────────────────────

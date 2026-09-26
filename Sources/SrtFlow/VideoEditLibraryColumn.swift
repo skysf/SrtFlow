@@ -17,7 +17,7 @@ import SwiftUI
 /// 拖播放头的过程中一动不动，鼠标在时间线上扫也不算，停稳了刷新一次（2026-09-25 用户拍板：
 /// 播放时小样来回换没有用，还把播放拖卡）。
 struct LibraryColumn: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
 
     enum Tab: String, CaseIterable, Identifiable {
         case transitions, filters, audio

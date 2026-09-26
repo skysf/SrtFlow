@@ -195,7 +195,7 @@ struct VolumeCurveOverlay: View, Equatable {
     }
 
     private func begin(at location: CGPoint, height: Double) {
-        let origin = project.state.clip(with: clip.id) ?? clip
+        let origin = project.state.clip(with: clip.id) ?? clip  // 手势里现读：起手那一刻的最新值，不在 body 里
         let time = timelineTime(atX: location.x)
         let target: Session.Target
         if let index = VolumeCurveLayout.handle(at: location, clip: origin, pps: pps, height: height) {
@@ -241,7 +241,7 @@ struct VolumeCurveOverlay: View, Equatable {
             project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
             return
         }
-        let current = project.state.clip(with: clip.id) ?? clip
+        let current = project.state.clip(with: clip.id) ?? clip  // 手势里现读：点下去那一刻的最新值，不在 body 里
         if let index = VolumeCurveLayout.handle(at: location, clip: current, pps: pps, height: height) {
             project.removeVolumePoint(clip.id, at: index)
         } else {

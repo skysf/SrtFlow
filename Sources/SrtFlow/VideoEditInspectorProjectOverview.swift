@@ -5,7 +5,7 @@ import SwiftUI
 /// 从 `VideoEditInspector.swift` 拆出来（2026-09-25：那个文件在超长基线里、行数只许降，给检查器
 /// 换成「停着时的播放头」要加几行，就把这块最独立的顺手搬出来抵账）。它只读工程、不看播放头。
 struct InspectorProjectOverview: View {
-    @ObservedObject var project: VideoEditProject
+    let project: VideoEditProject
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)

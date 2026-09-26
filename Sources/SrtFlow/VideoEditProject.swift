@@ -38,12 +38,12 @@ enum TimelineTool: String, CaseIterable, Identifiable {
 ///
 /// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
 /// 正在播的预览必须留着。所有会改时间线的操作都走 `perform`，那里统一做
-/// 磁吸排列、撤销登记和预览重建。
-@MainActor
-final class VideoEditProject: ObservableObject {
+/// 磁吸排列、撤销登记和预览重建。`@Observable`：视图读了哪个属性，就只在它变时重算；不驱动界面的存储一律 `@ObservationIgnored`（preview-perf-ratchet.md 第十三节）。
+@MainActor @Observable
+final class VideoEditProject {
     static let shared = VideoEditProject()
 
-    @Published private(set) var state = TimelineState() {
+    private(set) var state = TimelineState() {
         // 时间线的所有写入最终都落在这里（perform / liveApply / applySnapshot
         // 都是给它赋值），所以脏标记和自动保存挂这一个点就够了。
         didSet {
@@ -93,40 +93,40 @@ final class VideoEditProject: ObservableObject {
     // 下面几个由 VideoEditProjectDocument.swift 里的扩展维护（跨文件所以不能
     // 是 private(set)），别的地方只读。
     /// 当前工程存在哪。`nil` 表示还没落过盘的「未命名」工程。
-    @Published var documentURL: URL?
+    var documentURL: URL?
     /// 有改动还没写进磁盘。自动保存开着的时候它只会亮一小会儿。
-    @Published var hasUnsavedChanges = false
+    var hasUnsavedChanges = false
     /// 四层线索都没找回来的素材，界面上标红并提供重新链接。打开工程时填一次，
     /// 之后运行中也会重核对（revalidateMediaLocations）——素材在工程开着的时候
     /// 被挪走同样要亮出来，而不是等预览黑屏。
-    @Published var missingMedia: [URL] = []
+    var missingMedia: [URL] = []
 
     /// 运行中素材核对的单飞任务（见 `revalidateMediaLocations`）。
-    var mediaRevalidateTask: Task<Void, Never>?
+    @ObservationIgnored var mediaRevalidateTask: Task<Void, Never>?
 
     /// 打开/新建工程期间为真：那时候改 `state` 不该算用户的改动。
-    var isLoadingDocument = false
+    @ObservationIgnored var isLoadingDocument = false
     /// 自动保存的防抖任务。
-    var autosaveTask: Task<Void, Never>?
+    @ObservationIgnored var autosaveTask: Task<Void, Never>?
 
     /// 上次读/写工程时的素材定位表（键是素材路径）。
     ///
     /// 存盘时拿它兜底：素材此刻不可达就沿用旧书签，**绝不能**把还有效的定位
     /// 信息覆盖成 nil。详见 `MediaRecord.init(url:projectDirectory:previous:)`。
-    var mediaRecords: [String: MediaRecord] = [:]
+    @ObservationIgnored var mediaRecords: [String: MediaRecord] = [:]
 
     /// 工程文件自己的书签。用户在访达里把**正开着的**工程改名或挪走时，
     /// 靠它把 `documentURL` 跟过去，而不是在旧位置又造一个旧名字的文件。
-    var documentBookmark: Data?
+    @ObservationIgnored var documentBookmark: Data?
 
     /// 当前工程的代号，每换一个工程 +1。
     ///
     /// 后台导入（探测时长、图片转静帧）是脱手的 Task，工程切走之后它们可能才
     /// 回来。回来时对不上代号就直接丢弃，否则会把素材追加进**新**工程。
-    private(set) var documentGeneration = 0
+    @ObservationIgnored private(set) var documentGeneration = 0
 
     /// 正在跑的后台导入任务，切工程时要取消。
-    private var importTasks: [Task<Void, Never>] = []
+    @ObservationIgnored private var importTasks: [Task<Void, Never>] = []
 
     func trackImportTask(_ task: Task<Void, Never>) {
         importTasks.removeAll { $0.isCancelled }
@@ -153,7 +153,7 @@ final class VideoEditProject: ObservableObject {
     ///
     /// 连点两个最近工程时，慢的那个可能后回来：没有它的话，先打开的 B 会被
     /// A 的过期结果又顶掉。每次 openProject 进门 +1，await 回来对不上就作废。
-    var openRequestToken = 0
+    @ObservationIgnored var openRequestToken = 0
 
     private func documentDidChange() {
         guard !isLoadingDocument else { return }
@@ -181,7 +181,7 @@ final class VideoEditProject: ObservableObject {
     /// 剪辑 / 形状 / 字幕 cue 三类选择的唯一存放处。互斥规则写在
     /// `EditSelection` 里 —— 下面三个属性只是它的门面，别在任何调用点再手写
     /// 「顺便清一下另一类」。
-    @Published private(set) var selection = EditSelection()
+    private(set) var selection = EditSelection()
 
     /// 选中的剪辑们。⌘点选、鼠标框选都可多选，拖任意一个选中块整组一起动。
     var selectedClipIDs: Set<UUID> {
@@ -301,21 +301,21 @@ final class VideoEditProject: ObservableObject {
     /// `@State` 管（它才知道输入框活没活着），这里只负责把"刚 Add 出来的这条
     /// 该开始打字了"这个一次性事件递过去，视图消费完就置回 nil。
     /// **是界面状态，不进工程文件。**
-    @Published var textEditingRequest: UUID?
+    var textEditingRequest: UUID?
 
     /// 时间线鼠标工具：选择（点选/拖动），或分割（刀片 —— 点哪儿切哪儿）。
     /// 单键 A/B 切换，跟工具栏 Add 旁边的下拉是同一份状态。不持久化。
-    @Published var activeTool: TimelineTool = .select
+    var activeTool: TimelineTool = .select
 
     /// 预览右边那一列字幕表的显隐。放这里是因为不止一处要开它：工具栏的
     /// Subtitles 按钮、生成面板的「编辑字幕」、时间线双击 cue 时的同步高亮。
     /// **是界面状态，不进工程文件** —— 它不改成片的任何一帧。
-    @Published var showsSubtitleList = false
+    var showsSubtitleList = false
 
     /// 正在被输入、还没落进模型的那一格字幕文本。规则与理由见
     /// `VideoEditSubtitleDraft.swift` —— 一句话：保存流程先读模型再销毁视图，
     /// 草稿留在视图里就会被漏掉。同样不进工程文件。
-    @Published var subtitleDraft: SubtitleTextDraft?
+    var subtitleDraft: SubtitleTextDraft?
 
     // 三个开关，对应工具栏里的磁吸、吸附、链接。
     //
@@ -323,11 +323,11 @@ final class VideoEditProject: ObservableObject {
     // 用户的剪法就是留着间隙；链接会把分离出来的音频一起拖走，也不是他要的默认。
     // 吸附只是拖到边缘附近时帮忙对齐，不改变任何自动行为，所以留着。
     // 三个都不进工程文件、也不写 UserDefaults —— 每次启动回到这里的默认值。
-    @Published var magnetEnabled = false {
+    var magnetEnabled = false {
         didSet { if magnetEnabled { perform { $0.packMain() } } }
     }
-    @Published var snappingEnabled = true
-    @Published var linkageEnabled = false
+    var snappingEnabled = true
+    var linkageEnabled = false
 
     /// 时间线缩放：一秒画多少点。
     ///
@@ -335,7 +335,7 @@ final class VideoEditProject: ObservableObject {
     /// 直接赋值且只查 `isFinite`，能把比例压到 1 以下 —— 那时块的位移换算
     /// （`translation / pps`）会被 `max(pps, 1)` 兜底钳住，1:1 跟手当场坏掉：
     /// 鼠标走 100 点、块只走 50 点。
-    @Published var pixelsPerSecond: Double = 24
+    var pixelsPerSecond: Double = 24
 
     /// 缩放的合法区间。工具栏按钮、滑块、捏合共用这一份（数值与理由见 `VideoEditZoom`）。
     static let zoomRange = VideoEditZoom.range
@@ -357,7 +357,7 @@ final class VideoEditProject: ObservableObject {
     /// 行高按 ⌘Z」撤掉的是行高，而不是用户上一次真编辑；而 `perform` 还会顺手
     /// 重建预览，拖一下行高画面就闪一次。它跟着工程文件走（与 `timeline` 平级
     /// 的一段，见 `VideoEditProjectFile`），换台机器打开高度还在。
-    @Published private(set) var rowHeights = TimelineRowHeights()
+    private(set) var rowHeights = TimelineRowHeights()
 
     /// 没单独调过的轨用的默认行高。
     ///
@@ -400,11 +400,11 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 正在后台导入的素材数（图片转静帧、探测时长时给个转圈，别让人以为拖丢了）。
-    @Published private(set) var importingCount = 0
+    private(set) var importingCount = 0
 
     /// 定格正在跑（抽帧 → 写图 → 转码 → 提交）。单飞开关，只由
     /// `VideoEditFreezeFrame` 写：期间按钮置灰，连按 ⇧⌘F 不会并发出两段。
-    @Published var isFreezing = false
+    var isFreezing = false
 
     // 转圈计数的增减。`importingCount` 的 setter 是 private，别的文件里的后台
     // 流程（定格）经这两个口子记账。
@@ -417,28 +417,28 @@ final class VideoEditProject: ObservableObject {
     let meters = AudioMeterEngine()
 
     /// 预览合成的输出尺寸（第一段主轨素材定的）。字幕叠层按它换算。
-    @Published private(set) var renderSize = CGSize(width: 1920, height: 1080)
-    /// 预览是否正在重建。**不在工程上发**：只有工具栏的转圈订阅它，放这儿当 `@Published` 每次重建整个编辑器多算两轮（2026-09-25）。
+    private(set) var renderSize = CGSize(width: 1920, height: 1080)
+    /// 预览是否正在重建。单独一个小对象、只有工具栏的转圈订阅（2026-09-25，那时工程还是 `ObservableObject`，放在工程上每次重建整个编辑器多算两轮）。
     let rebuildStatus = PreviewRebuildStatus()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
-    private var audioPlan: AudioMixPlan?
+    @ObservationIgnored private var audioPlan: AudioMixPlan?
     /// `previewAudioLive` 的节流时间戳。
-    private var lastLiveAudioPreview: CFTimeInterval = 0
+    @ObservationIgnored private var lastLiveAudioPreview: CFTimeInterval = 0
     /// 正在块上拖音量线（扫帧 peek 要让位 —— 调音量时画面跟着指针乱跳只会干扰）。
-    /// 不是 @Published：只有 `hoverPeek` 在鼠标事件里读它，不需要驱动重绘。
-    var isDraggingVolume = false
+    /// 不被观察（`@ObservationIgnored`）：只有 `hoverPeek` 在鼠标事件里读它，不需要驱动重绘。
+    @ObservationIgnored var isDraggingVolume = false
     /// 素材探测失败之类需要用户看见的话。
-    @Published var notice: String?
+    var notice: String?
 
     /// 撤销登记走窗口的 UndoManager，⌘Z/⇧⌘Z 和菜单原生可用。视图出现时塞进来。
-    weak var undoManager: UndoManager?
+    @ObservationIgnored weak var undoManager: UndoManager?
 
-    private var infoCache: [URL: MediaInfo] = [:]
-    private var audioDurationCache: [URL: Double] = [:]
-    private var rebuildTask: Task<Void, Never>?
+    @ObservationIgnored private var infoCache: [URL: MediaInfo] = [:]
+    @ObservationIgnored private var audioDurationCache: [URL: Double] = [:]
+    @ObservationIgnored private var rebuildTask: Task<Void, Never>?
     /// 预览重建的代数，旧的构建结果回来晚了就直接扔。
-    private var rebuildGeneration = 0
+    @ObservationIgnored private var rebuildGeneration = 0
 
     private init() {
         let defaults = UserDefaults.standard
@@ -508,7 +508,7 @@ final class VideoEditProject: ObservableObject {
 
     /// 拖动或拖滑块这类连续动作：开始时抓一份快照，过程中**每次都从快照重放**
     /// （绝对增量，幂等），结束时才把整个动作登记成一步撤销。
-    private var liveEditSnapshot: TimelineState?
+    @ObservationIgnored private var liveEditSnapshot: TimelineState?
 
     /// 手势开始时的状态，拖动回调里读原始值用。
     var liveEditOrigin: TimelineState? { liveEditSnapshot }
@@ -1247,7 +1247,7 @@ final class VideoEditProject: ObservableObject {
     /// 用户在录制期间改成 16:9 又改回 auto，值没变但他其实动过 —— 那就不该
     /// 再被自动覆盖（计划 §20 点名的用例）。所以值和这个代号都没变才算数。
     /// 不持久化：只在本次会话内有意义。
-    @Published private(set) var canvasEditGeneration = 0
+    private(set) var canvasEditGeneration = 0
 
     /// 画布比例：预览和导出共用，改动可撤销。
     func setCanvasRatio(_ ratio: CanvasRatio) {
@@ -1412,7 +1412,7 @@ final class VideoEditProject: ObservableObject {
     }
 
     /// 拖音量线 / 推子的**过程中**让预览当场听得见，但**不写 `state`**（时间线拖动 §0：
-    /// 每一拍写 @Published 会把整棵编辑器视图树连同自动保存拖垮）。拿一份临时状态算
+    /// 每一拍写 `state` 会让读它的视图每一拍都重算、还要重挂一次自动保存）。拿一份临时状态算
     /// audioMix 直接换上；节流到 ~20 次/秒。松手时的真提交走 `perform` → 快路径，
     /// 手势中途放弃时调一次 `refreshAudioMix()` 换回真状态的 mix。
     ///
@@ -1450,7 +1450,7 @@ final class VideoEditProject: ObservableObject {
                 self.clock.detach()
                 return
             }
-            if self.renderSize != built.renderSize { self.renderSize = built.renderSize }  // 没变不写：@Published
+            if self.renderSize != built.renderSize { self.renderSize = built.renderSize }  // 没变不写：读它的视图会被叫醒
             self.audioPlan = built.audioPlan
             let wasPlaying = self.clock.isPlaying
             let time = self.clock.time
