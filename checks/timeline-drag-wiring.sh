@@ -942,10 +942,10 @@ if BODY="$(require_func 'func moveLane(_ group: TimelineLaneGroup' "$LANE_REORDE
   [ "$COUNT" -eq 1 ] || fail "VideoEditProject.moveLane 里有 ${COUNT} 处 perform，应当正好 1 处（一步撤销）"
 fi
 # 5) 轨道头列和轨道行挂**同一个**位移：只挂一边，拖着轨道头走、素材块留在原地。
-grep_code '\.laneReorderOffset(reorder, rowID: row\.id)' "$HEADER_COLUMN" \
-  || fail "轨道头列没挂换位的位移"
-grep_code '\.laneReorderOffset(laneReorder, rowID: row\.id)' "$VIEW" \
-  || fail "轨道行没挂换位的位移：拖着轨道头走，素材块留在原地"
+grep_code '\.laneReorderOffset(reorder, rowID: row\.id, pinnedOnTop: row\.isRuler)' "$HEADER_COLUMN" \
+  || fail "轨道头列没挂换位的位移（或者标尺那一行没钉在最上层）"
+grep_code '\.laneReorderOffset(laneReorder, rowID: row\.id, pinnedOnTop: row\.isRuler)' "$VIEW" \
+  || fail "轨道行没挂换位的位移（拖着轨道头走、素材块留在原地），或者标尺没钉在最上层（滚下去轨道行盖住标尺）"
 #    被拖的那一行不许带动画（§2 第 1 条：画出来的是「低通滤波后的鼠标」）。
 if BODY="$(require_func 'func laneReorderOffset(' "$LANE_REORDER")"; then
   grep -q 'transaction.animation = nil' <<<"$BODY" \

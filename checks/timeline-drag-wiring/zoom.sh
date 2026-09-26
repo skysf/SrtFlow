@@ -80,3 +80,13 @@ if BODY="$(require_func 'func updateRowHeights(' "$PROJECT")"; then
   grep -q 'documentDidChange()' <<<"$BODY" \
     || fail "updateRowHeights 没标脏：缩放 / 拖好的行高不会被自动保存带进工程文件"
 fi
+
+# ── 6e. 纵向滚下去之后，钉住的标尺行压在轨道行上面（2026-09-26 案例 tracks-cover-pinned-ruler） ──
+# 纵向缩放让纵向滚动成了家常便饭。叠放次序只认最外面那一层 `.zIndex`：每一行都挂着换位位移
+# （`laneReorderOffset`，里面有 `.zIndex`），标尺自己写的 `.zIndex(50)` 被盖成 0，轨道行画到标尺上面。
+if BODY="$(require_func 'func laneReorderOffset(' "$LANE_REORDER")"; then
+  grep -q 'zIndex(pinnedOnTop ? 50' <<<"$BODY" \
+    || fail "换位位移盖掉了钉住的标尺行的层级：纵向滚下去之后轨道行会画到标尺上面"
+fi
+grep_code 'offset(y: row.isRuler ? geometry.offset.y : 0)' "$HEADER_COLUMN" \
+  || fail "轨道头列的标尺那一行（总推子）没钉在顶上：滚下去之后它跟着滚走，轨道头挨着标尺、对不上"

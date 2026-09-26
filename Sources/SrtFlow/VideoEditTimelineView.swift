@@ -285,8 +285,8 @@ struct VideoEditTimelineView: View {
                         .frame(height: row.height)
                         // 拉开的缝：垫在缝下面那一行上面（轨道头列垫同一行，§5h）。
                         .padding(.top, row.id == gap.rowID ? TimelineSeams.gapExtra : 0)
-                        // 整轨换位：和轨道头列挂同一个位移（§5i）。
-                        .laneReorderOffset(laneReorder, rowID: row.id)
+                        // 整轨换位：和轨道头列挂同一个位移（§5i）；钉住的标尺行压在滚上去的轨道行上面。
+                        .laneReorderOffset(laneReorder, rowID: row.id, pinnedOnTop: row.isRuler)
                 }
             }
             .padding(.vertical, TimelineRowMetrics.inset)

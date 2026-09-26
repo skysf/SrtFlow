@@ -72,13 +72,24 @@ struct TimelineHeaderColumn: View {
                 // 缝和换位的位移都垫在行**外面**：`TimelineHeaderRow` 的输入不变，它在
                 // 时钟每跳一下时就照旧不重算（docs/architecture/preview-perf-ratchet.md）。
                 .padding(.top, row.id == gapRowID ? TimelineSeams.gapExtra : 0)
-                .laneReorderOffset(reorder, rowID: row.id)
+                // 标尺那一行（总推子）和右边的标尺一样钉在顶上、盖住滚上去的轨道头
+                //（2026-09-26：以前它跟着滚走，滚下去之后轨道头挨着标尺，对不上）。
+                .background(alignment: .top) { if row.isRuler { pinnedBackdrop } }
+                .offset(y: row.isRuler ? geometry.offset.y : 0)
+                .laneReorderOffset(reorder, rowID: row.id, pinnedOnTop: row.isRuler)
             }
         }
         .padding(.vertical, TimelineRowMetrics.inset)
         // 轨道行是**同一份 `rows`** 排出来的，所以只要减掉同一个纵向滚动量，
         // 两边就永远对得上（不用各自去量位置）。
         .offset(y: -geometry.offset.y)
+    }
+
+    /// 钉住的标尺行底下的不透明底：和右边标尺的底一样高（上面 2pt 是内容的 padding，下面一格是行距）。
+    private var pinnedBackdrop: some View {
+        Color(nsColor: .windowBackgroundColor)
+            .frame(height: 26 + TimelineRowMetrics.inset + rowSpacing)
+            .offset(y: -TimelineRowMetrics.inset)
     }
 }
 
