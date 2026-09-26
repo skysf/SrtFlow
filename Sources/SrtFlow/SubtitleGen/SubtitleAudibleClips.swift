@@ -111,15 +111,30 @@ enum SubtitleAudibleClips {
         var range: SourceRange
         /// 前面被跳过的素材各自的原因（读不了 → 换下一段），面板/日志可用。
         var skipped: [(name: String, error: Error)]
+        /// 这段里听出人声了吗。试过的都没听出来时，退回第一段读得出来的（检测照常跑、多半如实报检测不出来）。
+        var speechFound = true
     }
 
-    /// 值得一试的探针候选：文件真实存在的，按可听快照原序。
+    /// 最多试几段有没有人声（每段一次几秒钟的短转写）。
+    static let maximumSpeechScreens = 6
+
+    /// 值得一试的探针候选：文件真实存在的，**长的先**，一样长的按可听快照原序。
+    ///
+    /// 长的先（2026-09-26 案例 docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md）：
+    /// 以前按快照原序取第一段，主轨排在最前 —— 南极工程的第一段是 6 秒的船撞冰音效，一个词都没有，
+    /// 每个候选语言都是 0 分，「检测失败」。旁白、对白往往是长段，音效是短的。
     ///
     /// 文件不在磁盘上就连试都不用试（抽音频必然失败）。但**「文件在」远不等于
     /// 「音轨读得出来」** —— 无音轨的视频、半截文件都是文件存在的，所以这里
     /// 只做便宜的预筛，真正的判据是 `selectProbe` 里那次实际抽取。
     static func probeOrder(in clips: [SoundClip]) -> [SoundClip] {
-        clips.filter { FileManager.default.fileExists(atPath: $0.url.path) }
+        clips.enumerated()
+            .filter { FileManager.default.fileExists(atPath: $0.element.url.path) }
+            .sorted { a, b in
+                a.element.sourceDuration != b.element.sourceDuration
+                    ? a.element.sourceDuration > b.element.sourceDuration : a.offset < b.offset
+            }
+            .map(\.element)
     }
 
     /// 定下探针之后的 metadata 查询顺序：**探针打头**，其余按快照原序。
@@ -164,27 +179,33 @@ enum SubtitleAudibleClips {
     ///   光设标记等 await 自己回来不算取消（2026-08-06 教训）。
     /// - Parameter extract: 抽取动作。生产传 `AudioWindowReader.extract`；
     ///   自检可以注入一个会挑着失败的实现来验分流策略。
-    /// - Returns: 全部候选都读不出音频时返回 nil（调用方报「素材读不了」）。
+    /// - Parameter hasSpeech: 读出来的这段里有没有人声（生产：拿一个已装语言短转写一遍，词够不够数）。
+    ///   没有就记着、换下一段，最多试 `maximumSpeechScreens` 段 —— 音效、纯音乐拿去检测必然「检测不出来」。
+    /// - Returns: 全部候选都读不出音频时返回 nil（调用方报「素材读不了」）；读得出来但都没听出人声时，
+    ///   返回第一段读得出来的（`speechFound` 为 false）。
     static func selectProbe(
         in clips: [SoundClip],
         probeSeconds: Double,
         isCancelled: () -> Bool = { false },
-        extract: (_ clip: SoundClip, _ range: SourceRange) async throws -> URL
+        extract: (_ clip: SoundClip, _ range: SourceRange) async throws -> URL,
+        hasSpeech: (_ clip: SoundClip, _ file: URL, _ range: SourceRange) async throws -> Bool = { _, _, _ in true }
     ) async throws -> ProbeSelection? {
         func checkCancellation() throws {
             if isCancelled() { throw CancellationError() }
             try Task.checkCancellation()
         }
         var skipped: [(name: String, error: Error)] = []
+        var withoutSpeech: ProbeSelection?
+        var screened = 0
         for clip in probeOrder(in: clips) {
             try checkCancellation()
             let range = SourceRange(
                 start: clip.sourceStart,
                 end: clip.sourceStart + min(probeSeconds, clip.sourceDuration)
             )
+            let file: URL
             do {
-                let file = try await extract(clip, range)
-                return ProbeSelection(clip: clip, file: file, range: range, skipped: skipped)
+                file = try await extract(clip, range)
             } catch is CancellationError {
                 throw CancellationError()
             } catch let error as AudioWindowReader.InfrastructureError {
@@ -194,10 +215,21 @@ enum SubtitleAudibleClips {
                 // 唯一会被混淆的地方。
                 try checkCancellation()
                 skipped.append((clip.name, error))
+                continue
             }
+            // 听人声放在吞错误的 do 外面：转写栈的故障如实上抛，不许伪装成「这段素材不行」。
+            let selection = ProbeSelection(clip: clip, file: file, range: range, skipped: skipped)
+            if try await hasSpeech(clip, file, range) { return selection }
+            // 读得出来、但听不出人声（音效、纯音乐）：先记着第一段，换下一段试。
+            if withoutSpeech == nil {
+                withoutSpeech = selection
+                withoutSpeech?.speechFound = false
+            }
+            screened += 1
+            if screened >= maximumSpeechScreens { break }
         }
         try checkCancellation()
-        return nil
+        return withoutSpeech
     }
 }
 

@@ -177,6 +177,35 @@ final class SpeechTranscriptionService: @unchecked Sendable {
         return try await collector.value
     }
 
+    // MARK: 自动检测挑探针：这段有没有人声（2026-09-26）
+
+    /// 筛人声用的语言：系统首选里第一个已装的，没有就按名字排第一个已装的；一个都没装是 nil（不筛）。
+    /// 只用来听「有没有人在说话」，不判是什么语言 —— 英文的话用中文模型转，照样转得出一串词。
+    static func screeningLocale() async -> Locale? {
+        let installed = await installedLocales()
+        let installedIDs = Set(installed.map(\.identifier))
+        for id in Locale.preferredLanguages + installed.map(\.identifier).sorted() {
+            if let matched = await matchedLocale(for: id), installedIDs.contains(matched.identifier) {
+                return matched
+            }
+        }
+        return nil
+    }
+
+    /// 这段音频里有没有人在说话：短转写一遍，词数够不够自动检测的门槛。
+    /// 音效、纯音乐转不出词（或者只有一两个杂音词），拿它去检测必然「检测不出来」。
+    func hasSpeech(fileURL: URL, locale: Locale, sourceOffset: Double) async throws -> Bool {
+        try await ensureModel(locale: locale) { _ in }
+        do {
+            let words = try await transcribe(fileURL: fileURL, locale: locale, sourceOffset: sourceOffset)
+            await releaseModel(locale: locale)
+            return words.count >= SubtitleLanguageDetection.minimumWordCount
+        } catch {
+            await releaseModel(locale: locale)
+            throw error
+        }
+    }
+
     /// 取消当前分析（cancelAndFinishNow，[SDK :224]）。幂等。
     func cancelCurrent() {
         lock.lock()
