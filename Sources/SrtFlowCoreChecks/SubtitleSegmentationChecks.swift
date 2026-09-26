@@ -13,6 +13,7 @@ func runSubtitleSegmentationChecks() {
     checkDisplayTiming()
     checkSourceOverlap()    // SubtitleSourceOverlapChecks.swift
     checkPauseAbsorbedIntoNextWord()
+    checkSpeechOnsetEstimates()
 }
 
 private func window(
@@ -156,11 +157,14 @@ private func checkBreaksOnRealSpeech() {
         (" it's", 59.335, 59.635), (" the", 59.635, 59.695), (" size", 59.695, 59.875), (" of", 59.875, 59.995),
         (" the", 59.995, 60.115), (" earth.", 60.115, 60.355)
     ]), window: window(src: 53...61))
-    let dangling: Set<String> = ["a", "an", "the", "to", "of", "my", "and", "that", "has", "is"]
-    check(pole.cues.count == 3, "长句：最少切几段能放下就切几段（119 个字符 → 3 条）")
+    let dangling: Set<String> = ["a", "an", "the", "to", "of", "my", "and", "that", "has", "is", "all", "until"]
+    // 119 个字符最少 3 条；「Pole」后面真停了一下（and 被拉长了），多切一刀、切在停顿上更自然，允许 4 条。
+    check((3...4).contains(pole.cues.count), "长句：最少切几段能放下就切几段，多一段只在切得更自然时（得到 \(pole.cues.count) 条）")
     check(pole.cues.allSatisfy { SubtitleLineMeasure.units($0.text) <= 21 }, "长句：每条不超过 42 个字符")
     check(pole.cues.allSatisfy { !dangling.contains(String($0.text.split(separator: " ").last ?? "").lowercased()) },
           "长句：没有一条以功能词结尾")
+    check(!texts(pole).contains { $0.hasSuffix("South") || $0.hasSuffix("North") },
+          "长句：专有名词不拆（South Pole、North Pole）")
     checkEqual(texts(pole).joined(separator: " "),
                "I'm going to walk from the South Pole all the way to the North Pole and stretch my box until it's the size of the earth",
                "长句：一个词都不丢")
@@ -278,4 +282,55 @@ private func checkPauseAbsorbedIntoNextWord() {
     ]), window: window(src: 0...10))
     let start = bottom.cues.first?.start ?? 0
     check(start >= 2.45 && start <= 2.83, "停顿后第一个词：字幕从开口前一点点出来（实测开口 2.83，得到 \(start)）")
+
+    // 反过来：句末那个词后面的停顿并进它自己的结尾（「box.」识别成 30.00–30.90，声音 30.35 就停了）；
+    // 片段在 30.49 结束，这个词不许因为被拉长的尾巴被判到片段外面。
+    let elevator = SubtitleSegmenter.segment(words: words([
+        (" the", 28.982, 29.162), (" elevator", 29.162, 29.582), (" is", 29.582, 29.882),
+        (" a", 29.882, 30.002), (" box.", 30.002, 30.902)
+    ]), window: window(src: 28.9...30.49))
+    checkEqual(texts(elevator), ["the elevator is a box"], "句末的词：停顿在它后面，这个词还归这段（「box」不许丢）")
+}
+
+/// `SubtitleSpeechOnset` 本身：哪些词要估、估多少（宁早勿晚）、哪些词不动。
+private func checkSpeechOnsetEstimates() {
+    func estimate(_ list: [(String, Double, Double)]) -> [SubtitleSpeechOnset.Estimate] {
+        SubtitleSpeechOnset.estimate(words(list))
+    }
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+
+    // 普通的词：开口 = 识别器给的开头，中点 = 整段的中点，跟以前一样。
+    let plain = estimate([("Hello,", 0.0, 0.4), (" world.", 0.5, 0.9)])
+    check(near(plain[0].onset, 0) && near(plain[0].center, 0.2) && near(plain[1].onset, 0.5),
+          "估开口：不长的词一个都不动")
+
+    // 列表第一个词被拉长：开口 = 词尾 − 宽松词长（2 个字母 0.32 秒），中点看词尾那一截。
+    let first = estimate([("At", 1.68, 2.94), (" the", 2.94, 3.12)])
+    check(near(first[0].onset, 2.62), "估开口：第一个词从词尾往前推宽松词长（\(first[0].onset)）")
+    check(near(first[0].center, 2.86), "估开口：归属看词尾那一截的中点（\(first[0].center)）")
+    check(near(first[1].onset, 2.94), "估开口：后面正常的词不动")
+
+    // 句读标点后面的词算停顿后面；没有标点、不是长得离谱的慢词不动（慢慢说的长词不能被估晚）。
+    let afterComma = estimate([(" choice,", 38.155, 38.575), (" I", 38.575, 38.875)])
+    check(near(afterComma[1].onset, 38.875 - 0.26), "估开口：逗号后面被拉长的词也估")
+    let slowWord = estimate([(" the", 0, 0.12), (" continent", 0.12, 0.9)])
+    check(near(slowWord[1].onset, 0.12), "估开口：没有停顿迹象的慢词不动")
+
+    // 句中的停顿也会被算进下一个词：长得离谱（比宽松词长多 0.5 秒）就算停顿后面。
+    let midPause = estimate([(" Pole", 57.055, 57.355), (" and", 57.355, 58.315)])
+    check(near(midPause[1].onset, 58.315 - 0.38), "估开口：长得离谱的句中词也估")
+
+    // 句末的词被拉长：停顿在后面 —— 开口不动，归属看开头那一截。
+    let sentenceEnd = estimate([(" a", 29.882, 30.002), (" box.", 30.002, 30.902)])
+    check(near(sentenceEnd[1].onset, 30.002) && sentenceEnd[1].center < 30.2, "估开口：句末被拉长的词，停顿算在后面")
+    // 前面句号、后面逗号：前面的停顿重（「Today,」）；两边一样重不估。
+    let today = estimate([(" anyone.", 6.12, 6.66), (" Today,", 6.72, 7.98)])
+    check(near(today[1].onset, 7.98 - 0.5), "估开口：前面句号、后面逗号，按停顿在前面算")
+    let both = estimate([("Okay.", 0.0, 1.5)])
+    check(near(both[0].onset, 0) && near(both[0].center, 0.75), "估开口：两边一样重不估")
+
+    // 中文：一个字一个词，第一个字拖了 1 秒；纯标点的词不估。
+    let chinese = estimate([("剪", 0.0, 1.02), ("辑", 1.02, 1.2), (" ，", 1.2, 1.5)])
+    check(near(chinese[0].onset, 1.02 - 0.35), "估开口：中文按字数给宽松词长")
+    check(near(chinese[2].onset, 1.2), "估开口：纯标点不估")
 }

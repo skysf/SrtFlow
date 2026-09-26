@@ -49,10 +49,16 @@ enum SubtitleBreaks {
     // MARK: ② 一句 → 几条
 
     /// 一句话切成几条（每条是这句话里一段连续的词）。
-    static func pieces(of sentence: [Word], config: SubtitleSegmentationConfig) -> [Range<Int>] {
+    /// - Parameter availableEnd: 这句话后面最晚能显示到哪（下一句开口、或者这段素材在时间线上的结尾）——
+    ///   最后一个小句能在屏上留多久要看它。
+    static func pieces(
+        of sentence: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
+    ) -> [Range<Int>] {
         guard !sentence.isEmpty else { return [] }
         let allowed = wordBoundaries(sentence)
-        let merged = mergeShortClauses(clauseRanges(sentence), in: sentence, config: config)
+        let merged = mergeShortClauses(
+            clauseRanges(sentence), in: sentence, availableEnd: availableEnd, config: config
+        )
         return merged.flatMap { splitToFit($0, in: sentence, allowed: allowed, config: config) }
     }
 
@@ -70,12 +76,15 @@ enum SubtitleBreaks {
 
     /// 太短的小句并到旁边（并了放不下就不并）。
     static func mergeShortClauses(
-        _ ranges: [Range<Int>], in words: [Word], config: SubtitleSegmentationConfig
+        _ ranges: [Range<Int>], in words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
     ) -> [Range<Int>] {
+        func isTiny(_ range: Range<Int>) -> Bool {
+            SubtitleBreaks.isTiny(range, in: words, availableEnd: availableEnd, config: config)
+        }
         var pieces = ranges
         var index = 0
         while index < pieces.count {
-            guard pieces.count > 1, isTiny(pieces[index], in: words, config: config) else {
+            guard pieces.count > 1, isTiny(pieces[index]) else {
                 index += 1
                 continue
             }
@@ -85,8 +94,8 @@ enum SubtitleBreaks {
             }
             // 优先并给同样太短的邻居，其次给更短的那边；一样就给前面那条。
             let partner = partners.min { a, b in
-                let tinyA = isTiny(pieces[a], in: words, config: config)
-                let tinyB = isTiny(pieces[b], in: words, config: config)
+                let tinyA = isTiny(pieces[a])
+                let tinyB = isTiny(pieces[b])
                 if tinyA != tinyB { return tinyA }
                 return duration(pieces[a], in: words) < duration(pieces[b], in: words)
             }
@@ -274,9 +283,12 @@ enum SubtitleBreaks {
         "in", "on", "at", "for", "with", "from", "into", "onto", "about", "after", "before",
         "between", "through", "during", "without", "like"
     ]
-    /// 英文里不许留在一条末尾的词：冠词、限定词、介词、连词、物主代词、助动词、主语代词。
+    /// 英文里不许留在一条末尾的词：冠词、限定词、介词、连词（含从句连词：「…my box until / it's…」
+    /// 的 until 该起头，不该收尾）、物主代词、助动词、主语代词。
     static let danglingEnds: Set<String> = [
         "all", "each", "every", "some", "any", "no", "such",
+        "because", "when", "where", "while", "if", "unless", "until", "since", "although", "though",
+        "whether", "than",
         "a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "from", "into", "onto", "about",
         "by", "as", "and", "or", "but", "so", "that", "which", "who", "my", "your", "his", "her", "its",
         "our", "their", "this", "these", "those", "is", "are", "was", "were", "be", "been", "am", "will",
@@ -320,8 +332,17 @@ enum SubtitleBreaks {
         } else {
             if goodStarts.contains(normalized(next.text)) { cost -= 0.3 }
             if danglingEnds.contains(normalized(previous.text)) { cost += 1 }
+            // 专有名词不拆（South Pole、New York；Netflix：姓和名不拆开）：句中两个大写开头的词连着。
+            if startsWithCapital(previous.text), startsWithCapital(next.text), normalized(next.text) != "i",
+               !normalized(next.text).hasPrefix("i'") {
+                cost += 0.5
+            }
         }
         return cost
+    }
+
+    static func startsWithCapital(_ text: String) -> Bool {
+        text.first { $0.isLetter }?.isUppercase ?? false
     }
 
     /// 中文那一半：助词不起头、「的」不收尾、连词介词不收尾、连词前面好断、句末语气词后面好断。
@@ -372,8 +393,16 @@ enum SubtitleBreaks {
 
     // MARK: 小工具
 
-    static func isTiny(_ range: Range<Int>, in words: [Word], config: SubtitleSegmentationConfig) -> Bool {
-        if duration(range, in: words) < config.minClauseDuration { return true }
+    /// 太短：在屏上留不到 `minClauseDuration`（下一个小句开口前、最多说完再多停半秒），或者只有一个词
+    /// （中文不到三个字）。看的是**能在屏上留多久**，不是说了多久：「a car」只说了半秒，但后面是停顿，
+    /// 能留一秒，两个词读得完；「to me」后面紧接着下一句，只能留 0.4 秒。
+    static func isTiny(
+        _ range: Range<Int>, in words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
+    ) -> Bool {
+        guard let first = range.first, let last = range.last else { return true }
+        let next = range.upperBound < words.count ? words[range.upperBound].start : availableEnd
+        let onScreen = min(next, words[last].end + config.trailingHold) - words[first].start
+        if onScreen < config.minClauseDuration - 1e-9 { return true }
         let text = shownText(range, in: words)
         if SubtitleLineMeasure.isMostlyFullWidth(text) {
             return text.filter { !$0.isWhitespace }.count < 3
