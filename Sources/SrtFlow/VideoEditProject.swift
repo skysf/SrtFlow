@@ -4,36 +4,6 @@ import AppKit
 import SwiftUI
 import SrtFlowCore
 
-/// 时间线的鼠标工具（对齐 CapCut：选择 A / 分割 B）。
-enum TimelineTool: String, CaseIterable, Identifiable {
-    case select
-    case split
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .select: return "Select"
-        case .split: return "Split"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .select: return "cursorarrow"
-        case .split: return "rectangle.split.2x1"
-        }
-    }
-
-    /// 菜单里展示的单键快捷键。
-    var shortcutLabel: String {
-        switch self {
-        case .select: return "A"
-        case .split: return "B"
-        }
-    }
-}
-
 /// 视频编辑器的全部可变状态。
 ///
 /// 跟压缩/烧录的队列一样是全局单例：切到别的栏目视图会被销毁，时间线和
@@ -58,13 +28,11 @@ final class VideoEditProject {
         }
     }
 
-    /// 选中的 cue 还在不在当前原文轨上；不在就摘掉选择。
+    /// 选中的 cue 还在不在（原文、译文哪条轨上都算）；不在就摘掉选择。
     /// 只在真的选着 cue 时才遍历，拖布局框那种高频写入不额外付代价。
     private func pruneSubtitleCueSelection() {
         guard !selection.subtitleCueIDs.isEmpty else { return }
-        selection.pruneSubtitleCues { id in
-            state.subtitle?.cues.contains { $0.id == id } == true
-        }
+        selection.pruneSubtitleCues { state.subtitleTrack(of: $0) != nil }
     }
 
     /// 选中的标记还在不在（段被删、标记被删、撤销、被裁出窗口）。同样收在这个
@@ -420,6 +388,8 @@ final class VideoEditProject {
     private(set) var renderSize = CGSize(width: 1920, height: 1080)
     /// 预览是否正在重建。单独一个小对象、只有工具栏的转圈订阅（2026-09-25，那时工程还是 `ObservableObject`，放在工程上每次重建整个编辑器多算两轮）。
     let rebuildStatus = PreviewRebuildStatus()
+    /// 裁切时亮的对齐线：`liveTrim` 写、`endLiveEdit` 收，只有拖动覆盖层里的小视图订阅（同上一条）。
+    let trimGuides = TrimGuideState()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     @ObservationIgnored private var audioPlan: AudioMixPlan?
@@ -434,8 +404,7 @@ final class VideoEditProject {
     /// 撤销登记走窗口的 UndoManager，⌘Z/⇧⌘Z 和菜单原生可用。视图出现时塞进来。
     @ObservationIgnored weak var undoManager: UndoManager?
 
-    @ObservationIgnored private var infoCache: [URL: MediaInfo] = [:]
-    @ObservationIgnored private var audioDurationCache: [URL: Double] = [:]
+    let mediaProbes = MediaProbeCache()
     @ObservationIgnored private var rebuildTask: Task<Void, Never>?
     /// 预览重建的代数，旧的构建结果回来晚了就直接扔。
     @ObservationIgnored private var rebuildGeneration = 0
@@ -530,6 +499,7 @@ final class VideoEditProject {
     func endLiveEdit(rebuildsPreview: Bool = true) {
         guard let snapshot = liveEditSnapshot else { return }
         liveEditSnapshot = nil
+        trimGuides.show([])
         guard state != snapshot else { return }
         let audioOnly = state.differsOnlyInAudioMix(from: snapshot)
         registerUndo(snapshot)
@@ -545,6 +515,7 @@ final class VideoEditProject {
     func cancelLiveEdit() {
         guard let snapshot = liveEditSnapshot else { return }
         liveEditSnapshot = nil
+        trimGuides.show([])
         state = snapshot
     }
 
@@ -623,7 +594,7 @@ final class VideoEditProject {
     /// 两轨镜像：译文行的块和原文行同 ID 同时间，从哪一行起拖都是同一条 cue，
     /// 落地走 `LinkedSubtitleEditing.setStarts` 一起挪（`TimelineState.move`）。
     func cueDragPlan(cueID id: UUID) -> ClipDragPlan? {
-        guard let cue = state.subtitle?.cues.first(where: { $0.id == id }) else { return nil }
+        guard let cue = state.subtitleCue(id) else { return nil }
         let span = TimelineSpan(start: cue.start, end: cue.end)
         let clipIDs = state.draggingClipIDs(
             seed: selectedSubtitleCueIDs.contains(id) ? selectedClipIDs : [],
@@ -677,11 +648,10 @@ final class VideoEditProject {
         )
     }
 
-    /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
-    /// 拉任何一个块的把手裁一边：拉的那个块在选中集合里就**整个选择一起裁**，链接开着时
-    /// 链接伙伴跟着（名单规则 `TimelineTrim.members`）；整组同一个量、谁先到头整组一起停
-    /// （VideoEditTimelineTrim.swift，docs/architecture/timeline-drag-gestures.md §3.6）。
-    /// 四种块的把手（剪辑 / 形状 / 文字 / 滤镜）都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    /// 拖两端裁切（实时版本），各种块的把手都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    /// 拉的那个块在选中集合里就**整个选择一起裁**，链接开着时链接伙伴跟着（`TimelineTrim.members`）；
+    /// 整组同一个量、谁先到头整组一起停（VideoEditTimelineTrim.swift，timeline-drag-gestures.md §3.6）。
+    /// 吸附开着时先吸到最近的对齐点、再按整组的范围夹，亮的线交给 `trimGuides`（§4，`TrimSnapPlan`）。
     func liveTrim(anchor: TimelineTrim.Member, leading: Bool, deltaSeconds: Double) {
         let members = TimelineTrim.members(
             anchor: anchor, selectedClips: selectedClipIDs, selectedShapes: selectedShapeIDs,
@@ -689,9 +659,14 @@ final class VideoEditProject {
             selectedFilters: selectedFilterIDs, linkage: linkageEnabled, in: state
         )
         beginLiveEdit()
-        liveApply { state in
-            state.trimGroup(members, leading: leading, by: deltaSeconds)
-        }
+        // 对着手势开始时的状态算（拖动中不变 = 冻结的候选）；吸附关掉 = 不吸也不亮线。
+        let snap = !snappingEnabled ? nil : TimelineTrim.snapPlan(
+            members: members, leading: leading, magnet: magnetEnabled, in: liveEditOrigin ?? state, playhead: clock.time
+        )
+        let requested = snap?.snapped(deltaSeconds, pixelsPerSecond: pixelsPerSecond) ?? deltaSeconds
+        var applied = 0.0
+        liveApply { state in applied = state.trimGroup(members, leading: leading, by: requested) }
+        trimGuides.show(snap?.guides(after: applied, pixelsPerSecond: pixelsPerSecond) ?? [])
     }
 
     func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
@@ -746,7 +721,7 @@ final class VideoEditProject {
                     for: image,
                     nativeResolution: StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize)
                   ) else { continue }
-            let info = infoCache[video]
+            let info = mediaProbes.cachedInfo(for: video)
             next.update(clip.id) { pending in
                 pending.sourceURL = video
                 pending.needsStillConversion = false
@@ -946,28 +921,6 @@ final class VideoEditProject {
         return state.selectionForExport(ids: selectedClipIDs)
     }
 
-    func attachSubtitle(_ url: URL) {
-        do {
-            let document = try SubtitleLoader.load(url)
-            perform { state in
-                state.subtitle = document
-                state.subtitleURL = url
-                // 换了原文轨（新 cue ID），旧译文/cueMeta 全部失锚，同一事务清掉。
-                state.subtitleCompanion = nil
-            }
-        } catch {
-            notice = error.localizedDescription
-        }
-    }
-
-    func removeSubtitle() {
-        perform { state in
-            state.subtitle = nil
-            state.subtitleURL = nil
-            state.subtitleCompanion = nil
-        }
-    }
-
     // MARK: - 剪辑操作
 
     /// 播放头落在主轨哪一段上（分割、裁切的默认对象）。
@@ -1072,12 +1025,8 @@ final class VideoEditProject {
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
             if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
             if !filterIDs.isEmpty { state.filters.removeAll { filterIDs.contains($0.id) }; state.compactFilterLayers() }
-            if !cueIDs.isEmpty, var original = state.subtitle {
-                // 两轨 + meta 同删，走和字幕面板一样的那份合同。
-                var companion = state.subtitleCompanion ?? SubtitleCompanion()
-                LinkedSubtitleEditing.removeCues(ids: cueIDs, original: &original, companion: &companion)
-                state.subtitle = original
-                state.subtitleCompanion = companion.hasPersistentData ? companion : nil
+            if !cueIDs.isEmpty {   // 各删各的轨，走和字幕面板一样的那份合同
+                state.editSubtitleTracks { SubtitleTrackEditing.removeCues(ids: cueIDs, original: &$0, companion: &$1) }
             }
         }
         selection.clear()
@@ -1211,36 +1160,6 @@ final class VideoEditProject {
         }
     }
 
-    /// **原文**字幕轨的眼睛。语义与其他轨道一致：预览和烧录都跳过。
-    /// 字幕不参与 AV 合成，不用重建预览播放器。
-    func toggleSubtitleHidden() {
-        perform(rebuildsPreview: false) { $0.subtitleHidden.toggle() }
-    }
-
-    /// **译文**字幕轨的眼睛。一个语言一条轨，两只眼睛推导出预览/烧录内容
-    /// （`TimelineState.visibleSubtitleChoice`）—— 没有额外的模式选择器。
-    func toggleTranslationHidden() {
-        perform(rebuildsPreview: false) { $0.translationHidden.toggle() }
-    }
-
-    /// 预览拖框实时写入工程级字幕布局（liveApply 连续编辑，松手
-    /// endLiveEdit(rebuildsPreview: false) 合成一步撤销；字幕不参与 AV 合成）。
-    func liveSetSubtitleLayout(_ layout: SubtitleLayout) {
-        liveApply { $0.subtitleLayout = layout }
-    }
-
-    /// 点选字幕 cue：与剪辑、形状选择都互斥（互斥规则在 `EditSelection`）。
-    /// ⌘/⇧ 点是加选或取消，和剪辑、形状一致。
-    func selectSubtitleCue(_ id: UUID, additive: Bool = false) {
-        if additive {
-            var ids = selectedSubtitleCueIDs
-            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-            selectedSubtitleCueIDs = ids
-        } else {
-            selectedSubtitleCueIDs = [id]
-        }
-    }
-
     /// 画布**被用户改过多少次**。
     ///
     /// 录屏导入要判断「能不能自动套用录制比例」。只比对比例**值**不够：
@@ -1271,7 +1190,7 @@ final class VideoEditProject {
         perform { $0.frameRate = rate }
     }
 
-    /// V 键：切换**选中的那几段**的显隐（2026-09-18 用户拍板）。
+    /// V 键：切换**选中的那几个**的显隐（2026-09-18 用户拍板；2026-09-26 起文字、形状、滤镜段也算）。
     ///
     /// 什么都没选时**什么都不做** —— 以前这里是「没选就切主轨」，那是在用户没
     /// 指定对象时替他挑了一个最大的目标。整轨显隐现在只有轨道头那只眼睛一个入口。
@@ -1280,13 +1199,15 @@ final class VideoEditProject {
     /// 切成什么由 `ClipVisibility.nextHidden` 定：一批里只要还有显示的就全部
     /// 隐藏 —— 逐个翻转会让混合状态永远回不到「全显示」。
     func toggleHiddenForSelection() {
-        guard !selectedClipIDs.isEmpty else { return }
         var ids = selectedClipIDs
         if linkageEnabled {
             for id in selectedClipIDs { ids.formUnion(state.linkedClipIDs(of: id)) }
         }
+        ids.formUnion(selectedTextIDs.union(selectedShapeIDs).union(selectedFilterIDs).union(selectedSubtitleCueIDs))
+        guard !ids.isEmpty else { return }
         let hidden = ClipVisibility.nextHidden(for: ids, in: state)
-        perform { $0.setHidden(hidden, ids: ids) }
+        // 文字、形状是叠层，滤镜挂在播放器视图上，都不在 AV 合成里：没有剪辑就别重建预览（画面会黑一下）。
+        perform(rebuildsPreview: !selectedClipIDs.isEmpty) { $0.setHidden(hidden, ids: ids) }
     }
 
     /// 主轨 ↔ 上层视频轨。
@@ -1348,9 +1269,9 @@ final class VideoEditProject {
         selection.pruneShapes { $0 != id }
     }
 
-    /// 此刻画面上该显示的形状。
+    /// 此刻画面上该显示的形状（藏起来的不算，和导出同一份 `renderedShapes`）。
     func visibleShapes(at time: Double) -> [ShapeAnnotation] {
-        state.shapes.filter { $0.contains(time: time) }
+        state.renderedShapes.filter { $0.contains(time: time) }
     }
 
     // MARK: - 吸附
@@ -1365,27 +1286,11 @@ final class VideoEditProject {
         return TimelineSnap.candidates(in: state, moving: movingIDs, playhead: clock.time)
     }
 
-    // MARK: - 素材探测
+    // MARK: - 素材探测（缓存在 MediaProbeCache）
 
-    /// 定格（`VideoEditFreezeFrame`）也要探测生成出来的静帧视频，所以不是 private。
-    func probeVideo(_ url: URL) async -> MediaInfo? {
-        if let cached = infoCache[url] { return cached }
-        let result = await MediaProbe.probe(url: url, ffmpeg: MediaToolchain.shared.runtime?.url)
-        if case .success(let info) = result {
-            infoCache[url] = info
-            return info
-        }
-        return nil
-    }
-
-    /// 拖进轨道那条路（`probeImports`）也要探，所以不是 private。
-    func audioDuration(_ url: URL) async -> Double? {
-        if let cached = audioDurationCache[url] { return cached }
-        let asset = AVURLAsset(url: url)
-        guard let duration = try? await asset.load(.duration).seconds, duration.isFinite else { return nil }
-        audioDurationCache[url] = duration
-        return duration
-    }
+    /// 定格（`VideoEditFreezeFrame`）和拖进轨道那条路（`probeImports`）也要探，所以不是 private。
+    func probeVideo(_ url: URL) async -> MediaInfo? { await mediaProbes.probeVideo(url) }
+    func audioDuration(_ url: URL) async -> Double? { await mediaProbes.audioDuration(url) }
 
     // MARK: - 预览重建
 

@@ -153,42 +153,6 @@ func export(_ state: TimelineState, name: String) async -> URL? {
     return kept
 }
 
-/// 成品在某一时刻那一帧的整幅平均亮度（0…1）。
-func brightness(_ url: URL, at seconds: Double, name: String) -> Double? {
-    let raw = root.appendingPathComponent("\(name)-\(seconds).gray")
-    let (code, out) = run(ffmpegPath, [
-        "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", String(seconds), "-i", url.path,
-        "-frames:v", "1", "-vf", "format=gray,scale=1:1",
-        "-f", "rawvideo", "-pix_fmt", "gray", raw.path
-    ])
-    guard code == 0, let data = try? Data(contentsOf: raw), let byte = data.first else {
-        check(false, "\(name) 在 \(seconds)s 抽帧失败：\(out.suffix(300))")
-        return nil
-    }
-    return Double(byte) / 255
-}
-
-/// 成品在某一时刻、某个像素的亮度（0…1）。
-///
-/// 量几何用它、不用整幅平均：成品是 yuv420p 有限范围（白≈235、黑≈16），
-/// 整幅平均值会随色彩范围漂，算出来的「黑块占比」对不上。逐像素只问
-/// 「这里亮还是暗」，范围怎么变都成立。
-func pixel(_ url: URL, x: Int, y: Int, at seconds: Double, name: String) -> Double? {
-    let raw = root.appendingPathComponent("\(name)-\(x)x\(y)-\(seconds).gray")
-    let (code, out) = run(ffmpegPath, [
-        "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", String(seconds), "-i", url.path,
-        "-frames:v", "1", "-vf", "crop=1:1:\(x):\(y),format=gray",
-        "-f", "rawvideo", "-pix_fmt", "gray", raw.path
-    ])
-    guard code == 0, let data = try? Data(contentsOf: raw), let byte = data.first else {
-        check(false, "\(name) 在 \(seconds)s 取 (\(x),\(y)) 失败：\(out.suffix(300))")
-        return nil
-    }
-    return Double(byte) / 255
-}
-
 /// 这份时间线的生产滤镜图（字符串断言用）。
 func filterGraph(_ state: TimelineState, name: String) async -> String? {
     let output = root.appendingPathComponent("\(name).mp4")
@@ -219,16 +183,6 @@ func filterGraph(_ state: TimelineState, name: String) async -> String? {
 func capacity(_ value: TransitionCapacity, isAbout expected: Double) -> Bool {
     if case .available(let maxDuration) = value { return abs(maxDuration - expected) < 1e-9 }
     return false
-}
-
-/// 成品的时长（秒），从 `ffmpeg -i` 的 Duration 行读。
-func mediaDuration(_ url: URL) -> Double? {
-    let (_, out) = run(ffmpegPath, ["-hide_banner", "-i", url.path])
-    guard let range = out.range(of: "Duration: ") else { return nil }
-    let parts = out[range.upperBound...].prefix(11).split(separator: ":")
-    guard parts.count == 3, let h = Double(parts[0]), let m = Double(parts[1]),
-          let sec = Double(parts[2]) else { return nil }
-    return h * 3600 + m * 60 + sec
 }
 
 func main() async {
@@ -695,6 +649,9 @@ func main() async {
             }
         }
     }
+
+    // MARK: 藏起来的上层段不进成片（2026-09-26，用例在 HiddenClips.swift）
+    await checkHiddenClips(white: white, black: black, info: landscape)
 
     if failures == 0 {
         print("\(checks) checks, 0 failures")

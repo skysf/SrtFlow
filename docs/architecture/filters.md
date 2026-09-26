@@ -110,6 +110,7 @@ out = lerp(identity, LUT, s) 查表  ==  lerp(in, LUT(in), s)
 | 载体 | `CIColorCubeWithColorSpace` | ffmpeg `lut3d` |
 | 数据 | `FilterLUT.cubeData(...)` | `FilterLUT.cubeFileText(...)` 写成 .cube |
 | 顺序 | `FilterStack` 按 `orderedFilters` | 同一个 `orderedFilters` |
+| 藏起来的段（V，2026-09-26） | `activeFilters(at:)` 读 `renderedFilters`，不含藏起来的 | 同一个 `renderedFilters`（[段的显隐](clip-visibility.md)） |
 | 插值 | 三线性（CIColorCube 固定如此） | **必须显式 `interp=trilinear`**（默认是 tetrahedral） |
 | 定义域 | `inputColorSpace` = BT.709 | **`format=gbrp` 垫在前面** |
 

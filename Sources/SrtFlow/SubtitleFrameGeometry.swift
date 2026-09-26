@@ -4,7 +4,8 @@ import SrtFlowCore
 /// 预览画面上「字幕块占哪块矩形」的唯一算法。
 ///
 /// 两个消费端：布局拖框（`SubtitleFrameCanvas`）和就地编辑的输入框
-/// （`SubtitlePreviewEditLayer`，双击字幕后浮在块下面）。**这段换算不许算第二遍**
+/// （`SubtitlePreviewEditLayer`，双击字幕后浮在块下面）；两条轨叠在一起时切上下两截的在
+/// `SubtitlePreviewFrames`（VideoEditPreviewSubtitleLayer.swift），也是从这里换算。**这段换算不许算第二遍**
 /// —— 一个按 1080 基准算、另一个照着眼睛估，拖框和输入框立刻错位，而且样式
 /// （九宫格位置、边距）一改就各错各的。
 ///
@@ -54,6 +55,18 @@ struct SubtitleFrameGeometry {
             y: boxSize.height - bottom - height,
             width: max(boxSize.width - left - right, 30),
             height: height
+        )
+    }
+
+    /// 反过来：预览框里的一个矩形换成布局（底部中心锚定，同 `SubtitleLayout` 的语义）。
+    /// 拖框每一拍、两条轨分开时钉住另一条，都走这一个换算。
+    func layout(for rect: CGRect, fontScale: Double) -> SubtitleLayout {
+        let scale = max(self.scale, 0.0001)
+        return SubtitleLayout(
+            marginLeft: Int(max(0, rect.minX / scale).rounded()),
+            marginRight: Int(max(0, (boxSize.width - rect.maxX) / scale).rounded()),
+            marginBottom: Int(max(0, (boxSize.height - rect.maxY) / scale).rounded()),
+            fontScale: fontScale
         )
     }
 }

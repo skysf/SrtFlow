@@ -76,6 +76,10 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
     var row: Int
     /// 读盘时没有 `row` 键的标记，只在载入到 `normalizeTextRows` 之间短暂存在。
     static let unassignedRow = -1
+    /// 单个藏起来（选中按 V，2026-09-26 用户拍板）：时间线上灰显、仍可编辑、照样占着自己那一行，
+    /// 预览和成片里都没有。和剪辑的 `EditClip.isHidden` 同一条语义（docs/architecture/clip-visibility.md）。
+    /// v22 字段，按需写键。
+    var isHidden = false
 
     /// 新建时的时长，与形状一致（3 秒）。
     static let defaultDuration = 3.0
@@ -201,7 +205,7 @@ extension TextStyle {
 extension TextOverlay: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, text, timelineStart, duration
-        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number, row
+        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number, row, isHidden
     }
 
     init(from decoder: Decoder) throws {
@@ -220,6 +224,8 @@ extension TextOverlay: Codable {
             number: try c.decodeIfPresent(NumberRoll.self, forKey: .number),
             row: try c.decodeIfPresent(Int.self, forKey: .row) ?? TextOverlay.unassignedRow
         )
+        // 缺键 = 没藏（v21 及更早没有这个概念）。
+        isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -240,6 +246,8 @@ extension TextOverlay: Codable {
         try c.encodeIfPresent(number, forKey: .number)
         // 行号无条件落盘：它决定画面上谁压谁，没有「默认就等于没有」这回事（v21）。
         try c.encode(row, forKey: .row)
+        // 按需写键：没藏过的文字不落它，免得被抬进 v22。
+        if isHidden { try c.encode(isHidden, forKey: .isHidden) }
     }
 }
 

@@ -77,7 +77,7 @@ extension VideoEditProject {
     /// 空文字留在结果里：它虽然不渲染画面，但选中框要画得出来 ——
     /// 刚 Add 出来还没打字的那一段全靠它才点得着。
     func visibleTextOverlays(at time: Double) -> [TextOverlay] {
-        state.textOverlaysInStackingOrder.filter { $0.contains(time: time) }
+        state.renderedTextOverlays.filter { $0.contains(time: time) }  // 藏起来的不算，和导出同一份
     }
 
     /// 文字块的拖动会话。与形状那条**逐字同构** —— 文字自己没有障碍：横向落点被同一行

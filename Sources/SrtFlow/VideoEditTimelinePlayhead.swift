@@ -49,6 +49,8 @@ struct TimelinePlayheadLines: View {
             .onChange(of: clock.time) { _, newTime in
                 followPlayhead(newTime)
             }
+            // 「回到开头」：滚回最左（只碰横向，同 followPlayhead）。不认 `placed` —— 见 PlayerClock.wentToStart。
+            .onReceive(clock.wentToStart) { geometry.scrollHorizontally(to: 0, animated: true) }
     }
 
     /// 播放时让播放头留在视野里：只有它快滚出去了才动一下，

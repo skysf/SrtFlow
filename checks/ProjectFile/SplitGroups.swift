@@ -13,6 +13,8 @@ func runSplitOutGroups(root: URL) {
         ("数字等待", checkNumberDelay),               // 31：NumberDelay.swift
         ("文字行", checkTextRows),                    // 32：TextRows.swift
         ("全选与滤镜多选", checkSelectAll),           // 33：SelectAll.swift
+        ("单个隐藏（剪辑 / 文字 / 形状 / 滤镜）", checkHiddenItems),  // 24：HiddenItems.swift
+        ("两条字幕轨", checkSubtitleTracks),           // 34：SubtitleTracks.swift
     ]
     for group in groups {
         do {

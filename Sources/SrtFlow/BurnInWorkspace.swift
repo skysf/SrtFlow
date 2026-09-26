@@ -22,14 +22,26 @@ enum BurnInWorkspace {
         title: String,
         layout: SubtitleLayout? = nil
     ) throws -> Prepared {
+        try create(
+            blocks: [SubtitleRenderBlock(cues: cues, layout: layout)], style: style,
+            fontFileURL: fontFileURL, aspectRatio: aspectRatio, title: title
+        )
+    }
+
+    /// 几块字幕各用各的布局（视频编辑器里原文、译文分开摆时是两块，`TimelineState.subtitleScreenBlocks`）。
+    static func create(
+        blocks: [SubtitleRenderBlock],
+        style: BurnInStyle,
+        fontFileURL: URL?,
+        aspectRatio: Double,
+        title: String
+    ) throws -> Prepared {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("SrtFlow-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let paths = FFmpegCommand.BurnIn()
-        let ass = style.assDocument(
-            cues: cues, aspectRatio: aspectRatio, title: title, layout: layout
-        )
+        let ass = style.assDocument(blocks: blocks, aspectRatio: aspectRatio, title: title)
         try Data(ass.utf8).write(to: directory.appendingPathComponent(paths.assFileName))
 
         let fontsDirectory = directory.appendingPathComponent(paths.fontsDirName, isDirectory: true)

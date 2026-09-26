@@ -167,6 +167,9 @@ struct FilterClip: Identifiable, Hashable, Sendable {
     /// LUT 是不可交换的（先冷铁后褪色 ≠ 先褪色后冷铁），现算的层号会在用户拖动
     /// 别的段时重排，画面跟着变 —— 那是最难解释的一类错。
     var layer: Int
+    /// 单个藏起来（选中按 V，2026-09-26 用户拍板）：时间线上灰显、仍可编辑、照样占着自己那一层，
+    /// 预览和成片里都不调色。比「强度拉到 0」更直接：藏的是这一段，强度留着。v22 字段，按需写键。
+    var isHidden = false
 
     /// 按 + 或拖卡片落下来的默认时长。
     static let defaultDuration = 3.0
@@ -206,7 +209,7 @@ struct FilterClip: Identifiable, Hashable, Sendable {
 
 extension FilterClip: Codable {
     private enum CodingKeys: String, CodingKey {
-        case id, preset, strength, timelineStart, duration, layer
+        case id, preset, strength, timelineStart, duration, layer, isHidden
     }
 
     init(from decoder: Decoder) throws {
@@ -219,6 +222,8 @@ extension FilterClip: Codable {
         timelineStart = try c.decodeIfPresent(Double.self, forKey: .timelineStart) ?? 0
         duration = try c.decodeIfPresent(Double.self, forKey: .duration) ?? FilterClip.defaultDuration
         layer = try c.decodeIfPresent(Int.self, forKey: .layer) ?? 0
+        // 缺键 = 没藏（v21 及更早没有这个概念）。
+        isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -229,6 +234,8 @@ extension FilterClip: Codable {
         try c.encode(timelineStart, forKey: .timelineStart)
         try c.encode(duration, forKey: .duration)
         try c.encode(layer, forKey: .layer)
+        // 按需写键：没藏过的滤镜段不落它，免得被抬进 v22。
+        if isHidden { try c.encode(isHidden, forKey: .isHidden) }
     }
 }
 
@@ -251,9 +258,9 @@ extension TimelineState {
         }
     }
 
-    /// 此刻生效的滤镜，按生效顺序。
+    /// 此刻生效的滤镜，按生效顺序。藏起来的不算（`renderedFilters`，VideoEditClipVisibility.swift）。
     func activeFilters(at time: Double) -> [FilterClip] {
-        orderedFilters.filter { $0.contains(time: time) }
+        renderedFilters.filter { $0.contains(time: time) }
     }
 
     /// 时间线上要给滤镜留几行。没有滤镜时是 0（那些行整个不出现）。

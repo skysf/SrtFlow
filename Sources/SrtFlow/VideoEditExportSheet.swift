@@ -383,9 +383,10 @@ struct VideoEditExportSheet: View {
 
     private func startExport() {
         var state = exportState
-        // 烧录矩阵：按眼睛把 subtitle 换成要烧的文档，关掉烧录就清掉。只出声音时
-        // 没有画面可烧（面板上也没有那一行），同样清掉。
-        state.subtitle = isAudioOnly ? nil : subtitleOptions.burnDocument(state: state)
+        // 烧不烧：关掉烧录就把两只眼睛都关上（导出图只烧看得见的，和预览同一份合同）。只出声音时
+        // 没有画面可烧（面板上也没有那一行），字幕整个拿掉。
+        subtitleOptions.applyBurnChoice(to: &state)
+        if isAudioOnly { state.subtitle = nil; state.subtitleCompanion = nil }
         // 这次用的文件夹就是「上次导出的文件夹」，下次打开面板还在这儿。
         exporter.exportFolder = folder
         exporter.export(

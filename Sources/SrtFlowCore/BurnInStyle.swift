@@ -244,7 +244,7 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
         )
     }
 
-    /// 生成可以直接喂给 `subtitles` 滤镜的完整 ASS 文本。
+    /// 生成可以直接喂给 `subtitles` 滤镜的完整 ASS 文本（一块字幕，烧字幕页和老调用方用）。
     ///
     /// - Parameters:
     ///   - cues: 字幕条目。
@@ -257,17 +257,36 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
         title: String = "SrtFlow",
         layout: SubtitleLayout? = nil
     ) -> String {
+        assDocument(blocks: [SubtitleRenderBlock(cues: cues, layout: layout)], aspectRatio: aspectRatio, title: title)
+    }
+
+    /// 几块字幕各自一个样式（各自的布局）的 ASS 文本：视频编辑器里原文、译文分开摆时是两块
+    /// （SubtitleRenderBlocks.swift）。第 i 块的事件放在 Layer i —— libass 只让同一层的事件互相避让，
+    /// 分开摆的两块哪怕挨着也不互相推开，和预览一致。
+    public func assDocument(
+        blocks: [SubtitleRenderBlock],
+        aspectRatio: Double,
+        title: String = "SrtFlow"
+    ) -> String {
         let height = Self.referenceHeight
         let safeAspect = aspectRatio.isFinite && aspectRatio > 0.1 ? aspectRatio : 16.0 / 9.0
         // 宽度取偶数，免得出现 1706.67 这种不整的画布宽。
         let width = max(2, Int((Double(height) * safeAspect / 2).rounded()) * 2)
 
-        var doc = SubtitleDocumentModel(
-            cues: cues.map { cue in
+        var styles: [SubtitleStyle] = []
+        var events: [SubtitleCue] = []
+        for (index, block) in blocks.enumerated() {
+            var style = assStyle(layout: block.layout)
+            // 第一块沿用老名字：只有一块时产物和以前逐字一样。
+            style.name = index == 0 ? Self.assStyleName : "\(Self.assStyleName)\(index + 1)"
+            styles.append(style)
+            events += block.cues.map { cue in
                 var copy = cue
                 // 统一指到我们的样式上，并去掉源文件里的 {\...} 覆盖标签和
                 // 单条边距，否则界面上的设置会被局部覆盖掉。
-                copy.styleName = Self.assStyleName
+                copy.styleName = style.name
+                // 只有一块时不动原来的 Layer（外挂 ASS 自带的层照旧），产物和以前逐字一样。
+                if blocks.count > 1 { copy.layer = index }
                 copy.text = SubtitleSerializer.assText(SubtitleSerializer.plainText(cue.text))
                 copy.marginL = nil
                 copy.marginR = nil
@@ -275,8 +294,11 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
                 copy.effect = ""
                 copy.rawOverride = nil
                 return copy
-            },
-            styles: [assStyle(layout: layout)],
+            }
+        }
+        var doc = SubtitleDocumentModel(
+            cues: events,
+            styles: styles.isEmpty ? [assStyle(layout: nil)] : styles,
             format: .ass,
             title: title
         )

@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // MARK: - 时间线拖动的吸附与对齐线
 //
@@ -89,7 +90,8 @@ enum TimelineSnap {
     }
 
     /// 拖 `movingIDs` 这组块时的参考点：0、播放头、整条时间线的末尾，
-    /// 以及所有**不跟着一起动**的剪辑/形状的两端。
+    /// 以及所有**不跟着一起动**的东西：剪辑（主轨 / 上层 / 音频）、形状、文字、滤镜段、字幕 cue 的两端，
+    /// 标记（一个点）。藏起来的也算 —— 它们还占着时间线、看得见（2026-09-25 规格、2026-09-26 拍板）。
     ///
     /// 必须在手势**开始**时算一次并冻住。跟着动的伙伴（链接的音频、多选的其他块）
     /// 留在候选里的话，它们上一拍刚被挪到手指底下，这一拍就成了「离落点只差几像素」
@@ -125,6 +127,16 @@ enum TimelineSnap {
         for filter in state.filters where !movingIDs.contains(filter.id) {
             result.append(filter.timelineStart)
             result.append(filter.timelineEnd)
+        }
+        // 字幕 cue（原文、译文两条轨）和标记也是对齐点，同样不进 `end`（它们不算时间线总长）。
+        // 字幕全算：几百条可能让拖动变粘，用户知道，先做再看手感（2026-09-25）。
+        for cue in state.allSubtitleCues where !movingIDs.contains(cue.id) {
+            result.append(cue.start)
+            result.append(cue.end)
+        }
+        // 标记跟着自己那段走：那段在动，它的标记也在动，不当参考点。
+        for clip in state.allClips where !movingIDs.contains(clip.id) {
+            result.append(contentsOf: clip.visibleMarkers.map { clip.timelineTime(of: $0) })
         }
         result.append(end)
         return result
@@ -252,8 +264,9 @@ struct ClipDragPlan: Equatable {
             draggedID: draggedID,
             draggedSpan: TimelineSpan(start: dragged.timelineStart, end: dragged.timelineEnd),
             members: clipMembers(in: state, movingIDs: movingIDs),
-            // 磁吸主轨不吸别人的边缘：吸了也会被 packMain 覆盖，亮线是骗人的。
-            candidates: magnetMain ? [] : candidates,
+            // 磁吸主轨也吸、也亮线（2026-09-25 用户拍板）：块在手底下浮着，线只表示「此刻碰上」，
+            // 落点照旧由插空决定（松手跳进青框）。以前这里给空候选，理由是「亮线是骗人的」。
+            candidates: candidates,
             magnet: magnetMain
                 ? Magnet(
                     rest: state.mainClips.filter { !movingIDs.contains($0.id) },
@@ -320,6 +333,15 @@ struct ClipDragPlan: Equatable {
     /// 自由落点的轨道才给「弹性尾部」：能把块拖到现有内容之外。
     /// 磁吸主轨最终只能插进现有故事线的某条缝，扩太远只会把插入指示线滚出视野。
     var allowsFreeLanding: Bool { magnet == nil }
+
+    /// 整组最靠外的两条边：最早的开头、最晚的结尾。**多选时只拿这两条去吸、去亮线**，中间的块不管
+    /// （2026-09-25 规格）。只有一个成员时就是被拖的那一块。
+    var groupSpan: TimelineSpan {
+        TimelineSpan(
+            start: members.map(\.span.start).min() ?? draggedSpan.start,
+            end: members.map(\.span.end).max() ?? draggedSpan.end
+        )
+    }
 
     /// 整组「谁都不许被推到负时间」的下界，**只有这一条**，不含同轨障碍。
     ///
@@ -422,7 +444,14 @@ struct ClipDragPlan: Equatable {
             let insertion = TimelineSnap.mainInsertion(
                 among: magnet.rest, moving: magnet.moving, draggedCenter: center
             )
-            return DragResolution(delta: clamped, guides: [], mainInsertion: insertion)
+            // 浮着的那一块照样吸、照样亮线，只改画出来的位置：插空判定用的是上面的原始中心，
+            // 吸附挪的那几个点不许改变插进哪条缝（落地的位置由 packMain 定，和这里的位移无关）。
+            let group = groupSpan
+            let snapped = TimelineSnap.resolve(
+                proposedStart: group.start + clamped, duration: group.duration, candidates: candidates,
+                pixelsPerSecond: pixelsPerSecond, minimumStart: group.start + groupLowerDelta
+            )
+            return DragResolution(delta: snapped.start - group.start, guides: snapped.guides, mainInsertion: insertion)
         }
 
         // 指针中心悬在一个**装不下**的真间隙上：落点 = 间隙起点，右侧让位
@@ -451,17 +480,19 @@ struct ClipDragPlan: Equatable {
         }
 
         // 自由落点：先落进最近的合法间隙（可越过障碍），再在那个空档内吸附。
+        // 吸的是整组最靠外的两条边（`groupSpan`）：单选时就是被拖的那一块。
         let fit = fittedDelta(desired: desiredDelta)
+        let group = groupSpan
         let snapped = TimelineSnap.resolve(
-            proposedStart: draggedSpan.start + fit.delta,
-            duration: draggedSpan.duration,
+            proposedStart: group.start + fit.delta,
+            duration: group.duration,
             candidates: candidates,
             pixelsPerSecond: pixelsPerSecond,
-            minimumStart: draggedSpan.start + fit.lower,
-            maximumStart: draggedSpan.start + fit.upper
+            minimumStart: group.start + fit.lower,
+            maximumStart: group.start + fit.upper
         )
         return DragResolution(
-            delta: snapped.start - draggedSpan.start,
+            delta: snapped.start - group.start,
             guides: snapped.guides,
             mainInsertion: nil
         )

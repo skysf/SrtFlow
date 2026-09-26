@@ -17,7 +17,8 @@ struct VideoEditProjectFile: Codable {
     /// v6 字幕轨的工程级布局与可见性（subtitleLayout / subtitleHidden）；
     /// v7 译文轨的眼睛（translationHidden）—— 一个语言一条轨、烧录跟着眼睛走；
     /// v8 轨道块上的标记（EditClip.markers，**按需写入**）；
-    /// v9 声音的渐入渐出（EditClip.fadeInDuration / fadeOutDuration，**按需写入**）。
+    /// v9 声音的渐入渐出（EditClip.fadeInDuration / fadeOutDuration，**按需写入**）；
+    /// 之后每一版的登记见 VideoEditFormatVersion.swift（v23：字幕拆成两条独立轨）。
     var formatVersion: Int
     var savedAt: Date
     var timeline: TimelineState
@@ -32,7 +33,7 @@ struct VideoEditProjectFile: Codable {
     var rowHeights: TimelineRowHeights
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 21
+    static let latestFormatVersion = 23
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
     /// `...7` … `...14`（登记清单在那边）。
@@ -68,6 +69,8 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion19
         _ = timeline.requiresFormatVersion20
         _ = timeline.requiresFormatVersion21
+        _ = timeline.requiresFormatVersion22
+        _ = timeline.requiresFormatVersion23
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
@@ -255,8 +258,8 @@ enum VideoEditProjectIO {
         if file.formatVersion < 7 {
             timeline.translationHidden = true
         }
-        // 关联字幕（v4）：译文/cueMeta 必须锚在现有原文 cue 上，坏数据当场清掉。
-        timeline.normalizeSubtitleCompanion()
+        // 关联字幕（v4）：坏数据当场清掉。v22 及更早的译文是原文的镜像（同 ID），先拆成两条独立轨（v23）。
+        timeline.normalizeSubtitleCompanion(splitsMirroredTranslation: file.formatVersion < 23)
         // 老工程没有行号：按当年的自动排布补上（VideoEditTextRows.swift）。
         timeline.normalizeTextRows()
         // 老版本存盘的主轨数组可能乱序（磁吸关掉的拖动不重排），打开时治好。

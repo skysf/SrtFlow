@@ -17,7 +17,7 @@ extension VideoEditProject {
             clips: Set(state.allClips.map(\.id)),
             shapes: Set(state.shapes.map(\.id)),
             texts: Set(state.textOverlays.map(\.id)),
-            cues: Set((state.subtitle?.cues ?? []).map(\.id)),
+            cues: Set(state.allSubtitleCues.map(\.id)),
             filters: Set(state.filters.map(\.id))
         )
     }
@@ -48,7 +48,7 @@ extension VideoEditProject {
         let texts = state.textOverlays
             .filter { selectedTextIDs.contains($0.id) }
             .map { (id: $0.id, span: TimelineSpan(start: $0.timelineStart, end: $0.timelineEnd)) }
-        let cues = (state.subtitle?.cues ?? [])
+        let cues = state.allSubtitleCues
             .filter { selectedSubtitleCueIDs.contains($0.id) }
             .map { (id: $0.id, span: TimelineSpan(start: $0.start, end: $0.end)) }
         let filters = state.filters

@@ -600,7 +600,7 @@ extension TimelineState {
     ///
     /// 落点一律按**冻结的 span + delta** 算绝对值，不是在当前值上叠加 ——
     /// 磁吸主轨那条分支会拿实际落点把非主轨成员再平一次，叠加式的写法在那里
-    /// 会变成双倍位移。字幕 cue 走 `LinkedSubtitleEditing.setStarts`（两轨同步 +
+    /// 会变成双倍位移。字幕 cue 走 `SubtitleTrackEditing.setStarts`（两条轨各挪各的 +
     /// 重排 + reindex），整批一次交给它，别在循环里一条条调：那样每条都要重排
     /// 一次整轨。
     private mutating func move(_ members: [ClipDragPlan.Member], by delta: Double) {
@@ -620,10 +620,7 @@ extension TimelineState {
                 cueStarts[member.id] = start
             }
         }
-        guard !cueStarts.isEmpty, var original = subtitle else { return }
-        var companion = subtitleCompanion ?? SubtitleCompanion()
-        LinkedSubtitleEditing.setStarts(cueStarts, original: &original, companion: &companion)
-        subtitle = original
-        subtitleCompanion = companion.hasPersistentData ? companion : nil
+        guard !cueStarts.isEmpty else { return }
+        editSubtitleTracks { SubtitleTrackEditing.setStarts(cueStarts, original: &$0, companion: &$1) }
     }
 }

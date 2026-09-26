@@ -305,10 +305,44 @@ extension TimelineState {
         !textOverlays.isEmpty
     }
 
-    /// 读盘后的规范化：companion 的译文轨/cueMeta 必须锚在现有原文 cue 上，
-    /// 对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
-    mutating func normalizeSubtitleCompanion() {
+    /// 是否存在「旧版打开会被静默丢掉」的 v22-only 持久数据。
+    ///
+    /// **登记清单（新增 v22-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` —— 文字、形状、滤镜段
+    ///    单个藏起来（V，2026-09-26；**按需写入**：没藏过的不落键）。
+    ///
+    /// 为什么要抬：它们**直接决定成片里有没有这一个**。只认 v21 的旧版打开后藏起来的文字、形状、调色
+    /// 全部回到画面上，随手编辑触发自动保存即永久抹掉，只能一个个重新找出来再藏一遍（同 v16 的剪辑）。
+    var requiresFormatVersion22: Bool {
+        textOverlays.contains(where: \.isHidden) || shapes.contains(where: \.isHidden)
+            || filters.contains(where: \.isHidden)
+    }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v23-only 持久数据。
+    ///
+    /// **登记清单（新增 v23-only 字段必须同步补进来）：**
+    /// 1. 译文轨本身 —— 2026-09-26 起译文 cue 有**自己的 ID 和时间**（字幕拆成两条独立轨），
+    ///    从哪句原文翻来记在 `SubtitleCompanion.translationLinks`。
+    /// 2. `translationLayout` —— 译文在画面上自己的位置和大小（按需写入：叠在原文下面时不落键）。
+    /// 3. `SubtitleCompanion.hiddenCueIDs` —— 字幕单句藏起来（V，按需写入：没藏过的不落键）。同一个 PR 里
+    ///    和前两项一起进的 v23（没有单独发布过只认前两项的版本），所以不另开一版。
+    ///
+    /// 为什么要抬：只认 v22 的旧版把译文当成原文的镜像、按 ID 对原文，新工程里的译文一句都对不上，
+    /// 读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失；藏起来的字幕句在旧版里全部回到画面上。
+    var requiresFormatVersion23: Bool {
+        subtitleCompanion?.translation != nil || translationLayout != nil
+            || subtitleCompanion?.hiddenCueIDs.isEmpty == false
+    }
+
+    /// 读盘后的规范化。
+    ///
+    /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨
+    ///   （`SubtitleCompanion.splitMirroredTranslation`：每句译文换新 ID，来源记成原来那句原文）。
+    /// - 然后：来源表只留译文轨上还在的句子、cueMeta 只留原文轨上还在的、译文 ID 撞上原文 ID 的换新 ——
+    ///   对不上的是坏数据（外部改动、半截文件），静默清掉而不是带病运行。
+    mutating func normalizeSubtitleCompanion(splitsMirroredTranslation: Bool = false) {
         guard var companion = subtitleCompanion else { return }
+        if splitsMirroredTranslation { companion.splitMirroredTranslation(original: subtitle) }
         let ids = Set((subtitle?.cues ?? []).map(\.id))
         companion.normalize(originalCueIDs: ids)
         subtitleCompanion = companion.hasPersistentData ? companion : nil

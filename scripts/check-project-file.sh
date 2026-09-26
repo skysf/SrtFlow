@@ -37,6 +37,8 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditClipCrop.swift \
+  Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
@@ -91,6 +93,8 @@ xcrun swiftc \
   checks/ProjectFile/TextRows.swift \
   checks/ProjectFile/SelectAll.swift \
   checks/ProjectFile/SplitGroups.swift \
+  checks/ProjectFile/HiddenItems.swift \
+  checks/ProjectFile/SubtitleTracks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -239,10 +243,25 @@ require "任一侧被隐藏的接缝不许挂转场（否则预览淡进黑场�
   Sources/SrtFlow/VideoEditCompositionBuilder.swift 'guard !state\.mainClips\[index - 1\]\.isHidden'
 require "ffmpeg 导出要滤掉隐藏的段" \
   Sources/SrtFlow/VideoEditExportGraph.swift 'ClipVisibility\.visible\('
+# 上面那条只证明「文件里出现过」：主轨那一行就满足了，叠上层轨那一圈照样按轨去 lane.clips 里取段，
+# 单段隐藏（V）漏进成片（2026-09-26 案例 hidden-upper-clip-still-exported）。真正的守卫是
+# check-video-fade.sh 的真导出抽帧；这条只挡「又回到按轨取段」的写法。
+forbid "ffmpeg 导出不许按轨去 lane.clips 里取段（走 overlayVisible 那一份清单）" \
+  Sources/SrtFlow/VideoEditExportGraph.swift '^[^/]*in lane\.clips'
 require "「只导出选中的」也要滤掉隐藏的段" \
   Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
 require "V 键切的是选中的那几段" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelection\(\)'
+# 回到开头（Return / 小键盘 Enter / Home，2026-09-26）：按键在编辑器的监听里接、只认主窗口，
+# 时间线只听专门的 wentToStart 滚回最左 —— 听 placed 的话，重建后放回播放头那一下也会把时间线拽走。
+require "Return / Home 回到开头接在编辑器的按键监听上" \
+  Sources/SrtFlow/VideoEditView.swift 'clock\.goToStart\(\)'
+require "回到开头只认主窗口（sheet / 弹窗里的 Return 是它们的默认按钮）" \
+  Sources/SrtFlow/VideoEditView.swift 'event\.window\?\.isMainWindow == true'
+require "时间线听「回到开头」滚回最左" \
+  Sources/SrtFlow/VideoEditTimelinePlayhead.swift 'onReceive\(clock\.wentToStart\)'
+forbid "时间线不许听 placed 去滚（重建之后放回播放头也发 placed）" \
+  Sources/SrtFlow/VideoEditTimelinePlayhead.swift 'onReceive\(clock\.placed\)'
 forbid "V 不许再切整轨（整轨显隐只剩轨道头那只眼睛一个入口）" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelectionLane'
 require "V 的切换规则必须走纯值 ClipVisibility.nextHidden" \
@@ -251,8 +270,40 @@ require "链接开着时 V 连带分离出来的音频一起切" \
   Sources/SrtFlow/VideoEditProject.swift 'if linkageEnabled \{'
 require "定格不给隐藏的段（它在预览和成片里都不存在）" \
   Sources/SrtFlow/VideoEditFreezeFrame.swift '!clip\.isHidden'
-require "隐藏的段在时间线上要灰显（否则看不出它不会进成片）" \
-  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'clip\.isHidden \? 0\.4 : 1'
+# 灰显只有一份实现（`timelineHiddenLook`，剪辑块那个文件里）：四种块都用它，2026-09-26 起文字 / 形状 / 滤镜也能藏。
+require "单个隐藏的灰显只有一处实现" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'opacity\(hidden \? 0\.4 : 1\)'
+require "藏起来的剪辑在时间线上要灰显（否则看不出它不会进成片）" \
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'timelineHiddenLook\(clip\.isHidden\)'
+require "藏起来的文字块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineTextRow.swift 'timelineHiddenLook\(overlay\.isHidden\)'
+require "藏起来的形状块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineShapeRow.swift 'timelineHiddenLook\(shape\.isHidden\)'
+require "藏起来的滤镜块要灰显" \
+  Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'timelineHiddenLook\(filter\.isHidden\)'
+# 进预览和成片的清单只有一份（ClipVisibility 那个文件里的 rendered*）：预览和导出都读它，
+# 直接读 state.shapes / textOverlaysInStackingOrder / orderedFilters 去渲染就会漏过 V。
+require "V 也切文字 / 形状 / 滤镜段 / 字幕单句" \
+  Sources/SrtFlow/VideoEditProject.swift 'selectedTextIDs\.union\(selectedShapeIDs\)\.union\(selectedFilterIDs\)\.union\(selectedSubtitleCueIDs\)'
+require "藏起来的字幕句要灰显" \
+  Sources/SrtFlow/VideoEditTimelineSubtitleCueBlock.swift 'timelineHiddenLook\(isHidden\)'
+# 字幕单句的过滤只有一处（renderedSubtitleCues）：画面上排块（预览 + 烧录）和导出字幕文件都读它。
+require "画面上的字幕块不含藏起来的句子" \
+  Sources/SrtFlow/VideoEditSubtitleDocuments.swift 'showsOriginal \? renderedSubtitleCues\(of: \.original\)'
+require "导出的字幕文件不含藏起来的句子" \
+  Sources/SrtFlow/VideoEditSubtitleDocuments.swift 'document\.cues = renderedSubtitleCues\(of: track\)'
+require "预览上的形状读 renderedShapes" \
+  Sources/SrtFlow/VideoEditProject.swift 'state\.renderedShapes\.filter'
+require "预览上的文字读 renderedTextOverlays" \
+  Sources/SrtFlow/VideoEditProject+Text.swift 'state\.renderedTextOverlays\.filter'
+require "预览的调色读不含隐藏的 activeFilters" \
+  Sources/SrtFlow/VideoEditFilterModels.swift 'renderedFilters\.filter \{ \$0\.contains\(time: time\) \}'
+require "导出的形状读 renderedShapes" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedShapes\.enumerated\(\)'
+require "导出的文字读 renderedTextOverlays" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedTextOverlays, canvas:'
+require "导出的调色读 renderedFilters" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedFilters\.filter'
 require "轨道头的眼睛仍是整轨显隐的入口" \
   Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleLaneHidden\('
 
@@ -272,13 +323,14 @@ forbid "预览轨道模式选择器已删除，不许复活" \
   Sources/SrtFlow/VideoEditView.swift 'subtitlePreviewTrack'
 forbid "面板不许再有 Preview track 选择器" \
   Sources/SrtFlow/SubtitleGen/SubtitleGenPanel.swift 'subtitlePreviewTrack'
-# 预览上的字幕 2026-09-25 从根视图搬进了 PreviewSubtitleLayer（根视图不再订阅时钟）。
-forbid "旧的按选择取可见文档的入口已废弃（会绕开眼睛推导）" \
-  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(for:'
-require "预览必须走两只眼睛推导出的合同" \
-  Sources/SrtFlow/VideoEditPlayheadFollowers.swift 'visibleSubtitleDocument\(\)'
+# 预览上的字幕 2026-09-25 从根视图搬进了 PreviewSubtitleLayer（根视图不再订阅时钟），2026-09-26
+# 两条轨独立后改成「画面上排成几块」：预览和烧录读同一份 subtitleScreenBlocks，不许各算一份。
+require "预览必须走眼睛推导出的字幕块（和烧录同一份）" \
+  Sources/SrtFlow/VideoEditPreviewSubtitleLayer.swift 'project\.state\.subtitleScreenBlocks\(\)'
 require "烧录必须与预览同一份合同（眼睛说了算）" \
-  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'state\.visibleSubtitleDocument\(\)'
+  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.subtitleScreenBlocks\(\)\.map\(\\\.renderBlock\)'
+forbid "导出面板不许另算一份要烧的文档（关掉烧录 = 关眼睛）" \
+  Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'func burnDocument'
 forbid "导出面板不许再自己选烧哪条轨" \
   Sources/SrtFlow/SubtitleGen/SubtitleExportSection.swift 'enum Burn'
 require "时间线要给译文轨一只自己的眼睛" \

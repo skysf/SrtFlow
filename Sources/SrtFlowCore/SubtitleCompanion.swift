@@ -4,7 +4,8 @@ import Foundation
 //
 // canonical 原文轨永远是 `TimelineState.subtitle`；这里只存原文之外的关联数据：
 // 译文轨、语言、每条 cue 的元数据（旁表）、生成参数快照。**不重复保存原文。**
-// 译文 cue 与原文 cue 用同一个 `SubtitleCue.id` 关联 —— 关联身份即 ID 相等。
+// 2026-09-26 起两条轨独立：译文 cue 有自己的 ID 和时间，从哪句原文翻来记在来源表
+// `translationLinks`（SubtitleTranslationLink.swift）；编辑合同在 SubtitleTrackEditing.swift。
 //
 // 存盘格式是长期格式，全部手写宽容解码（缺字段取默认、坏枚举退兜底），
 // 与 VideoEditModels.swift 的既有约定一致；本文件属 SrtFlowCore，
@@ -41,7 +42,9 @@ public enum CueOrigin: String, Hashable, Sendable {
 public struct CueMeta: Hashable, Sendable {
     /// 识别置信度（0–1）。人工改过原文后不再可靠，置 nil。
     public var recognitionConfidence: Double?
-    /// 原文改动后译文过期的标记；人工修正译文时清掉。
+    /// 老工程（v22 及更早，译文是原文的镜像）里「原文改过、译文过期」的标记。**只在读老工程时有意义**：
+    /// 打开时迁移进来源表（`splitMirroredTranslation`）后恒为 false。现在的「过期」是现算的
+    /// （`SubtitleCompanion.isTranslationStale`）。
     public var translationStale: Bool
     public var origin: CueOrigin
     /// 极端变速下阅读速度无解时的告警标记（分段器如实打标，不假装满足约束）。
@@ -86,7 +89,7 @@ public struct GenerationSnapshot: Hashable, Sendable {
 }
 
 public struct SubtitleCompanion: Hashable, Sendable {
-    /// 译文轨。cue 与原文轨同 ID、同 start/end（硬约束，见 LinkedSubtitleEditing）。
+    /// 译文轨。cue 有自己的 ID 和时间（2026-09-26 起与原文轨独立），从哪句原文翻来见 `translationLinks`。
     public var translation: SubtitleDocumentModel?
     /// BCP-47，如 "zh-Hans"。
     public var targetLanguage: String?
@@ -95,6 +98,11 @@ public struct SubtitleCompanion: Hashable, Sendable {
     public var generation: GenerationSnapshot?
     /// cue 元数据旁表，键 = 原文 cue 的 ID。不改动 SubtitleCue 的既有 Codable。
     public var cueMeta: [UUID: CueMeta]
+    /// 译文的来源表，键 = **译文** cue 的 ID（v23，SubtitleTranslationLink.swift）。
+    public var translationLinks: [UUID: TranslationLink]
+    /// 单句藏起来（V）的字幕，两条轨的都在这里（v23，2026-09-26）。藏起来的仍可点可拖可改，
+    /// 只是预览、烧录、导出的字幕文件里都没有它。拆 / 合并 / 删跟着记（`SubtitleTrackEditing`）。
+    public var hiddenCueIDs: Set<UUID>
 
     public init(
         translation: SubtitleDocumentModel? = nil,
@@ -102,7 +110,9 @@ public struct SubtitleCompanion: Hashable, Sendable {
         sourceLanguage: String? = nil,
         origin: SubtitleCompanionOrigin = .generated,
         generation: GenerationSnapshot? = nil,
-        cueMeta: [UUID: CueMeta] = [:]
+        cueMeta: [UUID: CueMeta] = [:],
+        translationLinks: [UUID: TranslationLink] = [:],
+        hiddenCueIDs: Set<UUID> = []
     ) {
         self.translation = translation
         self.targetLanguage = targetLanguage
@@ -110,278 +120,37 @@ public struct SubtitleCompanion: Hashable, Sendable {
         self.origin = origin
         self.generation = generation
         self.cueMeta = cueMeta
+        self.translationLinks = translationLinks
+        self.hiddenCueIDs = hiddenCueIDs
     }
 
     /// 是否存有「旧版打开会被静默丢掉」的数据 —— formatVersion 按需写 4 的判据之一。
     /// origin 单独不算数据：没有任何实质字段时整个 companion 视同不存在。
     public var hasPersistentData: Bool {
-        translation != nil || !cueMeta.isEmpty || generation != nil
-            || sourceLanguage != nil || targetLanguage != nil
+        translation != nil || !cueMeta.isEmpty || !translationLinks.isEmpty || !hiddenCueIDs.isEmpty
+            || generation != nil || sourceLanguage != nil || targetLanguage != nil
     }
 
-    /// 规范化（读盘后调用）：
-    /// - 译文轨只保留与原文同 ID 的 cue（关联身份即 ID，对不上的属坏数据）；
-    /// - 删除两轨都没有对应 cue 的孤儿 meta；
+    /// 规范化（读盘后、老工程拆开之后调用）：
+    /// - 译文 cue 的 ID 撞上原文 ID 的（外部改动、半截迁移）换一个新 ID —— 选择按 ID 认，
+    ///   两条轨上同一个 ID 会让点一句选中两句；
+    /// - 来源表只留译文轨上还在的句子，`cueMeta` 只留原文轨上还在的，藏起来的名单只留两条轨上还在的；
     /// - 译文轨清空后归 nil。
-    public mutating func normalize(originalCueIDs: Set<UUID>) {
+    /// 来源表里指向已删原文的 ID **不清**：原文删了译文不跟着删（悬空，重译不碰它）。
+    public mutating func normalize(originalCueIDs: Set<UUID>, newID: () -> UUID = { UUID() }) {
         if var doc = translation {
-            doc.cues.removeAll { !originalCueIDs.contains($0.id) }
-            doc.reindex()
+            for i in doc.cues.indices where originalCueIDs.contains(doc.cues[i].id) {
+                let old = doc.cues[i].id
+                let fresh = newID()
+                doc.cues[i].id = fresh
+                translationLinks[fresh] = translationLinks.removeValue(forKey: old)
+            }
             translation = doc.cues.isEmpty ? nil : doc
         }
+        let translationIDs = Set((translation?.cues ?? []).map(\.id))
+        translationLinks = translationLinks.filter { translationIDs.contains($0.key) }
         cueMeta = cueMeta.filter { originalCueIDs.contains($0.key) }
-    }
-}
-
-// MARK: - 关联编辑合同（计划第 8 节）
-
-/// 双轨（原文 + 译文）与 cueMeta 的联动编辑，全部纯函数：
-/// 调用方（VideoEditProject）在一次 perform 事务里调用，保证一步撤销。
-/// meta 的维护规则集中在这里（计划 7.3），调用方不得散落手改。
-public enum LinkedSubtitleEditing {
-
-    /// 规则 1：改时间 —— 两轨同 ID cue 改成相同时间。
-    ///
-    /// 改完**必须重排 + 重编号**：`cues` 的数组顺序就是时间顺序，下游全按顺序消费
-    /// （`cue(at:)` 取第一条命中的、序列化按数组写、字幕表按数组显示）。把一条 cue
-    /// 的时间改到邻居前面而不重排，界面顺序和导出的 .srt 序号就都是错的
-    /// （2026-08-12 复审 P2）。这与规则 7（整体平移）是同一条纪律。
-    public static func setTime(
-        id: UUID, start: TimeInterval, end: TimeInterval,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) {
-        guard let i = original.cues.firstIndex(where: { $0.id == id }) else { return }
-        original.cues[i].start = start
-        original.cues[i].end = end
-        normalizeOrder(&original)
-        if var doc = companion.translation,
-           let t = doc.cues.firstIndex(where: { $0.id == id }) {
-            doc.cues[t].start = start
-            doc.cues[t].end = end
-            normalizeOrder(&doc)
-            companion.translation = doc
-        }
-    }
-
-    /// 按时间稳定排序 + 重编号。**稳定**很重要：起点相同的两条要保持原有先后，
-    /// 不然每挪一次顺序都可能翻个个儿。
-    private static func normalizeOrder(_ doc: inout SubtitleDocumentModel) {
-        doc.cues = doc.cues.enumerated()
-            .sorted { $0.element.start == $1.element.start ? $0.offset < $1.offset : $0.element.start < $1.element.start }
-            .map(\.element)
-        doc.reindex()
-    }
-
-    /// 规则 2：改原文文本 —— 同 ID 译文标过期；本条置信度不再可靠，置 nil。
-    public static func setOriginalText(
-        id: UUID, text: String,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) {
-        guard let i = original.cues.firstIndex(where: { $0.id == id }),
-              original.cues[i].text != text else { return }
-        original.cues[i].text = text
-        var meta = companion.cueMeta[id] ?? CueMeta()
-        meta.translationStale = companion.translation?.cues.contains { $0.id == id } ?? false
-        meta.recognitionConfidence = nil
-        meta.origin = .editedManually
-        companion.cueMeta[id] = meta
-    }
-
-    /// 规则 3：改译文文本 —— 清自己的 stale（视为人工修正）。
-    /// 译文轨存在但缺这条 cue 时按原文时间补一条（人工补译）。译文轨不存在则不动。
-    public static func setTranslationText(
-        id: UUID, text: String,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) {
-        guard var doc = companion.translation,
-              let source = original.cues.first(where: { $0.id == id }) else { return }
-        if let t = doc.cues.firstIndex(where: { $0.id == id }) {
-            doc.cues[t].text = text
-        } else {
-            var cue = source
-            cue.text = text
-            let insertAt = doc.cues.firstIndex { $0.start > source.start } ?? doc.cues.count
-            doc.cues.insert(cue, at: insertAt)
-            doc.reindex()
-        }
-        companion.translation = doc
-        var meta = companion.cueMeta[id] ?? CueMeta()
-        meta.translationStale = false
-        companion.cueMeta[id] = meta
-    }
-
-    /// 规则 4：删除 —— 两轨同删 + meta 同删。
-    public static func removeCues(
-        ids: Set<UUID>,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) {
-        original.removeCues(ids: ids)
-        if var doc = companion.translation {
-            doc.removeCues(ids: ids)
-            companion.translation = doc.cues.isEmpty ? nil : doc
-        }
-        for id in ids { companion.cueMeta.removeValue(forKey: id) }
-    }
-
-    /// 规则 8：新增一条 —— **只在原文轨插入**。
-    ///
-    /// 译文轨是原文轨的镜像**子集**（同 ID、同时间，可以缺条），新写的一行还没有
-    /// 译文，所以这里不往译文轨塞空 cue：塞了就等于凭空多一句「译文是空字符串」
-    /// 的字幕，双语预览会多出一行空白。真要补译走 `setTranslationText`，
-    /// 它自己会按原文时间补条。
-    ///
-    /// 按时间顺序插入并重排 —— `cues` 的数组顺序就是时间顺序，下游全按顺序消费。
-    /// 与已有 cue 重叠是允许的（重叠有排序合同），但时长必须为正。
-    @discardableResult
-    public static func insertCue(
-        at time: TimeInterval, duration: TimeInterval, id: UUID = UUID(),
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) -> UUID? {
-        guard duration > 0 else { return nil }
-        let start = max(0, time)
-        let cue = SubtitleCue(id: id, start: start, end: start + duration, text: "")
-        let insertAt = original.cues.firstIndex { $0.start > start } ?? original.cues.count
-        original.cues.insert(cue, at: insertAt)
-        original.reindex()
-        // 出处如实记成人工：它不是识别出来的，没有置信度，也没有 provenance。
-        companion.cueMeta[id] = CueMeta(origin: .editedManually)
-        return id
-    }
-
-    /// 规则 7：整体平移 —— 把这批 cue 在**两轨**上挪到指定的起点（时长不变）。
-    ///
-    /// 时间线上框选一片再拖动时走这里。三条约束：
-    /// - **参数是绝对起点，不是增量**。拖动落地那条路径上，同一批成员可能被
-    ///   写两次（磁吸主轨插空之后要按实际落点再平一次），增量式的接口第二次会
-    ///   叠加成双倍位移。绝对起点则天然幂等 —— 和剪辑那边
-    ///   `timelineStart = member.span.start + delta` 是同一个写法。
-    /// - **挪完必须重排**：`cues` 的数组顺序就是时间顺序，下游按顺序消费
-    ///   （`cue(at:)` 取第一条命中的、序列化按数组写）。挪过头不重排，导出的
-    ///   .srt 序号和时间就对不上了。
-    /// - 两轨同 ID 同时间，`reindex()` 跟着跑。
-    public static func setStarts(
-        _ starts: [UUID: TimeInterval],
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) {
-        guard !starts.isEmpty else { return }
-        setStarts(starts, in: &original)
-        if var doc = companion.translation {
-            setStarts(starts, in: &doc)
-            companion.translation = doc
-        }
-    }
-
-    private static func setStarts(_ starts: [UUID: TimeInterval], in doc: inout SubtitleDocumentModel) {
-        var touched = false
-        for i in doc.cues.indices {
-            guard let start = starts[doc.cues[i].id] else { continue }
-            let duration = doc.cues[i].end - doc.cues[i].start
-            doc.cues[i].start = max(0, start)
-            doc.cues[i].end = max(0, start) + duration
-            touched = true
-        }
-        guard touched else { return }
-        normalizeOrder(&doc)
-    }
-
-    /// 规则 5：拆分 —— 首条保留原 ID，次条用 `newID`；两轨一致。
-    /// 原文文本默认整体留前半（可用 `originalTexts` 指定两半）；译文整体留前半、
-    /// 后半置空（语义不可机械二分）；两条 meta 都标 stale、置信度置 nil。
-    /// 拆分点必须严格落在 cue 内部，否则不动。
-    @discardableResult
-    public static func splitCue(
-        id: UUID, at time: TimeInterval, newID: UUID = UUID(),
-        originalTexts: (first: String, second: String)? = nil,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) -> Bool {
-        guard let i = original.cues.firstIndex(where: { $0.id == id }),
-              time > original.cues[i].start, time < original.cues[i].end else { return false }
-        let sourceEnd = original.cues[i].end
-
-        var second = original.cues[i]
-        second.id = newID
-        second.start = time
-        second.end = sourceEnd
-        original.cues[i].end = time
-        if let texts = originalTexts {
-            original.cues[i].text = texts.first
-            second.text = texts.second
-        } else {
-            second.text = ""
-        }
-        original.cues.insert(second, at: i + 1)
-        original.reindex()
-
-        if var doc = companion.translation,
-           let t = doc.cues.firstIndex(where: { $0.id == id }) {
-            var tSecond = doc.cues[t]
-            tSecond.id = newID
-            tSecond.start = time
-            tSecond.end = sourceEnd
-            tSecond.text = ""
-            doc.cues[t].end = time
-            doc.cues.insert(tSecond, at: t + 1)
-            doc.reindex()
-            companion.translation = doc
-        }
-
-        var firstMeta = companion.cueMeta[id] ?? CueMeta()
-        firstMeta.translationStale = true
-        firstMeta.recognitionConfidence = nil
-        companion.cueMeta[id] = firstMeta
-        companion.cueMeta[newID] = firstMeta
-        return true
-    }
-
-    /// 规则 6：合并 —— 沿用（文档顺序的）首条 ID，删其余 meta，标 stale。
-    /// 文本按文档顺序以空格拼接（两轨同规则）；时间取并集。
-    @discardableResult
-    public static func mergeCues(
-        ids: Set<UUID>,
-        original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
-    ) -> Bool {
-        let picked = original.cues.enumerated().filter { ids.contains($0.element.id) }
-        guard picked.count >= 2 else { return false }
-        let keptID = picked[0].element.id
-        let start = picked.map(\.element.start).min() ?? picked[0].element.start
-        let end = picked.map(\.element.end).max() ?? picked[0].element.end
-        let joined = picked.map(\.element.text)
-            .filter { !$0.isEmpty }.joined(separator: " ")
-        let dropped = Set(picked.dropFirst().map(\.element.id))
-
-        let keptIndex = picked[0].offset
-        original.cues[keptIndex].start = start
-        original.cues[keptIndex].end = end
-        original.cues[keptIndex].text = joined
-        original.removeCues(ids: dropped)
-
-        if var doc = companion.translation {
-            let tPicked = doc.cues.filter { ids.contains($0.id) }
-            let tJoined = tPicked.map(\.text).filter { !$0.isEmpty }.joined(separator: " ")
-            if let t = doc.cues.firstIndex(where: { $0.id == keptID }) {
-                doc.cues[t].start = start
-                doc.cues[t].end = end
-                doc.cues[t].text = tJoined
-            } else if !tPicked.isEmpty {
-                // 译文只存在于被并掉的条目上：并到 keptID 名下，不丢译文。
-                var cue = tPicked[0]
-                cue.id = keptID
-                cue.start = start
-                cue.end = end
-                cue.text = tJoined
-                let insertAt = doc.cues.firstIndex { $0.start > start } ?? doc.cues.count
-                doc.cues.insert(cue, at: insertAt)
-            }
-            doc.removeCues(ids: dropped)
-            companion.translation = doc.cues.isEmpty ? nil : doc
-        }
-
-        var meta = companion.cueMeta[keptID] ?? CueMeta()
-        meta.translationStale = true
-        meta.recognitionConfidence = nil
-        companion.cueMeta[keptID] = meta
-        for id in dropped { companion.cueMeta.removeValue(forKey: id) }
-        return true
+        hiddenCueIDs = hiddenCueIDs.filter { originalCueIDs.contains($0) || translationIDs.contains($0) }
     }
 }
 
@@ -485,7 +254,7 @@ extension GenerationSnapshot: Codable {
 
 extension SubtitleCompanion: Codable {
     private enum CodingKeys: String, CodingKey {
-        case translation, targetLanguage, sourceLanguage, origin, generation, cueMeta
+        case translation, targetLanguage, sourceLanguage, origin, generation, cueMeta, translationLinks, hiddenCueIDs
     }
 
     public init(from decoder: Decoder) throws {
@@ -497,13 +266,21 @@ extension SubtitleCompanion: Codable {
         for (key, value) in rawMeta {
             if let id = UUID(uuidString: key) { meta[id] = value }
         }
+        // 来源表同一个存法（键是译文 cue 的 uuidString）。
+        let rawLinks = try c.decodeIfPresent([String: TranslationLink].self, forKey: .translationLinks) ?? [:]
+        var links: [UUID: TranslationLink] = [:]
+        for (key, value) in rawLinks {
+            if let id = UUID(uuidString: key) { links[id] = value }
+        }
         self.init(
             translation: try c.decodeIfPresent(SubtitleDocumentModel.self, forKey: .translation),
             targetLanguage: try c.decodeIfPresent(String.self, forKey: .targetLanguage),
             sourceLanguage: try c.decodeIfPresent(String.self, forKey: .sourceLanguage),
             origin: try c.decodeIfPresent(SubtitleCompanionOrigin.self, forKey: .origin) ?? .generated,
             generation: try c.decodeIfPresent(GenerationSnapshot.self, forKey: .generation),
-            cueMeta: meta
+            cueMeta: meta,
+            translationLinks: links,
+            hiddenCueIDs: Set((try c.decodeIfPresent([String].self, forKey: .hiddenCueIDs) ?? []).compactMap(UUID.init(uuidString:)))
         )
     }
 
@@ -517,6 +294,13 @@ extension SubtitleCompanion: Codable {
         if !cueMeta.isEmpty {
             let raw = Dictionary(uniqueKeysWithValues: cueMeta.map { ($0.key.uuidString, $0.value) })
             try c.encode(raw, forKey: .cueMeta)
+        }
+        if !translationLinks.isEmpty {
+            let raw = Dictionary(uniqueKeysWithValues: translationLinks.map { ($0.key.uuidString, $0.value) })
+            try c.encode(raw, forKey: .translationLinks)
+        }
+        if !hiddenCueIDs.isEmpty {   // 排好序再写：同一份状态每次存出来的字节一样（自动保存不白改文件）
+            try c.encode(hiddenCueIDs.map(\.uuidString).sorted(), forKey: .hiddenCueIDs)
         }
     }
 }

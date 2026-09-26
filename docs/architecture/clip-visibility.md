@@ -14,8 +14,15 @@
 | --- | --- | --- | --- |
 | 整轨 | 轨道头那只眼睛 | `mainHidden` / `EditLane.isHidden` | **不能**（灰显且关命中） |
 | 单段 | 选中后按 **V**（或右键 Hide Clip） | `EditClip.isHidden` | **能**（只是灰显 + 斜杠眼睛角标） |
+| 单个文字 / 形状 / 滤镜段（2026-09-26） | 选中后按 **V**（或右键 Hide Text / Shape / Filter） | `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` | **能**（同上；照样占着自己那一行 / 那一层） |
+| 字幕单句（2026-09-26，原文 / 译文两条轨都行） | 选中后按 **V**（或右键 Hide Line） | `SubtitleCompanion.hiddenCueIDs`（`SubtitleCue` 是 SrtFlowCore 的通用类型，不往它身上加字段） | **能**（块灰显 + 斜杠眼睛，字幕表那一行带斜杠眼睛，照样能改字、挪、裁） |
 
 两级**互不覆盖**：轨藏起来时段上的标记原样留着，轨放出来之后单独藏的段还是藏着。
+
+> **文字 / 形状 / 滤镜段也能藏**（2026-09-26 用户拍板「要让他们也隐藏，一起做了吧」）：和剪辑同一套 V、
+> 同一个切换规则（一批里可以混着几类）、同一个灰显（`timelineHiddenLook`，四种块共用一份）。它们那几行
+> **不加眼睛**（用户同意）：文字行是用到才开一行的，行号会跟着上下换行变，给它挂一只要存盘的眼睛，状态得跟着
+> 行号走；要藏一整行，点那一行的轨道头（选中整行）再按 V，和视频轨上「点轨道头 + V」同一个用法。
 
 > 单段为什么仍然可编辑：按完 V 就点不中它的话，用户只能靠撤销把它找回来 ——
 > 而他多半只是想「先藏着看看效果，再决定删不删」。整轨隐藏是另一回事：那是
@@ -32,7 +39,7 @@
 | 链路 | 在哪过滤 |
 | --- | --- |
 | 预览合成 | `VideoEditCompositionBuilder`：主轨循环的 `guard`，上层轨/音频轨走 `ClipVisibility.visible` |
-| ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills` |
+| ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills`；叠上层轨和逐帧预渲染**都只走 `overlayVisible`**，不许按轨去 `lane.clips` 里取段（[2026-09-26 案例](../bugfixes/2026-09-26-hidden-upper-clip-still-exported.md)） |
 | 只导出选中的 | `TimelineState.selectionForExport` |
 | 定格 | `isFreezeEligible`：藏起来的段没有「这一帧」可言 |
 
@@ -46,6 +53,11 @@
 导出那边转场要求两段真的首尾相叠、隐藏的段早被滤掉，出来的是硬切。
 **两边必须同解**，否则就是经典的「预览一个样、成片另一个样」。
 
+**展开也不许跨过它**（2026-09-26）：两条管线入口共用的 `expandingTransitionHandles()` 把一侧藏起来的缝当作不存在
+（`seamRenders`）—— 活着的那一侧不为它借余料、不走压黑斜坡，渲染副本里这条缝的转场摘掉。以前先展开、再各自滤掉
+藏起来的段，活着的那段已经多带了半个转场的余料（或定格），往黑场里伸出一截
+（[案例](../bugfixes/2026-09-26-hidden-upper-clip-still-exported.md)）。只改渲染副本，界面上的容量判定照旧。
+
 ### 只导出选中的：起点按真会导出的段算
 
 `selectionForExport` 里隐藏的段不进子时间线，**而且不参与起点计算** —— 算进来的
@@ -55,16 +67,35 @@
 退回整条时间线：用户点的是「只导出选中的」，给他整条 = 导出成功但内容根本不是
 他要的（同 `needsStillConversion` 那条教训：宁可拦下来说清楚）。
 
+### 文字、形状、滤镜段：进预览和成片的清单只有一份
+
+`TimelineState.renderedTextOverlays`（按叠放序）/ `renderedShapes` / `renderedFilters`（按生效顺序）在
+`VideoEditClipVisibility.swift` 里算一次，**预览和导出都读它**：预览上的文字叠层（`visibleTextOverlays`）、
+形状叠层（`visibleShapes`）、调色（`activeFilters(at:)`）；导出的文字 PNG、形状 PNG、`lut3d` 链。直接读
+`state.shapes` / `textOverlaysInStackingOrder` / `orderedFilters` 去渲染就会漏过 V（扫描守卫钉着）。
+藏起来的文字在预览上也没有选中框、点不着 —— 它不在画面上；要改它走检查器。
+
+**字幕单句同一个道理**：`TimelineState.renderedSubtitleCues(of:)` 是唯一的过滤点，画面上排块
+（`subtitleScreenBlocks`，预览和烧录共用）和导出字幕文件（`subtitleDocument(for:)`）都读它 ——
+用户拍板「导出的字幕文件也没有」，所以数据面这一次**也**跟着隐藏走（眼睛不影响文件导出，V 影响）。
+拆一句藏着的，两半都藏着；合并时只有并进来的全藏着，合出来的才藏着；删了就从名单里去掉
+（`SubtitleTrackEditing` 里维护，那边有自检）。「全部翻译」整条重建时旧译文句连同藏着的记号一起没了。
+
 ## 切换规则：一批里只要还有显示的，就全部隐藏
 
 `ClipVisibility.nextHidden` 是唯一判据：选中的这一批里只要还有一个是显示的，按 V
-就**全部隐藏**；全藏着了才全部放出来。逐个翻转是错的 —— 混合状态下按一下 V 会
+就**全部隐藏**；全藏着了才全部放出来（一批里混着剪辑、文字、形状、滤镜段时一起算）。只动了文字 / 形状 /
+滤镜段时不重建预览（它们不在 AV 合成里，重建会让画面黑一下）。逐个翻转是错的 —— 混合状态下按一下 V 会
 一半藏起来一半冒出来，再按一下又换一批，永远回不到「全显示」。
 
 链接开着时（`linkageEnabled`）连带分离出来的音频一起切，和删除 / 变速同一份
 `linkedClipIDs` 展开规则。
 
-## 存盘：v16，按需写键
+## 存盘：v16（剪辑）/ v22（文字、形状、滤镜段）/ v23（字幕单句），按需写键
+
+文字、形状、滤镜段的 `isHidden` 是 **v22** 字段，规矩和剪辑的 v16 一模一样：按需写键、缺键读作 false、
+旧版打开会把藏起来的东西放回成片 —— 所以必须抬版本。字幕单句的 `hiddenCueIDs` 跟着同一个 PR 里的
+「字幕拆成两条独立轨」进了 **v23**（没藏过就不落键）。
 
 `EditClip.isHidden` 是 **v16-only** 持久字段（登记清单在
 `VideoEditFormatVersion.swift`，版本史在
@@ -83,7 +114,14 @@
 | --- | --- |
 | 切换规则、`visible` 过滤、只导出选中的（含起点与全隐藏）、存盘往返、按需写键、v16 登记 | `scripts/check-project-file.sh` |
 | 真取帧：藏起来的段所在时刻是黑场；任一侧被藏时接缝不挂淡变 | `scripts/check-preview-composition.sh` |
+| 真导出抽帧：上层轨上按 V 藏的段（含带入场动画、走预渲染的）和整条藏起来的轨都不进成片，外加一份没藏的对照 | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
+| 一侧藏起来的缝不展开：纯值断言 + 真导出在藏起来那一格取样是黑（两个方向） | 同上 |
 | 两条渲染链路、V 键、右键项、定格、块灰显的接线 | `scripts/check-project-file.sh` 的扫描守卫段 |
+| 文字 / 形状 / 滤镜段：跨类的切换规则、`rendered*` 清单（顺序不变、藏起来的不在）、此刻生效的滤镜、存盘按需写键 / 缺键 / 往返 / v22 | `scripts/check-project-file.sh`（`checks/ProjectFile/HiddenItems.swift`） |
+| 文字 / 形状 / 滤镜段藏起来之后导出图里没有它们（外加一份没藏的对照） | `scripts/check-video-fade.sh`（`checks/VideoFade/HiddenClips.swift`） |
+| 四种块共用一份灰显、V 也切文字 / 形状 / 滤镜段、预览和导出都读 `rendered*` | `scripts/check-project-file.sh` 的扫描守卫段 |
+| 字幕单句：拆 / 合并 / 删 / 全部重译怎么维护藏着的名单、编解码 | `swift run SrtFlowCoreChecks`（`SubtitleTrackChecks.swift`） |
+| 字幕单句：画面上的块和导出的字幕文件都不含藏着的、跨类切换规则、往返 / v23 | `scripts/check-project-file.sh`（`checks/ProjectFile/SubtitleTracks.swift`） |
 
 **人工回归清单**（自动化够不着，发版前实机验证）：
 
@@ -95,3 +133,10 @@
 - [ ] 轨道头点一下选中整轨 + V = 整轨的段逐段藏起来（和眼睛的整轨隐藏是两回事，
       眼睛仍能单独开关）。
 - [ ] 导出成片里没有被藏的段；「只导出选中的」也没有。
+- [ ] 选中一段文字（或形状、滤镜段）按 V：块灰显 + 斜杠眼睛，预览上它消失（滤镜段 = 那段时间不调色），
+      导出的成片里也没有；再按一次 V 回来。右键「隐藏这段文字 / 这个形状 / 这段滤镜」同一个动作。
+- [ ] 框选一片（剪辑 + 文字 + 形状 + 滤镜段）按 V：一起藏；再按一次一起回来。
+- [ ] 点文字行的轨道头选中整行 + V：整行的文字都藏起来。
+- [ ] 点一句字幕（原文或译文）按 V：块灰显 + 斜杠眼睛、字幕表那一行也有斜杠眼睛；预览上那一句没了
+      （叠在一起时另一条轨的那句照常，位置往下补）；导出的成片和导出的 .srt / .vtt 里都没有它。
+      右键「隐藏这句字幕」同一个动作；藏着的照样能改字、能拖、能裁。

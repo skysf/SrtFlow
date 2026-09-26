@@ -13,6 +13,9 @@ import SrtFlowCore
 /// 这一列是**第三个**编辑入口，另外两个是时间线双击 cue、预览双击字幕；三者共用
 /// 同一份选择（`EditSelection`）与同一批合同，合同见
 /// docs/architecture/subtitle-track-visibility-and-layout.md。
+///
+/// 2026-09-26 起原文、译文是两条独立的轨：**一张表按时间交错排**，行首标出是哪条轨，
+/// 一行一句；加行加到选中那句所在的轨（没选中时加到原文轨）—— 计划 S12。
 struct VideoEditSubtitlePanel: View {
     let project: VideoEditProject
     /// 播放器时钟：**持有不订阅**。这一列要跟着播放高亮「正在说的那句」，可一句通常好几秒 ——
@@ -23,26 +26,42 @@ struct VideoEditSubtitlePanel: View {
     var onOpenGenerator: () -> Void = {}
 
     @State private var followsPlayback = true
-    /// 播放头（悬停预览时是影子播放头）此刻落在哪条上。只在换句时写（`followCurrentCue`）。
-    @State private var currentCueID: UUID?
-    /// 哪个格子有光标。**焦点归这一列持有**：行是会被重建的临时值，
-    /// 从行内部给自己上焦点写不进去（见 `SubtitleFieldFocus` 的说明）。
-    @FocusState private var focusedField: SubtitleFieldFocus?
+    /// 播放头（悬停预览时是影子播放头）此刻落在哪几句上（两条轨都算）。只在换句时写（`followCurrentCue`）。
+    @State private var currentCueIDs: Set<UUID> = []
+    /// 哪一句有光标。**焦点归这一列持有**：行是会被重建的临时值，
+    /// 从行内部给自己上焦点写不进去（见 `VideoEditSubtitleCueRow` 的说明）。
+    @FocusState private var focusedCueID: UUID?
 
     /// 新建一行的默认时长。分段器的常见句长在 1–3 秒，2 秒进去以后再拖时间线
     /// 或改时间码都容易。
     private static let newCueDuration: TimeInterval = 2
 
-    private var cues: [SubtitleCue] { project.state.subtitle?.cues ?? [] }
-
-    private var translationCues: [SubtitleCue] {
-        project.state.subtitleCompanion?.translation?.cues ?? []
+    /// 表里的全部行：两条轨的句子按时间交错排（起点相同时原文在前）。
+    private var rows: [(cue: SubtitleCue, track: SubtitleTrack)] {
+        let original = project.state.subtitleCues(of: .original).map { (cue: $0, track: SubtitleTrack.original) }
+        let translation = project.state.subtitleCues(of: .translation).map { (cue: $0, track: SubtitleTrack.translation) }
+        return (original + translation).enumerated()
+            .sorted { $0.element.cue.start == $1.element.cue.start ? $0.offset < $1.offset : $0.element.cue.start < $1.element.cue.start }
+            .map(\.element)
     }
 
-    private var canEditOriginal: Bool { !project.state.subtitleHidden }
-    private var canEditTranslation: Bool { project.state.hasVisibleTranslation }
+    private var canEditOriginal: Bool { project.state.canEditSubtitleTrack(.original) || project.state.subtitle == nil }
     private var hasTranslationTrack: Bool {
         project.state.subtitleCompanion?.translation != nil
+    }
+
+    /// 加行加到哪条轨：选中那几句都在同一条轨上就是那条，否则原文轨。
+    private var insertTrack: SubtitleTrack {
+        let tracks = Set(project.selectedSubtitleCueIDs.compactMap { project.state.subtitleTrack(of: $0) })
+        return tracks.count == 1 ? tracks.first! : .original
+    }
+
+    /// 选中的几句能合并：至少两句、都在同一条轨上、那条轨看得见。
+    private var canMergeSelection: Bool {
+        let ids = project.selectedSubtitleCueIDs
+        let tracks = Set(ids.compactMap { project.state.subtitleTrack(of: $0) })
+        guard ids.count >= 2, tracks.count == 1, let track = tracks.first else { return false }
+        return project.state.canEditSubtitleTrack(track)
     }
 
     var body: some View {
@@ -50,7 +69,7 @@ struct VideoEditSubtitlePanel: View {
         VStack(spacing: 0) {
             header
             Divider()
-            if cues.isEmpty {
+            if project.state.allSubtitleCues.isEmpty {
                 emptyState
             } else {
                 table
@@ -61,7 +80,7 @@ struct VideoEditSubtitlePanel: View {
         // `$time` / `$peekTime` 在赋值之前发（willSet）：参数是新值，另一个读现值。
         .onReceive(clock.$time) { followCurrentCue(at: clock.peekTime ?? $0) }
         .onReceive(clock.$peekTime) { followCurrentCue(at: $0 ?? clock.time) }
-        .onChange(of: cues) { _, _ in followCurrentCue(at: clock.displayTime) }
+        .onChange(of: project.state.allSubtitleCues) { _, _ in followCurrentCue(at: clock.displayTime) }
     }
 
     // MARK: - 顶部
@@ -74,8 +93,8 @@ struct VideoEditSubtitlePanel: View {
                 Text("Subtitles")
                     .fontWeight(.semibold)
                 Spacer(minLength: 6)
-                if !cues.isEmpty {
-                    Text(String(format: L10n("%d lines"), cues.count))
+                if !project.state.allSubtitleCues.isEmpty {
+                    Text(String(format: L10n("%d lines"), project.state.allSubtitleCues.count))
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -93,16 +112,15 @@ struct VideoEditSubtitlePanel: View {
                 .instantHelp("Close the subtitle list and show the inspector")
             }
 
-            if !cues.isEmpty {
+            if !project.state.allSubtitleCues.isEmpty {
                 HStack(spacing: 8) {
                     Button(action: addCue) { Image(systemName: "plus") }
                         .buttonStyle(.borderless)
-                        // 新增只写**原文轨**（合同 7），而且新行的光标要落在原文
-                        // 那一格 —— 原文轨藏着时既违反「隐藏 = 不可编辑」，
-                        // 也没有那个输入框可以聚焦，接着打的字会被当成快捷键
+                        // 加到选中那句所在的轨，而且新行的光标要落进去 —— 那条轨藏着时既违反
+                        // 「隐藏 = 不可编辑」，也没有输入框可以聚焦，接着打的字会被当成快捷键
                         //（空格播放、V 切段的显隐、M 打标记）。所以直接置灰（复审 P2）。
-                        .disabled(!canEditOriginal)
-                        .instantHelp("Add a line at the playhead")
+                        .disabled(!project.state.canEditSubtitleTrack(insertTrack))
+                        .instantHelp("Add a line at the playhead, on the selected line’s track")
                     Button(action: removeSelected) { Image(systemName: "minus") }
                         .buttonStyle(.borderless)
                         .disabled(project.selectedSubtitleCueIDs.isEmpty || !canEditAnything)
@@ -113,8 +131,9 @@ struct VideoEditSubtitlePanel: View {
                         .instantHelp("Break the selected line in two")
                     Button(action: mergeSelected) { Image(systemName: "arrow.triangle.merge") }
                         .buttonStyle(.borderless)
-                        .disabled(project.selectedSubtitleCueIDs.count < 2 || !canEditAnything)
-                        .instantHelp("Join the selected lines into one")
+                        // 只合同一条轨上的（计划 S14）。
+                        .disabled(!canMergeSelection)
+                        .instantHelp("Join the selected lines into one (on the same track)")
 
                     Spacer(minLength: 4)
 
@@ -136,6 +155,13 @@ struct VideoEditSubtitlePanel: View {
                         }
                         .buttonStyle(.borderless)
                         .instantHelp("Hide or show the translated subtitle track")
+                        // 画面上分开摆了之后，点一下合回去：译文叠回原文下面（计划 S9）。
+                        Button(action: project.stackTranslationUnderOriginal) {
+                            Image(systemName: "rectangle.stack")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(project.state.translationLayout == nil)
+                        .instantHelp("Put the translation back under the original on the video")
                     }
                     Toggle(isOn: $followsPlayback) {
                         Image(systemName: "text.line.last.and.arrowtriangle.forward")
@@ -156,7 +182,9 @@ struct VideoEditSubtitlePanel: View {
         .padding(.vertical, 8)
     }
 
-    private var canEditAnything: Bool { canEditOriginal || canEditTranslation }
+    private var canEditAnything: Bool {
+        project.state.canEditSubtitleTrack(.original) || project.state.canEditSubtitleTrack(.translation)
+    }
 
     private var emptyState: some View {
         VStack(spacing: 10) {
@@ -183,30 +211,34 @@ struct VideoEditSubtitlePanel: View {
 
     // MARK: - 字幕表
 
-    /// 更新「播放头此刻落在哪条上」。重叠时取合同序最后一条 —— 与画面叠层最上面那行
-    /// （`SubtitleOverlap.active` 的末条）是同一条。没换句不写。
+    /// 更新「播放头此刻落在哪几句上」（两条轨都算）。没换句不写。
     private func followCurrentCue(at time: Double) {
-        let id = SubtitleOverlap.active(at: time, in: cues).last?.id
-        if id != currentCueID { currentCueID = id }
+        let ids = Set(SubtitleOverlap.active(at: time, in: project.state.allSubtitleCues).map(\.id))
+        if ids != currentCueIDs { currentCueIDs = ids }
+    }
+
+    /// 跟随播放时滚到哪一行：表里排在最前面的那句「正在说的」。
+    private func firstCurrentRow() -> UUID? {
+        rows.first { currentCueIDs.contains($0.cue.id) }?.cue.id
     }
 
     private var table: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(cues) { cue in
-                        // 身份就是 cue.id：行里已经没有本地草稿要重建（草稿在工程
+                    ForEach(rows, id: \.cue.id) { row in
+                        // 身份就是 cue.id（两条轨上互不相同）：行里已经没有本地草稿要重建（草稿在工程
                         // 上），拿文本当身份只会让每次提交都重建一次行、顺带丢焦点。
                         // 它同时是跟随播放滚动的锚点。
-                        row(cue).id(cue.id)
+                        self.row(row.cue, track: row.track).id(row.cue.id)
                     }
                 }
                 .padding(.vertical, 6)
                 .padding(.horizontal, 6)
             }
-            .onChange(of: currentCueID) { _, newID in
-                guard followsPlayback, clock.isPlaying, let newID else { return }
-                withAnimation { proxy.scrollTo(newID, anchor: .center) }
+            .onChange(of: currentCueIDs) { _, _ in
+                guard followsPlayback, clock.isPlaying, let target = firstCurrentRow() else { return }
+                withAnimation { proxy.scrollTo(target, anchor: .center) }
             }
             // 在时间线或预览里选中一条，这一列要跟着滚过去并高亮 ——
             // 三个入口同一份选择，看到的东西必须一致。
@@ -217,17 +249,21 @@ struct VideoEditSubtitlePanel: View {
         }
     }
 
-    private func row(_ cue: SubtitleCue) -> some View {
-        VideoEditSubtitleCueRow(
+    private func row(_ cue: SubtitleCue, track: SubtitleTrack) -> some View {
+        let companion = project.state.subtitleCompanion
+        return VideoEditSubtitleCueRow(
             project: project,
             cue: cue,
-            meta: project.state.subtitleCompanion?.cueMeta[cue.id],
-            isCurrent: cue.id == currentCueID,
+            track: track,
+            meta: track == .original ? companion?.cueMeta[cue.id] : nil,
+            isStale: track == .translation
+                && companion?.isTranslationStale(cue.id, original: project.state.subtitle) == true,
+            isHidden: companion?.hiddenCueIDs.contains(cue.id) == true,
+            isCurrent: currentCueIDs.contains(cue.id),
             isSelected: project.selectedSubtitleCueIDs.contains(cue.id),
-            canEditOriginal: canEditOriginal,
-            canEditTranslation: canEditTranslation,
+            canEdit: project.state.canEditSubtitleTrack(track),
             onSelect: { select(cue) },
-            focusedField: $focusedField
+            focusedCueID: $focusedCueID
         )
     }
 
@@ -241,9 +277,10 @@ struct VideoEditSubtitlePanel: View {
     }
 
     private func addCue() {
-        // 按钮已经置灰，这里再拦一道：合同只写原文轨，藏着就不该动它。
-        guard canEditOriginal,
-              let id = project.linkedInsertCue(at: clock.time, duration: Self.newCueDuration) else {
+        // 按钮已经置灰，这里再拦一道：藏着的轨不该动它（还没有字幕轨时加到新建的原文轨）。
+        let track = project.state.subtitle == nil ? SubtitleTrack.original : insertTrack
+        guard project.state.subtitle == nil || project.state.canEditSubtitleTrack(track),
+              let id = project.insertSubtitleCue(at: clock.time, duration: Self.newCueDuration, into: track) else {
             return
         }
         project.selectSubtitleCue(id)
@@ -252,30 +289,30 @@ struct VideoEditSubtitlePanel: View {
         // 不放的话按了 + 像什么也没发生（新行是空文本），接着打的字还会被
         // 当成快捷键吃掉。
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            focusedField = .original(id)
+            focusedCueID = id
         }
     }
 
     private func removeSelected() {
         let ids = project.selectedSubtitleCueIDs
         guard !ids.isEmpty else { return }
-        project.linkedRemoveCues(ids: ids)
+        project.removeSubtitleCues(ids: ids)
     }
 
     private func splitSelected() {
         guard let id = project.selectedSubtitleCueID,
-              let cue = cues.first(where: { $0.id == id }) else { return }
+              let cue = project.state.subtitleCue(id) else { return }
         // 播放头落在这条里面就按播放头拆（那是用户看着画面挑的点），
         // 否则退回中点。
         let time = clock.time
         let at = (time > cue.start && time < cue.end) ? time : (cue.start + cue.end) / 2
-        project.linkedSplitCue(id: id, at: at)
+        project.splitSubtitleCue(id: id, at: at)
     }
 
     private func mergeSelected() {
         let ids = project.selectedSubtitleCueIDs
-        guard ids.count >= 2 else { return }
-        project.linkedMergeCues(ids: ids)
+        guard canMergeSelection else { return }
+        project.mergeSubtitleCues(ids: ids)
     }
 
     private func pickSubtitle() {

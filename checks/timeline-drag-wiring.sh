@@ -216,8 +216,8 @@ if BODY="$(require_func 'private mutating func move(' "$EDITS")"; then
     grep -q "case ${kind}" <<<"$BODY" \
       || fail "move 漏了 ${kind} 这一类成员：框选中的它不会跟着一起动"
   done
-  grep -q 'LinkedSubtitleEditing.setStarts' <<<"$BODY" \
-    || fail "字幕 cue 没走两轨同步的合同：译文会留在旧时刻"
+  grep -q 'SubtitleTrackEditing.setStarts' <<<"$BODY" \
+    || fail "字幕 cue 没走两条轨的编辑合同（SubtitleTrackEditing.setStarts）：不重排、译文不记「时间改过」"
 fi
 
 # ── 4c. 框选：拖框过程中一个字都不许写进 project ───────────────────────
