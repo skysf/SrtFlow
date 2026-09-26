@@ -81,6 +81,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
+  Sources/SrtFlow/VideoEditMeterRing.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/BurnInWorkspace.swift \
@@ -90,6 +91,7 @@ xcrun swiftc \
   checks/AudioFade/Envelope.swift \
   checks/AudioFade/VolumeCurve.swift \
   checks/AudioFade/Meter.swift \
+  checks/AudioFade/MeterRing.swift \
   checks/AudioFade/LiveMix.swift \
   checks/AudioFade/SoundScene.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
