@@ -27,15 +27,22 @@ import SwiftUI
 ///
 /// 读（`offsetX` / `offsetY`）和推（`scrollHorizontally` / `scrollVertically`）
 /// 都在这儿，`TimelineAutoScroller` 只剩「什么时候推、推多快」那份心跳。
+/// 缩放保持锚点（`keepAnchored`）和「窗口里这一点落在时间线的哪儿」（`location`）也在这儿。
 @MainActor
 final class TimelineScrollGeometry: ObservableObject {
     /// 给「钉住不动」的那两块（轨道头列、标尺）用的推送值。
     /// 手势**不要**读它 —— 那是上一次通知时的值，要现读的用 `offsetX/offsetY`。
     @Published private(set) var offset: CGPoint = .zero
 
+    /// 此刻挂着滚动视图的那一份。编辑器里只有一条时间线；工具栏的缩放、⌘V 找指针都在时间线的
+    /// 视图树外面，拿不到它的 `@State`，从这儿拿。弱引用：时间线拆掉就跟着没了。
+    private(set) static weak var live: TimelineScrollGeometry?
+
     /// 弱引用：视图树被拆掉时跟着失效，别让它把滚动视图吊住。
     private weak var scrollView: NSScrollView?
     private var boundsObserver: NSObjectProtocol?
+    /// `keepAnchored` 的补挪只认最新一次（连续缩放时前面几拍的补挪作废）。
+    private var anchorGeneration = 0
 
     /// 由 `TimelineScrollViewAccessor` 在滚动内容里认出滚动视图后挂上来。
     func attach(_ scrollView: NSScrollView?) {
@@ -45,6 +52,11 @@ final class TimelineScrollGeometry: ObservableObject {
             self.boundsObserver = nil
         }
         self.scrollView = scrollView
+        if scrollView != nil {
+            Self.live = self
+        } else if Self.live === self {
+            Self.live = nil
+        }
         guard let clipView = scrollView?.contentView else {
             offset = .zero
             return
@@ -69,6 +81,9 @@ final class TimelineScrollGeometry: ObservableObject {
     }
 
     var isAttached: Bool { scrollView != nil }
+
+    /// 时间线所在的窗口（⌘V 把屏幕上的指针位置换算进来用）。
+    var window: NSWindow? { scrollView?.window }
 
     /// 横向滚动量（视图点）。**内容坐标 x = 视口坐标 x + offsetX**。每次现读。
     var offsetX: Double { Double(scrollView?.contentView.bounds.origin.x ?? 0) }
@@ -110,6 +125,59 @@ final class TimelineScrollGeometry: ObservableObject {
         scrollView.reflectScrolledClipView(clipView)
     }
 
+    /// 窗口里的一点（窗口坐标）落在时间线的**可见视口**里吗；在的话给出它的视口坐标和内容坐标
+    /// （内容坐标 = 视口坐标 + 滚动量，§5b）。不在这个窗口、落在视口外面（轨道头列、工具栏）都是 nil。
+    /// 标尺钉在视口顶上、也在视口里 —— 算不算「在轨道上」由调用方按行判。
+    func location(ofWindowPoint point: NSPoint, in window: NSWindow?) -> TimelineViewportPoint? {
+        guard let scrollView, let window, scrollView.window === window else { return nil }
+        let clipView = scrollView.contentView
+        let local = clipView.convert(point, from: nil)
+        guard clipView.bounds.contains(local) else { return nil }
+        let viewport = CGPoint(
+            x: local.x - clipView.bounds.minX,
+            // SwiftUI 的滚动内容是翻转的（y 朝下），和别处「内容 y = 视口 y + offsetY」同一个口径。
+            y: clipView.isFlipped ? local.y - clipView.bounds.minY : clipView.bounds.maxY - local.y
+        )
+        return TimelineViewportPoint(
+            viewport: viewport,
+            content: CGPoint(x: viewport.x + offsetX, y: viewport.y + offsetY)
+        )
+    }
+
+    /// 缩放保持锚点：把滚动量挪到 (x, y)，nil 的那一轴一个字都不碰（§5b 最后一条）。
+    ///
+    /// **同一拍先挪一次，下一轮 main loop 再挪一次**，两次是同一个绝对位置（幂等）：
+    /// 改完比例 / 行高的这一拍，SwiftUI 还没按新尺寸排版，放大时目标可能被旧的内容尺寸夹住；
+    /// 排完版之后那一次才落得准。只挪后一次的话，排版和补挪之间会有一帧画在左边缘为锚的位置上
+    /// （看起来是「一抖」）。连续缩放时只有最新那一拍的补挪生效。
+    func keepAnchored(x: Double?, y: Double?) {
+        scroll(toX: x, y: y)
+        anchorGeneration += 1
+        let generation = anchorGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self, generation == self.anchorGeneration else { return }
+            self.scroll(toX: x, y: y)
+        }
+    }
+
+    /// 挪到绝对位置，夹进可滚范围；nil 的那一轴原样不动。
+    private func scroll(toX x: Double?, y: Double?) {
+        guard x != nil || y != nil,
+              let scrollView,
+              let documentView = scrollView.documentView else { return }
+        let clipView = scrollView.contentView
+        let maxX = max(documentView.bounds.minX, documentView.bounds.maxX - clipView.bounds.width)
+        let maxY = max(documentView.bounds.minY, documentView.bounds.maxY - clipView.bounds.height)
+        let current = clipView.bounds.origin
+        let next = NSPoint(
+            x: x.map { min(max($0, documentView.bounds.minX), maxX) } ?? current.x,
+            y: y.map { min(max($0, documentView.bounds.minY), maxY) } ?? current.y
+        )
+        guard abs(next.x - current.x) > 0.01 || abs(next.y - current.y) > 0.01 else { return }
+        clipView.scroll(to: next)
+        scrollView.reflectScrolledClipView(clipView)
+    }
+
     /// 两个方向共用的推：夹进可滚范围，没真的动就返回 nil（心跳据此停掉）。
     private func scroll(dx: Double, dy: Double) -> CGPoint? {
         guard dx != 0 || dy != 0,
@@ -134,9 +202,18 @@ final class TimelineScrollGeometry: ObservableObject {
     }
 }
 
+/// 窗口里的一点在时间线上的两种坐标（`TimelineScrollGeometry.location`）。
+struct TimelineViewportPoint {
+    /// 相对可见视口左上角。
+    var viewport: CGPoint
+    /// 相对滚动内容左上角：x / pps 就是时刻，y 对着 `rowLayouts` 的行。
+    var content: CGPoint
+}
+
 /// 把时间线那个 `NSScrollView` 交给上面的几何入口（和自动滚动的心跳）。
-/// 放在滚动内容里，`enclosingScrollView` 直接就是它 —— 不用像捏合那样按坐标
-/// hitTest 去找。
+/// 放在滚动内容里，`enclosingScrollView` 直接就是它。**别按坐标 hitTest 去找**：
+/// 捏合缩放以前就是那样找的，传错了坐标系（翻转的根视图），一直找不到时间线
+/// （docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md）。
 struct TimelineScrollViewAccessor: NSViewRepresentable {
     let geometry: TimelineScrollGeometry
     let scroller: TimelineAutoScroller

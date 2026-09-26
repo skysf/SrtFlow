@@ -131,6 +131,7 @@ shard 2
 run_check "preview-perf-compare（性能 ratchet 的比对规则）" scripts/check-preview-perf.sh --self-test
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
+run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认）" scripts/check-timeline-zoom.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh

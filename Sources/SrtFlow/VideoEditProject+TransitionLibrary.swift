@@ -25,6 +25,44 @@ enum TransitionLibraryTarget: Equatable {
 
 @MainActor
 extension VideoEditProject {
+    // MARK: - 转场的写入口（2026-09-26 从 VideoEditProject.swift 挪来：那个文件登记过超标、只许降）
+
+    func setTransition(after id: UUID, _ transition: ClipTransition, duration: Double? = nil) {
+        perform { state in
+            state.update(id) { clip in
+                clip.transitionAfter = transition
+                if let duration { clip.transitionDuration = min(max(duration, 0.1), 3) }
+            }
+        }
+    }
+
+    /// 把这一段的转场（类型 + 时长）套到主轨的每一个接缝上。
+    func applyTransitionToAll(like id: UUID) {
+        guard let clip = state.clip(with: id), clip.transitionAfter != .none else { return }
+        let transition = clip.transitionAfter
+        let duration = clip.transitionDuration
+        perform { state in
+            for index in state.mainClips.indices.dropLast() {
+                state.mainClips[index].transitionAfter = transition
+                state.mainClips[index].transitionDuration = duration
+            }
+        }
+    }
+
+    /// 清掉主轨上的所有转场。
+    func clearAllTransitions() {
+        perform { state in
+            for index in state.mainClips.indices {
+                state.mainClips[index].transitionAfter = .none
+            }
+        }
+    }
+
+    /// 主轨上还有没有任何转场（Clear all 的可用状态）。
+    var hasAnyTransition: Bool {
+        state.mainClips.contains { $0.transitionAfter != .none }
+    }
+
     /// 库面板点一下卡片时作用的接缝。三级回退：
     ///
     /// ① **时间线上直接点中的那条转场** —— 意图最明确，没有比这更清楚的指认；

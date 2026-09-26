@@ -89,4 +89,43 @@ func checkRowHeights(root: URL) throws {
     check(legacyLoaded.rowHeights.isEmpty, "老工程读回来是空的 = 全部走默认值")
     checkEqual(legacyLoaded.rowHeights.height(for: .main, fallback: 54), 54,
                "老工程打开就是老样子")
+
+    try checkUniformRowHeight(state: state, audioA: audioA, audioB: audioB, dir: dir)
+}
+
+/// 纵向缩放（2026-09-26 用户拍板 5B）：视频轨和音频轨统一成一个高度，单独调过的作废；
+/// 之后还能单独拖一条；细行不跟着缩放；存盘往返。
+private func checkUniformRowHeight(state: TimelineState, audioA: EditLane, audioB: EditLane, dir: URL) throws {
+    var zoomed = TimelineRowHeights()
+    zoomed.set(96, for: .main, kind: .video)
+    zoomed.set(88, for: .lane(audioA.id), kind: .audio)
+    zoomed.setUniform(120)
+    checkEqual(zoomed.uniform, 120, "统一高度记下来")
+    check(zoomed.main == nil && zoomed.lanes.isEmpty, "纵向缩放时单独调过的全部作废（所有轨变成一样高）")
+    checkEqual(zoomed.height(for: .main, fallback: 54), 120, "主轨跟统一高度走")
+    checkEqual(zoomed.height(for: .lane(audioA.id), fallback: 34), 120, "音频轨也跟统一高度走：视频、音频一样高")
+    checkEqual(zoomed.height(for: nil, fallback: 22), 22, "不可调的细行（字幕 / 文字 / 形状 / 滤镜）不跟着缩放")
+    zoomed.set(60, for: .lane(audioB.id), kind: .audio)
+    checkEqual(zoomed.height(for: .lane(audioB.id), fallback: 34), 60, "缩放之后还能单独拖一条")
+    checkEqual(zoomed.height(for: .main, fallback: 54), 120, "单独拖一条不动别的")
+    zoomed.setUniform(1000)
+    checkEqual(zoomed.uniform, 200, "统一高度上限 200")
+    zoomed.setUniform(1)
+    checkEqual(zoomed.uniform, 28, "统一高度下限 28：「一样高」得视频轨也够得着（音频轨能到 20，视频轨不能）")
+    zoomed.setUniform(.nan)
+    checkEqual(zoomed.uniform, 28, "NaN 什么都不做")
+    check(!TimelineRowHeights(uniform: 80).isEmpty, "只有统一高度也算调过：要写键，不然重开就没了")
+
+    var saved = TimelineRowHeights()
+    saved.setUniform(140)
+    saved.set(70, for: .lane(audioA.id), kind: .audio)
+    let file = dir.appendingPathComponent("uniform.srtflowproj")
+    try VideoEditProjectIO.save(state, to: file, rowHeights: saved)
+    let loaded = try VideoEditProjectIO.load(from: file)
+    checkEqual(loaded.rowHeights.uniform, 140, "统一高度要存住")
+    checkEqual(loaded.rowHeights.height(for: .lane(audioA.id), fallback: 34), 70, "统一之后单独拖过的那条也要存住")
+    checkEqual(loaded.rowHeights.height(for: .lane(audioB.id), fallback: 34), 140, "没单独拖过的跟统一高度走")
+    checkEqual(saved.pruned(keeping: []).uniform, 140, "写盘时的裁剪不许丢掉统一高度")
+    let decoded = try JSONDecoder().decode(TimelineRowHeights.self, from: Data(#"{"uniform": 5000}"#.utf8))
+    checkEqual(decoded.uniform, 200, "读盘时统一高度也夹进区间（坏数据不许把轨撑到几千点高）")
 }

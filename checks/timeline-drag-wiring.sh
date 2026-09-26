@@ -30,6 +30,7 @@ GEOMETRY="Sources/SrtFlow/VideoEditTimelineScrollGeometry.swift"
 HEADER_COLUMN="Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift"
 ROW_HEIGHTS="Sources/SrtFlow/VideoEditTimelineRowHeights.swift"
 ROW_HEIGHT_DRAG="Sources/SrtFlow/VideoEditTimelineRowHeightDrag.swift"
+ROW_LIST="Sources/SrtFlow/VideoEditTimelineRowList.swift"   # 行怎么排、各多高（2026-09-26 从 VIEW 挪出）
 # 「整族都必须满足」的约束（手势坐标系、文件都在）扫这一批。
 MASK="Sources/SrtFlow/VideoEditTimelineTransitionMask.swift"
 DROP_ROUTER="Sources/SrtFlow/VideoEditTimelineDropRouter.swift"
@@ -46,7 +47,7 @@ PLAYHEAD="Sources/SrtFlow/VideoEditTimelinePlayhead.swift"   # 播放头竖线�
 TIMELINE_VIEWS=("$VIEW" "$MARQUEE_VIEW" "$DRAG_WIRING" "$CLIP_BLOCK" "$SHAPE_ROW" \
   "$TEXT_ROW" "$SUBTITLE_ROW" "$CUE_BLOCK" "$RULER" "$THUMBS" "$WAVEFORM" "$ZOOM" "$GEOMETRY" \
   "$HEADER_COLUMN" "$ROW_HEIGHTS" "$ROW_HEIGHT_DRAG" "$MASK" "$DROP_ROUTER" "$VOLUME_CURVE" \
-  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE" "$PLAYHEAD")
+  "$SEAMS" "$INSERT_GAP" "$LANE_ORDER" "$LANE_REORDER" "$DRAG_BOX_FILE" "$PLAYHEAD" "$ROW_LIST")
 PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 EDITS="Sources/SrtFlow/VideoEditTimelineEdits.swift"
 SNAP="Sources/SrtFlow/VideoEditTimelineSnap.swift"
@@ -297,12 +298,9 @@ for constant in 'shapeTopInset' 'shapeHeight' 'cueTopInset' 'cueHeight'; do
   [ "$COUNT" -ge 2 ] || fail "TimelineMarquee.${constant} 在视图里只用了 ${COUNT} 处：画和判没共用"
 done
 
-# ── 6. 缩放只有一个会夹范围的入口 ──────────────────────────────────────
-# pps 掉到 1 以下时，位移换算会被 max(pps, 1) 兜底，1:1 跟手当场坏掉。
-grep -n 'pixelsPerSecond.wrappedValue = ' "$ZOOM" | grep -vc 'clamped' >/dev/null \
-  && fail "捏合直接给 pixelsPerSecond 赋了未夹的值"
-grep -rn 'project.pixelsPerSecond = \|pixelsPerSecond = min(\|pixelsPerSecond = max(' Sources/SrtFlow/VideoEditView.swift \
-  && fail "工具栏绕开了 setPixelsPerSecond 这个唯一缩放入口"
+# ── 6. 缩放：唯一会夹范围的入口、锚点从时间线自己的滚动几何量、纵向缩放（拆在自己的文件里）──
+# shellcheck source=checks/timeline-drag-wiring/zoom.sh
+source checks/timeline-drag-wiring/zoom.sh
 
 # ── 7. 自动滚动的心跳必须有取消兜底 ────────────────────────────────────
 grep -q 'deinit' "$DRAG" || fail "TimelineAutoScroller 没有 deinit 兜底，timer 可能永远留在 RunLoop 上"
@@ -368,10 +366,10 @@ done
 COUNT="$(grep -c 'originScrollOffset: scrollGeometry\.offsetX' "$DRAG_WIRING" || true)"
 [ "$COUNT" -eq 5 ] \
   || fail "拖动入口只有 ${COUNT} 处现读起手滚动量，应当 5 处（剪辑/形状/文字/字幕/滤镜）"
-# 9d. 除了几何入口，谁都不许自己去摸滚动位置。捏合那条是按坐标 hitTest 现找的
-# 独立路径（事件监视器里拿不到视图树），暂时豁免。
+# 9d. 除了几何入口，谁都不许自己去摸滚动位置 —— 捏合也不例外（2026-09-26 起它从时间线的
+# 滚动几何量锚点、由 keepAnchored 推；以前的豁免就是它按坐标 hitTest 找错滚动视图的那条路）。
 OTHER_SCROLLER="$(grep -rn 'contentView\.bounds\.origin\|clipView\.scroll(to:' Sources/SrtFlow --include='*.swift' \
-  | grep -v "^${GEOMETRY}:" | grep -v "^${ZOOM}:" || true)"
+  | grep -v "^${GEOMETRY}:" || true)"
 [ -z "$OTHER_SCROLLER" ] \
   || fail "滚动位置只能由 TimelineScrollGeometry 读/推：${OTHER_SCROLLER}"
 
@@ -521,10 +519,10 @@ fi
 # 行高只从 project.rowHeight( 取一份。视图里直接读「一类一个值」的默认高度，
 # 就等于把那条老毛病又接回来了。
 for forbidden in 'project.defaultVideoRowHeight' 'project.defaultAudioRowHeight'; do
-  grep_code "$forbidden" "$VIEW" \
+  grep_code "$forbidden" "$VIEW" || grep_code "$forbidden" "$ROW_LIST" \
     && fail "时间线的行高又直接读这一类的默认值（${forbidden}）：同类的轨会一起动"
 done
-grep_code 'project.rowHeight(' "$VIEW" \
+grep_code 'project.rowHeight(' "$ROW_LIST" \
   || fail "时间线的行高不再走 project.rowHeight：一轨一个值的那份账就没人认了"
 grep_code 'key: row.heightKey' "$HEADER_COLUMN" \
   || fail "轨道头没把这一行的行高键传给拖动：又会按类去调"
@@ -535,8 +533,8 @@ if BODY="$(require_func 'func setRowHeight(' "$PROJECT")"; then
     grep -q "$forbidden" <<<"$BODY" \
       && fail "setRowHeight 里出现了 ${forbidden}：行高是装饰状态，不许进撤销栈/重建预览"
   done
-  grep -q 'documentDidChange()' <<<"$BODY" \
-    || fail "setRowHeight 没标脏：调好的行高不会被自动保存带进工程文件"
+  grep -q 'updateRowHeights' <<<"$BODY" \
+    || fail "setRowHeight 没走 updateRowHeights（行高唯一的写入口，标脏在那里）"
 fi
 
 # ── 接缝上的转场遮罩 / 裁切（各拆在自己的文件里，同一个 shell 里 source）───────────
@@ -756,13 +754,6 @@ grep_code 'context.clipBoundingRect' "$RULER" \
   || fail "标尺没按 clipBoundingRect 裁到可见范围：放大后每滚一下都要把整条刻度重算一遍"
 grep_code 'context.clipBoundingRect' "$THUMBS" \
   || fail "缩略图没按可见范围铺格子：放大之后一张图会被拉成一万多点宽的横缝"
-# 缩放滑杆是对数刻度（线性的话原来的整个区间挤在最左 2%），写入仍走唯一入口。
-grep_code 'Slider(value: zoomSliderBinding' Sources/SrtFlow/VideoEditView.swift \
-  || fail "缩放滑杆不是对数刻度的那个 binding 了"
-if BODY="$(awk '/private var zoomSliderBinding/,/^    \}$/' Sources/SrtFlow/VideoEditView.swift)"; then
-  grep -q 'setPixelsPerSecond(exp(' <<<"$BODY" \
-    || fail "缩放滑杆没走 setPixelsPerSecond（唯一的缩放入口）"
-fi
 # 波形的数据按文件读一次（多级峰值），不许退回「每段按范围读成固定几百根柱子」——
 # 那样放多大都是那几百根，放大只是把每根拉宽（用户报的「放到最大还是不够」）。
 grep_code 'WaveformStore.shared.peaks(for:' "$WAVEFORM" \

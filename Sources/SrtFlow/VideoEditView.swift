@@ -230,6 +230,12 @@ struct VideoEditView: View {
                 project.clearSelection()
                 return nil
             }
+            // ⌘↓ 纵向放大 / ⌘↑ 纵向缩小（同 Logic；125 = ↓，126 = ↑）：视频轨和音频轨统一变高 / 变矮。
+            if [125, 126].contains(event.keyCode), modifiers == [.command], !project.state.isEmpty {
+                let factor = event.keyCode == 125 ? TimelineZoom.verticalStep : 1 / TimelineZoom.verticalStep
+                TimelineZoom.vertical(project, by: factor, around: TimelineZoom.verticalAnchorAtMouse(project: project))
+                return nil
+            }
             guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else {
                 return event
             }
@@ -544,8 +550,9 @@ struct VideoEditView: View {
 
             Divider().frame(height: 16)
 
+            // 放大 / 缩小钉住播放头（不在视口里就钉视口正中），不许一按画面就跳（TimelineZoom）。
             ToolbarIcon(icon: "minus.magnifyingglass", help: "Zoom out", shortcut: .command("-")) {
-                project.setPixelsPerSecond(project.pixelsPerSecond / VideoEditProject.zoomStep)
+                TimelineZoom.horizontal(project, to: project.pixelsPerSecond / VideoEditProject.zoomStep, keeping: .playheadOrCenter)
             }
             // **对数刻度**：缩放区间 4…4800 有 1200 倍宽，线性滑杆上原来那一整段（4…120）
             // 只占最左边 2%。按对数取值，每挪一段放大的倍数都一样。
@@ -553,18 +560,18 @@ struct VideoEditView: View {
                 .frame(width: 96)
                 .controlSize(.mini)
             ToolbarIcon(icon: "plus.magnifyingglass", help: "Zoom in", shortcut: .command("=")) {
-                project.setPixelsPerSecond(project.pixelsPerSecond * VideoEditProject.zoomStep)
+                TimelineZoom.horizontal(project, to: project.pixelsPerSecond * VideoEditProject.zoomStep, keeping: .playheadOrCenter)
             }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
     }
 
-    /// 缩放滑杆读写的是 log(pps)；写入仍走唯一的缩放入口 `setPixelsPerSecond`。
+    /// 缩放滑杆读写的是 log(pps)；写入走 `TimelineZoom`（钉住播放头，里面仍是唯一的缩放入口 `setPixelsPerSecond`）。
     private var zoomSliderBinding: Binding<Double> {
         Binding(
             get: { log(max(project.pixelsPerSecond, VideoEditProject.zoomRange.lowerBound)) },
-            set: { project.setPixelsPerSecond(exp($0)) }
+            set: { TimelineZoom.horizontal(project, to: exp($0), keeping: .playheadOrCenter) }
         )
     }
 
@@ -658,14 +665,4 @@ struct VideoEditView: View {
         guard let url = urls.first else { return }
         project.attachSubtitle(url)
     }
-}
-
-/// `sheet(item:)` 需要 Identifiable。`ScreenRecordingResult` 是纯值类型，
-/// 不给它硬塞 id —— 在这里包一层。
-@available(macOS 15.0, *)
-struct IdentifiedRecording: Identifiable {
-    let result: ScreenRecordingResult
-    var id: String { result.mainURL.path }
-
-    init(_ result: ScreenRecordingResult) { self.result = result }
 }

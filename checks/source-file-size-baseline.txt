@@ -11,11 +11,10 @@
 784 Sources/SrtFlow/VideoEditExportGraph.swift
 717 Sources/SrtFlow/VideoEditMediaFileDrop.swift
 1196 Sources/SrtFlow/VideoEditModels.swift
-1378 Sources/SrtFlow/VideoEditProject.swift
+1347 Sources/SrtFlow/VideoEditProject.swift
 632 Sources/SrtFlow/VideoEditProjectDocument.swift
 626 Sources/SrtFlow/VideoEditTimelineEdits.swift
-648 Sources/SrtFlow/VideoEditTimelineView.swift
-671 Sources/SrtFlow/VideoEditView.swift
+668 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift
 989 Sources/SrtFlowCoreChecks/main.swift
@@ -25,4 +24,4 @@
 749 checks/TextRender/main.swift
 1778 checks/TimelineSnap/main.swift
 665 checks/VideoFade/main.swift
-971 checks/timeline-drag-wiring.sh
+962 checks/timeline-drag-wiring.sh

@@ -95,7 +95,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件）、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
-| 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
+| 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）**、**缩放的锚点（捏合钉指针、工具栏钉播放头）与纵向缩放（统一行高）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)（锚点从时间线自己的滚动几何量，别按坐标 hitTest 找滚动视图；纵向缩放统一成一个高度）、[锚点从来没生效](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
@@ -188,6 +188,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 提示面板的真实落点（摆好之后不许自己变）：`scripts/check-instant-tooltip-panel.sh`。
   **要图形会话，故意不在 `check-all.sh` 里**（无图形会话会假红），改
   `InstantTooltip.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
+- 时间线缩放的锚点（横向钉指针那一刻、工具栏钉播放头 / 视口正中、纵向按行认的那一处）：
+  `scripts/check-timeline-zoom.sh`；接线（不许 hitTest 找滚动视图、唯一缩放入口、⌥ / ⌘↓⌘↑ 纵向）在
+  `checks/timeline-drag-wiring.sh` 的缩放一节（`checks/timeline-drag-wiring/zoom.sh`）。
 - 时间线吸附、框选命中与生产落点：`scripts/check-timeline-snap.sh`；拖动/框选
   接线扫描：`checks/timeline-drag-wiring.sh`（拆在 `checks/timeline-drag-wiring/` 下的几节一起
   `source` 进来，含「拖动会话不进时间线的 @State」`drag-box.sh`）。
@@ -270,6 +273,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   2026-09-26 一个 PR 里的五件事拍过的板；字幕独立轨那部分最细：译文有自己的 ID 和来源表、「过期」现算、
   两条轨画面上默认叠成一块（`translationLayout` 为 nil）、拖一条就分开、预览和烧录读同一份按时间切好的块、
   两个重译按钮各自动哪些句子。
+- [时间线上的复制 / 剪切 / 粘贴 + 缩放以鼠标为中心 + 纵向缩放](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md) —
+  2026-09-26 用户逐条拍的板（撞上了照拖文件往上抬一轨、单独的纵向缩放用 ⌥ 捏合、只动视频 / 音频轨、
+  纵向缩放时全部统一成一样高、工具栏缩放钉播放头）、讨论时列的默认做法，以及我定的实现细节（Z1–Z7、C1–C9）。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -278,7 +284,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [写代码的规范](docs/architecture/coding-standards.md) — 模块化的六条（一个文件一件事、抽有名字的顶层类型、
   别开只有 extension 的文件、纯计算和副作用分开、同一规则只有一处实现、函数别太长），单文件目标 400 / 上限 600
   行与老文件只许降的基线、审查清单。
-- [时间线捏合缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案。
+- [时间线缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案、**锚点**（捏合钉指针底下那一刻、工具栏钉播放头，滚动视图只从 `TimelineScrollGeometry` 拿、`keepAnchored` 同一拍挪 + 下一轮补挪）、**纵向缩放**（⌥ 捏合 / ⌥ + Ctrl + 滚轮 / ⌘↓ ⌘↑，视频和音频轨统一成一个高度、细行不变、按行认锚点）、人工回归清单。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
   **对齐线**（§4：对齐点含字幕 cue / 标记 / 藏起来的段、多选只看整组外沿、磁吸也亮线、裁切也吸按 FCP、吸附关了线也不亮），
@@ -403,6 +409,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-26 上层轨上按 V 藏起来的段，成片里画面还在](docs/bugfixes/2026-09-26-hidden-upper-clip-still-exported.md) — 导出图算好了 `overlayVisible` 却只拿去判断「有没有画面」，叠上层轨和预渲染那两圈仍按轨去 `lane.clips` 里取段，只滤了藏起来的轨；声音走预览混音早就滤掉了，所以只漏画面。扫描守卫只查「出现过 `ClipVisibility.visible(`」、取帧自检只测预览 —— 补了真导出抽帧（带一份没藏的对照）。**过滤清单算出来了，就让每个消费者都走它。**
 - [2026-09-26 播放中按 Return 回到开头，App 在音频线程上崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md) — 电平表的环形缓冲拿 tap 给的时间当下标，tap 在播放中精确跳回 0 之后报了比 0 早的时间，负数取余还是负数、越界 trap，整个 App 退出。环里丢掉 0 之前的位置（负时间从哪来都不许越界）；最小探针没复现出负时间，触发条件没追到。**从平台回调拿来的时间，当下标之前先问一句会不会是负的。**
 - [2026-09-26 原文、译文叠在一起时，点英文、改英文都落到中文上](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md) — 预览上字幕块的高度一直量成 0：量尺寸的偏好值合并写成 `value = nextValue()`，被兄弟节点的默认值 `.zero` 盖掉；单行时 24 点保底恰好像一行，一个多月没人发现，叠成两行才露馅（框只框住译文、点原文落到译文上）。第一次按「闭包旧、字典被冲掉」修错了方向，跑一遍加日志才看到根本没量到。扫描守卫钉着所有 `PreferenceKey.reduce`。
+- [2026-09-26 捏合放大时鼠标底下的内容跑掉](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md) — 「指针下缩放」2026-08-03 就写了，锚点那一步却从来没生效：找滚动视图时把根视图自己的坐标喂给了 `hitTest`（它要父视图坐标），SwiftUI 的根视图是翻转的，于是找的是上下镜像的那一处（预览区），找不到就静默跳过。改成从时间线自己的滚动几何量锚点，删掉 §5b 给捏合的「暂时豁免」。**`hitTest` 吃父视图坐标；已经有唯一真相时别用坐标找第二份；锚点对不对要看数字**（冒烟加了 `zoom` 步骤）。
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

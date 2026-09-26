@@ -147,86 +147,8 @@ struct VideoEditTimelineView: View {
     /// `VideoEditTimelineView.RowSpec` 叫它，名字留着。
     typealias RowSpec = TimelineRowSpec
 
-    var rows: [RowSpec] {
-        var result: [RowSpec] = [RowSpec(id: "ruler", icon: "", height: 26, slot: nil, isRuler: true)]
-        // 滤镜行在**最顶上**：它作用于下面全部画面，不参与「行的上下顺序就是
-        // 叠放次序」那套视频轨语义，混进去只会让人以为它是一条能放素材的轨。
-        // 层号大的画在上面 —— 上面的后作用（docs/architecture/filters.md）。
-        for layer in (0..<project.state.filterLayerCount).reversed() {
-            result.append(RowSpec(
-                id: "filter-\(layer)", icon: "camera.filters", height: 26, slot: nil,
-                filterLayer: layer
-            ))
-        }
-        // 上层视频轨：编号大的画在上面，行也放上面 —— 行的上下顺序就是叠放顺序。
-        // 图标与主轨**同一个**：它们是对等的视频轨，区别只有叠放次序（行的位置
-        // 已经表达了）和颜色。用 pip 图标会把「这是个小窗」的旧心智带回来。
-        for index in project.state.overlayTracks.indices.reversed() {
-            let row = trackRowHeight(.overlay(index))
-            result.append(RowSpec(
-                id: "overlay-\(project.state.overlayTracks[index].id)",
-                icon: "film",
-                height: row.height,
-                slot: .overlay(index),
-                heightKey: row.key,
-                isHidden: project.state.overlayTracks[index].isHidden
-            ))
-        }
-        // 文字行在形状行**上面**：行的上下顺序就是叠放顺序（行号大的在上、画在上面），
-        // 而文字压在形状之上。
-        for row in (0..<project.state.textRowCount).reversed() {
-            result.append(RowSpec(
-                id: "text-\(row)", icon: "textformat", height: 26, slot: nil, textRow: row
-            ))
-        }
-        if !project.state.shapes.isEmpty {
-            result.append(RowSpec(id: "shapes", icon: "square.on.square.dashed", height: 26, slot: nil, isShapes: true))
-        }
-        let mainRow = trackRowHeight(.main)
-        result.append(RowSpec(
-            id: "main",
-            icon: "film",
-            height: mainRow.height,
-            slot: .main,
-            heightKey: mainRow.key,
-            isHidden: project.state.mainHidden
-        ))
-        // 一个语言一条字幕轨：原文一行，有译文再来一行，各自一只眼睛、各自的句子
-        // （2026-09-26 起两条轨独立；画面上怎么排见 TimelineState.subtitleScreenBlocks）。
-        if project.state.subtitle != nil {
-            result.append(RowSpec(
-                id: "subtitle-original", icon: "captions.bubble", height: 22, slot: nil,
-                subtitleKind: .original,
-                isHidden: project.state.subtitleHidden
-            ))
-            if project.state.subtitleCompanion?.translation != nil {
-                result.append(RowSpec(
-                    id: "subtitle-translation", icon: "character.bubble", height: 22, slot: nil,
-                    subtitleKind: .translation,
-                    isHidden: project.state.translationHidden
-                ))
-            }
-        }
-        for index in project.state.audioTracks.indices {
-            let row = trackRowHeight(.audio(index))
-            result.append(RowSpec(
-                id: "audio-\(project.state.audioTracks[index].id)",
-                icon: "music.note",
-                height: row.height,
-                slot: .audio(index),
-                heightKey: row.key,
-                isHidden: project.state.audioTracks[index].isHidden
-            ))
-        }
-        return result
-    }
-
-    /// 视频轨 / 音频轨这一行多高，以及它的行高存在哪个键上。
-    /// **一轨一个值**：没单独调过的轨才回落到这一类的默认高度。
-    private func trackRowHeight(_ slot: TrackSlot) -> (height: Double, key: TimelineRowHeightKey?) {
-        let key = TimelineRowHeights.key(for: slot, in: project.state)
-        return (project.rowHeight(for: key, kind: TrackRowKind(slot)), key)
-    }
+    /// 从上到下的每一行（`TimelineRowList`：纵向缩放、⌘V 找指针底下那一行也从那一份排）。
+    var rows: [RowSpec] { TimelineRowList.rows(for: project) }
 
     /// 每行的纵向位置（垂直拖动找目标行用），和 VStack 的排布严格一致。
     typealias RowLayout = TimelineRowLayout
@@ -263,9 +185,9 @@ struct VideoEditTimelineView: View {
                     scrolledContent
                 }
                 // 参照层铺满可见视口，标定「捏合该生效的区域」；事件本身
-                // 由 TimelineMagnificationBridge 里的 local monitor 处理。
+                // 由 TimelineMagnificationBridge 里的 local monitor 处理（锚点从 scrollGeometry 量）。
                 .overlay(
-                    TimelineMagnificationBridge(pixelsPerSecond: $project.pixelsPerSecond)
+                    TimelineMagnificationBridge(project: project, geometry: scrollGeometry)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 )
                 .coordinateSpace(name: Self.scrollSpace)
