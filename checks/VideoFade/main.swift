@@ -651,7 +651,7 @@ func main() async {
     }
 
     // MARK: 藏起来的上层段不进成片（2026-09-26，用例在 HiddenClips.swift）
-    await checkHiddenUpperClips(white: white, black: black, info: landscape)
+    await checkHiddenClips(white: white, black: black, info: landscape)
 
     if failures == 0 {
         print("\(checks) checks, 0 failures")

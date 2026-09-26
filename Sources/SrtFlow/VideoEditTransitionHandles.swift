@@ -235,6 +235,14 @@ extension TimelineState {
         abs(incoming.timelineStart - outgoing.timelineEnd) < seamTolerance
     }
 
+    /// 这条缝在**渲染**里还在不在：任一侧被单独藏起来（V），它就不存在 —— 藏起来的段在预览和成片里
+    /// 都没有，活着的那一侧不许为它借余料、把自己拉长半个转场伸进黑场（docs/architecture/clip-visibility.md
+    /// 「接缝」；2026-09-26 案例 hidden-upper-clip-still-exported 第二条）。只在展开渲染副本时用：
+    /// 界面上的容量判定照旧（藏着的段放出来之后，那条转场原样回来）。
+    private func seamRenders(afterMainIndex index: Int) -> Bool {
+        !mainClips[index].isHidden && !mainClips[index + 1].isHidden
+    }
+
     /// 这条缝上**实际**成立的转场时长：用户设的值被容量夹住；缝不成立就是 0。
     func effectiveTransitionDuration(afterMainIndex index: Int) -> Double {
         guard index >= 0, index + 1 < mainClips.count else { return 0 }
@@ -370,7 +378,8 @@ extension TimelineState {
         // 只有「首尾相接」的缝要展开；已相叠的（磁吸排的）几何已经成立，
         // 碰它反而会把叠量加倍。
         let durations = (0..<(mainClips.count - 1)).map { index -> Double in
-            guard Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1])
+            guard seamRenders(afterMainIndex: index),
+                  Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1])
             else { return 0 }
             // 压黑不走借料这条路（下面单独改写），这里当它不需要展开。
             guard !Self.rendersAsDipInPlace(mainClips[index].transitionAfter) else { return 0 }
@@ -381,7 +390,8 @@ extension TimelineState {
         //（VideoEditVideoFade.swift 开头讲了为什么不能写成显式淡向黑色）。
         // 只对「首尾相接」的缝这么办；已相叠的（磁吸排的）照旧走 xfade。
         for index in 0..<(mainClips.count - 1) {
-            guard Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1]),
+            guard seamRenders(afterMainIndex: index),
+                  Self.needsHandles(outgoing: mainClips[index], incoming: mainClips[index + 1]),
                   Self.rendersAsDipInPlace(mainClips[index].transitionAfter),
                   case .available(let maxDuration) = transitionCapacity(afterMainIndex: index)
             else { continue }
@@ -406,7 +416,9 @@ extension TimelineState {
             // 不能连它一起摘 —— 用 capacity 判，不是用 after 判。
             // 压黑那条路上面已经把 transitionAfter 清掉了，别再按容量判一次把
             // 刚写好的渐变当成"不成立"——用 mainClips（原件）问，不是 expanded。
-            if case .available = transitionCapacity(afterMainIndex: index) {} else {
+            // 一侧藏起来的缝同样摘掉：两条管线看到的就是「这里没有转场」，渐变归用户自己设的管。
+            let renders = index + 1 < mainClips.count && seamRenders(afterMainIndex: index)
+            if renders, case .available = transitionCapacity(afterMainIndex: index) {} else {
                 expanded.mainClips[index].transitionAfter = .none
             }
             if after > 0 {
