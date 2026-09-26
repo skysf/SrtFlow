@@ -30,6 +30,8 @@ struct TimelineDragOverlay: View {
         // 对齐参考线：块的两条边各自去够参考点，对上了就亮一条通高的线，
         // 所以跨轨对齐（上面上层轨的边缘对上下面主轨的边缘）一眼能看见。
         TimelineAlignmentGuides(times: drag.clipDrag?.guides ?? fallbackGuides, pixelsPerSecond: pps)
+        // 拉把手裁切时的线（2026-09-26）：工程在 liveTrim 里写、endLiveEdit 收，只有这个小视图订阅。
+        TimelineTrimGuides(state: project.trimGuides, pixelsPerSecond: pps)
 
         // 主轨磁吸开着时松手会插进的位置：和被拖素材**等长**的占位框，
         // 一眼看出这 6 秒会占到哪里（时刻和宽度由 TimelineSnap.mainInsertion

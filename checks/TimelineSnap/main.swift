@@ -44,11 +44,8 @@ func clip(start: Double, duration: Double) -> EditClip {
 let pps = 24.0
 let threshold = TimelineSnap.thresholdPixels / pps
 
-// MARK: - 1. 起点吸附（checks/TimelineSnap/SnapBasics.swift）
-checkSnapBasics()
-
-// MARK: - 1b. 裁切：一段的范围、链接组 / 选中的一组一起裁（checks/TimelineSnap/Trim.swift）
-checkTrim()
+// MARK: - 1. 拆出去的各组：起点吸附、裁切、对齐点与对齐线、裁切的吸附（checks/TimelineSnap/Groups.swift）
+runSplitOutGroups()
 
 // MARK: - 2. 终点也要参与（这一条守「右边缘贴左边缘没反应」的 bug）
 

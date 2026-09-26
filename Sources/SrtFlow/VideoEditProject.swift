@@ -390,6 +390,8 @@ final class VideoEditProject {
     private(set) var renderSize = CGSize(width: 1920, height: 1080)
     /// 预览是否正在重建。单独一个小对象、只有工具栏的转圈订阅（2026-09-25，那时工程还是 `ObservableObject`，放在工程上每次重建整个编辑器多算两轮）。
     let rebuildStatus = PreviewRebuildStatus()
+    /// 裁切时亮的对齐线：`liveTrim` 写、`endLiveEdit` 收，只有拖动覆盖层里的小视图订阅（同上一条）。
+    let trimGuides = TrimGuideState()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
     @ObservationIgnored private var audioPlan: AudioMixPlan?
@@ -404,8 +406,7 @@ final class VideoEditProject {
     /// 撤销登记走窗口的 UndoManager，⌘Z/⇧⌘Z 和菜单原生可用。视图出现时塞进来。
     @ObservationIgnored weak var undoManager: UndoManager?
 
-    @ObservationIgnored private var infoCache: [URL: MediaInfo] = [:]
-    @ObservationIgnored private var audioDurationCache: [URL: Double] = [:]
+    let mediaProbes = MediaProbeCache()
     @ObservationIgnored private var rebuildTask: Task<Void, Never>?
     /// 预览重建的代数，旧的构建结果回来晚了就直接扔。
     @ObservationIgnored private var rebuildGeneration = 0
@@ -500,6 +501,7 @@ final class VideoEditProject {
     func endLiveEdit(rebuildsPreview: Bool = true) {
         guard let snapshot = liveEditSnapshot else { return }
         liveEditSnapshot = nil
+        trimGuides.show([])
         guard state != snapshot else { return }
         let audioOnly = state.differsOnlyInAudioMix(from: snapshot)
         registerUndo(snapshot)
@@ -515,6 +517,7 @@ final class VideoEditProject {
     func cancelLiveEdit() {
         guard let snapshot = liveEditSnapshot else { return }
         liveEditSnapshot = nil
+        trimGuides.show([])
         state = snapshot
     }
 
@@ -647,11 +650,10 @@ final class VideoEditProject {
         )
     }
 
-    /// 拖剪辑两端裁切（实时版本）。`deltaSeconds` 是手势开始以来的总位移。
-    /// 拉任何一个块的把手裁一边：拉的那个块在选中集合里就**整个选择一起裁**，链接开着时
-    /// 链接伙伴跟着（名单规则 `TimelineTrim.members`）；整组同一个量、谁先到头整组一起停
-    /// （VideoEditTimelineTrim.swift，docs/architecture/timeline-drag-gestures.md §3.6）。
-    /// 四种块的把手（剪辑 / 形状 / 文字 / 滤镜）都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    /// 拖两端裁切（实时版本），各种块的把手都从这里进；`deltaSeconds` 是手势开始以来的总位移。
+    /// 拉的那个块在选中集合里就**整个选择一起裁**，链接开着时链接伙伴跟着（`TimelineTrim.members`）；
+    /// 整组同一个量、谁先到头整组一起停（VideoEditTimelineTrim.swift，timeline-drag-gestures.md §3.6）。
+    /// 吸附开着时先吸到最近的对齐点、再按整组的范围夹，亮的线交给 `trimGuides`（§4，`TrimSnapPlan`）。
     func liveTrim(anchor: TimelineTrim.Member, leading: Bool, deltaSeconds: Double) {
         let members = TimelineTrim.members(
             anchor: anchor, selectedClips: selectedClipIDs, selectedShapes: selectedShapeIDs,
@@ -659,9 +661,14 @@ final class VideoEditProject {
             selectedFilters: selectedFilterIDs, linkage: linkageEnabled, in: state
         )
         beginLiveEdit()
-        liveApply { state in
-            state.trimGroup(members, leading: leading, by: deltaSeconds)
-        }
+        // 对着手势开始时的状态算（拖动中不变 = 冻结的候选）；吸附关掉 = 不吸也不亮线。
+        let snap = !snappingEnabled ? nil : TimelineTrim.snapPlan(
+            members: members, leading: leading, magnet: magnetEnabled, in: liveEditOrigin ?? state, playhead: clock.time
+        )
+        let requested = snap?.snapped(deltaSeconds, pixelsPerSecond: pixelsPerSecond) ?? deltaSeconds
+        var applied = 0.0
+        liveApply { state in applied = state.trimGroup(members, leading: leading, by: requested) }
+        trimGuides.show(snap?.guides(after: applied, pixelsPerSecond: pixelsPerSecond) ?? [])
     }
 
     func liveTrim(_ id: UUID, leading: Bool, deltaSeconds: Double) {
@@ -716,7 +723,7 @@ final class VideoEditProject {
                     for: image,
                     nativeResolution: StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize)
                   ) else { continue }
-            let info = infoCache[video]
+            let info = mediaProbes.cachedInfo(for: video)
             next.update(clip.id) { pending in
                 pending.sourceURL = video
                 pending.needsStillConversion = false
@@ -1337,27 +1344,11 @@ final class VideoEditProject {
         return TimelineSnap.candidates(in: state, moving: movingIDs, playhead: clock.time)
     }
 
-    // MARK: - 素材探测
+    // MARK: - 素材探测（缓存在 MediaProbeCache）
 
-    /// 定格（`VideoEditFreezeFrame`）也要探测生成出来的静帧视频，所以不是 private。
-    func probeVideo(_ url: URL) async -> MediaInfo? {
-        if let cached = infoCache[url] { return cached }
-        let result = await MediaProbe.probe(url: url, ffmpeg: MediaToolchain.shared.runtime?.url)
-        if case .success(let info) = result {
-            infoCache[url] = info
-            return info
-        }
-        return nil
-    }
-
-    /// 拖进轨道那条路（`probeImports`）也要探，所以不是 private。
-    func audioDuration(_ url: URL) async -> Double? {
-        if let cached = audioDurationCache[url] { return cached }
-        let asset = AVURLAsset(url: url)
-        guard let duration = try? await asset.load(.duration).seconds, duration.isFinite else { return nil }
-        audioDurationCache[url] = duration
-        return duration
-    }
+    /// 定格（`VideoEditFreezeFrame`）和拖进轨道那条路（`probeImports`）也要探，所以不是 private。
+    func probeVideo(_ url: URL) async -> MediaInfo? { await mediaProbes.probeVideo(url) }
+    func audioDuration(_ url: URL) async -> Double? { await mediaProbes.audioDuration(url) }
 
     // MARK: - 预览重建
 
