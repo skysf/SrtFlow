@@ -62,9 +62,14 @@ fi
   || fail "加文字 / 数字没有在最上面新开一行（overlay.row = state.textRowCount 要有两处）"
 grep_code 'compactTextRows()' Sources/SrtFlow/VideoEditProject+Text.swift || fail "删文字后没收拢空行"
 grep_code 'compactTextRows()' "$PROJECT" || fail "deleteSelected 删文字后没收拢空行"
-grep_code 'textOverlaysInStackingOrder' Sources/SrtFlow/VideoEditExportGraph.swift \
+# 两边都读 `renderedTextOverlays`（2026-09-26 起：叠放序再去掉藏起来的，VideoEditClipVisibility.swift），
+# 所以这里钉两件事：它是从叠放序滤出来的，导出和预览都读它。
+grep_code 'renderedTextOverlays: \[TextOverlay\] { textOverlaysInStackingOrder\.filter' \
+  Sources/SrtFlow/VideoEditClipVisibility.swift \
+  || fail "renderedTextOverlays 不是从叠放序（textOverlaysInStackingOrder）滤出来的：成片里谁压谁会乱"
+grep_code 'state\.renderedTextOverlays' Sources/SrtFlow/VideoEditExportGraph.swift \
   || fail "导出没按叠放序贴文字：成片里谁压谁和预览不一样"
-grep_code 'textOverlaysInStackingOrder' Sources/SrtFlow/VideoEditProject+Text.swift \
+grep_code 'state\.renderedTextOverlays' Sources/SrtFlow/VideoEditProject+Text.swift \
   || fail "预览叠层没按叠放序画文字"
 grep_code 'timeline.normalizeTextRows()' Sources/SrtFlow/VideoEditProjectFile.swift \
   || fail "载入没补老工程的行号（normalizeTextRows）"
