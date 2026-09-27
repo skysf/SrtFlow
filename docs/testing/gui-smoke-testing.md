@@ -367,6 +367,14 @@ scripts/gui-smoke/mcp-client/client.py <scratchpad>/calls.json <scratchpad>/out
 4. 图要**量**，别只用眼看缩略图：同一刻开 / 关滤镜各看一次，小图上几乎看不出差别，量一块区域的平均色才看得出冷铁那种
    红降蓝升。看图时把 jpg 读进来，位置、层序、有没有黑边这类一眼就能核对。
 5. 正在跑的 AI 会话（比如这个 Claude Code）里那个小程序是**启动它时**的旧版本，新加的工具它列不出来 —— 新工具就用这个脚本测。
+6. **每轮都要有「改很多步之后撤一步」**，而且放素材时**带上一个字幕文件**、中间起一次生成字幕 / 翻译：一处撤销登记落在
+   `AIUndoGrouping.step` 外面，后台的 App 里之后每一步都并进去，撤一步全空 —— 只有这样的顺序才露馅
+   （[案例](../bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)；当时是只差一个 .srt 的 A / B 两组才定的性）。
+   同一个测试版里出过一次之后，那个进程里的撤销就不可信了，要验修复得换新版本重开。
+7. **验「记住的设置」**（压缩 / 烧录 / 字幕样式）：趁测试版没开，用 `defaults write com.srtflow.SrtFlow.beta <键> -string '<JSON>'`
+   写一份和默认值一眼就分得出的（黄字、CRF 26；JSON 用 `SrtFlowCore` 的编码器现生成，别手写），测试版停在剪辑页启动，
+   不打开那两页，让 AI `look` 看字幕颜色、`compress_videos` 看结果里的 `settings`。**测完 `defaults delete` 删掉写进去的键**
+   （先 `defaults read` 记下原来有没有）—— 那是用户的测试版设置。
 
 ## 五、要真实窗口、但已经自动化了的检查
 
