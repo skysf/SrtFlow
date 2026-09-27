@@ -150,6 +150,7 @@ shard 4
 run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1 / 很多文件同时读）" scripts/check-waveform.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
+run_check "mcp（AI 接口：两代客户端的协议、改时间线的规则、客户端配置、词表对账）" scripts/check-mcp.sh
 # 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 
