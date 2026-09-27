@@ -21,7 +21,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 2. **选项词表**（转场、滤镜、文字动画、画面比例、帧率、分辨率）小程序拿不到 App 的类型，只能在
    `MCPVocabulary` 里抄一份 —— 抄的就会漂，`scripts/check-mcp.sh` 逐项和 App 的 `allCases` 对账。
 3. **说明文字用英文**（模型读英文最准；AI 回用户时用用户的语言）。每条写清：做什么、不传的参数怎么办、
-   什么时候会回 `needs_confirmation`。所有工具共用的规矩写在 `MCPInstructions`（客户端会放进模型的上下文）。
+   什么时候会回 `needs_confirmation`。所有工具共用的规矩写在 `MCPInstructions`（客户端会放进模型的上下文），
+   其中一条是**只用 SrtFlow 的工具干活**：不拿别的程序（ffmpeg、脚本、终端）裁切 / 转码 / 复制 / 转换素材，不从网上
+   下载素材，缺什么能力就告诉用户（方案第 31 条；2026-09-27 实测 Claude Code 拿用户自己 Homebrew 的 ffmpeg 转了副本、
+   用 curl 下了配乐）。看画面用 look、量声音用 listen、改画面用 edit_clip —— 这三样补齐之后，这条规矩才站得住。
 4. **stdout 只许写 MCP 消息**，一行一条，字符串里的换行必须转义（`JSONValue.encodedData` 就是这么写的）。
    调试输出写 stderr。
 

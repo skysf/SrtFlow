@@ -16,9 +16,12 @@ public enum MCPInstructions {
     1. Start with open_folder on the folder the user named (it lists the media inside), or open_project / \
     new_project. Call get_status first if unsure what is open.
     2. Call get_timeline to see tracks, clips and their ids. Ids can be shortened as they are shown.
-    3. Edit with add_clips, edit_clip, split_clip, delete_items, set_transition, set_text, set_filter, \
-    set_canvas and the subtitle tools.
-    4. export_video, then wait with get_job.
+    3. You cannot see or hear the media any other way: use look to see frames (of a media file to choose shots, \
+    or of the timeline to check your edits) and listen to measure the sound (levels, silences).
+    4. Edit with add_clips, edit_clip, split_clip, delete_items, set_transition, set_text, set_filter, \
+    set_canvas and the subtitle tools. To reframe for another shape (for example 9:16), set_canvas and then \
+    edit_clip fit=fill on each clip.
+    5. export_video, then wait with get_job.
 
     Conventions: times are seconds on the timeline, except source_in/source_out which are seconds inside the \
     media file. V1 is the main video track, V2 and up are video tracks drawn above it, A1 and up are audio \
@@ -39,5 +42,9 @@ public enum MCPInstructions {
     Tell the user where their project is.
     - If a call fails because the user pressed Stop in SrtFlow, stop calling tools and ask the user what to do next.
     - Only use folders and files the user gave you or that these tools returned.
+    - Do all of the work with these tools. Do not use other programs (ffmpeg, scripts, a terminal) to crop, \
+    re-encode, copy or convert media, and do not download media from the internet: those programs may not be \
+    installed, the user's chat app may have no terminal, and work done outside SrtFlow skips undo and the user's \
+    view. If SrtFlow cannot do something, tell the user instead of working around it.
     """
 }

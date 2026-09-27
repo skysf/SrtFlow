@@ -110,6 +110,11 @@ func runProtocolChecks() {
     checkEqual(initialize?["serverInfo"]?["name"]?.stringValue, "srtflow", "serverInfo.name")
     check(initialize?["capabilities"]?["tools"] != nil, "initialize advertises tools")
     check((initialize?["instructions"]?.stringValue ?? "").contains("get_timeline"), "instructions mention the workflow")
+    // 方案第 31 条：AI 用 SrtFlow 的工具看、听、改画面，不拿用户电脑上的 ffmpeg 改素材、不从网上下载素材。
+    let instructions = initialize?["instructions"]?.stringValue ?? ""
+    check(instructions.contains("look") && instructions.contains("listen"), "instructions point the AI at look and listen")
+    check(instructions.contains("ffmpeg") && instructions.contains("do not download media"),
+          "instructions forbid outside tools and downloads for media")
 
     // 2. 工具清单：和 MCPToolName 一一对应、顺序一致、每个都有说明和对象型的参数表。
     let tools = reply(messages, id: 2)?["result"]?["tools"]?.arrayValue ?? []

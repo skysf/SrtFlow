@@ -113,6 +113,9 @@
    那几句是中文（[案例](../bugfixes/2026-09-24-sheets-ignore-in-app-language.md)）。
    `checks/presented-views-app-language.sh` 钉着：每个 `.sheet(` / `.popover(` 的内容、
    每个 `NSHostingView(` / `NSHostingController(` 的参数里都要有 `appLanguage()`。
+   它**按调用名**认：自己的函数别叫 `sheet(` / `popover(`，不然会被当成弹出的面板（2026-09-27 AI「看」的拼图函数
+   就撞过，改名 `draw` 了事，[案例](../bugfixes/2026-09-27-contact-sheet-name-trips-sheet-guard.md)）。宁可误报、
+   不许漏报，所以守卫不改。
 
 ## 四、加新文案的流程
 
