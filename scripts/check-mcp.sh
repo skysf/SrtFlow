@@ -85,7 +85,32 @@ if [ -n "${MANUAL}" ]; then
   echo "✗ 这些文件自己在关撤销组：${MANUAL}（手动关掉按事件自动开的那一组，下一次登记就抛异常、App 闪退）" >&2
   exit 1
 fi
-echo "   ✓ 11 个同步的改动工具 + edit_clip / freeze_frame 的提交 + add_clips 都各是一步，没人手动关撤销组"
+# 一处登记落在 step 外面就够把后面全并成一步：App 在后台收不到事件，按事件自动开的那一组关不上，之后每个 step
+# 看见「开着一组」都嵌进去（2026-09-27 冒烟：add_clips 先挂字幕再进 step，撤一步整条时间线空了，
+# docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md）。add_clips 挂字幕必须在放素材的那个 step 里：
+ADD_STEP="$(awk '/try AIUndoGrouping\.step\(project\.effectiveUndoManager\) \{/,/^        \}$/' Sources/SrtFlow/AITimelineTools.swift)"
+if [ "$(grep -c 'project.attachSubtitle(' <<<"${ADD_STEP}" || true)" -ne 1 ] \
+   || [ "$(grep -c 'project.attachSubtitle(' Sources/SrtFlow/AITimelineTools.swift || true)" -ne 1 ]; then
+  echo "✗ add_clips 挂字幕不在放素材的那个 AIUndoGrouping.step 里：在后台的 App 里之后 AI 的每一步都会并进同一组" >&2
+  exit 1
+fi
+# 不是用户事件引起的异步落账（AI 起的生成字幕 / 翻译结束时、静帧转换失败删占位块）也各包一层：落账那一行的上一行是 step。
+for pair in "Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift|project.replaceSubtitleForGeneration(" \
+            "Sources/SrtFlow/SubtitleGen/SubtitleTranslationService.swift|project.applyTranslations("; do
+  file="${pair%%|*}"
+  call="${pair#*|}"
+  if [ "$(grep -cF "${call}" "${file}" || true)" -ne 1 ] \
+     || ! grep -q 'AIUndoGrouping.step(project.effectiveUndoManager) {' <<<"$(grep -B1 -F "${call}" "${file}" | head -1)"; then
+    echo "✗ ${file} 的异步落账（${call}）没包在 AIUndoGrouping.step 里：AI 起的任务一结束，之后的改动撤一步全退" >&2
+    exit 1
+  fi
+done
+if grep -nE '^ +perform\(rebuildsPreview: false\) \{ \$0\.remove\(clipID\) \}' Sources/SrtFlow/VideoEditProject.swift; then
+  echo "✗ 静帧转换失败删占位块的 perform 没包在 AIUndoGrouping.step 里（异步落账）" >&2
+  exit 1
+fi
+echo "   ✓ 11 个同步的改动工具 + edit_clip / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
+echo "     删占位块这些异步落账也各是一步；没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
 # 每一步都 orderFrontRegardless 的话，用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他的窗口

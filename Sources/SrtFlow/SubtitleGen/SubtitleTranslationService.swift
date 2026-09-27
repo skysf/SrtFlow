@@ -95,13 +95,16 @@ final class SubtitleTranslationService: ObservableObject {
             guard !valid.isEmpty else {
                 return results.isEmpty ? .nothingToDo : .discarded
             }
-            project.applyTranslations(
-                valid,
-                snapshot: snapshot,
-                scope: scope,
-                sourceLanguage: sourceLanguage,
-                targetLanguage: targetLanguage
-            )
+            // 异步落账不是用户事件：自己成一步，不然 App 在后台时之后的改动全并进来（AIUndoGrouping 文件头）。
+            AIUndoGrouping.step(project.effectiveUndoManager) {
+                project.applyTranslations(
+                    valid,
+                    snapshot: snapshot,
+                    scope: scope,
+                    sourceLanguage: sourceLanguage,
+                    targetLanguage: targetLanguage
+                )
+            }
             return .translated(valid.count)
         } catch is CancellationError {
             return .cancelled

@@ -139,16 +139,19 @@ final class TranscriptionTask: ObservableObject {
                 // 源语言一律取转写实际用的 locale（自动检测时 sourceLocaleID
                 // 只是 "auto" 哨兵，真语言在 harvest 里）。
                 let resolvedSource = harvest.locale.language.minimalIdentifier
-                project.replaceSubtitleForGeneration(
-                    result.document,
-                    sourceLanguage: resolvedSource,
-                    generation: GenerationSnapshot(
-                        module: SpeechTranscriptionService.transcriberKind,
-                        segmentationConfigVersion: SubtitleSegmentationConfig.version,
-                        generatedAt: Date()
-                    ),
-                    cueMeta: result.meta
-                )
+                // 异步落账不是用户事件：自己成一步，不然 App 在后台时之后的改动全并进来（AIUndoGrouping 文件头）。
+                AIUndoGrouping.step(project.effectiveUndoManager) {
+                    project.replaceSubtitleForGeneration(
+                        result.document,
+                        sourceLanguage: resolvedSource,
+                        generation: GenerationSnapshot(
+                            module: SpeechTranscriptionService.transcriberKind,
+                            segmentationConfigVersion: SubtitleSegmentationConfig.version,
+                            generatedAt: Date()
+                        ),
+                        cueMeta: result.meta
+                    )
+                }
 
                 if let targetLanguageID, #available(macOS 15.0, *),
                    TranslationPreflight.isSameTranslationLanguage(

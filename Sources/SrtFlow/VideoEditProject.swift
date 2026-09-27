@@ -888,7 +888,7 @@ final class VideoEditProject {
     func convertStillClip(_ clipID: UUID, from url: URL, generation: Int) async {
         guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
             notice = L10n("The video engine is not ready yet.")
-            perform(rebuildsPreview: false) { $0.remove(clipID) }
+            AIUndoGrouping.step(effectiveUndoManager) { perform(rebuildsPreview: false) { $0.remove(clipID) } }
             return
         }
         do {
@@ -908,7 +908,7 @@ final class VideoEditProject {
         } catch {
             guard isCurrentGeneration(generation) else { return }
             notice = error.localizedDescription
-            perform(rebuildsPreview: false) { $0.remove(clipID) }
+            AIUndoGrouping.step(effectiveUndoManager) { perform(rebuildsPreview: false) { $0.remove(clipID) } }
         }
     }
 

@@ -69,15 +69,9 @@ enum AITimelineTools {
         if let ask = try AIWorkspace.shared.confirmReading(requests.compactMap(\.url), verb: "read", args: args, project: project) {
             return ask
         }
-        // 字幕文件不占轨：挂成字幕轨（和把 .srt 拖进来同一条路，换掉原来的字幕，一步撤销）。
+        // 字幕文件不占轨：挂成字幕轨（和把 .srt 拖进来同一条路，换掉原来的字幕），挂在下面放素材的那一步里。
         let subtitles = requests.compactMap { $0.isSubtitle ? $0.url : nil }
         guard subtitles.count <= 1 else { throw AIToolError("A project has one subtitle track; add one subtitle file at a time.") }
-        if let subtitle = subtitles.first {
-            project.attachSubtitle(subtitle)
-            guard project.state.subtitleURL == subtitle else {
-                throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.lastPathComponent).")
-            }
-        }
         let generation = project.documentGeneration
         var plans: [AITimelineEdits.PlannedClip] = []
         var images: [(id: UUID, url: URL)] = []
@@ -116,7 +110,16 @@ enum AITimelineTools {
         }
         let insert = try args.bool("insert") ?? false
         let linkage = project.linkageEnabled
-        AIUndoGrouping.step(project.effectiveUndoManager) {
+        // 挂字幕和放素材是同一步（一次调用 = 一步撤销）。挂字幕要是落在这一步外面，App 在后台收不到事件，它按事件
+        // 自动开的那一组一直关不上，之后 AI 的每一步都嵌进去，撤一步全空
+        // （docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md）。
+        try AIUndoGrouping.step(project.effectiveUndoManager) {
+            if let subtitle = subtitles.first {
+                project.attachSubtitle(subtitle)
+                guard project.state.subtitleURL == subtitle else {
+                    throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.lastPathComponent).")
+                }
+            }
             project.perform { AITimelineEdits.place(plans, insert: insert, linkage: linkage, in: &$0) }
         }
         // 图片和拖进来一样：先上轨，静帧视频在后台转，转完无感替换。
@@ -192,11 +195,13 @@ enum AITimelineTools {
         try AITrackSettings.apply(target, volumeDB: volumeDB, hidden: hidden, in: &next)
         // 只动推子是纯声音的改动，perform 自己会走只换混音的快路径（不重建画面）。
         project.perform { $0 = next }
-        var result: [String: JSONValue] = ["track": .string(name.uppercased())]
+        var result: [String: JSONValue] = [:]
         switch target {
         case .master:
+            result["track"] = "master"
             result["volume_db"] = AITrackSettings.decibels(project.state.masterVolume)
         case .track(let slot):
+            result["track"] = .string(AITrackName.name(of: slot))
             result["volume_db"] = AITrackSettings.decibels(project.state.trackVolume(for: slot))
             result["hidden"] = .bool(project.state.isLaneHidden(slot))
         }
