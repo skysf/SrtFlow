@@ -302,6 +302,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   ⌘Z + 撤销这一轮、只有动硬盘才问、本机 Vision 识别画面、按文字剪 / 删静音 / 踩点、剪辑套路（MCP Prompts）、
   fal.ai 生成（每日上限）；架构（`srtflow-mcp` 只传话、干活的只有 App 本体、协议自己写不引 SDK）、六块分块与两个真实验收任务。
 - [AI 接口（MCP）第一块实施报告](docs/reports/2026-09-27-mcp-slice1-report.md) — 23 个工具做到了哪、CI 与端到端实测的证据、测试版怎么出（`scripts/build-beta-app.sh`）、过程中修掉的事（撤销分组、提示条位置、文字折断、翻译语言与下载引导、自动存盘与默认位置）、还差什么（第二块起的功能、Claude 桌面版 / Codex 要用户点「连接」）。
+- [AI 接口（MCP）第二块实施报告](docs/reports/2026-09-27-mcp-slice2-report.md) — 第二块起手「AI 的手和眼」（方案第 31 条）：`edit_clip` 的画面放法、去黑边、对准主体、`look`、`listen`、总说明里不用外部工具那一句，窗口一轮只摆一次（第 32 条）；每一刀的 CI、本机自检、测试版冒烟的证据（含冒烟里补的「文字出了画面要说」），过程中撞上的事，还差什么（现有功能铺满、后台模式等）。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
