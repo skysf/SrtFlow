@@ -76,9 +76,11 @@ final class EncodeQueue: ObservableObject {
     private var currentProcess: FFmpegProcess?
     private var currentItemID: EncodeItem.ID?
 
-    init(outputSuffix: String, requiresSubtitles: Bool = false) {
+    /// `memory`：这个队列记住的设置存在哪；创建时就读回来（EncodeQueueMemory）。
+    init(outputSuffix: String, requiresSubtitles: Bool = false, memory: EncodeQueueMemory.Keys? = nil) {
         self.outputSuffix = outputSuffix
         self.requiresSubtitles = requiresSubtitles
+        if let memory { EncodeQueueMemory.restore(self, memory) }
     }
 
     // MARK: - 全局唯一的两个队列
@@ -88,10 +90,10 @@ final class EncodeQueue: ObservableObject {
     /// 刻意做成全局的，而不是压缩界面自己的 `@StateObject`：主窗口是侧边栏切换，
     /// 切走那一栏的视图会被销毁。队列要是跟着视图走，正在跑的编码就会被中断。
     /// 放在这里，压缩可以在后台一直跑，用户同时去调字幕样式或转格式。
-    static let compress = EncodeQueue(outputSuffix: "_compressed")
+    static let compress = EncodeQueue(outputSuffix: "_compressed", memory: EncodeQueueMemory.compress)
 
     /// 烧字幕队列。理由同上。
-    static let burnIn = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true)
+    static let burnIn = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true, memory: EncodeQueueMemory.burnIn)
 
     /// 侧边栏那一行要显示的状态：正在跑就报进度，跑完了报个完成数。
     var sidebarActivity: SidebarActivity? {

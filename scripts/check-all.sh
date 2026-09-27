@@ -117,6 +117,7 @@ run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wi
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
 run_check "inspector-fits-width（扫描守卫：检查器里的 Picker 不许锁死宽度）" checks/inspector-fits-width.sh
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
+run_check "encode-settings-memory（扫描守卫：压缩 / 烧录记住的设置在队列创建时读回来）" checks/encode-settings-memory.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建

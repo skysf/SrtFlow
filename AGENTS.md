@@ -126,7 +126,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点）、[AI 接口](docs/architecture/ai-control-mcp.md) §4 第 23 条（AI 搜音乐、放上时间线、署名句，和界面同一个搜索函数、同一个署名口径） |
-| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
+| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名、**压缩 / 烧录记住的设置和全 App 的字幕样式** | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置；记住的设置在队列创建时读回来，不挂在页面的 `onAppear` 上）、[字幕样式要先去烧录页转一圈](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
 | 读用户给的文本文件（字幕文件、讲稿、笔记）的编码 | [用户文本文件的编码](docs/architecture/text-file-encoding.md)（只走 SrtFlowCore 的 `TextDecoding`；UTF-16 不许无条件排在 GBK 前面）、[GBK 字幕读成乱码](docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头）；**在视图 body 里读工程的属性、给 `VideoEditProject` 加属性**（工程是 `@Observable`） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不读工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**、**第十三节：body 读了什么就只被什么叫醒，大视图少读、不驱动界面的存储 `@ObservationIgnored`、读不可观察的东西要自己找叫醒的来源**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md)、[点一下选中一段整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) |
@@ -232,6 +232,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
+- 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来（不挂在页面的 `onAppear` 上）：`checks/encode-settings-memory.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
 - 代码文件的行数上限（超过 600 行就红，老文件只许降不许涨，变短了用 `--update` 改小基线）：
   `checks/source-file-size.sh`。
@@ -456,6 +457,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-27 拼图函数叫 `sheet(`，被 sheet 语言守卫当成了 SwiftUI 的 `.sheet`](docs/bugfixes/2026-09-27-contact-sheet-name-trips-sheet-guard.md) — AI「看」把几帧拼成一张的函数叫 `AIContactSheet.sheet(`，按调用名扫的守卫把它当成弹出的 sheet，CI 第 1 组红；改名 `draw`。**按名字扫的守卫，名字就是接口：别给自己的函数取 SwiftUI 修饰器的名字；推之前把 `checks/*.sh` 的扫描守卫也跑一遍（秒级）。**
 - [2026-09-27 GBK 编码的字幕文件读出来是乱码](docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md) — 读字幕（剪辑页挂字幕、字幕编辑、烧录）和批量转换都是「UTF-8 → UTF-16 → GBK」，而 `.utf16` 几乎什么都解得出来，GBK 永远轮不到，整份读成乱码；两份抄来的规则还不一样。给 AI 写读文稿的自检时造了一份 GBK 才撞出来。改成只有 `TextDecoding` 一处、先看 BOM、像 UTF-16 才按 UTF-16。**「解得出来」不等于「解对了」：宽容的解码器只能放最后，或者先用特征确认。**
 - [2026-09-27 段上画了音量曲线时，AI 调 volume_db 听不出变化](docs/bugfixes/2026-09-27-ai-volume-ignored-on-curved-clips.md) — 有曲线时曲线取代 `volume`，AI 却一律写 `volume`；检查器早就改成整条曲线平移。改成同检查器、回给 AI 的状态带上曲线。**给 AI 开参数之前先看检查器改同一个值时做了什么。**
+- [2026-09-27 烧录页存好的字幕样式，要先去烧录页转一圈，剪辑页才用得上](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md) — 全 App 共用的字幕样式放在烧录队列上，读回来却写在烧录页的 `onAppear` 里；App 直接进剪辑页时那一页从没出现过，预览、导出、AI 用的都是默认样式。改成队列创建时读回来（`EncodeQueueMemory`，同 `VideoEditExporter` 的 init），守卫钉着。顺带查过：`burnInFontURL` 从没赋值，但这版 libass 用 CoreText 按名字找到同一个文件，成片一样。**一份设置有了第二个读者，读回来就不能挂在某一页的 `onAppear` 上。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

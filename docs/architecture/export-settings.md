@@ -110,6 +110,11 @@
   置灰，点了不弹确认。
 - 分辨率也记住。记住的档位这块画布给不了（换到了更小的工程）就显示「跟随工程」——
   导出那边是同一个结果：档位不小于画布短边时 `cappedSize` 本来就不缩。
+- 压缩 / 烧录两页的编码设置、烧录的字幕样式、「再挂一条可开关的字幕轨」也记住（`compressSettings`、
+  `burnInSettings`、`burnInStyle`、`burnInSoftTrack`）。**在队列创建时读回来**（`EncodeQueueMemory`，和
+  `VideoEditExporter` 在 init 里读同一个做法），**不许挪回页面的 `onAppear`**：烧录队列上的样式是全 App 的
+  字幕样式，剪辑页预览、剪辑导出、AI 都读它，烧录页没出现过也必须是用户存的那套
+  （[案例](../bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)，`checks/encode-settings-memory.sh` 钉着）。
 
 ## 回归矩阵
 
@@ -119,6 +124,7 @@
 | `SrtFlowCoreChecks`（分辨率档位一节） | `cappedSize` 的确切像素（竖屏、奇怪比例取偶数）、`downscaleOptions` 给哪几档 |
 | `SrtFlowCoreChecks`（标题 → 文件名主干一节） | `ExportFileName.stem` 的清理规则 |
 | `SrtFlowCoreChecks`（字幕导出规划器一节） | 同名旧文件被整份原子替换、失败不碰已有文件 |
+| `checks/encode-settings-memory.sh`（第一组） | 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来；键和读法只有 `EncodeQueueMemory` 一处，页面不自己读 |
 | `scripts/check-export-frame-rate.sh`（第三组） | 剪辑导出**真跑一遍**读成片尺寸：16:9 / 9:16 选 720p、跟随工程、档位不小于画布时不缩；奇怪比例下像素是方的（守 `setsar=1`） |
 
 ## 人工回归清单（自动化够不着，发版前实机过）
@@ -137,3 +143,5 @@
 9. 中文界面：整个面板和确认框都是中文（sheet 不继承应用内语言的坑，见
    [本地化](localization.md)）。
 10. 压缩 / 烧录两个工具的设置页不受影响：分辨率、帧率、音频「原样复制」都还在。
+11. 在烧录页把字幕改成黄字 → 退出 → 重开（上次停在剪辑页）→ **不去烧录页**：剪辑页预览里的字幕已经是黄的，
+    导出的成片也是；再去烧录页，样式、编码设置、「再挂一条字幕轨」都是上次的。

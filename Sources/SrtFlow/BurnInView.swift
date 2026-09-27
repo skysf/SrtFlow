@@ -23,12 +23,12 @@ struct BurnInView: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
     @State private var didResolveFont = false
-    /// 这次是不是从 UserDefaults 里恢复出了用户上次调好的样式。
+    /// 用户存过自己调好的样式没有（读回来在队列创建时，EncodeQueueMemory）。
     @State private var didRestoreStyle = false
 
-    @AppStorage("burnInSettings") private var storedSettings = ""
-    @AppStorage("burnInStyle") private var storedStyle = ""
-    @AppStorage("burnInSoftTrack") private var storedSoftTrack = false
+    @AppStorage(EncodeQueueMemory.burnIn.settings) private var storedSettings = ""
+    @AppStorage(EncodeQueueMemory.burnInStyleKey) private var storedStyle = ""
+    @AppStorage(EncodeQueueMemory.burnInSoftTrackKey) private var storedSoftTrack = false
     /// 预览是「播放」还是「精确帧」。
     @AppStorage("burnInPreviewMode") private var previewMode = BurnInPreviewMode.playback
     /// 预览铺满整个窗口。字幕看不看得清、位置对不对，小窗里判断不了。
@@ -69,7 +69,7 @@ struct BurnInView: View {
         .onAppear {
             toolchain.resolveIfNeeded()
             fontCatalog.loadIfNeeded()
-            restore()
+            didRestoreStyle = EncodeQueueMemory.hasRememberedStyle()
             // 字体表可能早就扫好了（切回这一栏时），那样 onChange 不会再触发。
             pickDefaultFontIfNeeded(fontCatalog.fonts)
             takeHandoff()
@@ -493,19 +493,6 @@ struct BurnInView: View {
     private func persistStyle() {
         guard let data = try? JSONEncoder().encode(queue.burnInStyle) else { return }
         storedStyle = String(decoding: data, as: UTF8.self)
-    }
-
-    private func restore() {
-        if !storedSettings.isEmpty,
-           let decoded = try? JSONDecoder().decode(VideoEncodeSettings.self, from: Data(storedSettings.utf8)) {
-            queue.settings = decoded
-        }
-        if !storedStyle.isEmpty,
-           let decoded = try? JSONDecoder().decode(BurnInStyle.self, from: Data(storedStyle.utf8)) {
-            queue.burnInStyle = decoded
-            didRestoreStyle = true
-        }
-        queue.attachSoftSubtitleTrack = storedSoftTrack
     }
 }
 
