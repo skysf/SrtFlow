@@ -28,9 +28,10 @@ swift run --arch arm64 SrtFlowCoreChecks      # 核心自检（184 项断言，C
 
 ## 打包流程（scripts/build-app.sh）
 
-Release 构建 → 手写 Info.plist 组装 `dist/SrtFlow.app` → 拷入 SwiftPM 资源包与
-vendor/ffmpeg（`Contents/Helpers/`）→ 生成图标 → **先签嵌套二进制再签外层**
-（顺序反了外层签名立即失效）→ `hdiutil` 生成 DMG。
+Release 构建 → 手写 Info.plist 组装 `dist/SrtFlow.app` → 拷入 SwiftPM 资源包、
+vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Contents/Helpers/`，
+见 [AI 接口（MCP）](../architecture/ai-control-mcp.md)）→ 生成图标 → **先签嵌套二进制再签外层**
+（顺序反了外层签名立即失效；`scripts/check-mcp.sh` 钉着 srtflow-mcp 这一条）→ `hdiutil` 生成 DMG。
 
 产物：`dist/SrtFlow.app`（约 52 MB）、`dist/SrtFlow-<版本>-arm64.dmg`。
 
@@ -42,6 +43,8 @@ vendor/ffmpeg（`Contents/Helpers/`）→ 生成图标 → **先签嵌套二进�
 ## 产物验收清单
 
 - `lipo -archs dist/SrtFlow.app/Contents/MacOS/SrtFlow` → `arm64`
+- `dist/SrtFlow.app/Contents/Helpers/srtflow-mcp` 在、能跑：往它的 stdin 喂一行 `initialize`，
+  stdout 回一行带 `"serverInfo":{"name":"srtflow"` 的 JSON
 - `strings ... | grep <新增字符串>` → 命中
 - 脚本自带 `codesign --verify --deep --strict` → "签名校验通过"
 - `swift run --arch arm64 SrtFlowCoreChecks` → "All 184 checks passed."
