@@ -40,6 +40,10 @@ vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Co
 以前这里是写死的默认值，发到 0.4.1 了还停在 0.3.0，打出过贴错版本号的包，
 见 [bugfixes/2026-08-06-build-version-and-shell-traps.md](../bugfixes/2026-08-06-build-version-and-shell-traps.md)。
 
+## 测试版（SrtFlow Beta）
+
+没合并的功能要给用户在自己机器上实测时：`VERSION=x.y.z scripts/build-app.sh && scripts/build-beta-app.sh`，得到 `dist/SrtFlow Beta.app`。换了名字和 bundle id（`com.srtflow.SrtFlow.beta`），设置、AI 的通道都和正式版分开；每种文档类型都只做「备选」，双击工程文件仍由正式版打开。`build-app.sh` 会顺手打一个同版本号的 DMG、覆盖 `dist/SrtFlow.app` —— 只出测试版时记得把它们删掉 / 换回去，别让 `dist/` 里留着贴了未发布版本号的包。
+
 ## 产物验收清单
 
 - `lipo -archs dist/SrtFlow.app/Contents/MacOS/SrtFlow` → `arm64`
