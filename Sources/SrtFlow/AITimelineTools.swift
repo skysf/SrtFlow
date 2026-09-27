@@ -56,10 +56,19 @@ enum AITimelineTools {
                 "SrtFlow needs to read files outside the folder you opened (\(names)). Allow it?", action: action
             )
         }
+        // 字幕文件不占轨：挂成字幕轨（和把 .srt 拖进来同一条路，换掉原来的字幕，一步撤销）。
+        let subtitles = requests.filter { MediaFileTypes.isSubtitle($0.url) }
+        guard subtitles.count <= 1 else { throw AIToolError("A project has one subtitle track; add one subtitle file at a time.") }
+        if let subtitle = subtitles.first {
+            project.attachSubtitle(subtitle.url)
+            guard project.state.subtitleURL == subtitle.url else {
+                throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.url.lastPathComponent).")
+            }
+        }
         let generation = project.documentGeneration
         var plans: [AITimelineEdits.PlannedClip] = []
         var images: [(id: UUID, url: URL)] = []
-        for (index, request) in requests.enumerated() {
+        for (index, request) in requests.enumerated() where !MediaFileTypes.isSubtitle(request.url) {
             guard let media = await project.probeImports([request.url]).first else {
                 throw AIToolError("clips[\(index)]: SrtFlow cannot use \(request.url.lastPathComponent) as a clip.")
             }
@@ -97,7 +106,11 @@ enum AITimelineTools {
         }
         let firstStart = plans.compactMap { state.clip(with: $0.clip.id)?.timelineStart }.min()
         AIEditorPresenter.reveal(.init(clips: Set(plans.map(\.clip.id)), time: firstStart), project: project)
-        return .ok(["added": .array(added), "timeline_duration": AIFormat.seconds(state.duration)], changed: true)
+        var result: [String: JSONValue] = ["added": .array(added), "timeline_duration": AIFormat.seconds(state.duration)]
+        if let subtitle = subtitles.first {
+            result["subtitles"] = .string("\(subtitle.url.lastPathComponent) is now the subtitle track (\(state.subtitleCues(of: .original).count) lines).")
+        }
+        return .ok(.object(result), changed: true)
     }
 
     /// 用素材的哪一段。图片只有「放多久」（静帧最长 `StillImageClipFactory.stillDuration`）。
