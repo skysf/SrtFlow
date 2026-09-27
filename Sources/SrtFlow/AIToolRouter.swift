@@ -55,7 +55,11 @@ final class AIToolRouter {
             )
         }
         do {
-            if policy.presentsEditor { try await AIEditorPresenter.prepareEditor(project: project) }
+            // 窗口只在一轮开始时摆到前面（docs/plans/2026-09-27-mcp.md 第 32 条）：这一轮中途不再一步一跳。
+            if policy.presentsEditor {
+                let startsNewRound = AISession.shared.phase != .working
+                try await AIEditorPresenter.prepareEditor(project: project, bringForward: startsNewRound)
+            }
             if policy.startsRound { AISession.shared.beginRoundIfNeeded(project: project) }
             let result = try await run(tool, arguments, project)
             guard result.changedProject else { return result.json }

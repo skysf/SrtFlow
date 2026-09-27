@@ -3,10 +3,15 @@ import SwiftUI
 
 // MARK: - 「看得见」：AI 改到哪，界面就跟到哪
 //
-// 管什么：开工前把剪辑页摆出来（切到剪辑页、窗口放到最前面但**不抢键盘** —— 用户可能正在
+// 管什么：一轮开始时把剪辑页摆出来（切到剪辑页、窗口放到最前面但**不抢键盘** —— 用户可能正在
 // 对话框里打字）；每一步之后选中改到的东西、播放头跳过去、时间线滚过去。
-// 产品口径见 docs/plans/2026-09-27-mcp.md 第 7、8 条。
+// 产品口径见 docs/plans/2026-09-27-mcp.md 第 7、8、32 条。
 // 不管什么：改什么（AI*Tools）、这一轮的状态（AISession）。
+//
+// **只在一轮开始时摆一次**（第 32 条，2026-09-27 用户确认）：每一步都 `orderFrontRegardless` 的话，
+// 用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他正在看的窗口，点到它盖住的地方就点进了 SrtFlow。
+// 这一轮中途用户把别的窗口挪上来、最小化它、切去别的栏目，都照他的来。例外只有两种：窗口被关了
+// （不开回来 AI 的改动看不见、也进不了 ⌘Z），剪辑页从没出现过（撤销管理器是它交给工程的）。
 
 @MainActor
 enum AIEditorPresenter {
@@ -14,21 +19,25 @@ enum AIEditorPresenter {
     /// （`openWindow` 只在 SwiftUI 视图里拿得到）。
     static var openMainWindow: OpenWindowAction?
 
-    /// 改工程之前调一次。
-    static func prepareEditor(project: VideoEditProject) async throws {
+    /// 改工程之前调一次。`bringForward`：这是一轮的第一步（路由按 `AISession` 判断）。
+    static func prepareEditor(project: VideoEditProject, bringForward: Bool) async throws {
         let windowState = MainWindowState.shared
-        if windowState.section != .videoEdit { windowState.section = .videoEdit }
         if let window = mainWindow() {
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            // 摆到最前面但不激活 App：键盘留在用户正在打字的地方。
-            window.orderFrontRegardless()
+            if bringForward {
+                if windowState.section != .videoEdit { windowState.section = .videoEdit }
+                if window.isMiniaturized { window.deminiaturize(nil) }
+                // 摆到最前面但不激活 App：键盘留在用户正在打字的地方。
+                window.orderFrontRegardless()
+            }
         } else if let open = openMainWindow {
+            if windowState.section != .videoEdit { windowState.section = .videoEdit }
             open(id: WindowID.main)
         } else {
             throw AIToolError("SrtFlow's main window is closed. Ask the user to open it (Edit Video in the File menu, or Command-3).")
         }
         // 剪辑页出现时才把窗口的撤销管理器交给工程（VideoEditView.onAppear）；没有它，
-        // AI 的改动进不了 ⌘Z。刚切过去的这一拍它还没出现，等一小会儿。
+        // AI 的改动进不了 ⌘Z。从没出现过的话，这一轮中途也得切过去；刚切过去的这一拍它还没出现，等一小会儿。
+        if project.undoManager == nil, windowState.section != .videoEdit { windowState.section = .videoEdit }
         for _ in 0..<40 where project.undoManager == nil {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }

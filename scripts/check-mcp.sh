@@ -57,6 +57,23 @@ if [ -n "${MANUAL}" ]; then
 fi
 echo "   ✓ 8 个同步的改动工具 + add_clips 都各是一步，没人手动关撤销组"
 
+echo "==> 看得见：窗口只在一轮开始时摆到前面"
+# 每一步都 orderFrontRegardless 的话，用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他的窗口
+#（docs/plans/2026-09-27-mcp.md 第 32 条）。
+PRESENTER="Sources/SrtFlow/AIEditorPresenter.swift"
+if [ "$(grep -c 'let startsNewRound = AISession.shared.phase != .working' "${ROUTER}" || true)" -ne 1 ] \
+   || [ "$(grep -c 'prepareEditor(project: project, bringForward: startsNewRound)' "${ROUTER}" || true)" -ne 1 ]; then
+  echo "✗ ${ROUTER} 没按「这一轮是不是刚开始」决定要不要把窗口摆到前面" >&2
+  exit 1
+fi
+RAISE_BLOCK="$(awk '/if bringForward \{/,/^            \}/' "${PRESENTER}")"
+if [ "$(grep -c 'orderFrontRegardless' "${PRESENTER}" || true)" -ne 2 ] \
+   || [ "$(grep -c 'window.orderFrontRegardless()' <<<"${RAISE_BLOCK}" || true)" -ne 1 ]; then
+  echo "✗ ${PRESENTER} 在 if bringForward 外面也把窗口摆到前面（一轮中途又会一步一跳）" >&2
+  exit 1
+fi
+echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里"
+
 echo "==> 翻译：原文语言先按字判断，判不出来才用工程里记的"
 # 反过来的话，AI 把原文改写成中文之后，系统照旧按「英文→韩文」去翻
 #（docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md）。
