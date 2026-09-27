@@ -26,7 +26,9 @@ enum AITimelineEdits {
         var start: Double?
     }
 
-    /// 按顺序放一批素材。同一批里两段都要「新开一条轨」时，第二段放进第一段开的那条。
+    /// 按顺序放一批素材。同一批里两段都要「新开一条轨」时，第二段放进第一段开的那条。只有**自己要了新开**的那一段
+    /// 开出来的轨才记下 —— 前面一段只是因为还没有音频轨才开了 A1，后面点名 new_audio 的照样另开一条
+    /// （docs/bugfixes/2026-09-28-new-audio-lands-on-a1.md）。
     static func place(_ plans: [PlannedClip], insert: Bool, linkage: Bool, in state: inout TimelineState) {
         var openedVideo: Int?
         var openedAudio: Int?
@@ -41,8 +43,8 @@ enum AITimelineEdits {
             let item = MediaImportItem(duration: plan.clip.timelineDuration, isAudio: plan.isAudio)
             let landings = state.mediaImportLandings([item], firstStart: start, preferring: target)
             state.insertImported([plan.clip], at: landings)
-            if landings.first?.target == .newOverlayTop { openedVideo = state.overlayTracks.count - 1 }
-            if landings.first?.target == .newAudioBottom { openedAudio = state.audioTracks.count - 1 }
+            if plan.target == .newOverlayTop, landings.first?.target == .newOverlayTop { openedVideo = state.overlayTracks.count - 1 }
+            if plan.target == .newAudioBottom, landings.first?.target == .newAudioBottom { openedAudio = state.audioTracks.count - 1 }
         }
     }
 

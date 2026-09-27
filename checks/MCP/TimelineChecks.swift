@@ -73,6 +73,14 @@ private func placeChecks() {
                           insert: false, linkage: false, in: &fresh)
     checkEqual(fresh.overlayTracks.count, 1, "two new_video clips in one call share the new track")
     checkEqual(fresh.overlayTracks.first?.clips.count, 2, "both clips are on it")
+
+    // 前一段没点名轨道、只是因为还没有音频轨才开了 A1；后一段点名 new_audio：另开 A2，不许塞进 A1 后面
+    //（2026-09-28 冒烟：两首配乐一次放，第二首说要新开一条，却接在了 A1 的 30 秒处）。
+    var music = TimelineState()
+    AITimelineEdits.place([plan(audioClip(0, 30), audio: true), plan(audioClip(0, 30), audio: true, target: .newAudioBottom)],
+                          insert: false, linkage: false, in: &music)
+    checkEqual(music.audioTracks.count, 2, "new_audio after a clip that merely opened A1: a new A2")
+    checkEqual(music.audioTracks.last?.clips.first?.timelineStart, 0, "and it starts at 0 there")
 }
 
 private func deleteSplitTransitionChecks() {

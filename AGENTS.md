@@ -463,6 +463,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-27 AI 放素材时顺带挂了字幕，之后撤一步整条时间线空了](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md) — `add_clips` 先挂字幕（登记在 `AIUndoGrouping.step` 外面）再进 step 放素材；后台的 App 里按事件自动开的那一组关不上，之后每个 step 都嵌进去。冒烟 A / B 两组只差一个 .srt 才定的性。挂字幕挪进同一个 step，生成字幕、翻译写回、删占位块这些异步落账也各包一层，守卫钉着。**「每个工具包一层 step」只在一次调用里所有登记都在 step 里时成立；异步落账要自己成一步。**
 - [2026-09-27 批量转换字幕，旁边的同名文件被悄悄盖掉](docs/bugfixes/2026-09-27-batch-convert-overwrites-existing-files.md) — `convertFile` 算出名字就覆盖写，同格式转回源文件夹连源文件都盖（开源第一版起就这样）；用户拍板改成加编号。「撞名加编号」挪进 SrtFlowCore 的 `ExportFileName.unoccupied` 只留一份（App 里原有两份），写时再带 `.withoutOverwriting`。**写用户文件夹的地方默认不覆盖：要覆盖就先问，不问就加编号。**
 - [2026-09-28 链接开着时删掉分割出来的一块，整条素材连声音全没了](docs/bugfixes/2026-09-28-split-links-every-piece-together.md) — 链接关系就是「同一个组号」，分割却原样抄了组号：一对切开四段同号、互为伙伴，越切整串越大，删 / 拖 / 裁一块整串都跟着走（「链接」默认关，所以一直没人撞上）。切都改走 `LinkRegrouping.split`：按时间上重叠重分组，一对切开是两对。写 AI 的 cut_speech 时拿纯函数试出来的。**从旧段构造新段时，身份类的字段（id、组号）不能照抄。**
+- [2026-09-28 一次放两首配乐，第二首点名要新开一条轨，却接在了 A1 后面](docs/bugfixes/2026-09-28-new-audio-lands-on-a1.md) — `add_clips` 用「这一批开过的新轨」把同批的 new_audio 并进同一条，可只要落地新开了轨就记下，前一首只是因为没有音频轨才开的 A1 也算了进去。改成只认点名要新开的那段。**要记的是意图，不是副作用。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

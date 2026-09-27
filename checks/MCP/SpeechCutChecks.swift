@@ -52,6 +52,8 @@ private func checkCutKinds() {
     let pair = AISpeechCuts.repeats(twice)
     checkEqual(pair.map(\.reason), ["repeat: you know"], "a two-word repeat goes as one")
     checkEqual(AISpeechCuts.repeats([word("very", 0, 0.3), word("very", 1.2, 1.5)]).count, 0, "said again after a long pause: not a stutter")
+    checkEqual(AISpeechCuts.repeats([word("do", 0, 0.2), word("this.", 0.3, 0.6), word("This", 0.8, 1.0), word("is", 1.1, 1.2)]).count, 0,
+               "'…do this. This is…' is two sentences, not a stutter")
     checkEqual(AISpeechCuts.silenceThreshold(Array(repeating: -20, count: 50)), -30, "all speech: the threshold stays at -30 (no pauses found)")
     let quietRoom = Array(repeating: -65.0, count: 20) + Array(repeating: -20.0, count: 80)
     check(abs(AISpeechCuts.silenceThreshold(quietRoom) - (-65 + 0.35 * 45)) < 1e-9, "a quiet room: 35% of the way from the floor to speech")

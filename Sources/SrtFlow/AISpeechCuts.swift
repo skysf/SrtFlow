@@ -100,7 +100,8 @@ enum AISpeechCuts {
         }
     }
 
-    /// 说重了：同一个词（或两个词）紧接着又说了一遍（中间不到 0.6 秒），剪掉前面那遍。
+    /// 说重了：同一个词（或两个词）紧接着又说了一遍（中间不到 0.6 秒），剪掉前面那遍。前一遍以句号、问号、叹号收尾的不算
+    /// （「…do this. This is…」是两句话，2026-09-28 冒烟时被当成了口吃）。
     static func repeats(_ words: [SpeechTranscript.Word]) -> [Cut] {
         let keys = words.map { normalized($0.text) }
         var cuts: [Cut] = []
@@ -111,6 +112,7 @@ enum AISpeechCuts {
                 let first = keys[index..<(index + length)]
                 let second = keys[(index + length)..<(index + 2 * length)]
                 guard first.allSatisfy({ !$0.isEmpty }), Array(first) == Array(second),
+                      !endsSentence(words[index + length - 1].text),
                       words[index + length].start - words[index + length - 1].end < 0.6 else { continue }
                 cuts.append(Cut(
                     start: startPoint(words[index].start, words: words),
@@ -124,6 +126,10 @@ enum AISpeechCuts {
             if !matched { index += 1 }
         }
         return cuts
+    }
+
+    private static func endsSentence(_ text: String) -> Bool {
+        text.last { !$0.isWhitespace }.map { ".!?…。！？".contains($0) } ?? false
     }
 
     static func normalized(_ text: String) -> String {
