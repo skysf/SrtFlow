@@ -99,6 +99,8 @@ final class AIToolRouter {
             // 先看画面（去黑边、对准主体要抽帧），再同步提交：包进撤销组的那一段不许有 await。
             let plan = try await AIClipTools.plan(args, project)
             return try AIUndoGrouping.step(undo) { try AIClipTools.apply(plan, project) }
+        case .setKeyframes: return try AIUndoGrouping.step(undo) { try AITimelineTools.setKeyframes(args, project) }
+        case .setTrack: return try AIUndoGrouping.step(undo) { try AITimelineTools.setTrack(args, project) }
         case .splitClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.split(args, project) }
         case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
         case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }
@@ -132,7 +134,7 @@ final class AIToolRouter {
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
-            case .openProject, .newProject, .undo, .addClips, .editClip, .splitClip, .deleteItems,
+            case .openProject, .newProject, .undo, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
                  .setTransition, .setText, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
                  .editSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, true, true)

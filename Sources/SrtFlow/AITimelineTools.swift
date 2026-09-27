@@ -148,6 +148,48 @@ enum AITimelineTools {
         }
     }
 
+    // MARK: set_track
+
+    static func setTrack(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
+        let name = try args.requiredString("track")
+        let target = try AITrackSettings.target(name, in: project.state)
+        let volumeDB = try args.double("volume_db")
+        let hidden = try args.bool("hidden")
+        guard volumeDB != nil || hidden != nil else { throw AIToolError("Pass volume_db and/or hidden.") }
+        var next = project.state
+        try AITrackSettings.apply(target, volumeDB: volumeDB, hidden: hidden, in: &next)
+        // 只动推子是纯声音的改动，perform 自己会走只换混音的快路径（不重建画面）。
+        project.perform { $0 = next }
+        var result: [String: JSONValue] = ["track": .string(name.uppercased())]
+        switch target {
+        case .master:
+            result["volume_db"] = AITrackSettings.decibels(project.state.masterVolume)
+        case .track(let slot):
+            result["volume_db"] = AITrackSettings.decibels(project.state.trackVolume(for: slot))
+            result["hidden"] = .bool(project.state.isLaneHidden(slot))
+        }
+        return .ok(.object(result), changed: true)
+    }
+
+    // MARK: set_keyframes
+
+    static func setKeyframes(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
+        let state = project.state
+        let ids = AIShortIDs(state: state)
+        let id = try ids.resolve(try args.requiredString("clip_id"))
+        guard var clip = state.clip(with: id) else { throw AIToolError("\(ids.short(id)) is not a clip.") }
+        let request = try AIKeyframes.parse(args)
+        let canvas = VideoEditCompositionBuilder.renderSize(for: state)
+        try AIKeyframes.apply(request, to: &clip, canvas: canvas, frameRate: state.frameRate)
+        var next = state
+        next.update(id) { $0 = clip }
+        project.perform { $0 = next }
+        AIEditorPresenter.reveal(.init(clips: [id], time: clip.timelineStart), project: project)
+        var result: [String: JSONValue] = ["id": .string(ids.short(id))]
+        result["keyframes"] = AIKeyframes.summary(clip, canvas: canvas) ?? "none"
+        return .ok(.object(result), changed: true)
+    }
+
     // MARK: split / delete / transition
 
     static func split(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {

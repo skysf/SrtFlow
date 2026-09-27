@@ -19,6 +19,7 @@ runDocumentChecks()
 runFileOperationChecks()
 runFinderChecks()
 runClipDetailChecks()
+runTrackKeyframeChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

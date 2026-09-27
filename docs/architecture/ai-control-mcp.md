@@ -190,6 +190,14 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    空间类 room_size / distance），给错了报错；标记给整份列表，走 `EditClip.addMarker`（半帧容差，同按 M）。
    动画、场景、标记颜色的词表在小程序里抄一份，`check-mcp.sh` 和 App 的类型对账。`get_timeline` 带上这些设置（默认的不写）。
 
+18. **轨道（set_track）**：推子走 `TimelineState.setTrackVolume`（夹紧只在那一处，轨道头的推子也是它），总推子照
+   `setMasterVolume` 夹紧；藏整条轨给的是绝对值（界面上是按眼睛切换）。只认现有的轨，不开新轨。只动推子的改动由
+   `perform` 自己走只换混音的快路径。`get_timeline` 的每条轨带 `volume_db`（非 0 dB 时）、顶层带 `master_volume_db`。
+19. **关键帧（set_keyframes）**：规则在 `AIKeyframes`（纯值）。每样给一串（时间线秒, 值）整行换掉，存成源时间、半帧容差
+   （和检查器打关键帧同一把尺）；位置 = 画面中心（0…1），大小相对默认布局（1 = 完整放进画布，存成宽、高两行，
+   和 `edit_clip` 的 scale 同一把尺）。空列表去掉那一行、**静态值原样留着**（检查器「清除」会复位静态值，AI 不替它复位）；
+   一行都不剩时 `animation` 回到 nil。位置 / 大小做了关键帧的段，`edit_clip` 的画面放法照旧拒绝（第 11 条）。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，

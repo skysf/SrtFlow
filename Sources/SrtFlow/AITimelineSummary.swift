@@ -44,6 +44,7 @@ enum AITimelineSummary {
             "filters": .array(state.filters.map { filter($0, context) }),
             "subtitles": subtitles(state)
         ]
+        if abs(state.masterVolume - 1) > 0.0001 { result["master_volume_db"] = AITrackSettings.decibels(state.masterVolume) }
         if !context.selection.isEmpty {
             result["selected"] = .array(context.selection.map { .string(context.ids.short($0)) })
         }
@@ -61,6 +62,7 @@ enum AITimelineSummary {
             })
         ]
         if hidden { object["hidden"] = true }
+        if abs(state.trackVolume(for: slot) - 1) > 0.0001 { object["volume_db"] = AITrackSettings.decibels(state.trackVolume(for: slot)) }
         return .object(object)
     }
 
@@ -95,6 +97,7 @@ enum AITimelineSummary {
             object["picture"] = picture
         }
         for (key, value) in AIClipDetails.summary(clip) { object[key] = value }
+        if let keyframes = AIKeyframes.summary(clip, canvas: context.renderSize) { object["keyframes"] = keyframes }
         return .object(object)
     }
 

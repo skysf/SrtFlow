@@ -21,6 +21,52 @@ public enum MCPTimelineTools {
             return addClips
         case .editClip:
             return editClip
+        case .setKeyframes:
+            return MCPToolDefinition(
+                .setKeyframes, title: "Animate a clip with keyframes",
+                description: """
+                Animate a video or image clip over time: position (x/y = centre on the frame, 0–1), scale (1 = the \
+                whole picture just fits the frame, as in edit_clip), rotation (degrees) and opacity (0–1). Each list \
+                replaces that property's keyframes; [] removes them (the clip keeps its static values). Times are \
+                timeline seconds inside the clip; values move in straight lines between keyframes. Example: a slow \
+                zoom is scale [{time: start, value: 1}, {time: end, value: 1.15}]. Keyframed position or scale also \
+                blocks edit_clip's fit/x/y/scale until removed.
+                """,
+                input: MCPSchema.object([
+                    "clip_id": MCPSchema.string("Clip id from get_timeline."),
+                    "position": MCPSchema.array(of: MCPSchema.object([
+                        "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                        "x": MCPSchema.number("Centre across, 0–1.", minimum: 0, maximum: 1),
+                        "y": MCPSchema.number("Centre down, 0–1.", minimum: 0, maximum: 1)
+                    ], required: ["time", "x", "y"]), "Position keyframes."),
+                    "scale": MCPSchema.array(of: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "value": MCPSchema.number("Size, 1 = fits the frame.")
+                ], required: ["time", "value"]), "Scale keyframes."),
+                    "rotation": MCPSchema.array(of: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "degrees": MCPSchema.number("Clockwise degrees.")
+                ], required: ["time", "degrees"]), "Rotation keyframes."),
+                    "opacity": MCPSchema.array(of: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "value": MCPSchema.number("0 = invisible, 1 = solid.")
+                ], required: ["time", "value"]), "Opacity keyframes.")
+                ], required: ["clip_id"])
+            )
+        case .setTrack:
+            return MCPToolDefinition(
+                .setTrack, title: "Track volume and visibility",
+                description: """
+                Change a whole track: its fader (volume_db, applied on top of each clip's own volume) and whether it \
+                is hidden (a hidden track is left out of the preview and the export). track "master" is the fader \
+                after all tracks. Use it to duck the music track under a voice-over or mute a whole track.
+                """,
+                input: MCPSchema.object([
+                    "track": MCPSchema.string("V1, V2… / A1, A2…, or master."),
+                    "volume_db": MCPSchema.number("Fader in dB, 0 = unchanged.", minimum: -60, maximum: 6.02),
+                    "hidden": MCPSchema.boolean("Hide or show the whole track (not for master).")
+                ], required: ["track"])
+            )
         case .splitClip:
             return MCPToolDefinition(
                 .splitClip, title: "Split clips",
