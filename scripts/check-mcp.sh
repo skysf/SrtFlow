@@ -74,12 +74,18 @@ if [ "$(grep -cE 'AIUndoGrouping\.step\(project\.effectiveUndoManager\)' Sources
   echo "✗ add_clips 那一次 perform 没包在 AIUndoGrouping.step 里" >&2
   exit 1
 fi
+# freeze_frame 抽帧转码要 await：把「提交那一下」包进 AIUndoGrouping.step 交给定格去做。
+if [ "$(grep -c 'AIUndoGrouping.step(undo, body)' Sources/SrtFlow/AIClipTools.swift || true)" -ne 1 ] \
+   || [ "$(grep -c 'commit {' Sources/SrtFlow/VideoEditFreezeFrame.swift || true)" -ne 1 ]; then
+  echo "✗ freeze_frame 的提交没包进 AIUndoGrouping.step（或定格没把 perform 交给 commit）" >&2
+  exit 1
+fi
 MANUAL="$(grep -lE 'endUndoGrouping\(\)' Sources/SrtFlow/AI*.swift | grep -v 'AIUndoGrouping.swift' || true)"
 if [ -n "${MANUAL}" ]; then
   echo "✗ 这些文件自己在关撤销组：${MANUAL}（手动关掉按事件自动开的那一组，下一次登记就抛异常、App 闪退）" >&2
   exit 1
 fi
-echo "   ✓ 11 个同步的改动工具 + edit_clip 的提交 + add_clips 都各是一步，没人手动关撤销组"
+echo "   ✓ 11 个同步的改动工具 + edit_clip / freeze_frame 的提交 + add_clips 都各是一步，没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
 # 每一步都 orderFrontRegardless 的话，用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他的窗口

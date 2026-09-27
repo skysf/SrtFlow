@@ -207,6 +207,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    （[复制粘贴](timeline-clipboard.md)）。AI 多出来的只有：按 id 分类（同 delete_items）、链接开着时带上伙伴（同 ⌘C）、
    不给落点紧接着这一批的结尾。静帧没转完的走 `convertPastedStills`（同 ⌘V）。
 
+22. **定格（freeze_frame）**：和手动定格走同一个 `runFreeze`（准入、抽帧、PNG 放在工程旁边、提交前核对一样都不另写，
+   [定格](freeze-frame.md) 末节）。AI 多给一个时长；抽帧转码要 await，所以把「提交那一下」交给定格去包：
+   `project.freezeFrame(…) { body in AIUndoGrouping.step(undo, body) }`（`check-mcp.sh` 钉着）。不给 clip_id 时定格那一刻 V1 上的段。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，

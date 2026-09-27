@@ -3,7 +3,7 @@ import Foundation
 import SrtFlowCore
 import SrtFlowMCPKit
 
-// MARK: - 工具：edit_clip（改一段）
+// MARK: - 工具：edit_clip（改一段）、freeze_frame（定格）
 //
 // 管什么：参数读成一份 `AIClipChange` → 需要看画面的（去黑边、对准主体）先去看 → 在副本上用纯值规则
 // 算好（AIClipEdit）→ 一次 `perform` 提交 → 选中它、播放头跳过去 → 结果（含画面现在怎么放）。
@@ -157,4 +157,47 @@ enum AIClipTools {
             )
         }
     }
+
+    // MARK: freeze_frame
+
+    /// 定格：和手动定格同一条路（`VideoEditProject.freezeFrame` → `runFreeze`），提交那一下包进一步撤销。
+    static func freeze(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
+        let state = project.state
+        let ids = AIShortIDs(state: state)
+        let time = try args.requiredDouble("time")
+        let duration = min(max(try args.double("duration") ?? FreezeFrame.defaultDuration, 0.2), StillImageClipFactory.stillDuration)
+        let clipID: UUID
+        if let text = try args.string("clip_id") {
+            clipID = try ids.resolve(text)
+        } else {
+            guard let clip = state.mainClips.first(where: { $0.contains(time: time) }) else {
+                throw AIToolError("There is no V1 clip at \(time) s. Pass clip_id for a clip on another track.")
+            }
+            clipID = clip.id
+        }
+        let undo = project.effectiveUndoManager
+        let outcome = await project.freezeFrame(clipID: clipID, at: time, duration: duration) { body in
+            AIUndoGrouping.step(undo, body)
+        }
+        switch outcome {
+        case .failed(let message):
+            throw AIToolError(message)
+        case .frozen(let id, let usedNearestFrame):
+            let fresh = AIShortIDs(state: project.state)
+            guard let clip = project.state.clip(with: id) else {
+                return .ok(["freeze_id": .string(fresh.short(id))], changed: true)
+            }
+            AIEditorPresenter.reveal(.init(clips: [id], time: clip.timelineStart), project: project)
+            var result: [String: JSONValue] = [
+                "freeze_id": .string(fresh.short(id)),
+                "start": AIFormat.seconds(clip.timelineStart),
+                "end": AIFormat.seconds(clip.timelineEnd),
+                "timeline_duration": AIFormat.seconds(project.state.duration),
+                "note": "The clip was cut at that time and the still inserted; later clips on the same track moved right by its length."
+            ]
+            if usedNearestFrame { result["warning"] = "The clip has no frame exactly at that time; the nearest one was used." }
+            return .ok(.object(result), changed: true)
+        }
+    }
 }
+

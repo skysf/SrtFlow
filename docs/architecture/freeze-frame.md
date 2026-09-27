@@ -195,3 +195,15 @@ AVFoundation、ffmpeg、磁盘、UI。这不是洁癖：`scripts/check-freeze-fr
 - 定格段最长 60 秒（`StillImageClipFactory.stillDuration`）。
 - **HDR 素材的定格帧是 SDR**：整条静帧管线就是 SDR（yuv420p、无 HDR 元数据），
   `dynamicRangePolicy = .forceSDR` 只是把这件事写死成可预期的那一种。
+
+## AI 的定格（freeze_frame）
+
+AI 接口的 `freeze_frame` 和工具栏 / ⇧⌘F **走同一个 `runFreeze`**：准入（`isFreezeEligible`）、零容差抽帧、PNG 放在工程旁边、
+转码之后的 CAS 核对、一次性提交，一样都不另写。入口 `VideoEditProject.freezeFrame(clipID:at:duration:commit:)` 只多两样：
+
+- **时长由调用方给**（手动定格固定 `FreezeFrame.defaultDuration`，AI 可以 0.2…60 秒），交给 `makeFreezeClip(duration:)`；
+- **提交那一下经 `commit` 走**：手动传默认的「直接提交」，AI 传 `AIUndoGrouping.step` —— 一个工具 = 一步撤销，而包进撤销组的
+  那一段不许有 await，只能包最后那次同步的 `perform`（docs/architecture/ai-control-mcp.md 第四节第 1、22 条）。
+
+`runFreeze` 同时把结果交回（`FreezeOutcome`：插进去的定格段 / 失败原因），失败时照旧亮提示。`check-mcp.sh` 钉着 AI 那边的包法。
+

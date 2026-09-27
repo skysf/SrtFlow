@@ -77,6 +77,7 @@ final class AIToolRouter {
 
     /// 改工程的同步工具各包一层 `AIUndoGrouping.step`：一个工具 = 一步撤销（为什么不能靠按事件分组，见那个文件）。
     /// 异步的 add_clips 在它自己那一次 perform 外面包；edit_clip 先 await 看画面、再把同步的提交包起来；
+    /// freeze_frame 抽帧转码要 await，把「提交那一下」交给定格去包（AIClipTools.freeze）；
     /// 撤销的「一轮」在 AIProjectTools.undo 里包。
     private func run(_ tool: MCPToolName, _ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
         let undo = project.effectiveUndoManager
@@ -102,6 +103,7 @@ final class AIToolRouter {
         case .setKeyframes: return try AIUndoGrouping.step(undo) { try AITimelineTools.setKeyframes(args, project) }
         case .setTrack: return try AIUndoGrouping.step(undo) { try AITimelineTools.setTrack(args, project) }
         case .splitClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.split(args, project) }
+        case .freezeFrame: return try await AIClipTools.freeze(args, project)
         case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
         case .duplicateItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.duplicate(args, project) }
         case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }
@@ -137,7 +139,7 @@ final class AIToolRouter {
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
             case .openProject, .newProject, .undo, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
-                 .duplicateItems,
+                 .duplicateItems, .freezeFrame,
                  .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
                  .editSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, true, true)

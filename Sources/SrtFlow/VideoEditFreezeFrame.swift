@@ -76,8 +76,31 @@ extension VideoEditProject {
         isFreezing = true
         trackImportTask(Task {
             defer { self.isFreezing = false }
-            await self.runFreeze(request, ffmpeg: ffmpeg)
+            _ = await self.runFreeze(request, ffmpeg: ffmpeg)
         })
+    }
+
+    /// AI 的 freeze_frame：指定哪一段、哪一刻、定多久。准入、抽帧、提交前核对和手动定格一模一样（都是 `runFreeze`）；
+    /// 不同的只有两样：时长由调用方给，最后那一次 `perform` 由调用方包（AI 包进 `AIUndoGrouping.step`，一个工具 = 一步撤销，
+    /// docs/architecture/ai-control-mcp.md 第四节第 1 条 —— 包的那一段必须同步，所以只能包提交那一下）。
+    func freezeFrame(
+        clipID: UUID, at time: Double, duration: Double, commit: (() -> Void) -> Void
+    ) async -> FreezeOutcome {
+        guard !isFreezing else { return .failed("SrtFlow is already making a freeze frame. Try again in a moment.") }
+        guard let clip = state.clip(with: clipID), isFreezeEligible(clip, at: time),
+              let track = state.location(of: clipID)?.track else {
+            return .failed(
+                "SrtFlow cannot freeze that frame. Pick a video clip (not audio, an image or a hidden clip) and a time inside it, "
+                + "not inside a transition on V1."
+            )
+        }
+        guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
+            return .failed(L10n("The video engine is not ready yet."))
+        }
+        let request = FreezeRequest(clip: clip, track: track, cutTime: time, generation: documentGeneration)
+        isFreezing = true
+        defer { isFreezing = false }
+        return await runFreeze(request, ffmpeg: ffmpeg, duration: duration, commit: commit)
     }
 
     /// 抽帧 → 写图 → 转码 → 探测 → **一次性提交**。
@@ -91,11 +114,22 @@ extension VideoEditProject {
     ///
     /// 全部成功 + CAS 通过才动时间线，于是定格段**创建即完整**，
     /// 撤销/重做严格一步，也不需要任何回滚合同。
-    private func runFreeze(_ request: FreezeRequest, ffmpeg: URL) async {
+    ///
+    /// 提交那一下（`perform`）经 `commit` 走：手动定格直接提交，AI 包进一步撤销。失败时照旧亮提示（`notice`），
+    /// 同一句话也作为结果交回调用方。
+    private func runFreeze(
+        _ request: FreezeRequest, ffmpeg: URL, duration: Double = FreezeFrame.defaultDuration,
+        commit: (() -> Void) -> Void = { $0() }
+    ) async -> FreezeOutcome {
         beginBackgroundImport()
         defer { endBackgroundImport() }
+        let projectChanged = FreezeOutcome.failed("The project changed while the freeze frame was being prepared.")
+        func fail(_ message: String) -> FreezeOutcome {
+            notice = message
+            return .failed(message)
+        }
 
-        guard let clip = state.clip(with: request.clipID) else { return }
+        guard let clip = state.clip(with: request.clipID) else { return projectChanged }
         let sourceTime = clip.sourceTime(atTimeline: request.cutTime)
         // 半帧容差要用**源空间**的：源时间比时间线时间快 speed 倍。这个空间陷阱在
         // VideoEditAnimation.swift 里有详细注释。抽帧退路和下面的 drift 判定
@@ -114,22 +148,17 @@ extension VideoEditProject {
                 tolerance: sourceHalfFrame
             )
         } catch {
-            guard isCurrentGeneration(request.generation) else { return }
-            notice = String(
-                format: L10n("Could not read the frame at the playhead from %@."),
-                clip.name
-            )
-            return
+            guard isCurrentGeneration(request.generation) else { return projectChanged }
+            return fail(String(format: L10n("Could not read the frame at the playhead from %@."), clip.name))
         }
-        guard isCurrentGeneration(request.generation) else { return }
+        guard isCurrentGeneration(request.generation) else { return projectChanged }
 
         let image: URL
         do {
             image = try writeFreezeImage(frame.image, clipName: clip.name, at: request.cutTime)
         } catch {
-            guard isCurrentGeneration(request.generation) else { return }
-            notice = error.localizedDescription
-            return
+            guard isCurrentGeneration(request.generation) else { return projectChanged }
+            return fail(error.localizedDescription)
         }
 
         // 提交不成功，这张 PNG 就还没有任何人引用 —— 别把垃圾留在用户的工程
@@ -150,18 +179,13 @@ extension VideoEditProject {
                 )
             )
         } catch {
-            guard isCurrentGeneration(request.generation) else { return }
-            notice = error.localizedDescription
-            return
+            guard isCurrentGeneration(request.generation) else { return projectChanged }
+            return fail(error.localizedDescription)
         }
-        guard isCurrentGeneration(request.generation) else { return }
+        guard isCurrentGeneration(request.generation) else { return projectChanged }
         guard let info = await probeVideo(still) else {
-            guard isCurrentGeneration(request.generation) else { return }
-            notice = String(
-                format: L10n("Could not read video information from %@."),
-                still.lastPathComponent
-            )
-            return
+            guard isCurrentGeneration(request.generation) else { return projectChanged }
+            return fail(String(format: L10n("Could not read video information from %@."), still.lastPathComponent))
         }
 
         // CAS：抽帧+转码这 1~2 秒里，用户完全可能把目标段拖走、裁掉、改速度、
@@ -176,9 +200,8 @@ extension VideoEditProject {
               request.matches(current),
               state.location(of: request.clipID)?.track == request.track,
               isFreezeEligible(current, at: request.cutTime) else {
-            guard isCurrentGeneration(request.generation) else { return }
-            notice = L10n("The clip changed while the freeze frame was being prepared. Try again.")
-            return
+            guard isCurrentGeneration(request.generation) else { return projectChanged }
+            return fail(L10n("The clip changed while the freeze frame was being prepared. Try again."))
         }
 
         let freeze = current.makeFreezeClip(
@@ -186,26 +209,30 @@ extension VideoEditProject {
             still: still,
             info: info,
             at: request.cutTime,
+            duration: duration,
             canvas: renderSize)
-        perform { state in
-            state.insertFreeze(freeze, splitting: request.clipID, at: request.cutTime)
+        commit {
+            perform { state in
+                state.insertFreeze(freeze, splitting: request.clipID, at: request.cutTime)
+            }
         }
         // 「插进去了」以时间线里真有这一段为准，不能因为调过 perform 就当成功：
         // `insertFreeze` 自己也有前置条件，一旦它和上面的 CAS 判据出现分歧，
         // 无脑置 true 会既留下孤儿 PNG 又对用户报成功。
         committed = state.clip(with: freeze.id) != nil
         guard committed else {
-            notice = L10n("The clip changed while the freeze frame was being prepared. Try again.")
-            return
+            return fail(L10n("The clip changed while the freeze frame was being prepared. Try again."))
         }
         selectedClipIDs = [freeze.id]
 
         // VFR / 低帧率素材上「所见即所定」是尽力而为：真取到别的帧就说一声，
         // 别让用户对着差了半帧的画面找原因。drift 是**源时间**，所以拿源空间的
         // 半帧去比（变速段上两者差 speed 倍）。
-        if abs(frame.drift) > sourceHalfFrame {
+        let drifted = abs(frame.drift) > sourceHalfFrame
+        if drifted {
             notice = L10n("This clip has no frame exactly at the playhead, so the nearest one was used.")
         }
+        return .frozen(freeze.id, usedNearestFrame: drifted)
     }
 
     // MARK: - 抽帧
@@ -316,6 +343,15 @@ extension VideoEditProject {
         if cleaned.count > 60 { cleaned = String(cleaned.prefix(60)) }
         return cleaned.isEmpty ? "clip" : cleaned
     }
+}
+
+// MARK: - 结果
+
+/// 定格做成了没有（AI 要回给用户；手动定格不看它，失败照旧亮提示）。
+enum FreezeOutcome: Equatable {
+    /// 插进去的定格段；`usedNearestFrame`：素材在那一刻没有帧，取了最近的一帧。
+    case frozen(UUID, usedNearestFrame: Bool)
+    case failed(String)
 }
 
 // MARK: - 入口时刻的目标快照

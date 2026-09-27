@@ -79,6 +79,21 @@ public enum MCPTimelineTools {
                     "clip_ids": MCPSchema.array(of: MCPSchema.string("Clip id."), "Only cut these clips.")
                 ], required: ["time"])
             )
+        case .freezeFrame:
+            return MCPToolDefinition(
+                .freezeFrame, title: "Freeze frame",
+                description: """
+                Hold the picture at a moment: the clip is cut there and a still of that exact frame is inserted for \
+                duration seconds (default 2); later clips on the same track move right by that much (other tracks, \
+                texts and subtitles stay). Without clip_id it freezes the V1 clip at that time. Not for audio, images, \
+                hidden clips, or a moment inside a transition on V1. The still is saved as a PNG next to the project.
+                """,
+                input: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline time of the frame to hold.", minimum: 0),
+                    "clip_id": MCPSchema.string("The clip to freeze (default: the V1 clip at that time)."),
+                    "duration": MCPSchema.number("Seconds to hold (default 2).", minimum: 0.2, maximum: 60)
+                ], required: ["time"])
+            )
         case .deleteItems:
             return MCPToolDefinition(
                 .deleteItems, title: "Delete",
