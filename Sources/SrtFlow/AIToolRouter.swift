@@ -74,7 +74,8 @@ final class AIToolRouter {
     }
 
     /// 改工程的同步工具各包一层 `AIUndoGrouping.step`：一个工具 = 一步撤销（为什么不能靠按事件分组，见那个文件）。
-    /// 异步的 add_clips 在它自己那一次 perform 外面包；撤销的「一轮」在 AIProjectTools.undo 里包。
+    /// 异步的 add_clips 在它自己那一次 perform 外面包；edit_clip 先 await 看画面、再把同步的提交包起来；
+    /// 撤销的「一轮」在 AIProjectTools.undo 里包。
     private func run(_ tool: MCPToolName, _ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
         let undo = project.effectiveUndoManager
         switch tool {
@@ -87,7 +88,10 @@ final class AIToolRouter {
         case .seek: return try AIProjectTools.seek(args, project)
         case .getTimeline: return AITimelineTools.timeline(project)
         case .addClips: return try await AITimelineTools.addClips(args, project)
-        case .editClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.editClip(args, project) }
+        case .editClip:
+            // 先看画面（去黑边、对准主体要抽帧），再同步提交：包进撤销组的那一段不许有 await。
+            let plan = try await AIClipTools.plan(args, project)
+            return try AIUndoGrouping.step(undo) { try AIClipTools.apply(plan, project) }
         case .splitClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.split(args, project) }
         case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
         case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }

@@ -1,0 +1,118 @@
+import CoreGraphics
+import Foundation
+import SrtFlowCore
+import SrtFlowMCPKit
+
+// MARK: - 工具：edit_clip（改一段）
+//
+// 管什么：参数读成一份 `AIClipChange` → 需要看画面的（去黑边、对准主体）先去看 → 在副本上用纯值规则
+// 算好（AIClipEdit）→ 一次 `perform` 提交 → 选中它、播放头跳过去 → 结果（含画面现在怎么放）。
+// 分两步给路由：`plan` 可以 await（抽帧、识别画面），`apply` 必须同步 —— 路由把它包在
+// `AIUndoGrouping.step` 里，包的那一段不许有 await（docs/architecture/ai-control-mcp.md 第四节第 1 条）。
+// 不管什么：规则本身（AIClipEdit、AIFrameFit）、说明文字（SrtFlowMCPKit/MCPTimelineTools.swift）。
+
+@MainActor
+enum AIClipTools {
+    /// 看完画面、算好的一次修改；`apply` 时再按最新的工程提交。
+    struct Plan {
+        let id: UUID
+        var change: AIClipChange
+        /// 算裁切和摆放时用的画布：提交前变了（用户中途换了画面比例）就不提交，免得按旧画布摆。
+        let canvas: CGSize
+        /// 看画面看出来的东西，原样写进结果（黑边、主体在哪）。
+        var findings: [String: JSONValue] = [:]
+    }
+
+    static func plan(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> Plan {
+        let state = project.state
+        let ids = AIShortIDs(state: state)
+        let id = try ids.resolve(try args.requiredString("clip_id"))
+        guard let clip = state.clip(with: id) else {
+            throw AIToolError("\(ids.short(id)) is not a clip. Texts and filters are changed with set_text and set_filter.")
+        }
+        var change = AIClipChange()
+        change.start = try args.double("start")
+        change.target = try args.string("track").map { try AITrackName.target($0, in: state) }
+        change.sourceIn = try args.double("source_in")
+        change.sourceOut = try args.double("source_out")
+        change.speed = try args.double("speed")
+        change.volumeDB = try args.double("volume_db")
+        change.muted = try args.bool("muted")
+        change.hidden = try args.bool("hidden")
+        change.fadeIn = try args.double("fade_in")
+        change.fadeOut = try args.double("fade_out")
+        change.ripple = try args.bool("ripple") ?? false
+        let canvas = VideoEditCompositionBuilder.renderSize(for: state)
+        var plan = Plan(id: id, change: change, canvas: canvas)
+        let request = try AIFramingRequest(args)
+        if request.touchesPicture {
+            plan.change.framing = try framing(request, clip: clip, canvas: canvas)
+        }
+        return plan
+    }
+
+    static func apply(_ plan: Plan, _ project: VideoEditProject) throws -> AIToolResult {
+        let state = project.state
+        let ids = AIShortIDs(state: state)
+        if plan.change.framing != nil, VideoEditCompositionBuilder.renderSize(for: state) != plan.canvas {
+            throw AIToolError("The frame shape changed while SrtFlow was looking at the clip. Call edit_clip again.")
+        }
+        let next: TimelineState
+        do {
+            next = try AIClipEdit.apply(
+                plan.change, to: plan.id, linkage: project.linkageEnabled,
+                stillDuration: StillImageClipFactory.stillDuration, in: state
+            )
+        } catch let conflict as AIClipEdit.Conflict {
+            let other = conflict.other
+            throw AIToolError("""
+                That would overlap "\(other.name)" (\(ids.short(other.id)), \(String(format: "%.2f", other.timelineStart))–\
+                \(String(format: "%.2f", other.timelineEnd)) s) on \(AITrackName.name(of: conflict.track)). \
+                Move or trim that clip first, choose another start or track, or use ripple on V1.
+                """)
+        }
+        project.perform { $0 = next }
+        let fresh = project.state
+        guard let clip = fresh.clip(with: plan.id), let location = fresh.location(of: plan.id) else {
+            return .ok(["changed": .string(ids.short(plan.id))], changed: true)
+        }
+        AIEditorPresenter.reveal(.init(clips: [plan.id], time: clip.timelineStart), project: project)
+        let context = AITimelineSummary.Context(
+            ids: AIShortIDs(state: fresh), workspace: AIWorkspace.shared.current, playhead: project.clock.time,
+            selection: [], renderSize: VideoEditCompositionBuilder.renderSize(for: fresh)
+        )
+        var summary = AITimelineSummary.clip(clip, next: nil, context).objectValue ?? [:]
+        summary["track"] = .string(AITrackName.name(of: location.track))
+        if !clip.isAudioOnly, plan.change.framing != nil {
+            summary["picture"] = AITimelineSummary.picture(clip, canvas: context.renderSize, always: true)
+        }
+        for (key, value) in plan.findings { summary[key] = value }
+        return .ok(.object(summary), changed: true)
+    }
+
+    // MARK: 画面怎么放
+
+    /// 按 AI 说的算出裁切和摆放。
+    private static func framing(_ request: AIFramingRequest, clip: EditClip, canvas: CGSize) throws -> AIFrameFit.Framing {
+        guard !clip.isAudioOnly else { throw AIToolError("\(clip.name) is audio; it has no picture to crop or place.") }
+        guard clip.info?.displaySize != nil else {
+            throw AIToolError("SrtFlow does not know the picture size of \(clip.name) yet. Try again in a moment.")
+        }
+        let chosenCrop = request.crop.map { AIFrameFit.crop(keeping: AIFrameFit.region(of: $0)) }
+        switch request.fit {
+        case .fit?:
+            return AIFrameFit.fit(active: AIFrameFit.region(of: chosenCrop ?? nil))
+        case .fill?:
+            let active = AIFrameFit.region(of: chosenCrop ?? nil)
+            let focus = request.focusPoint ?? CGPoint(x: active.midX, y: active.midY)
+            guard let filled = AIFrameFit.fill(clip, canvas: canvas, active: active, focus: focus) else {
+                throw AIToolError("SrtFlow cannot fill the frame with \(clip.name).")
+            }
+            return filled
+        case nil:
+            return AIFrameFit.place(
+                clip, canvas: canvas, crop: chosenCrop ?? clip.crop, x: request.x, y: request.y, scale: request.scale
+            )
+        }
+    }
+}

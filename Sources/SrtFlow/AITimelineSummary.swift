@@ -91,6 +91,31 @@ enum AITimelineSummary {
                 "duration": AIFormat.seconds(clip.transitionDuration)
             ]
         }
+        if !clip.isAudioOnly, let picture = picture(clip, canvas: context.renderSize, always: false) {
+            object["picture"] = picture
+        }
+        return .object(object)
+    }
+
+    /// 画面怎么放在画布上（AIFrameFit 的读法）。默认布局、又正好盖满画面的段不写（省 token）；
+    /// `always` 时照写（edit_clip 刚改过画面，AI 要看到结果）。
+    static func picture(_ clip: EditClip, canvas: CGSize, always: Bool) -> JSONValue? {
+        guard clip.info?.displaySize != nil, canvas.width > 0, canvas.height > 0 else { return nil }
+        let summary = AIFrameFit.describe(clip, canvas: canvas)
+        guard always || !summary.isDefault || !summary.fillsFrame else { return nil }
+        var object: [String: JSONValue] = ["fills_frame": .bool(summary.fillsFrame)]
+        if !summary.isDefault || always {
+            object["x"] = AIFormat.seconds(summary.x)
+            object["y"] = AIFormat.seconds(summary.y)
+            object["scale"] = AIFormat.seconds(summary.scale)
+        }
+        if summary.stretched { object["stretched"] = true }
+        if let crop = summary.crop {
+            object["crop"] = [
+                "left": AIFormat.seconds(crop.leading), "right": AIFormat.seconds(crop.trailing),
+                "top": AIFormat.seconds(crop.top), "bottom": AIFormat.seconds(crop.bottom)
+            ]
+        }
         return .object(object)
     }
 

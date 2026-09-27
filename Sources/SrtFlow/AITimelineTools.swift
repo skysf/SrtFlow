@@ -2,11 +2,11 @@ import Foundation
 import SrtFlowCore
 import SrtFlowMCPKit
 
-// MARK: - 工具：读时间线、放素材、改片段、切、删、转场
+// MARK: - 工具：读时间线、放素材、切、删、转场
 //
-// 管什么：参数读成类型 → 在副本上用纯值规则算好（AITimelineEdits / AIClipEdit）→ 一次
+// 管什么：参数读成类型 → 在副本上用纯值规则算好（AITimelineEdits）→ 一次
 // `perform` 提交（一个工具 = 一步撤销）→ 选中改到的、播放头跳过去 → 结果。
-// 不管什么：规则本身（那两个纯值文件）、说明文字（SrtFlowMCPKit/MCPTimelineTools.swift）。
+// 不管什么：规则本身（那个纯值文件）、改一段（AIClipTools）、说明文字（SrtFlowMCPKit/MCPTimelineTools.swift）。
 
 @MainActor
 enum AITimelineTools {
@@ -148,51 +148,6 @@ enum AITimelineTools {
         }
     }
 
-    // MARK: edit_clip
-
-    static func editClip(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
-        let state = project.state
-        let ids = AIShortIDs(state: state)
-        let id = try ids.resolve(try args.requiredString("clip_id"))
-        guard state.clip(with: id) != nil else {
-            throw AIToolError("\(ids.short(id)) is not a clip. Texts and filters are changed with set_text and set_filter.")
-        }
-        var change = AIClipChange()
-        change.start = try args.double("start")
-        change.target = try args.string("track").map { try AITrackName.target($0, in: state) }
-        change.sourceIn = try args.double("source_in")
-        change.sourceOut = try args.double("source_out")
-        change.speed = try args.double("speed")
-        change.volumeDB = try args.double("volume_db")
-        change.muted = try args.bool("muted")
-        change.hidden = try args.bool("hidden")
-        change.fadeIn = try args.double("fade_in")
-        change.fadeOut = try args.double("fade_out")
-        change.ripple = try args.bool("ripple") ?? false
-        let next: TimelineState
-        do {
-            next = try AIClipEdit.apply(
-                change, to: id, linkage: project.linkageEnabled,
-                stillDuration: StillImageClipFactory.stillDuration, in: state
-            )
-        } catch let conflict as AIClipEdit.Conflict {
-            let other = conflict.other
-            throw AIToolError("""
-                That would overlap "\(other.name)" (\(ids.short(other.id)), \(String(format: "%.2f", other.timelineStart))–\
-                \(String(format: "%.2f", other.timelineEnd)) s) on \(AITrackName.name(of: conflict.track)). \
-                Move or trim that clip first, choose another start or track, or use ripple on V1.
-                """)
-        }
-        project.perform { $0 = next }
-        guard let clip = project.state.clip(with: id), let location = project.state.location(of: id) else {
-            return .ok(["changed": .string(ids.short(id))], changed: true)
-        }
-        AIEditorPresenter.reveal(.init(clips: [id], time: clip.timelineStart), project: project)
-        var summary = AITimelineSummary.clip(clip, next: nil, summaryContext(project)).objectValue ?? [:]
-        summary["track"] = .string(AITrackName.name(of: location.track))
-        return .ok(.object(summary), changed: true)
-    }
-
     // MARK: split / delete / transition
 
     static func split(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
@@ -245,12 +200,5 @@ enum AITimelineTools {
         let seam = changed.first.flatMap { project.state.clip(with: $0)?.timelineEnd }
         AIEditorPresenter.reveal(.init(clips: Set(changed), time: seam.map { max(0, $0 - 1) }), project: project)
         return .ok(["cuts": .number(Double(changed.count)), "type": .string(kind.rawValue)], changed: true)
-    }
-
-    static func summaryContext(_ project: VideoEditProject) -> AITimelineSummary.Context {
-        AITimelineSummary.Context(
-            ids: AIShortIDs(state: project.state), workspace: AIWorkspace.shared.current,
-            playhead: project.clock.time, selection: [], renderSize: project.renderSize
-        )
     }
 }

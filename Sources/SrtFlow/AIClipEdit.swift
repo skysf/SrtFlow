@@ -3,10 +3,12 @@ import SrtFlowCore
 
 // MARK: - edit_clip：改一段（纯值）
 //
-// 管什么：挪（起点、换轨）、裁（素材里的入点 / 出点）、变速、音量、静音、隐藏、声音渐变，
-// 以及 V1 上的 ripple（这一段的尾巴动了多少，后面的 V1 片段跟着动多少）。算在副本上，
-// 撞了别的段就抛 `Conflict`（调用方用短 id 说给 AI 听），不改原来那份。
-// 不管什么：参数怎么读（AITimelineTools）、放素材 / 切 / 删（AITimelineEdits）。
+// 管什么：挪（起点、换轨）、裁（素材里的入点 / 出点）、变速、音量、静音、隐藏、声音渐变、
+// 画面怎么放进画布（裁切 + 摆放，算好的 `framing`），以及 V1 上的 ripple（这一段的尾巴动了多少，
+// 后面的 V1 片段跟着动多少）。算在副本上，撞了别的段就抛 `Conflict`（调用方用短 id 说给 AI 听），
+// 不改原来那份。
+// 不管什么：参数怎么读、黑边和主体怎么找（AIClipTools）、裁切和摆放怎么算（AIFrameFit）、
+// 放素材 / 切 / 删（AITimelineEdits）。
 //
 // 语义和拖把手不同，是有意的：AI 说的是**绝对值**（「入点改成 2.0 秒」），所以改入出点时
 // 片段的起点不动（除非同时给了 start）；拖左把手则是连起点一起挪。两种都对，各自的用法不一样。
@@ -22,6 +24,8 @@ struct AIClipChange {
     var hidden: Bool?
     var fadeIn: Double?
     var fadeOut: Double?
+    /// 画面的裁切和摆放（AIFrameFit 算好的，两样一起换）。
+    var framing: AIFrameFit.Framing?
     var ripple = false
 }
 
@@ -52,6 +56,7 @@ enum AIClipEdit {
         if let hidden = change.hidden { updated.isHidden = hidden }
         if let fadeIn = change.fadeIn { updated.fadeInDuration = max(0, fadeIn) }
         if let fadeOut = change.fadeOut { updated.fadeOutDuration = max(0, fadeOut) }
+        if let framing = change.framing { try applyFraming(framing, to: &updated) }
 
         let destination = try destinationSlot(change.target, from: location.track, clip: clip)
         var state = original
@@ -111,6 +116,20 @@ enum AIClipEdit {
         }
         clip.sourceStart = newIn
         clip.sourceDuration = newOut - newIn
+    }
+
+    /// 裁切 + 摆放。位置 / 大小做了关键帧动画的段不改：静态摆放会被关键帧盖掉，AI 以为改了其实没变。
+    private static func applyFraming(_ framing: AIFrameFit.Framing, to clip: inout EditClip) throws {
+        guard !clip.isAudioOnly else { throw AIToolError("An audio clip has no picture to crop or place.") }
+        if let animation = clip.animation,
+           !(animation.centerX.isEmpty && animation.centerY.isEmpty && animation.width.isEmpty && animation.height.isEmpty) {
+            throw AIToolError(
+                "This clip's position or size is animated with keyframes, so SrtFlow cannot place it from here. "
+                + "Ask the user to remove the Position and Scale keyframes in the inspector first."
+            )
+        }
+        clip.crop = framing.crop
+        clip.placement = framing.placement
     }
 
     private static func destinationSlot(_ target: TrackDropTarget?, from current: TrackSlot, clip: EditClip) throws -> TrackSlot? {

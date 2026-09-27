@@ -8,6 +8,8 @@
 #   5. 打包脚本把小程序装进了 Contents/Helpers，并且先签它、再签外层；
 #   6. AI 的每个改动各是一步撤销：改工程的工具都包在 AIUndoGrouping.step 里（扫描），显式分组确实把两步分开、
 #      而且之后按事件的普通登记不会抛异常（用真的 UndoManager）。
+#   7. edit_clip 的画面（AIFrameFit）：铺满时源画面上那扇窗正好映到整幅画布（各种横竖比例、焦点贴边、超宽转竖屏），
+#      完整显示 / 按位置大小摆、只改裁切不拉变形、约等于默认布局就存 nil；参数组合的冲突当场挡掉。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -40,12 +42,17 @@ echo "==> 路由：改工程的工具各是一步撤销"
 # 不显式分组的话 AI 的每一步都堆进同一组，⌘Z 一按全部退光；手动关自动开的那一组又会让下一次登记
 # 抛异常、App 闪退（docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md）。
 ROUTER="Sources/SrtFlow/AIToolRouter.swift"
-for tool in editClip splitClip deleteItems setTransition setText setFilter setCanvas editSubtitles; do
+for tool in splitClip deleteItems setTransition setText setFilter setCanvas editSubtitles; do
   if [ "$(grep -cE "case \\.${tool}: return try AIUndoGrouping\\.step\\(undo\\)" "${ROUTER}" || true)" -ne 1 ]; then
     echo "✗ ${ROUTER} 里 ${tool} 没包在 AIUndoGrouping.step 里：它的改动会和别的步并成一步撤销" >&2
     exit 1
   fi
 done
+# edit_clip 先 await 看画面（去黑边、对准主体），再把同步的提交包起来：包的那一段不许有 await。
+if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AIClipTools\.apply\(plan, project\) \}' "${ROUTER}" || true)" -ne 1 ]; then
+  echo "✗ ${ROUTER} 里 edit_clip 的提交没包在 AIUndoGrouping.step 里" >&2
+  exit 1
+fi
 if [ "$(grep -cE 'AIUndoGrouping\.step\(project\.effectiveUndoManager\)' Sources/SrtFlow/AITimelineTools.swift || true)" -ne 1 ]; then
   echo "✗ add_clips 那一次 perform 没包在 AIUndoGrouping.step 里" >&2
   exit 1
@@ -55,7 +62,7 @@ if [ -n "${MANUAL}" ]; then
   echo "✗ 这些文件自己在关撤销组：${MANUAL}（手动关掉按事件自动开的那一组，下一次登记就抛异常、App 闪退）" >&2
   exit 1
 fi
-echo "   ✓ 8 个同步的改动工具 + add_clips 都各是一步，没人手动关撤销组"
+echo "   ✓ 7 个同步的改动工具 + edit_clip 的提交 + add_clips 都各是一步，没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
 # 每一步都 orderFrontRegardless 的话，用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他的窗口
@@ -173,6 +180,9 @@ xcrun swiftc \
   Sources/SrtFlow/AITextEdits.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
   Sources/SrtFlow/AIClipEdit.swift \
+  Sources/SrtFlow/AIFrameFit.swift \
+  Sources/SrtFlow/AIFramingRequest.swift \
+  Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
@@ -186,6 +196,7 @@ xcrun swiftc \
   checks/MCP/UndoChecks.swift \
   checks/MCP/LanguageChecks.swift \
   checks/MCP/FolderChecks.swift \
+  checks/MCP/FramingChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

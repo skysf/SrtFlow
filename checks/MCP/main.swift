@@ -9,6 +9,7 @@ runConfigChecks()
 runUndoChecks()
 runLanguageChecks()
 runFolderChecks()
+runFramingChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")
