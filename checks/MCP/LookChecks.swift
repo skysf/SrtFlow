@@ -43,11 +43,11 @@ private func checkSheetDrawing() {
         check(false, "could not make test frames")
         return
     }
-    let single = AIContactSheet.sheet([(label: "1.00s", image: frame)], size: .medium)
+    let single = AIContactSheet.draw([(label: "1.00s", image: frame)], size: .medium)
     checkEqual(single?.width, 768, "one wide frame: 768 pixels on the long side at medium")
-    let four = AIContactSheet.sheet(Array(repeating: (label: "2.00s", image: frame), count: 4), size: .medium)
+    let four = AIContactSheet.draw(Array(repeating: (label: "2.00s", image: frame), count: 4), size: .medium)
     checkEqual(four?.width, 1152, "a sheet is 1152 pixels wide at medium")
-    let sixTall = AIContactSheet.sheet(Array(repeating: (label: "3.00s", image: tall), count: 6), size: .medium)
+    let sixTall = AIContactSheet.draw(Array(repeating: (label: "3.00s", image: tall), count: 6), size: .medium)
     check((sixTall?.height ?? .max) <= Int(1152 * 1.25) + 1, "a sheet of tall frames is at most 1.25 × its width high")
     let jpeg = single.flatMap { AIContactSheet.jpeg($0) }
     check(jpeg?.prefix(2) == Data([0xFF, 0xD8]), "the picture is a JPEG")

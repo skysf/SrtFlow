@@ -163,7 +163,7 @@ enum AILookTool {
         var result = AIToolResult.ok(.object(payload))
         guard wantsImage else { return result }
         let labelled = frames.map { (label: String(format: "%.2fs", $0.time), image: $0.image) }
-        guard let sheet = AIContactSheet.sheet(labelled, size: size), let jpeg = AIContactSheet.jpeg(sheet) else {
+        guard let sheet = AIContactSheet.draw(labelled, size: size), let jpeg = AIContactSheet.jpeg(sheet) else {
             payload["image"] = "SrtFlow could not draw the picture; the descriptions above are all there is."
             return .ok(.object(payload))
         }

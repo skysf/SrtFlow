@@ -60,7 +60,7 @@ enum AIContactSheet {
     }
 
     /// 拼成一张。每一帧配一个标签（它的时刻）。
-    static func sheet(_ frames: [(label: String, image: CGImage)], size: Size) -> CGImage? {
+    static func draw(_ frames: [(label: String, image: CGImage)], size: Size) -> CGImage? {
         guard let first = frames.first?.image else { return nil }
         let aspect = Double(first.width) / Double(max(1, first.height))
         let grid = grid(count: frames.count, aspect: aspect)
