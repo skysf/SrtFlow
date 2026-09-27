@@ -25,6 +25,7 @@
 #  15. edit_clip 的其余设置（AIClipDetails）：旋转 / 不透明度、入场出场成对、音量曲线换源时间、有曲线时 volume_db 平移整条、
 #      声音场景的旋钮名、标记；小程序抄的动画 / 场景 / 标记颜色词表和 App 的类型对账。
 #  16. set_track（推子、藏轨、总推子）和 set_keyframes（时间换源时间、大小按默认布局、空列表去掉那一行）。
+#  17. set_shape：新加要种类、默认大小、夹紧、正方形高等于宽、只有线能转。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -57,7 +58,7 @@ echo "==> 路由：改工程的工具各是一步撤销"
 # 不显式分组的话 AI 的每一步都堆进同一组，⌘Z 一按全部退光；手动关自动开的那一组又会让下一次登记
 # 抛异常、App 闪退（docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md）。
 ROUTER="Sources/SrtFlow/AIToolRouter.swift"
-for tool in setKeyframes setTrack splitClip deleteItems setTransition setText setFilter setCanvas editSubtitles; do
+for tool in setKeyframes setTrack splitClip deleteItems setTransition setText setShape setFilter setCanvas editSubtitles; do
   if [ "$(grep -cE "case \\.${tool}: return try AIUndoGrouping\\.step\\(undo\\)" "${ROUTER}" || true)" -ne 1 ]; then
     echo "✗ ${ROUTER} 里 ${tool} 没包在 AIUndoGrouping.step 里：它的改动会和别的步并成一步撤销" >&2
     exit 1
@@ -77,7 +78,7 @@ if [ -n "${MANUAL}" ]; then
   echo "✗ 这些文件自己在关撤销组：${MANUAL}（手动关掉按事件自动开的那一组，下一次登记就抛异常、App 闪退）" >&2
   exit 1
 fi
-echo "   ✓ 9 个同步的改动工具 + edit_clip 的提交 + add_clips 都各是一步，没人手动关撤销组"
+echo "   ✓ 10 个同步的改动工具 + edit_clip 的提交 + add_clips 都各是一步，没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
 # 每一步都 orderFrontRegardless 的话，用户在别的 App 里干活时 SrtFlow 一步一跳、盖住他的窗口
@@ -226,6 +227,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIClipDetails.swift \
   Sources/SrtFlow/AITrackSettings.swift \
   Sources/SrtFlow/AIKeyframes.swift \
+  Sources/SrtFlow/AIShapeEdits.swift \
   Sources/SrtFlow/AIBlackBars.swift \
   Sources/SrtFlow/AISubjectFocus.swift \
   Sources/SrtFlow/AIVision.swift \
@@ -263,6 +265,7 @@ xcrun swiftc \
   checks/MCP/FinderChecks.swift \
   checks/MCP/ClipDetailChecks.swift \
   checks/MCP/TrackKeyframeChecks.swift \
+  checks/MCP/ShapeChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

@@ -105,6 +105,7 @@ final class AIToolRouter {
         case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
         case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }
         case .setText: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setText(args, project) }
+        case .setShape: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setShape(args, project) }
         case .setFilter: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setFilter(args, project) }
         case .setCanvas: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setCanvas(args, project) }
         case .generateSubtitles: return try await AISubtitleTools.generate(args, project)
@@ -135,7 +136,7 @@ final class AIToolRouter {
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
             case .openProject, .newProject, .undo, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
-                 .setTransition, .setText, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
+                 .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
                  .editSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, true, true)
             }

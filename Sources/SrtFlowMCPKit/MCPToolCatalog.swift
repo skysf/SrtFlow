@@ -32,6 +32,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case deleteItems = "delete_items"
     case setTransition = "set_transition"
     case setText = "set_text"
+    case setShape = "set_shape"
     case setFilter = "set_filter"
     case setCanvas = "set_canvas"
     case generateSubtitles = "generate_subtitles"
@@ -49,7 +50,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
         case .getStatus, .setView, .openFolder, .openProject, .newProject, .saveProject, .undo, .seek:
             return MCPProjectTools.definition(for: self)
         case .getTimeline, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems, .setTransition,
-             .setText, .setFilter, .setCanvas:
+             .setText, .setShape, .setFilter, .setCanvas:
             return MCPTimelineTools.definition(for: self)
         case .look, .listen:
             return MCPSenseTools.definition(for: self)

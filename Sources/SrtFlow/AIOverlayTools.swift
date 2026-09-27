@@ -74,6 +74,29 @@ enum AIOverlayTools {
         NSFontManager.shared.availableFontFamilies.contains(name) || NSFont(name: name, size: 12) != nil
     }
 
+    // MARK: set_shape
+
+    static func setShape(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
+        let change = try AIShapeChange(args)
+        let ids = AIShortIDs(state: project.state)
+        let id: UUID
+        if let text = try args.string("shape_id") {
+            id = try ids.resolve(text)
+            guard project.state.shapes.contains(where: { $0.id == id }) else { throw AIToolError("\(text) is not a shape.") }
+            // 形状是叠在画面上的一层，不进合成：不用重建预览（同检查器改形状）。
+            project.perform(rebuildsPreview: false) { state in state.updateShape(id) { change.apply(to: &$0) } }
+        } else {
+            let shape = try change.makeShape(at: project.clock.time)
+            id = shape.id
+            project.perform(rebuildsPreview: false) { $0.shapes.append(shape) }
+        }
+        guard let shape = project.state.shapes.first(where: { $0.id == id }) else {
+            throw AIToolError("The shape disappeared while it was being changed.")
+        }
+        AIEditorPresenter.reveal(.init(shapes: [id], time: shape.timelineStart + min(0.5, shape.duration / 2)), project: project)
+        return .ok(AIShapeChange.summary(shape, ids: AIShortIDs(state: project.state)), changed: true)
+    }
+
     // MARK: set_filter
 
     static func setFilter(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {

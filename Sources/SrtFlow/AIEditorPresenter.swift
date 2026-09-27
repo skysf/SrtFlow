@@ -59,6 +59,7 @@ enum AIEditorPresenter {
     /// 每一步之后给用户看的：选中哪些、播放头去哪。
     struct Reveal {
         var clips: Set<UUID> = []
+        var shapes: Set<UUID> = []
         var texts: Set<UUID> = []
         var filters: Set<UUID> = []
         var cues: Set<UUID> = []
@@ -68,11 +69,11 @@ enum AIEditorPresenter {
     /// 后台模式（`AISession.viewMode`）下不选中、不挪播放头、不滚时间线 —— 除非 `always`（seek：AI 就是要给用户看这一刻）。
     static func reveal(_ reveal: Reveal, project: VideoEditProject, always: Bool = false) {
         guard always || AISession.shared.viewMode == .visible else { return }
-        let selectsSomething = !reveal.clips.isEmpty || !reveal.texts.isEmpty
+        let selectsSomething = !reveal.clips.isEmpty || !reveal.shapes.isEmpty || !reveal.texts.isEmpty
             || !reveal.filters.isEmpty || !reveal.cues.isEmpty
         if selectsSomething {
             project.applyBoxSelection(
-                clips: reveal.clips, shapes: [], texts: reveal.texts, cues: reveal.cues, filters: reveal.filters
+                clips: reveal.clips, shapes: reveal.shapes, texts: reveal.texts, cues: reveal.cues, filters: reveal.filters
             )
         }
         guard let time = reveal.time else { return }

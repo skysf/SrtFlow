@@ -45,6 +45,7 @@ enum AITimelineSummary {
             "subtitles": subtitles(state)
         ]
         if abs(state.masterVolume - 1) > 0.0001 { result["master_volume_db"] = AITrackSettings.decibels(state.masterVolume) }
+        if !state.shapes.isEmpty { result["shapes"] = .array(state.shapes.map { AIShapeChange.summary($0, ids: context.ids) }) }
         if !context.selection.isEmpty {
             result["selected"] = .array(context.selection.map { .string(context.ids.short($0)) })
         }

@@ -109,6 +109,31 @@ public enum MCPTimelineTools {
             )
         case .setText:
             return setText
+        case .setShape:
+            return MCPToolDefinition(
+                .setShape, title: "Add or change a shape",
+                description: """
+                Draw a line, rectangle or square outline over the video for a while (to point at or frame something), \
+                or change one when shape_id is given; only the fields you pass change. x/y is the centre as fractions \
+                of the frame; width (a line's length) and height are fractions of the frame (a square uses width). \
+                rotation turns lines only. line_width is pixels on a 1080-high frame. Shapes are drawn under texts. \
+                Delete with delete_items.
+                """,
+                input: MCPSchema.object([
+                    "shape_id": MCPSchema.string("Change this shape instead of adding one."),
+                    "kind": MCPSchema.string("Shape (required when adding).", oneOf: ["line", "rectangle", "square"]),
+                    "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
+                    "duration": MCPSchema.number("Seconds on screen (default 3).", minimum: 0.2),
+                    "x": MCPSchema.number("Horizontal centre, 0–1.", minimum: 0, maximum: 1),
+                    "y": MCPSchema.number("Vertical centre, 0–1.", minimum: 0, maximum: 1),
+                    "width": MCPSchema.number("Width (or a line's length) as a fraction of the frame.", minimum: 0.02, maximum: 1),
+                    "height": MCPSchema.number("Rectangle height as a fraction of the frame.", minimum: 0.02, maximum: 1),
+                    "rotation": MCPSchema.number("Lines only: clockwise degrees.", minimum: -90, maximum: 90),
+                    "color": MCPSchema.string("#RRGGBB or #RRGGBBAA."),
+                    "line_width": MCPSchema.number("Pixels on a 1080-high frame (default 6).", minimum: 1, maximum: 24),
+                    "hidden": MCPSchema.boolean("Hide it without deleting it.")
+                ])
+            )
         case .setFilter:
             return MCPToolDefinition(
                 .setFilter, title: "Add or change a filter",
