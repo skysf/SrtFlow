@@ -229,7 +229,7 @@ enum AIProjectTools {
     static func saveIfNeverSaved(_ project: VideoEditProject, after result: AIToolResult) -> AIToolResult {
         guard project.isUntitled, !project.state.isEmpty, case .object(var payload) = result.payload else { return result }
         let folder = AIWorkspace.shared.outputFolder(.projects, project: project)
-        let url = DefaultFolder.unoccupied(
+        let url = ExportFileName.unoccupied(
             in: folder, stem: defaultStem(project), pathExtension: VideoEditProjectFile.fileExtension
         ) { FileManager.default.fileExists(atPath: $0.path) }
         if (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,

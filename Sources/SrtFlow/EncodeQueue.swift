@@ -189,17 +189,10 @@ final class EncodeQueue: ObservableObject {
     private func proposedOutputURL(for input: URL) -> URL {
         let directory = outputDirectory ?? input.deletingLastPathComponent()
         let base = input.deletingPathExtension().lastPathComponent
-        var candidate = directory.appendingPathComponent("\(base)\(outputSuffix).mp4")
-
-        // 绝不能写到源文件上：ffmpeg 同时读写一个文件会把源文件毁掉。
-        var counter = 2
-        while candidate.standardizedFileURL == input.standardizedFileURL
-            || FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = directory.appendingPathComponent("\(base)\(outputSuffix) \(counter).mp4")
-            counter += 1
-            if counter > 999 { break }
+        // 撞名加编号（规则只有 ExportFileName 一份）；绝不能写到源文件上：ffmpeg 同时读写一个文件会把源文件毁掉。
+        return ExportFileName.unoccupied(in: directory, stem: base + outputSuffix, pathExtension: "mp4") { candidate in
+            candidate.standardizedFileURL == input.standardizedFileURL || FileManager.default.fileExists(atPath: candidate.path)
         }
-        return candidate
     }
 
     private func probeInfo(for id: EncodeItem.ID) {

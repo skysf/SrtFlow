@@ -29,15 +29,4 @@ enum DefaultFolder {
     static func start(named: URL?, projectHome: URL?, downloads: URL?, userHome: URL) -> URL {
         named ?? projectHome ?? downloads ?? userHome
     }
-
-    /// 不覆盖已有文件、也不问：`名字.后缀` 占了就 `名字 2.后缀`、`名字 3.后缀`……
-    static func unoccupied(in folder: URL, stem: String, pathExtension: String, exists: (URL) -> Bool) -> URL {
-        var candidate = folder.appendingPathComponent(stem).appendingPathExtension(pathExtension)
-        var number = 2
-        while exists(candidate) {
-            candidate = folder.appendingPathComponent("\(stem) \(number)").appendingPathExtension(pathExtension)
-            number += 1
-        }
-        return candidate
-    }
 }

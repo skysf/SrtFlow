@@ -1,4 +1,5 @@
 import Foundation
+import SrtFlowCore
 
 // 新东西默认放哪（Sources/SrtFlow/DefaultFolder.swift）。2026-09-27 用户拍板：
 // 「不要到 Movies，到目标文件夹；用户没有给任何文件夹，就默认都到 Downloads」。
@@ -40,12 +41,12 @@ func runFolderChecks() {
     let folder = URL(fileURLWithPath: "/Users/u/Trip/SrtFlow/工程")
     var taken: Set<String> = []
     let free = { (url: URL) in taken.contains(url.lastPathComponent) }
-    checkEqual(DefaultFolder.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
+    checkEqual(ExportFileName.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
                "Shot.srtflowproj", "a free name is used as is")
     taken = ["Shot.srtflowproj"]
-    checkEqual(DefaultFolder.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
+    checkEqual(ExportFileName.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
                "Shot 2.srtflowproj", "taken: add 2")
     taken = ["Shot.srtflowproj", "Shot 2.srtflowproj"]
-    checkEqual(DefaultFolder.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
+    checkEqual(ExportFileName.unoccupied(in: folder, stem: "Shot", pathExtension: "srtflowproj", exists: free).lastPathComponent,
                "Shot 3.srtflowproj", "2 is taken too: add 3")
 }

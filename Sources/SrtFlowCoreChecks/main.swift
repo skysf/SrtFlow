@@ -228,17 +228,6 @@ do {
     checkEqual(reparsed.cues.count, 1, "srt→ass cues")
     checkEqual(reparsed.cues[0].text, "Hello\\NWorld", "srt→ass newline to \\N")
     check(!reparsed.styles.isEmpty, "srt→ass has styles")
-
-    let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-    defer { try? FileManager.default.removeItem(at: dir) }
-    let src = dir.appendingPathComponent("movie.srt")
-    try "1\n00:00:01,000 --> 00:00:02,000\nHi\n\n".write(to: src, atomically: true, encoding: .utf8)
-    let out = try SubtitleConverter.convertFile(at: src, to: .vtt)
-    checkEqual(out.pathExtension, "vtt", "convertFile extension")
-    check((try String(contentsOf: out, encoding: .utf8)).hasPrefix("WEBVTT"), "convertFile content")
-} catch {
-    check(false, "conversion threw: \(error)")
 }
 
 // MARK: - Subtitle colour ↔ ASS
@@ -857,6 +846,7 @@ runSubtitleTrackChecks()
 runSubtitleRenderChecks()
 runSubtitleSegmentationChecks()
 runSubtitlePunctuationChecks()
+runSubtitleConvertChecks()
 
 if failures == 0 {
     print("All \(checks) checks passed.")

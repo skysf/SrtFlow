@@ -60,7 +60,7 @@ enum AIEncodeOptions {
         var planned: Set<String> = []
         return inputs.map { input in
             let stem = input.deletingPathExtension().lastPathComponent + suffix
-            let url = DefaultFolder.unoccupied(in: folder, stem: stem, pathExtension: pathExtension) { candidate in
+            let url = ExportFileName.unoccupied(in: folder, stem: stem, pathExtension: pathExtension) { candidate in
                 taken(candidate) || planned.contains(candidate.standardizedFileURL.path)
             }
             planned.insert(url.standardizedFileURL.path)

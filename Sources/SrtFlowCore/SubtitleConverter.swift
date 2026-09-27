@@ -24,13 +24,16 @@ public enum SubtitleConverter {
 
     /// Converts a file on disk, writing `<name>.<targetExt>` into `outputDirectory`
     /// (defaults to the source file's directory). Returns the output URL.
+    /// A name that is taken gets a number (`<name> 2.<targetExt>`, `ExportFileName.unoccupied`): an existing file is
+    /// never overwritten, and neither is the source when converting to its own format in its own folder.
     @discardableResult
     public static func convertFile(at url: URL, to target: SubtitleFormat, outputDirectory: URL? = nil) throws -> URL {
         let converted = try convertedContents(of: url, to: target)
         let directory = outputDirectory ?? url.deletingLastPathComponent()
-        let outputURL = directory.appendingPathComponent(url.deletingPathExtension().lastPathComponent)
-            .appendingPathExtension(target.fileExtension)
-        try Data(converted.utf8).write(to: outputURL)
+        let outputURL = ExportFileName.unoccupied(
+            in: directory, stem: url.deletingPathExtension().lastPathComponent, pathExtension: target.fileExtension
+        ) { FileManager.default.fileExists(atPath: $0.path) }
+        try Data(converted.utf8).write(to: outputURL, options: .withoutOverwriting)
         return outputURL
     }
 }
