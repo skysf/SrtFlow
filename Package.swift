@@ -12,14 +12,25 @@ let package = Package(
     ],
     products: [
         .library(name: "SrtFlowCore", targets: ["SrtFlowCore"]),
-        .executable(name: "SrtFlow", targets: ["SrtFlow"])
+        .executable(name: "SrtFlow", targets: ["SrtFlow"]),
+        // 给 AI 客户端（Claude、Codex……）启动的 MCP 小程序，打包时放进
+        // SrtFlow.app/Contents/Helpers/。它只传话，活都在 App 里做
+        //（docs/architecture/ai-control-mcp.md）。
+        .executable(name: "srtflow-mcp", targets: ["SrtFlowMCP"])
     ],
     targets: [
         .target(name: "SrtFlowCore"),
+        // MCP 的消息格式、工具清单、和 App 之间的本机通道。小程序和 App 两边都用它，
+        // 所以工具清单只有这一份。只依赖 Foundation。
+        .target(name: "SrtFlowMCPKit"),
         .executableTarget(
             name: "SrtFlow",
-            dependencies: ["SrtFlowCore"],
+            dependencies: ["SrtFlowCore", "SrtFlowMCPKit"],
             resources: [.process("Resources")]
+        ),
+        .executableTarget(
+            name: "SrtFlowMCP",
+            dependencies: ["SrtFlowMCPKit"]
         ),
         .executableTarget(
             name: "SrtFlowCoreChecks",

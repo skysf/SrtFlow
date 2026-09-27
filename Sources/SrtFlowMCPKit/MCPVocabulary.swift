@@ -1,0 +1,58 @@
+import Foundation
+
+// MARK: - 工具参数里的「选项词表」
+//
+// 管什么：转场、滤镜、文字动画、画面比例这些枚举参数，AI 能填哪几个值。
+// 为什么在这儿抄一份：小程序不链接 App 的代码，拿不到 `ClipTransition` 这些类型；
+// 而工具清单必须由小程序给出（Claude 一启动就要清单，不能为此把 SrtFlow 拉起来）。
+// **抄的就会漂**，所以 `scripts/check-mcp.sh` 把这里的每一张表和 App 里对应类型的
+// `allCases` 逐项对账，对不上就红。
+
+public enum MCPVocabulary {
+    /// = `ClipTransition.allCases` 的原始值。
+    public static let transitions = [
+        "none", "crossFade", "blackFade", "whiteFade",
+        "pushLeft", "pushRight", "pushUp", "pushDown",
+        "wipeLeft", "wipeRight", "wipeUp", "wipeDown"
+    ]
+
+    /// = `FilterPreset.allCases` 的原始值，后面是给 AI 挑的时候看的一句话。
+    public static let filterPresets: [(id: String, look: String)] = [
+        ("tealOrange", "blockbuster teal shadows, warm skin"),
+        ("coldIron", "cold, desaturated, hard contrast, industrial"),
+        ("warmSun", "warm golden everyday light"),
+        ("flatGrey", "flat, low-saturation documentary look"),
+        ("nightGold", "night scenes with amber highlights, deep blacks"),
+        ("fadedFilm", "old faded film, lifted blacks"),
+        ("coldWhite", "bright, clean, cool whites (products, interiors)"),
+        ("mistBlue", "misty early-morning blue, low contrast"),
+        ("inkShadow", "black and white with hard contrast"),
+        ("neon", "cyberpunk magenta and cyan, full saturation")
+    ]
+
+    /// = `TextAnimationKind.allCases` 的原始值。
+    public static let textAnimations = [
+        "none", "fade", "rise", "pop", "typewriter", "cascade", "blur", "focus", "wipe", "strokeDraw"
+    ]
+
+    /// 画面比例：`auto` + `CanvasRatio` 里固定比例的那几个（按界面上的写法）。
+    public static let canvasRatios = ["auto", "16:9", "9:16", "4:3", "3:4", "1:1"]
+
+    /// = `ProjectFrameRate.allCases` 的帧数。
+    public static let frameRates = [24, 30, 60]
+
+    /// = `ResolutionLimit.allCases`，按短边写（1080p 的竖屏就是 1080×1920）。
+    public static let resolutions = ["original", "2160p", "1440p", "1080p", "720p", "480p"]
+
+    /// 文字的几个常用位置（画面高度的比例见 App 里的 `AITextPlacement`）。
+    public static let textPositions = ["top", "upper_third", "center", "lower_third", "bottom"]
+
+    public static let textAlignments = ["left", "center", "right"]
+
+    public static var filterPresetIDs: [String] { filterPresets.map(\.id) }
+
+    /// 滤镜说明里那一串「名字: 样子」。
+    public static var filterPresetGuide: String {
+        filterPresets.map { "\($0.id) (\($0.look))" }.joined(separator: ", ")
+    }
+}

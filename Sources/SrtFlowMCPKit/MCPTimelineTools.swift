@@ -1,0 +1,186 @@
+import Foundation
+
+// MARK: - 工具说明：时间线（读、放素材、改片段、切、删、转场、文字、滤镜、画面比例）
+//
+// 管什么：这几样工具给 AI 看的说明文字和参数表。清单的总入口在 MCPToolCatalog.swift。
+
+public enum MCPTimelineTools {
+    static func definition(for name: MCPToolName) -> MCPToolDefinition {
+        switch name {
+        case .getTimeline:
+            return MCPToolDefinition(
+                .getTimeline, title: "Read the timeline",
+                description: """
+                The whole timeline of the open project: every track and clip with its id, start/end on the timeline, \
+                source in/out in the file, speed, volume and transitions; texts; filters; subtitle tracks; \
+                canvas size and frame rate. Call it before editing and whenever you need fresh ids.
+                """,
+                readOnly: true
+            )
+        case .addClips:
+            return addClips
+        case .editClip:
+            return editClip
+        case .splitClip:
+            return MCPToolDefinition(
+                .splitClip, title: "Split clips",
+                description: """
+                Cut clips in two at a timeline time. Without clip_ids it cuts the V1 clip under that time. \
+                Returns the ids of the new right-hand pieces.
+                """,
+                input: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline time in seconds where to cut.", minimum: 0),
+                    "clip_ids": MCPSchema.array(of: MCPSchema.string("Clip id."), "Only cut these clips.")
+                ], required: ["time"])
+            )
+        case .deleteItems:
+            return MCPToolDefinition(
+                .deleteItems, title: "Delete",
+                description: """
+                Delete clips, texts, filters or subtitle lines by id; ids of different kinds can be mixed. \
+                ripple=true closes the gaps this leaves on V1 by moving the later V1 clips left \
+                (other tracks, texts, filters and subtitles stay where they are).
+                """,
+                input: MCPSchema.object([
+                    "ids": MCPSchema.array(of: MCPSchema.string("Id from get_timeline or get_subtitles."), "What to delete.", minItems: 1),
+                    "ripple": MCPSchema.boolean("Close the gaps left on V1.")
+                ], required: ["ids"]),
+                destructive: true
+            )
+        case .setTransition:
+            return MCPToolDefinition(
+                .setTransition, title: "Set a transition",
+                description: """
+                Set the transition between a V1 clip and the V1 clip right after it; the two must touch. \
+                type none removes it. all=true applies it to every touching pair on V1.
+                """,
+                input: MCPSchema.object([
+                    "after_clip_id": MCPSchema.string("The V1 clip before the cut."),
+                    "all": MCPSchema.boolean("Apply to every touching pair of V1 clips."),
+                    "type": MCPSchema.string("Transition.", oneOf: MCPVocabulary.transitions),
+                    "duration": MCPSchema.number("Seconds (default 0.5).", minimum: 0.1, maximum: 3)
+                ], required: ["type"])
+            )
+        case .setText:
+            return setText
+        case .setFilter:
+            return MCPToolDefinition(
+                .setFilter, title: "Add or change a filter",
+                description: """
+                Add a colour filter over a time range (it grades every video track there, not texts or subtitles), \
+                or change an existing one when filter_id is given; only the fields you pass change. \
+                Presets: \(MCPVocabulary.filterPresetGuide).
+                """,
+                input: MCPSchema.object([
+                    "filter_id": MCPSchema.string("Change this filter instead of adding one."),
+                    "preset": MCPSchema.string("Look.", oneOf: MCPVocabulary.filterPresetIDs),
+                    "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
+                    "duration": MCPSchema.number("Seconds (default 3).", minimum: 0.1),
+                    "strength": MCPSchema.number("0 to 1 (default 1).", minimum: 0, maximum: 1),
+                    "hidden": MCPSchema.boolean("Hide it without deleting it.")
+                ])
+            )
+        case .setCanvas:
+            return MCPToolDefinition(
+                .setCanvas, title: "Frame shape and frame rate",
+                description: """
+                Set the output frame shape and/or frame rate. auto follows the first V1 clip; \
+                9:16 is for TikTok, Reels and Shorts; 16:9 for YouTube.
+                """,
+                input: MCPSchema.object([
+                    "ratio": MCPSchema.string("Frame shape.", oneOf: MCPVocabulary.canvasRatios),
+                    "fps": MCPSchema.integer("Frames per second: 24, 30 or 60.", minimum: 24, maximum: 60)
+                ])
+            )
+        default:
+            preconditionFailure("\(name.rawValue) is described in another group")
+        }
+    }
+
+    private static var addClips: MCPToolDefinition {
+        let item = MCPSchema.object([
+            "file": MCPSchema.string("Path of a video, image or audio file (absolute, or relative to the opened folder)."),
+            "source_in": MCPSchema.number("Where to start in the file, seconds (default 0).", minimum: 0),
+            "source_out": MCPSchema.number("Where to stop in the file, seconds (default: the end). For an image: how long it shows (default 5)."),
+            "track": MCPSchema.string(MCPSchema.trackDescription),
+            "start": MCPSchema.number("Timeline start in seconds.", minimum: 0)
+        ], required: ["file"])
+        return MCPToolDefinition(
+            .addClips, title: "Add clips",
+            description: """
+            Put media files on the timeline, in the given order. Each item can pick the part of the file to use \
+            (source_in/source_out), the track and the start time. Without a start, video and images are appended \
+            after the last clip of their track (V1 by default) and audio starts at 0 on the first free audio track. \
+            If the spot is taken, a video clip goes up to the next free video track; insert=true instead pushes the \
+            later V1 clips to the right to make room. Files outside the opened folder need the user's OK \
+            (the result asks). Returns the new clip ids.
+            """,
+            input: MCPSchema.object([
+                "clips": MCPSchema.array(of: item, "Clips to add, in timeline order.", minItems: 1),
+                "insert": MCPSchema.boolean("On V1 with a start time: push later V1 clips right instead of lifting to another track."),
+                "confirm_token": MCPSchema.confirmToken
+            ], required: ["clips"])
+        )
+    }
+
+    private static var editClip: MCPToolDefinition {
+        MCPToolDefinition(
+            .editClip, title: "Change a clip",
+            description: """
+            Change one clip; only the fields you pass change. Move it (start, track), trim it (source_in/source_out \
+            are seconds in the source file), or set speed, volume in dB, mute, hide, and audio fade in/out. \
+            A move or trim that would overlap another clip on the same track fails and names that clip; \
+            ripple=true on V1 moves the later V1 clips along instead.
+            """,
+            input: MCPSchema.object([
+                "clip_id": MCPSchema.string("Clip id from get_timeline."),
+                "start": MCPSchema.number("New timeline start, seconds.", minimum: 0),
+                "track": MCPSchema.string(MCPSchema.trackDescription),
+                "source_in": MCPSchema.number("New start inside the source file, seconds.", minimum: 0),
+                "source_out": MCPSchema.number("New end inside the source file, seconds.", minimum: 0),
+                "speed": MCPSchema.number("Playback speed, 1 = normal.", minimum: 0.1, maximum: 8),
+                "volume_db": MCPSchema.number("Volume change in dB, 0 = original.", minimum: -60, maximum: 6),
+                "muted": MCPSchema.boolean("Silence the clip."),
+                "hidden": MCPSchema.boolean("Hide the clip from preview and export without deleting it."),
+                "fade_in": MCPSchema.number("Audio fade-in, seconds.", minimum: 0),
+                "fade_out": MCPSchema.number("Audio fade-out, seconds.", minimum: 0),
+                "ripple": MCPSchema.boolean("On V1: move the later V1 clips by the same amount the clip's end moves.")
+            ], required: ["clip_id"])
+        )
+    }
+
+    private static var setText: MCPToolDefinition {
+        MCPToolDefinition(
+            .setText, title: "Add or change a text",
+            description: """
+            Add a text overlay, or change one when text_id is given; only the fields you pass change. \
+            The position is the centre of the text block: a named spot, or x/y as fractions of the frame \
+            (x 0 = left edge, y 0 = top edge). Sizes are pixels on a 1080-pixel-high frame. \
+            Colours are #RRGGBB or #RRGGBBAA. Long text wraps inside box_width.
+            """,
+            input: MCPSchema.object([
+                "text_id": MCPSchema.string("Change this text instead of adding one."),
+                "text": MCPSchema.string("The words; \\n starts a new line."),
+                "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
+                "duration": MCPSchema.number("Seconds on screen (default 3).", minimum: 0.2),
+                "position": MCPSchema.string("Named spot.", oneOf: MCPVocabulary.textPositions),
+                "x": MCPSchema.number("Horizontal centre, 0–1.", minimum: 0, maximum: 1),
+                "y": MCPSchema.number("Vertical centre, 0–1.", minimum: 0, maximum: 1),
+                "box_width": MCPSchema.number("Wrap width as a fraction of the frame width (default 0.8).", minimum: 0.05, maximum: 1),
+                "font": MCPSchema.string("Font family name, e.g. PingFang SC, Helvetica Neue, Avenir Next."),
+                "font_size": MCPSchema.number("Pixels on a 1080-high frame (default 96).", minimum: 12, maximum: 400),
+                "bold": MCPSchema.boolean("Bold."),
+                "italic": MCPSchema.boolean("Italic."),
+                "color": MCPSchema.string("Text colour."),
+                "alignment": MCPSchema.string("Line alignment inside the block.", oneOf: MCPVocabulary.textAlignments),
+                "stroke_color": MCPSchema.string("Outline colour; \"none\" removes the outline."),
+                "stroke_width": MCPSchema.number("Outline width in pixels.", minimum: 0.5, maximum: 24),
+                "shadow": MCPSchema.boolean("Soft drop shadow."),
+                "background_color": MCPSchema.string("Box behind the text; \"none\" removes it."),
+                "animation_in": MCPSchema.string("Entrance animation.", oneOf: MCPVocabulary.textAnimations),
+                "animation_out": MCPSchema.string("Exit animation.", oneOf: MCPVocabulary.textAnimations),
+                "hidden": MCPSchema.boolean("Hide it without deleting it.")
+            ])
+        )
+    }
+}
