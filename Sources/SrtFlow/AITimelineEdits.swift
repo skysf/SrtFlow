@@ -135,9 +135,7 @@ enum AITimelineEdits {
         }
         var targets = Set(seed)
         if linkage { for id in seed { targets.formUnion(state.linkedClipIDs(of: id)) } }
-        let before = Set(state.allClips.map(\.id))
-        for id in targets { state.split(clipID: id, at: time) }
-        return state.allClips.map(\.id).filter { !before.contains($0) }
+        return LinkRegrouping.split(targets, at: time, in: &state)
     }
 
     // MARK: 转场

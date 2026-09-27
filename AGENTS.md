@@ -101,7 +101,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜、**预览合成往合成轨上接东西（只从末尾接、合成完裁到总长、换格子别改成四舍五入）** | [预览自由变换](docs/architecture/preview-free-transform.md)（「一份时间账」：多一格就黑屏）、[加了音效预览整个黑屏](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 从 Finder 拖文件 / ⌘V 粘贴文件进时间线、导入落点 | [拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[外部拖入被内层落点独占](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)（结论已更正）、[拖动手势](docs/architecture/timeline-drag-gestures.md)（主轨保序、§5e-2 唯一落点）、[视频轨对等化](docs/architecture/video-tracks.md) |
-| 时间线上的复制 / 剪切 / 粘贴（⌘C ⌘X ⌘V、编辑菜单、块和轨道空白处的右键菜单）、剪贴板类型、粘贴落点（鼠标优先、否则播放头）、从旧段构造新段（分割 / 复制，别漏字段） | [复制粘贴](docs/architecture/timeline-clipboard.md)（剪贴板只有一套、不写纯文本；每一样换新身份走编码往返；撞上了往上抬、几组保住上下关系）、[方案](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md)、[分割丢了隐藏和音频库的键](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
+| 时间线上的复制 / 剪切 / 粘贴（⌘C ⌘X ⌘V、编辑菜单、块和轨道空白处的右键菜单）、剪贴板类型、粘贴落点（鼠标优先、否则播放头）、从旧段构造新段（分割 / 复制，别漏字段）、**分割之后的链接组** | [复制粘贴](docs/architecture/timeline-clipboard.md)（剪贴板只有一套、不写纯文本；每一样换新身份走编码往返；撞上了往上抬、几组保住上下关系；三之二：分割都走 `LinkRegrouping.split`，一对切开是两对）、[分割后整串互为伙伴](docs/bugfixes/2026-09-28-split-links-every-piece-together.md)、[方案](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md)、[分割丢了隐藏和音频库的键](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
 | 时间线上的任何拖放落点（`.onDrop`：文件 / 滤镜 / 音频库 / 转场卡片）、新的自定义拖放 / 剪贴板类型 | [拖动手势 §5e-2](docs/architecture/timeline-drag-gestures.md)（整条时间线只许一个 `.onDrop`；自定义类型必须在 Info.plist 声明；不能放回 `.forbidden` 不回 `.cancel`）、[转场拖放被 `.cancel` 取消](docs/bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[自定义类型没声明](docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md)、[GUI 冒烟流程](docs/testing/gui-smoke-testing.md)（落点路由探针） |
 | 轨道模型、时间线行结构、轨道行高、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md)、[工程文件与素材重链接](docs/architecture/video-edit-project-file.md) |
 | 段的显隐（V / 眼睛）、隐藏段进不进预览和成片，文字 / 形状 / 滤镜段的隐藏（`rendered*` 清单） | [段的显隐](docs/architecture/clip-visibility.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[上层轨藏起来的段还在成片里](docs/bugfixes/2026-09-26-hidden-upper-clip-still-exported.md) |
@@ -226,7 +226,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   自带设置、不替用户开跑（扫描）：
   `scripts/check-mcp.sh`。
 - 时间线复制 / 剪切 / 粘贴：拿什么、换新身份（除了 id 每个字段照抄）、粘到哪（撞上往上抬、几组保住上下关系、
-  声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段：
+  声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段、分割后链接组一对还是一对：
   `scripts/check-timeline-clipboard.sh`；接线（编辑菜单三项、右键菜单、落点鼠标优先含 Finder 文件、标尺不算轨道、
   剪贴板只有一套且不写纯文本）：`checks/timeline-clipboard-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
@@ -462,6 +462,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-27 烧录页存好的字幕样式，要先去烧录页转一圈，剪辑页才用得上](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md) — 全 App 共用的字幕样式放在烧录队列上，读回来却写在烧录页的 `onAppear` 里；App 直接进剪辑页时那一页从没出现过，预览、导出、AI 用的都是默认样式。改成队列创建时读回来（`EncodeQueueMemory`，同 `VideoEditExporter` 的 init），守卫钉着。顺带查过：`burnInFontURL` 从没赋值，但这版 libass 用 CoreText 按名字找到同一个文件，成片一样。**一份设置有了第二个读者，读回来就不能挂在某一页的 `onAppear` 上。**
 - [2026-09-27 AI 放素材时顺带挂了字幕，之后撤一步整条时间线空了](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md) — `add_clips` 先挂字幕（登记在 `AIUndoGrouping.step` 外面）再进 step 放素材；后台的 App 里按事件自动开的那一组关不上，之后每个 step 都嵌进去。冒烟 A / B 两组只差一个 .srt 才定的性。挂字幕挪进同一个 step，生成字幕、翻译写回、删占位块这些异步落账也各包一层，守卫钉着。**「每个工具包一层 step」只在一次调用里所有登记都在 step 里时成立；异步落账要自己成一步。**
 - [2026-09-27 批量转换字幕，旁边的同名文件被悄悄盖掉](docs/bugfixes/2026-09-27-batch-convert-overwrites-existing-files.md) — `convertFile` 算出名字就覆盖写，同格式转回源文件夹连源文件都盖（开源第一版起就这样）；用户拍板改成加编号。「撞名加编号」挪进 SrtFlowCore 的 `ExportFileName.unoccupied` 只留一份（App 里原有两份），写时再带 `.withoutOverwriting`。**写用户文件夹的地方默认不覆盖：要覆盖就先问，不问就加编号。**
+- [2026-09-28 链接开着时删掉分割出来的一块，整条素材连声音全没了](docs/bugfixes/2026-09-28-split-links-every-piece-together.md) — 链接关系就是「同一个组号」，分割却原样抄了组号：一对切开四段同号、互为伙伴，越切整串越大，删 / 拖 / 裁一块整串都跟着走（「链接」默认关，所以一直没人撞上）。切都改走 `LinkRegrouping.split`：按时间上重叠重分组，一对切开是两对。写 AI 的 cut_speech 时拿纯函数试出来的。**从旧段构造新段时，身份类的字段（id、组号）不能照抄。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

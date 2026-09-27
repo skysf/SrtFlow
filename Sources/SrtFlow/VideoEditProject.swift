@@ -950,22 +950,15 @@ final class VideoEditProject {
         }
         guard !targets.isEmpty else { return }
 
-        perform { state in
-            for id in targets {
-                state.split(clipID: id, at: time)
-            }
-        }
+        // 切完理顺链接组：一对切成两对，不是连成一串（LinkRegrouping）。
+        perform { state in LinkRegrouping.split(targets, at: time, in: &state) }
     }
 
     /// 刀片工具：在指定时刻切开指定的段（链接开着时同组一起切）。
     func splitClip(_ id: UUID, at time: Double) {
         guard let clip = state.clip(with: id), clip.contains(time: time) else { return }
         let targets = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
-        perform { state in
-            for member in targets {
-                state.split(clipID: member, at: time)
-            }
-        }
+        perform { state in LinkRegrouping.split(targets, at: time, in: &state) }
     }
 
 

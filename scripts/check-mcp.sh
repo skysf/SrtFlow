@@ -276,6 +276,7 @@ xcrun swiftc \
   Sources/SrtFlow/AITimelineSummary.swift \
   Sources/SrtFlow/AITextEdits.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
+  Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \
   Sources/SrtFlow/AIFrameFit.swift \
   Sources/SrtFlow/AIFramingRequest.swift \
