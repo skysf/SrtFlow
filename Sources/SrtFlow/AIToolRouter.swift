@@ -58,8 +58,10 @@ final class AIToolRouter {
             if policy.presentsEditor { try await AIEditorPresenter.prepareEditor(project: project) }
             if policy.startsRound { AISession.shared.beginRoundIfNeeded(project: project) }
             let result = try await run(tool, arguments, project)
-            if result.changedProject { AISession.shared.noteChange() }
-            return result.json
+            guard result.changedProject else { return result.json }
+            AISession.shared.noteChange()
+            // 改的是一个从来没存过的工程：马上存下来，之后交给自动保存（见那个函数）。
+            return AIProjectTools.saveIfNeverSaved(project, after: result).json
         } catch let error as AIToolError {
             return MCPBridge.textResult(error.message, isError: true)
         } catch {

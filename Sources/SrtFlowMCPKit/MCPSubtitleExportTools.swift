@@ -116,7 +116,8 @@ public enum MCPSubtitleExportTools {
             .exportVideo, title: "Export the video",
             description: """
             Render the timeline to an .mp4 (a timeline with only audio becomes .m4a). By default the file is named \
-            after the project and goes into the workspace's SrtFlow/Exports folder. Subtitles that are visible on \
+            after the project and goes into SrtFlow/Exports inside the folder the user named (otherwise the \
+            project's folder, or Downloads). Subtitles that are visible on \
             the timeline are burned in unless burn_subtitles is false. If the file already exists the result asks \
             for confirmation. Returns a job id; wait for it with get_job.
             """,

@@ -41,12 +41,9 @@ struct VideoEditExportSheet: View {
         return ExportFileName.stem(from: raw, droppingExtension: "", fallback: "Timeline")
     }
 
-    /// 记住的文件夹 → 工程文件旁边 → ~/Movies。
+    /// 记住的文件夹 → 起点（点名的文件夹 → 工程的家 → 「下载」，DefaultFolder）。
     private var folder: URL {
-        exporter.usableExportFolder
-            ?? project.documentURL?.deletingLastPathComponent()
-            ?? FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.homeDirectoryForCurrentUser
+        exporter.usableExportFolder ?? AIWorkspace.shared.startFolder(project: project)
     }
 
     private var stem: String {

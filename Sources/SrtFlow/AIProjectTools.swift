@@ -180,8 +180,7 @@ enum AIProjectTools {
             return .ok(["saved": .string(project.documentURL?.path ?? "")])
         }
         let url = requested ?? AIWorkspace.shared.outputFolder(.projects, project: project)
-            .appendingPathComponent(ExportFileName.stem(from: project.state.mainClips.first?.name ?? L10n("Untitled"),
-                                                        droppingExtension: "", fallback: L10n("Untitled")))
+            .appendingPathComponent(defaultStem(project))
             .appendingPathExtension(VideoEditProjectFile.fileExtension)
         let action = "save:\(url.path)"
         if FileManager.default.fileExists(atPath: url.path), url != project.documentURL,
@@ -193,6 +192,35 @@ enum AIProjectTools {
             throw AIToolError(project.notice ?? "SrtFlow could not save the project to \(url.path).")
         }
         return .ok(["saved": .string(url.path)])
+    }
+
+    /// AI 改了一个**从来没存过**的工程：马上存进 `<起点>/SrtFlow/<工程>`，之后交给自动保存。
+    /// 不然 App 一崩，AI 这一轮的活全丢（2026-09-27 实测：Claude 在开着的 Untitled 上改了九处，一直没存盘；
+    /// 用户同意改成自动存）。撞名就换个名字、不覆盖也不问：这一步是兜底，不该打断 AI。
+    static func saveIfNeverSaved(_ project: VideoEditProject, after result: AIToolResult) -> AIToolResult {
+        guard project.isUntitled, !project.state.isEmpty, case .object(var payload) = result.payload else { return result }
+        let folder = AIWorkspace.shared.outputFolder(.projects, project: project)
+        let url = DefaultFolder.unoccupied(
+            in: folder, stem: defaultStem(project), pathExtension: VideoEditProjectFile.fileExtension
+        ) { FileManager.default.fileExists(atPath: $0.path) }
+        if (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
+           project.saveDocument(as: url) {
+            payload["project_saved_to"] = .string(url.path)
+        } else {
+            payload["warning"] = .string(
+                "SrtFlow could not save this never-saved project to \(url.path): \(project.notice ?? "unknown error"). "
+                    + "Call save_project with a path the user agrees on, or the edits are lost if SrtFlow quits."
+            )
+        }
+        var saved = result
+        saved.payload = .object(payload)
+        return saved
+    }
+
+    /// 没存过的工程叫什么：主轨第一段素材的名字（和手动「存储为」建议的一样），没有就 Untitled。
+    private static func defaultStem(_ project: VideoEditProject) -> String {
+        ExportFileName.stem(from: project.state.mainClips.first?.name ?? L10n("Untitled"),
+                            droppingExtension: "", fallback: L10n("Untitled"))
     }
 
     /// 当前工程没存过、又剪了东西：还没点头就回问题；点过头就清掉，好让原来那条路不再弹模态框。

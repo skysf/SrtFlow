@@ -74,6 +74,29 @@ if [ "$(grep -c 'let source = try translationSource(args, project)' "${SUBTITLE_
 fi
 echo "   ✓ 先判断（第 ${DETECT_AT} 行）、再退回旧记录（第 ${STORED_AT} 行）"
 
+echo "==> 新东西默认放哪：点名的文件夹 → 工程的家 → 下载，没有「影片」；AI 改了没存过的工程马上存"
+# 2026-09-27 用户拍板（docs/plans/2026-09-27-mcp.md 第 29、30 条）。规则只有 DefaultFolder 一份，
+# 手动的打开 / 存储为面板、导出面板第一次用的位置、AI 的输出都从 AIWorkspace.startFolder 拿。
+MOVIES="$(grep -rln 'moviesDirectory' Sources/SrtFlow || true)"
+if [ -n "${MOVIES}" ]; then
+  echo "✗ 这些文件又把默认位置指向「影片」：${MOVIES}（用户：不要到 Movies，没给文件夹就放下载）" >&2
+  exit 1
+fi
+for wiring in "Sources/SrtFlow/VideoEditProjectDocument.swift:2" "Sources/SrtFlow/VideoEditExportSheet.swift:1" \
+              "Sources/SrtFlow/AIWorkspace.swift:1"; do
+  file="${wiring%%:*}"
+  want="${wiring##*:}"
+  if [ "$(grep -c 'startFolder(project:' "${file}" || true)" -lt "${want}" ]; then
+    echo "✗ ${file} 的默认位置没走 AIWorkspace.startFolder（应有 ${want} 处）" >&2
+    exit 1
+  fi
+done
+if [ "$(grep -c 'AIProjectTools.saveIfNeverSaved(project, after: result)' "${ROUTER}" || true)" -ne 1 ]; then
+  echo "✗ ${ROUTER} 改完工程没调 saveIfNeverSaved：AI 在没存过的工程上干的活，App 一崩就全丢" >&2
+  exit 1
+fi
+echo "   ✓ 没有「影片」；三处默认位置走同一个起点；改工程的调用之后都会给没存过的工程存盘"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -137,6 +160,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIClientConfigFiles.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
   Sources/SrtFlow/AITextLanguage.swift \
+  Sources/SrtFlow/DefaultFolder.swift \
   checks/MCP/main.swift \
   checks/MCP/Harness.swift \
   checks/MCP/ProtocolChecks.swift \
@@ -144,6 +168,7 @@ xcrun swiftc \
   checks/MCP/ConfigChecks.swift \
   checks/MCP/UndoChecks.swift \
   checks/MCP/LanguageChecks.swift \
+  checks/MCP/FolderChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

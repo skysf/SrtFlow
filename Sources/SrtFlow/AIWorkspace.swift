@@ -4,7 +4,7 @@ import SrtFlowMCPKit
 // MARK: - AI 能用哪些文件、新文件放哪、什么时候要用户点头
 //
 // 管什么：用户点名的文件夹（open_folder 登记，里面每一层都能用）、AI 做出来的文件放哪
-// （点名文件夹里的 `SrtFlow/` 子文件夹，按导出 / 工程分开）、确认令牌。
+// （起点下面的 `SrtFlow/` 子文件夹，按导出 / 工程分开；起点的规则在 DefaultFolder）、确认令牌。
 // 产品口径见 docs/plans/2026-09-27-mcp.md 第 21–25 条。
 // 不管什么：文件夹里有什么（AIMediaScan）、工具怎么做。
 //
@@ -38,24 +38,40 @@ final class AIWorkspace {
         AIFormat.path(url, relativeTo: current)
     }
 
-    /// 不用再问就能读的文件：在点名的文件夹里、在工程文件旁边、或者工程里本来就在用。
+    /// 不用再问就能读的文件：在点名的文件夹里、在工程的家里（DefaultFolder.home）、或者工程里本来就在用。
     func allowsReading(_ url: URL, project: VideoEditProject) -> Bool {
         let path = url.standardizedFileURL.path
-        let roots = folders.map(\.path) + [project.documentURL?.deletingLastPathComponent().standardizedFileURL.path].compactMap { $0 }
+        let roots = folders.map(\.path) + [projectHome(project)?.standardizedFileURL.path].compactMap { $0 }
         if roots.contains(where: { path.hasPrefix($0 + "/") }) { return true }
         return project.state.mediaURLs.contains { $0.standardizedFileURL.path == path }
     }
 
-    /// AI 做出来的文件放哪：`<点名的文件夹>/SrtFlow/<导出|工程>`；没点名过就放在工程文件旁边，
-    /// 再没有就是「影片」文件夹。文件夹名跟着 App 的语言。
+    /// 新东西默认从哪开始：点名的文件夹 → 工程的家 → 「下载」（规则在 DefaultFolder）。
+    /// 手动的「打开工程」「存储为」和导出面板第一次用的位置也从这里拿。
+    func startFolder(project: VideoEditProject) -> URL {
+        DefaultFolder.start(
+            named: current,
+            projectHome: projectHome(project),
+            downloads: FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first,
+            userHome: FileManager.default.homeDirectoryForCurrentUser
+        )
+    }
+
+    /// AI 做出来的文件放哪：`<起点>/SrtFlow/<导出|工程>`。文件夹名跟着 App 的语言。
     func outputFolder(_ kind: Output, project: VideoEditProject) -> URL {
-        let base = current
-            ?? project.documentURL?.deletingLastPathComponent()
-            ?? VideoEditProject.defaultProjectDirectory
-            ?? FileManager.default.homeDirectoryForCurrentUser
-        return base.appendingPathComponent("SrtFlow", isDirectory: true)
+        startFolder(project: project)
+            .appendingPathComponent(DefaultFolder.aiFolderName, isDirectory: true)
             .appendingPathComponent(kind.folderName, isDirectory: true)
     }
+
+    private func projectHome(_ project: VideoEditProject) -> URL? {
+        project.documentURL.map { DefaultFolder.home(ofProjectFile: $0, projectFolderNames: Self.projectFolderNames) }
+    }
+
+    /// 「工程」子文件夹在每种界面语言里的名字：切过语言，之前存的工程也认得出自己的家。
+    private static let projectFolderNames = Set(
+        AppLanguage.allCases.map { $0.bundle.localizedString(forKey: "Projects", value: "Projects", table: nil) }
+    )
 
     enum Output {
         case exports, projects

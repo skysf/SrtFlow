@@ -115,7 +115,7 @@ extension VideoEditProject {
         panel.allowedContentTypes = [.srtFlowProject]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.directoryURL = Self.defaultProjectDirectory
+        panel.directoryURL = AIWorkspace.shared.startFolder(project: self)
         panel.prompt = L10n("Open")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await openProject(at: url) }
@@ -352,7 +352,7 @@ extension VideoEditProject {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.srtFlowProject]
         panel.nameFieldStringValue = suggestedFileName
-        panel.directoryURL = Self.defaultProjectDirectory
+        panel.directoryURL = documentURL?.deletingLastPathComponent() ?? AIWorkspace.shared.startFolder(project: self)
         panel.canCreateDirectories = true
         panel.prompt = L10n("Save")
         guard panel.runModal() == .OK, var url = panel.url else { return }
@@ -451,11 +451,6 @@ extension VideoEditProject {
             bookmarkDataIsStale: &stale
         ), FileManager.default.fileExists(atPath: resolved.path) else { return nil }
         return resolved
-    }
-
-    /// 新工程默认往哪存。`~/Movies` 是 macOS 给影片的标准位置，不自建目录。
-    static var defaultProjectDirectory: URL? {
-        FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
     }
 
     // MARK: - Finder

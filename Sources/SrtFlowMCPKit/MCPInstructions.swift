@@ -34,6 +34,9 @@ public enum MCPInstructions {
     - If a result or a job carries "waiting_for_user", SrtFlow is waiting for the user to do something (for example \
     click Download in a macOS dialog). Tell the user exactly what it says right away, then keep waiting with get_job; \
     never just wait silently.
+    - A project that was never saved is saved by SrtFlow right after your first change, into SrtFlow/Projects \
+    inside the folder the user named (Downloads when there is none); that result carries project_saved_to. \
+    Tell the user where their project is.
     - If a call fails because the user pressed Stop in SrtFlow, stop calling tools and ask the user what to do next.
     - Only use folders and files the user gave you or that these tools returned.
     """
