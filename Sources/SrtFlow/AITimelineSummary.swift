@@ -71,13 +71,18 @@ enum AITimelineSummary {
         var object: [String: JSONValue] = [
             "id": .string(context.ids.short(clip.id)),
             "name": .string(clip.name),
-            "file": .string(AIFormat.path(clip.stillImageURL ?? clip.sourceURL, relativeTo: context.workspace)),
             "kind": .string(clip.isStillImage ? "image" : (clip.isAudioOnly ? "audio" : "video")),
             "start": AIFormat.seconds(clip.timelineStart),
             "end": AIFormat.seconds(clip.timelineEnd),
             "source_in": AIFormat.seconds(clip.sourceStart),
             "source_out": AIFormat.seconds(clip.sourceStart + clip.sourceDuration)
         ]
+        // 音乐库的一首：文件在缓存里（路径没意义、清了缓存还会变），写它在库里的 id（署名、再找同一首都靠它）。
+        if let key = clip.remoteKey {
+            object["library_id"] = .string(key)
+        } else {
+            object["file"] = .string(AIFormat.path(clip.stillImageURL ?? clip.sourceURL, relativeTo: context.workspace))
+        }
         if abs(clip.speed - 1) > 0.0001 { object["speed"] = .number(clip.speed) }
         if abs(clip.volume - 1) > 0.0001 {
             object["volume_db"] = .number((AudioGain.decibels(fromLinear: clip.volume) * 10).rounded() / 10)

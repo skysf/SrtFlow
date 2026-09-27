@@ -211,6 +211,14 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    [定格](freeze-frame.md) 末节）。AI 多给一个时长；抽帧转码要 await，所以把「提交那一下」交给定格去包：
    `project.freezeFrame(…) { body in AIUndoGrouping.step(undo, body) }`（`check-mcp.sh` 钉着）。不给 clip_id 时定格那一刻 V1 上的段。
 
+23. **音乐库（find_audio、add_clips 的 library_id）**：搜的是音频库那一页同一个函数（`AudioLibraryManifest.filter`：标题、
+   艺人、中英文标签，几个词是「与」）；放上时间线和从音频库拖进来一样 —— 下载进缓存、带 `remoteKey`（清了缓存、换了机器
+   也找得回来）、时长按清单、**不按工程总长裁短**，落点走 add_clips 那一套（同一个 `AITimelineEdits.place`）。
+   署名和署名页同一个口径：句子原样用清单给的 `license.text`，CC0 以外都要署（纯值的 `AIMusicCredits`）；add_clips 的结果、
+   get_timeline 的 `music_credits` 都带着，总说明要求 AI 做完告诉用户。get_timeline 里音乐库的段写 `library_id`、不写缓存里的
+   路径。清单读失败过就再读一次（`loadIfNeeded` 失败后不会自己重试）；断网用上次的清单并说明。**音效库还没做**：工具说明
+   照实说，并叫 AI 别去网上下载。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
@@ -245,7 +253,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 （人脸优先、放得下对准中间、放不下对准最大的、中位数、走动大了要说），以及真画一张图（黑底左上角一块亮色）让 Vision
 认、框必须落在左上；look 的拼图排法和尺寸、JPEG、每帧的文字描述、图跟在文字后面，以及几百 KB 的图原样穿过
 小程序 ↔ App 的通道（假 App 回一张大图）；listen 用生产的 `ChunkBuilder` 攒一份波形（响 1 秒 → 静 1 秒 → 轻 1 秒），
-验电平只算有声部分、峰值、静音段两头不被隔壁拖短、曲线、变速和音量换到时间线上。合成时间线画面要真 App，靠下面的
+验电平只算有声部分、峰值、静音段两头不被隔壁拖短、曲线、变速和音量换到时间线上；音乐库的署名句（CC0 不署、同一句
+只出一次、按艺人和标题排）和 get_timeline 里音乐库的段写 `library_id`。合成时间线画面、下载音乐要真 App，靠下面的
 人工回归清单。
 
 `checks/timeline-drag-wiring.sh` 的「落点单一」一节把 AI 放素材单独数：拖文件进来那套仍是恰好两处
@@ -254,7 +263,7 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 
 ## 八、人工回归清单（发版前在真机上走一遍）
 
-- [ ] 设置里连接 Claude 桌面版 → 重启 Claude → 工具列表里有 srtflow 的 23 个工具。
+- [ ] 设置里连接 Claude 桌面版 → 重启 Claude → 工具列表里有 srtflow 的全部工具（个数 = `MCPToolName` 的条数）。
 - [ ] SrtFlow 没开时让 AI 调一个工具：SrtFlow 在后台启动，对话窗口不被挤下去，调用成功。
 - [ ] 让 AI 打开一个文件夹、放几段素材：剪辑页被摆到最前面但键盘还在对话框里；每一步时间线滚过去、选中、
       预览跳到那一刻；顶上横幅「Claude 正在剪辑这个工程」。
@@ -282,6 +291,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 - [ ] 让 AI 整理点名文件夹（「把企鹅的镜头放进一个文件夹」「删掉 .tmp」）：移动 / 建文件夹直接做；删除先在对话里问，
       同意后进了废纸篓；工程里用到的素材被挪了，预览照样找得到。
 - [ ] 给 AI 一份 Word / PDF 讲稿让它读：文字对；给 Pages 文件时它说请你导出 PDF 或 Word。
+- [ ] 让 AI 配一首平静的钢琴曲：它用 find_audio 搜、add_clips 带 library_id 放上音频轨；没下载过的先下载（音频库页上
+      那一首也变成已下载）；做完它给出署名句，和音频库「署名」页上那一句一字不差。
 - [ ] 让 AI 用 listen 量一段有停顿的口播：静音段落在停顿上（前后差不过一两个字）；把配乐压到比人声低 15 dB 左右
       之后，预览里听着人声清楚。
 

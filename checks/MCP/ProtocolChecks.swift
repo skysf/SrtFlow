@@ -115,6 +115,9 @@ func runProtocolChecks() {
     check(instructions.contains("look") && instructions.contains("listen"), "instructions point the AI at look and listen")
     check(instructions.contains("ffmpeg") && instructions.contains("do not download media"),
           "instructions forbid outside tools and downloads for media")
+    // 配乐从 SrtFlow 的音乐库找（方案第 14 条），用了 CC-BY 的要告诉用户署名句。
+    check(instructions.contains("find_audio") && instructions.contains("music_credits"),
+          "instructions send the AI to the music library and ask it to pass on the credits")
 
     // 2. 工具清单：和 MCPToolName 一一对应、顺序一致、每个都有说明和对象型的参数表。
     let tools = reply(messages, id: 2)?["result"]?["tools"]?.arrayValue ?? []

@@ -236,6 +236,8 @@ xcrun swiftc \
   Sources/SrtFlow/AIKeyframes.swift \
   Sources/SrtFlow/AIShapeEdits.swift \
   Sources/SrtFlow/AIDuplicate.swift \
+  Sources/SrtFlow/AIMusicCredits.swift \
+  Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/VideoEditClipboardPayload.swift \
   Sources/SrtFlow/VideoEditClipboardPaste.swift \
   Sources/SrtFlow/VideoEditClipboardLanes.swift \
@@ -278,6 +280,7 @@ xcrun swiftc \
   checks/MCP/TrackKeyframeChecks.swift \
   checks/MCP/ShapeChecks.swift \
   checks/MCP/DuplicateChecks.swift \
+  checks/MCP/MusicLibraryChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

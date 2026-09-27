@@ -20,17 +20,27 @@ enum AITimelineTools {
             selection: selection,
             renderSize: VideoEditCompositionBuilder.renderSize(for: state)
         )
-        return .ok(AITimelineSummary.make(state, context))
+        var summary = AITimelineSummary.make(state, context)
+        let credits = AIAudioLibraryTools.projectCredits(state)
+        if !credits.isEmpty, case .object(var object) = summary {
+            object["music_credits"] = .array(credits.map { .string($0) })
+            summary = .object(object)
+        }
+        return .ok(summary)
     }
 
     // MARK: add_clips
 
     private struct ClipRequest {
-        var url: URL
+        /// 文件路径，或者音乐库里一首的 id（`library_id`，AIAudioLibraryTools）。两个只给一个。
+        var url: URL?
+        var libraryID: String?
         var sourceIn: Double?
         var sourceOut: Double?
         var track: String?
         var start: Double?
+
+        var isSubtitle: Bool { url.map(MediaFileTypes.isSubtitle) ?? false }
     }
 
     static func addClips(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
@@ -38,17 +48,25 @@ enum AITimelineTools {
         guard items.count <= 200 else { throw AIToolError("Add at most 200 clips per call.") }
         let requests = try items.enumerated().map { index, item -> ClipRequest in
             let entry = AIToolArguments(item)
-            let path = try entry.requiredString("file")
-            let url = AIWorkspace.shared.resolve(path)
-            guard FileManager.default.fileExists(atPath: url.path) else {
-                throw AIToolError("clips[\(index)]: \(path) does not exist.")
-            }
-            return ClipRequest(
-                url: url, sourceIn: try entry.double("source_in"), sourceOut: try entry.double("source_out"),
+            var request = ClipRequest(
+                sourceIn: try entry.double("source_in"), sourceOut: try entry.double("source_out"),
                 track: try entry.string("track"), start: try entry.double("start")
             )
+            switch (try entry.string("file"), try entry.string("library_id")) {
+            case (let path?, nil):
+                let url = AIWorkspace.shared.resolve(path)
+                guard FileManager.default.fileExists(atPath: url.path) else {
+                    throw AIToolError("clips[\(index)]: \(path) does not exist.")
+                }
+                request.url = url
+            case (nil, let id?):
+                request.libraryID = id
+            default:
+                throw AIToolError("clips[\(index)]: give either file or library_id.")
+            }
+            return request
         }
-        let outside = requests.map(\.url).filter { !AIWorkspace.shared.allowsReading($0, project: project) }
+        let outside = requests.compactMap(\.url).filter { !AIWorkspace.shared.allowsReading($0, project: project) }
         let action = "read:" + Set(outside.map(\.path)).sorted().joined(separator: "|")
         if !outside.isEmpty, !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
             let names = Set(outside.map(\.path)).sorted().prefix(5).joined(separator: ", ")
@@ -57,33 +75,49 @@ enum AITimelineTools {
             )
         }
         // 字幕文件不占轨：挂成字幕轨（和把 .srt 拖进来同一条路，换掉原来的字幕，一步撤销）。
-        let subtitles = requests.filter { MediaFileTypes.isSubtitle($0.url) }
+        let subtitles = requests.compactMap { $0.isSubtitle ? $0.url : nil }
         guard subtitles.count <= 1 else { throw AIToolError("A project has one subtitle track; add one subtitle file at a time.") }
         if let subtitle = subtitles.first {
-            project.attachSubtitle(subtitle.url)
-            guard project.state.subtitleURL == subtitle.url else {
-                throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.url.lastPathComponent).")
+            project.attachSubtitle(subtitle)
+            guard project.state.subtitleURL == subtitle else {
+                throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.lastPathComponent).")
             }
         }
         let generation = project.documentGeneration
         var plans: [AITimelineEdits.PlannedClip] = []
         var images: [(id: UUID, url: URL)] = []
-        for (index, request) in requests.enumerated() where !MediaFileTypes.isSubtitle(request.url) {
-            guard let media = await project.probeImports([request.url]).first else {
-                throw AIToolError("clips[\(index)]: SrtFlow cannot use \(request.url.lastPathComponent) as a clip.")
+        var library: [UUID: AudioLibraryItem] = [:]
+        for (index, request) in requests.enumerated() where !request.isSubtitle {
+            var clip: EditClip
+            var isAudio = true
+            var name: String
+            if let id = request.libraryID {
+                let found = try await AIAudioLibraryTools.libraryClip(id: id)
+                (clip, name) = (found.clip, found.item.title)
+                library[clip.id] = found.item
+                try trim(&clip, duration: found.item.duration, name: name, request: request, index: index)
+            } else {
+                guard let url = request.url, let media = await project.probeImports([url]).first else {
+                    throw AIToolError("clips[\(index)]: SrtFlow cannot use \(request.url?.lastPathComponent ?? "it") as a clip.")
+                }
+                if media.kind == .image, !project.canConvertStills {
+                    throw AIToolError("SrtFlow's video engine is still starting, so images cannot be added yet. Try again in a moment.")
+                }
+                (clip, isAudio, name) = (project.clip(for: media), media.kind == .audio, media.url.lastPathComponent)
+                if media.kind == .image {
+                    let length = request.sourceOut.map { $0 - (request.sourceIn ?? 0) } ?? VideoEditProject.importedImageDuration
+                    clip.sourceDuration = min(max(length, TimelineTrim.clipMinimumDuration), StillImageClipFactory.stillDuration)
+                    images.append((clip.id, media.url))
+                } else {
+                    try trim(&clip, duration: media.duration, name: name, request: request, index: index)
+                }
             }
             guard project.isCurrentGeneration(generation) else {
                 throw AIToolError("The project changed while the files were being read. Try again.")
             }
-            if media.kind == .image, !project.canConvertStills {
-                throw AIToolError("SrtFlow's video engine is still starting, so images cannot be added yet. Try again in a moment.")
-            }
-            var clip = project.clip(for: media)
-            try trim(&clip, media: media, request: request, index: index)
             let target = try request.track.map { try AITrackName.target($0, in: project.state) }
-            try check(target, fits: media, index: index)
-            plans.append(.init(clip: clip, isAudio: media.kind == .audio, target: target, start: request.start))
-            if media.kind == .image { images.append((clip.id, media.url)) }
+            try check(target, isAudio: isAudio, name: name, index: index)
+            plans.append(.init(clip: clip, isAudio: isAudio, target: target, start: request.start))
         }
         let insert = try args.bool("insert") ?? false
         let linkage = project.linkageEnabled
@@ -98,36 +132,39 @@ enum AITimelineTools {
         let ids = AIShortIDs(state: state)
         let added: [JSONValue] = plans.compactMap { plan in
             guard let clip = state.clip(with: plan.clip.id), let location = state.location(of: clip.id) else { return nil }
-            return [
+            var entry: [String: JSONValue] = [
                 "id": .string(ids.short(clip.id)),
-                "file": .string(AIWorkspace.shared.display(clip.stillImageURL ?? clip.sourceURL)),
                 "track": .string(AITrackName.name(of: location.track)),
                 "start": AIFormat.seconds(clip.timelineStart),
                 "end": AIFormat.seconds(clip.timelineEnd)
             ]
+            if let item = library[clip.id] {
+                entry["library_id"] = .string(item.id)
+                entry["title"] = .string(item.title)
+            } else {
+                entry["file"] = .string(AIWorkspace.shared.display(clip.stillImageURL ?? clip.sourceURL))
+            }
+            return .object(entry)
         }
         let firstStart = plans.compactMap { state.clip(with: $0.clip.id)?.timelineStart }.min()
         AIEditorPresenter.reveal(.init(clips: Set(plans.map(\.clip.id)), time: firstStart), project: project)
         var result: [String: JSONValue] = ["added": .array(added), "timeline_duration": AIFormat.seconds(state.duration)]
         if let subtitle = subtitles.first {
-            result["subtitles"] = .string("\(subtitle.url.lastPathComponent) is now the subtitle track (\(state.subtitleCues(of: .original).count) lines).")
+            result["subtitles"] = .string("\(subtitle.lastPathComponent) is now the subtitle track (\(state.subtitleCues(of: .original).count) lines).")
         }
+        let credits = AIMusicCredits.lines(Array(library.values))
+        if !credits.isEmpty { result["credits"] = .array(credits.map { .string($0) }) }
         return .ok(.object(result), changed: true)
     }
 
-    /// 用素材的哪一段。图片只有「放多久」（静帧最长 `StillImageClipFactory.stillDuration`）。
-    private static func trim(_ clip: inout EditClip, media: MediaFileImport, request: ClipRequest, index: Int) throws {
-        if media.kind == .image {
-            let length = request.sourceOut.map { $0 - (request.sourceIn ?? 0) } ?? VideoEditProject.importedImageDuration
-            clip.sourceDuration = min(max(length, TimelineTrim.clipMinimumDuration), StillImageClipFactory.stillDuration)
-            return
-        }
+    /// 用素材的哪一段（图片只有「放多久」，在上面单独算）。音乐库的一首按清单上的时长。
+    private static func trim(_ clip: inout EditClip, duration: Double, name: String, request: ClipRequest, index: Int) throws {
         var start = request.sourceIn ?? 0
-        var stop = request.sourceOut ?? media.duration
+        var stop = request.sourceOut ?? duration
         if start < 0, start > -AIClipEdit.tolerance { start = 0 }
-        if stop > media.duration, stop - media.duration < AIClipEdit.tolerance { stop = media.duration }
-        guard start >= 0, stop <= media.duration else {
-            throw AIToolError("clips[\(index)]: \(media.url.lastPathComponent) is \(String(format: "%.2f", media.duration)) s long; source_in/source_out must be inside that.")
+        if stop > duration, stop - duration < AIClipEdit.tolerance { stop = duration }
+        guard start >= 0, stop <= duration else {
+            throw AIToolError("clips[\(index)]: \(name) is \(String(format: "%.2f", duration)) s long; source_in/source_out must be inside that.")
         }
         guard stop - start >= TimelineTrim.clipMinimumDuration else {
             throw AIToolError("clips[\(index)]: source_out must be at least \(TimelineTrim.clipMinimumDuration) s after source_in.")
@@ -136,13 +173,13 @@ enum AITimelineTools {
         clip.sourceDuration = stop - start
     }
 
-    private static func check(_ target: TrackDropTarget?, fits media: MediaFileImport, index: Int) throws {
+    private static func check(_ target: TrackDropTarget?, isAudio: Bool, name: String, index: Int) throws {
         guard let target else { return }
-        switch (target, media.kind == .audio) {
+        switch (target, isAudio) {
         case (.audio, false), (.newAudioBottom, false):
-            throw AIToolError("clips[\(index)]: \(media.url.lastPathComponent) has a picture, so it goes on a video track (V1, V2…).")
+            throw AIToolError("clips[\(index)]: \(name) has a picture, so it goes on a video track (V1, V2…).")
         case (.main, true), (.overlay, true), (.newOverlayTop, true):
-            throw AIToolError("clips[\(index)]: \(media.url.lastPathComponent) is audio, so it goes on an audio track (A1, A2…).")
+            throw AIToolError("clips[\(index)]: \(name) is audio, so it goes on an audio track (A1, A2…).")
         default:
             return
         }

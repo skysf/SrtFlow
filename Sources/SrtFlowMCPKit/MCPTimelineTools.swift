@@ -202,21 +202,23 @@ public enum MCPTimelineTools {
     private static var addClips: MCPToolDefinition {
         let item = MCPSchema.object([
             "file": MCPSchema.string("Path of a video, image, audio or subtitle file (absolute, or relative to the opened folder)."),
+            "library_id": MCPSchema.string("Instead of file: a music track id from find_audio (SrtFlow downloads it if needed)."),
             "source_in": MCPSchema.number("Where to start in the file, seconds (default 0).", minimum: 0),
             "source_out": MCPSchema.number("Where to stop in the file, seconds (default: the end). For an image: how long it shows (default 5)."),
             "track": MCPSchema.string(MCPSchema.trackDescription),
             "start": MCPSchema.number("Timeline start in seconds.", minimum: 0)
-        ], required: ["file"])
+        ])
         return MCPToolDefinition(
             .addClips, title: "Add clips",
             description: """
-            Put media files on the timeline, in the given order. Each item can pick the part of the file to use \
-            (source_in/source_out), the track and the start time. Without a start, video and images are appended \
+            Put media files (or music from find_audio) on the timeline, in the given order. Each item is a file or \
+            a library_id and can pick the part to use (source_in/source_out), the track and the start time. \
+            Without a start, video and images are appended \
             after the last clip of their track (V1 by default) and audio starts at 0 on the first free audio track. \
             If the spot is taken, a video clip goes up to the next free video track; insert=true instead pushes the \
             later V1 clips to the right to make room. A subtitle file (.srt, .vtt, .ass) becomes the subtitle \
             track instead, replacing the current one. Files outside the opened folder need the user's OK \
-            (the result asks). Returns the new clip ids.
+            (the result asks). Returns the new clip ids, and credit lines for library music.
             """,
             input: MCPSchema.object([
                 "clips": MCPSchema.array(of: item, "Clips to add, in timeline order.", minItems: 1),

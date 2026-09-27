@@ -21,8 +21,10 @@ public enum MCPInstructions {
     or of the timeline to check your edits) and listen to measure the sound (levels, silences).
     4. Edit with add_clips, edit_clip, split_clip, delete_items, set_transition, set_text, set_filter, \
     set_canvas and the subtitle tools. To reframe for another shape (for example 9:16), set_canvas and then \
-    edit_clip fit=fill on each clip.
-    5. export_video, then wait with get_job.
+    edit_clip fit=fill on each clip. Background music comes from SrtFlow's library: find_audio, then add_clips \
+    with its library_id.
+    5. export_video, then wait with get_job. If the video uses library music, give the user the credit lines \
+    (music_credits in get_timeline) for the video's description.
 
     Conventions: times are seconds on the timeline, except source_in/source_out which are seconds inside the \
     media file. V1 is the main video track, V2 and up are video tracks drawn above it, A1 and up are audio \
