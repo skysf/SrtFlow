@@ -117,10 +117,16 @@ done
 # 4) **画落点框和真落地共用同一个落点函数。** 各算一遍必然分叉 ——
 #    框画在这条轨、素材落到另一条，是这个仓库反复踩的那一类错。
 #    全仓恰好两处调用：plan(at:) 画框那一处，importFiles 落地那一处。
-LANDING_CALLS="$(grep -rhE 'mediaImportLandings\(' Sources/SrtFlow --include='*.swift' \
+#    AI 放素材（AITimelineEdits.place，2026-09-27）是**用**这份落点的第三个入口、不是第二份账：
+#    它不画框、只落地，单独数 —— 恰好一处；一处都没有反倒要红（那就是 AI 另算了一份落点）。
+AI_EDITS="Sources/SrtFlow/AITimelineEdits.swift"
+LANDING_CALLS="$(grep -rhE 'mediaImportLandings\(' Sources/SrtFlow --include='*.swift' --exclude='AITimelineEdits.swift' \
   | grep -vE '^[[:space:]]*(//|\*)' | grep -v 'func mediaImportLandings' | wc -l | tr -d ' ')"
 [ "$LANDING_CALLS" -eq 2 ] \
   || fail "mediaImportLandings 被调了 ${LANDING_CALLS} 次（应为 2：画框一处、落地一处）—— 多出来的那处就是第二份账"
+AI_LANDING_CALLS="$(grep -vE '^[[:space:]]*(//|\*)' "$AI_EDITS" | grep -cE 'mediaImportLandings\(' || true)"
+[ "$AI_LANDING_CALLS" -eq 1 ] \
+  || fail "AI 放素材（${AI_EDITS}）调了 ${AI_LANDING_CALLS} 次 mediaImportLandings（应为 1）：不走它就是第二份落点账"
 # 起点也只有一份账（指针对中点 / ⌘V 对播放头都在 importFirstStart 里收口）。
 START_CALLS="$(grep -rhE 'importFirstStart\(' Sources/SrtFlow --include='*.swift' \
   | grep -vE '^[[:space:]]*(//|\*)' | grep -v 'func importFirstStart' | wc -l | tr -d ' ')"
