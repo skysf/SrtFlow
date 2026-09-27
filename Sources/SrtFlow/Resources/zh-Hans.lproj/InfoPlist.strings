@@ -5,3 +5,4 @@
 "NSScreenCaptureUsageDescription" = "SrtFlow 会把你选中的显示器、窗口或区域录进视频轨。全程在本机完成，不上传任何内容。";
 "NSAudioCaptureUsageDescription" = "SrtFlow 会把电脑正在播放的声音一起录进视频。全程在本机完成，不上传任何内容。";
 "NSMicrophoneUsageDescription" = "SrtFlow 会在录屏时把你的解说录成一条独立音轨。默认关闭，只有你打开时才会录。";
+"NSAppleEventsUsageDescription" = "你让 AI 助手剪访达里选中的文件时，SrtFlow 会问访达选中的是哪些文件，不会改动访达里的任何东西。";

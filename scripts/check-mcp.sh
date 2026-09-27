@@ -21,6 +21,7 @@
 #  11. read_document（读文稿）：现造 GBK 的 txt、RTF、docx、带字的 PDF 读回来对文字，Pages 要说清楚读不了，分段读的边界。
 #  12. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
 #  13. manage_files（整理文件）：只在点名的文件夹里动、不覆盖、改名保留后缀、不许挪进自己里面；临时目录里真做一遍（含进废纸篓）。
+#  14. open_folder from_finder：选中的东西登记哪个文件夹、只列哪些；Info.plist 有控制访达的用途说明（扫描）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -96,6 +97,16 @@ if [ "$(grep -c 'guard always || AISession.shared.viewMode == .visible else { re
   exit 1
 fi
 echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里；后台模式不摆窗口、不跟着选中"
+
+echo "==> 访达选中：Info.plist 里有控制访达的用途说明，中英文都有"
+# 没有 NSAppleEventsUsageDescription，macOS 不弹「想要控制访达」、直接拒绝，from_finder 永远拿不到东西（方案第 22 条）。
+for file in packaging/Info.plist Sources/SrtFlow/Resources/en.lproj/InfoPlist.strings Sources/SrtFlow/Resources/zh-Hans.lproj/InfoPlist.strings; do
+  if [ "$(grep -c 'NSAppleEventsUsageDescription' "${file}" || true)" -ne 1 ]; then
+    echo "✗ ${file} 里没有（或不止一条）NSAppleEventsUsageDescription：open_folder from_finder 问不了访达" >&2
+    exit 1
+  fi
+done
+echo "   ✓ Info.plist 和两张 InfoPlist.strings 都有控制访达的用途说明"
 
 echo "==> 用户文本文件的编码只走 TextDecoding"
 # .utf16 几乎什么都解得出来，排在 GBK 前面 GBK 就永远轮不到（docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md）。
@@ -218,6 +229,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIAudioLevels.swift \
   Sources/SrtFlow/AIDocumentReader.swift \
   Sources/SrtFlow/AIFileOperations.swift \
+  Sources/SrtFlow/AIFinderSelection.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
   Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
@@ -242,6 +254,7 @@ xcrun swiftc \
   checks/MCP/TextDecodingChecks.swift \
   checks/MCP/DocumentChecks.swift \
   checks/MCP/FileOperationChecks.swift \
+  checks/MCP/FinderChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

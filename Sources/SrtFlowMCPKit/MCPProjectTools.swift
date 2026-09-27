@@ -38,12 +38,16 @@ public enum MCPProjectTools {
                 including every subfolder: videos, images, audio and subtitle files with their duration and size. \
                 Files in this folder can be imported without asking again. New files SrtFlow makes \
                 (exports, projects) go into its "SrtFlow" subfolder. Paths in the result are relative to the folder. \
-                Only pass a folder the user gave you.
+                Only pass a folder the user gave you. When the user says to use what they selected in Finder, pass \
+                from_finder=true instead of path: the selected files are listed (their folder becomes the workspace), \
+                or the selected folder, or the folder open in the front Finder window. macOS asks the user once to let \
+                SrtFlow see Finder.
                 """,
                 input: MCPSchema.object([
                     "path": MCPSchema.string("Absolute path of the folder. ~ means the user's home folder."),
+                    "from_finder": MCPSchema.boolean("Use what the user selected in Finder instead of path."),
                     "max_files": MCPSchema.integer("Stop listing after this many files (default 400).", minimum: 1, maximum: 2000)
-                ], required: ["path"]),
+                ]),
                 readOnly: true
             )
         case .openProject:

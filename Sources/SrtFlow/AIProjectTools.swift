@@ -49,14 +49,39 @@ enum AIProjectTools {
     // MARK: 文件夹
 
     static func openFolder(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
-        let folder = AIFormat.url(fromPath: try args.requiredString("path"), relativeTo: AIWorkspace.shared.current)
+        // 用户说的文件夹（path），或者访达里此刻选中的东西（from_finder，方案第 22 条）。
+        var selected: [URL]?
+        let folder: URL
+        if try args.bool("from_finder") ?? false {
+            let items: [URL]
+            do {
+                items = try await AIFinderSelection.read()
+            } catch let failure as AIFinderSelection.Failure {
+                throw AIToolError(failure.message)
+            }
+            let pick = AIFinderSelection.workspace(for: items) { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && isDirectory.boolValue
+            }
+            folder = pick.folder
+            selected = pick.only
+        } else {
+            guard let path = try args.string("path") else { throw AIToolError("Pass path (the folder the user named), or from_finder=true.") }
+            folder = AIFormat.url(fromPath: path, relativeTo: AIWorkspace.shared.current)
+        }
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else {
             throw AIToolError("\(folder.path) is not a folder on this Mac.")
         }
         let maxFiles = min(max(try args.int("max_files") ?? 400, 1), 2000)
         AIWorkspace.shared.register(folder)
-        let scan = AIMediaScan.scan(folder, maxFiles: maxFiles)
+        // 只列选中的时先扫全（上限放宽），再挑出选中的：不然大文件夹里选中的可能在上限之外。
+        var scan = AIMediaScan.scan(folder, maxFiles: selected == nil ? maxFiles : 20_000)
+        if let selected {
+            let picked = scan.entries.filter { AIFinderSelection.isSelected($0.url, among: selected) }
+            scan.truncated = picked.count > maxFiles
+            scan.entries = Array(picked.prefix(maxFiles))
+        }
         var files: [JSONValue] = []
         var counts: [String: Int] = [:]
         for entry in scan.entries {
@@ -71,6 +96,9 @@ enum AIProjectTools {
             "files": .array(files)
         ]
         if scan.truncated { result["truncated"] = .string("Only the first \(maxFiles) files are listed.") }
+        if let selected {
+            result["from_finder"] = .string("\(selected.count) item(s) selected in Finder; only those are listed.")
+        }
         if scan.hasOutputFolder { result["note"] = "The SrtFlow subfolder (earlier exports and projects) is not listed." }
         return .ok(.object(result))
     }

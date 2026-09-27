@@ -28,6 +28,8 @@
 	<string>SrtFlow records the display, window or region you pick into a video track. Everything stays on this Mac — nothing is uploaded.</string>
 	<key>NSAudioCaptureUsageDescription</key>
 	<string>SrtFlow records the sound your computer is playing into the video. Everything stays on this Mac — nothing is uploaded.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>When you ask your AI assistant to edit the files you selected in Finder, SrtFlow asks Finder which files those are. It does not change anything in Finder.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>SrtFlow records your narration into a separate audio track while screen recording. This is off by default and only runs when you turn it on.</string>
 	<key>NSPrincipalClass</key>

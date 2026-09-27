@@ -13,8 +13,9 @@ public enum MCPInstructions {
     preview jumps to it).
 
     How to work:
-    1. Start with open_folder on the folder the user named (it lists the media inside), or open_project / \
-    new_project. Call get_status first if unsure what is open.
+    1. Start with open_folder on the folder the user named (it lists the media inside; from_finder=true uses \
+    what they selected in Finder), or open_project / new_project. Call get_status first if unsure what is open. \
+    Documents they give you (scripts, outlines) are read with read_document.
     2. Call get_timeline to see tracks, clips and their ids. Ids can be shortened as they are shown.
     3. You cannot see or hear the media any other way: use look to see frames (of a media file to choose shots, \
     or of the timeline to check your edits) and listen to measure the sound (levels, silences).
