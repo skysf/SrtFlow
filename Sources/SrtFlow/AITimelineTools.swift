@@ -66,13 +66,8 @@ enum AITimelineTools {
             }
             return request
         }
-        let outside = requests.compactMap(\.url).filter { !AIWorkspace.shared.allowsReading($0, project: project) }
-        let action = "read:" + Set(outside.map(\.path)).sorted().joined(separator: "|")
-        if !outside.isEmpty, !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-            let names = Set(outside.map(\.path)).sorted().prefix(5).joined(separator: ", ")
-            return AIConfirmations.shared.ask(
-                "SrtFlow needs to read files outside the folder you opened (\(names)). Allow it?", action: action
-            )
+        if let ask = try AIWorkspace.shared.confirmReading(requests.compactMap(\.url), verb: "read", args: args, project: project) {
+            return ask
         }
         // 字幕文件不占轨：挂成字幕轨（和把 .srt 拖进来同一条路，换掉原来的字幕，一步撤销）。
         let subtitles = requests.compactMap { $0.isSubtitle ? $0.url : nil }

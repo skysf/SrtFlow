@@ -26,6 +26,9 @@ public enum MCPInstructions {
     5. export_video, then wait with get_job. If the video uses library music, give the user the credit lines \
     (music_credits in get_timeline) for the video's description.
 
+    Files that need no editing do not need a project: compress_videos, burn_subtitles (a subtitle file into a \
+    video) and convert_subtitles work on the files directly.
+
     Conventions: times are seconds on the timeline, except source_in/source_out which are seconds inside the \
     media file. V1 is the main video track, V2 and up are video tracks drawn above it, A1 and up are audio \
     tracks. x/y positions are fractions of the frame.

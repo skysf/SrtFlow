@@ -117,14 +117,8 @@ enum AIListenTool {
     ) async throws -> AIToolResult {
         let url = AIWorkspace.shared.resolve(path)
         guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("\(path) does not exist.") }
-        if !AIWorkspace.shared.allowsReading(url, project: project) {
-            let action = "read:" + url.standardizedFileURL.path
-            if !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-                return AIConfirmations.shared.ask(
-                    "SrtFlow needs to listen to \(url.lastPathComponent), which is outside the folder you opened. Allow it?",
-                    action: action
-                )
-            }
+        if let ask = try AIWorkspace.shared.confirmReading([url], verb: "listen to", args: args, project: project) {
+            return ask
         }
         guard let peaks = await waveform(of: url, until: Date().addingTimeInterval(waitSeconds)) else {
             throw AIToolError("\(url.lastPathComponent) has no sound SrtFlow can read.")

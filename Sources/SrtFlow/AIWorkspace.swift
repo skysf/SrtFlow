@@ -46,6 +46,23 @@ final class AIWorkspace {
         return project.state.mediaURLs.contains { $0.standardizedFileURL.path == path }
     }
 
+    /// 读点名文件夹以外的文件要用户点头：都能读就 nil，否则回 needs_confirmation。令牌绑着这一组文件
+    /// （换了文件拿它来不认）。`verb` 写进问题里：「read」「look at」「listen to」。
+    func confirmReading(
+        _ urls: [URL], verb: String, args: AIToolArguments, project: VideoEditProject
+    ) throws -> AIToolResult? {
+        let outside = Set(urls.map(\.standardizedFileURL).filter { !allowsReading($0, project: project) }.map(\.path)).sorted()
+        guard !outside.isEmpty else { return nil }
+        let action = "read:" + outside.joined(separator: "|")
+        if AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) { return nil }
+        var names = outside.prefix(5).map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
+        if outside.count > 5 { names += " and \(outside.count - 5) more" }
+        let which = outside.count == 1 ? "which is" : "which are"
+        return AIConfirmations.shared.ask(
+            "SrtFlow needs to \(verb) \(names), \(which) outside the folder you opened. Allow it?", action: action
+        )
+    }
+
     /// 新东西默认从哪开始：点名的文件夹 → 工程的家 → 「下载」（规则在 DefaultFolder）。
     /// 手动的「打开工程」「存储为」和导出面板第一次用的位置也从这里拿。
     func startFolder(project: VideoEditProject) -> URL {

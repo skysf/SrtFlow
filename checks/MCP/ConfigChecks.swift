@@ -143,6 +143,12 @@ private func vocabularyChecks() {
     checkEqual(MCPVocabulary.clipAnimations, ClipPresetKind.allCases.map(\.rawValue), "clip animations match ClipPresetKind")
     checkEqual(MCPVocabulary.soundScenes, ["none"] + SoundSceneKind.allCases.map(\.rawValue), "sound scenes match SoundSceneKind")
     checkEqual(MCPVocabulary.markerColors, MarkerColor.allCases.map(\.rawValue), "marker colours match MarkerColor")
+    checkEqual(MCPVocabulary.frameRateLimits, FrameRateLimit.allCases.map { $0.value.map { "\(Int($0))" } ?? "original" },
+               "encode frame rates match FrameRateLimit")
+    checkEqual(MCPVocabulary.subtitleFormats.sorted(), SubtitleFormat.allCases.map(\.rawValue).sorted(),
+               "subtitle formats match SubtitleFormat")
+    checkEqual(Set(AIEncodeOptions.crf.keys), Set(MCPVocabulary.encodeQualities), "every advertised quality has a CRF")
+    checkEqual(Set(AIEncodeOptions.hardwareQuality.keys), Set(MCPVocabulary.encodeQualities), "and a hardware quality")
     checkEqual(AIClipDetails.presetNames, MCPVocabulary.clipAnimations, "edit_clip reads the same animation names it advertises")
     checkEqual(AIClipDetails.sceneNames, MCPVocabulary.soundScenes, "edit_clip reads the same scene names it advertises")
     for position in MCPVocabulary.textPositions {

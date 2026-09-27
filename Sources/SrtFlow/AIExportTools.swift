@@ -39,7 +39,7 @@ enum AIExportTools {
 
         var settings = exporter.settings
         if let resolution = try args.choice("resolution", from: MCPVocabulary.resolutions) {
-            settings.resolution = resolutionLimit(resolution)
+            settings.resolution = AIEncodeOptions.resolution(resolution)
         }
         // 烧不烧和面板同一个开关：烧的是时间线上看得见的那几条轨；不烧 = 两只眼睛都关。
         var options = SubtitleExportOptions()
@@ -95,12 +95,6 @@ enum AIExportTools {
         )
         return AIWorkspace.shared.outputFolder(.exports, project: project)
             .appendingPathComponent(stem).appendingPathExtension(fileExtension)
-    }
-
-    private static func resolutionLimit(_ name: String) -> ResolutionLimit {
-        ResolutionLimit.allCases.first { limit in
-            limit.maxShortSide.map { "\($0)p" } == name
-        } ?? .original
     }
 
     // MARK: get_job / cancel_job

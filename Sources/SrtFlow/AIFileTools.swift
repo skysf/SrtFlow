@@ -16,14 +16,8 @@ enum AIFileTools {
         let path = try args.requiredString("file")
         let url = AIWorkspace.shared.resolve(path)
         guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("\(path) does not exist.") }
-        if !AIWorkspace.shared.allowsReading(url, project: project) {
-            let action = "read:" + url.standardizedFileURL.path
-            if !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-                return AIConfirmations.shared.ask(
-                    "SrtFlow needs to read \(url.lastPathComponent), which is outside the folder you opened. Allow it?",
-                    action: action
-                )
-            }
+        if let ask = try AIWorkspace.shared.confirmReading([url], verb: "read", args: args, project: project) {
+            return ask
         }
         let from = max(0, try args.int("from_char") ?? 0)
         let limit = min(max(try args.int("max_chars") ?? defaultMaxCharacters, 500), 100_000)

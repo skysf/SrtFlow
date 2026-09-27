@@ -170,6 +170,29 @@ if [ "$(grep -c 'AIProjectTools.saveIfNeverSaved(project, after: result)' "${ROU
 fi
 echo "   ✓ 没有「影片」；三处默认位置走同一个起点；改工程的调用之后都会给没存过的工程存盘"
 
+echo "==> 压缩 / 烧录：AI 的条目自带设置和输出位置，不替用户开跑"
+# AI 给的参数只用于它排的那几条（不改页面上记住的设置），页面上改设置 / 输出文件夹不碰 AI 的条目；
+# 队列停着、里面有用户自己排了没开始的就不排（start() 会把等着的一起跑掉）。docs/architecture/ai-control-mcp.md 第四节第 24 条。
+QUEUE_FILE="Sources/SrtFlow/EncodeQueue.swift"
+ENCODE_TOOLS="Sources/SrtFlow/AIEncodeTools.swift"
+if [ "$(grep -c 'settings: item.ownSettings ?? settings' "${QUEUE_FILE}" || true)" -ne 1 ]; then
+  echo "✗ ${QUEUE_FILE} 跑一条时没先用它自带的设置（item.ownSettings ?? settings）：AI 给的画质 / 分辨率会被页面上的盖掉" >&2
+  exit 1
+fi
+if ! grep -q "status == .waiting && items\[index\].ownSettings == nil" "${QUEUE_FILE}"; then
+  echo "✗ ${QUEUE_FILE} 的 refreshOutputPaths 会改 AI 条目的输出位置（结果里告诉 AI 的路径就不对了）" >&2
+  exit 1
+fi
+if ! grep -q 'status == .waiting && \$0.ownSettings == nil' "${ENCODE_TOOLS}"; then
+  echo "✗ ${ENCODE_TOOLS} 不再检查用户自己排着没开始的条目：AI 一 start 就替用户开跑了" >&2
+  exit 1
+fi
+if grep -nE 'queue\.(settings|burnInStyle|outputDirectory|attachSoftSubtitleTrack) = ' "${ENCODE_TOOLS}"; then
+  echo "✗ ${ENCODE_TOOLS} 改了页面上记住的设置：AI 的参数只许用于它自己那几条" >&2
+  exit 1
+fi
+echo "   ✓ 自带设置先用、输出位置不被重算、有用户没开始的条目就不排、不改页面上的设置"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -238,6 +261,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIDuplicate.swift \
   Sources/SrtFlow/AIMusicCredits.swift \
   Sources/SrtFlow/AudioLibraryManifest.swift \
+  Sources/SrtFlow/AIEncodeOptions.swift \
   Sources/SrtFlow/VideoEditClipboardPayload.swift \
   Sources/SrtFlow/VideoEditClipboardPaste.swift \
   Sources/SrtFlow/VideoEditClipboardLanes.swift \
@@ -281,6 +305,7 @@ xcrun swiftc \
   checks/MCP/ShapeChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \
+  checks/MCP/EncodeChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

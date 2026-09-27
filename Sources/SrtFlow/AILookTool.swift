@@ -93,14 +93,8 @@ enum AILookTool {
     ) async throws -> AIToolResult {
         let url = AIWorkspace.shared.resolve(path)
         guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("\(path) does not exist.") }
-        if !AIWorkspace.shared.allowsReading(url, project: project) {
-            let action = "read:" + url.standardizedFileURL.path
-            if !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-                return AIConfirmations.shared.ask(
-                    "SrtFlow needs to look at \(url.lastPathComponent), which is outside the folder you opened. Allow it?",
-                    action: action
-                )
-            }
+        if let ask = try AIWorkspace.shared.confirmReading([url], verb: "look at", args: args, project: project) {
+            return ask
         }
         var frames: [AIFrameSampler.Frame]
         if MediaFileTypes.isImage(url) {

@@ -58,6 +58,15 @@ public enum MCPVocabulary {
 
     public static let textAlignments = ["left", "center", "right"]
 
+    /// compress_videos / burn_subtitles 的画质三档（AIEncodeOptions 换成 CRF / 硬件质量）。
+    public static let encodeQualities = ["small", "balanced", "high"]
+
+    /// 压缩 / 烧录的帧率上限（只降不升，`FrameRateLimit`）。
+    public static let frameRateLimits = ["original", "60", "30", "24"]
+
+    /// convert_subtitles 能转成的格式（`SubtitleFormat` 的扩展名）。
+    public static let subtitleFormats = ["srt", "vtt", "ass", "ssa", "txt"]
+
     public static var filterPresetIDs: [String] { filterPresets.map(\.id) }
 
     /// 滤镜说明里那一串「名字: 样子」。

@@ -37,6 +37,9 @@ struct EncodeItem: Identifiable {
     var outputBytes: Int64?
     var errorMessage: String?
     var burnIn: BurnInRequest?
+    /// AI 排进来的条目自带设置（只用于这一条，不动页面上记住的那套），输出位置也是它自己定的：
+    /// 页面上改设置、改输出文件夹都不碰它。nil = 用户自己加的，跟着队列走。
+    var ownSettings: VideoEncodeSettings?
 
     var isActive: Bool { status == .probing || status == .running }
     var isDone: Bool { status == .finished || status == .failed || status == .cancelled }
@@ -123,6 +126,16 @@ final class EncodeQueue: ObservableObject {
         }
     }
 
+    /// AI 用：带着自己的设置和输出位置排一条（输出位置由调用方挑好、不撞）。同一个文件已经在排队就 nil。
+    func add(_ url: URL, output: URL, settings: VideoEncodeSettings, burnIn: BurnInRequest? = nil) -> EncodeItem.ID? {
+        guard !items.contains(where: { $0.inputURL == url && !$0.isDone }) else { return nil }
+        var item = EncodeItem(inputURL: url, outputURL: output, burnIn: burnIn)
+        item.ownSettings = settings
+        items.append(item)
+        probeInfo(for: item.id)
+        return item.id
+    }
+
     func remove(id: EncodeItem.ID) {
         if currentItemID == id { cancel(id: id) }
         items.removeAll { $0.id == id }
@@ -168,7 +181,7 @@ final class EncodeQueue: ObservableObject {
 
     /// 设置变了要重算输出名（比如从压缩切到烧字幕），但只动还没跑的。
     func refreshOutputPaths() {
-        for index in items.indices where items[index].status == .waiting {
+        for index in items.indices where items[index].status == .waiting && items[index].ownSettings == nil {
             items[index].outputURL = proposedOutputURL(for: items[index].inputURL)
         }
     }
@@ -280,7 +293,7 @@ final class EncodeQueue: ObservableObject {
         var command = FFmpegCommand(
             inputPath: item.inputURL.path,
             outputPath: item.outputURL.path,
-            settings: settings,
+            settings: item.ownSettings ?? settings,
             burnIn: burnInPaths,
             softSubtitlePath: softSubtitlePath,
             hasAudio: info.hasAudio,

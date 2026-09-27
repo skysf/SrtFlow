@@ -96,6 +96,9 @@ final class AIToolRouter {
         case .look: return try await AILookTool.look(args, project)
         case .listen: return try await AIListenTool.listen(args, project)
         case .findAudio: return try await AIAudioLibraryTools.findAudio(args)
+        case .compressVideos: return try await AIEncodeTools.compress(args, project)
+        case .burnSubtitles: return try await AIEncodeTools.burnIn(args, project)
+        case .convertSubtitles: return try AIEncodeTools.convert(args, project)
         case .addClips: return try await AITimelineTools.addClips(args, project)
         case .editClip:
             // 先看画面（去黑边、对准主体要抽帧），再同步提交：包进撤销组的那一段不许有 await。
@@ -135,7 +138,7 @@ final class AIToolRouter {
             case .setView:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .openFolder, .readDocument, .manageFiles, .getTimeline, .look, .listen, .findAudio, .getSubtitles,
-                 .saveProject, .exportVideo:
+                 .saveProject, .exportVideo, .compressVideos, .burnSubtitles, .convertSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
