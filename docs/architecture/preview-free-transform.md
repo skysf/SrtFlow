@@ -73,6 +73,14 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
 工厂是 actor 单飞：唯一临时文件 → 校验 → 原子替换，消费前还要再验一遍，
 「文件存在」不等于「文件可用」。
 
+**往合成轨上接素材的三条规矩**（`CompositionTime`，2026-09-27）：合成器把素材、空白、定格接到合成轨上时
+① 秒换成 1/600 秒的格子一律**四舍五入**（`CMTime(seconds:preferredTimescale:)` 向零截断，5.3 + 1.4 =
+6.699999999999999 会落在前一格）；② **只往合成轨真正的末尾后面接**，不信 Double 游标 —— `insertTimeRange` /
+`insertEmptyTimeRange` 是插入，落点早于末尾就把已有内容挤走、而且不报错；③ 合成完**每条合成轨裁到时间线
+总长** —— 视频合成的指令只铺到总长，哪条轨多一格，合成就判无效，预览只剩黑底（叠层照样画在上面）。
+案例：[加了音效预览整个黑屏](../bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)，
+回归在 `scripts/check-preview-composition.sh` 的 `AppendOnly.swift`。
+
 **叠化 × Transform 的合成模型**：转场语义上作用在**压平到黑底之后**的段上
 （导出就是这么做的：先合黑底再 xfade）。预览的叠化按接缝分两条路径，判定
 用 `coversCanvasOpaquely(canvas:isOverlay:)`：

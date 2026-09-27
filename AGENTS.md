@@ -98,7 +98,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）**、**缩放的锚点（捏合钉指针、工具栏钉播放头）与纵向缩放（统一行高）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)（锚点从时间线自己的滚动几何量，别按坐标 hitTest 找滚动视图；纵向缩放统一成一个高度）、[锚点从来没生效](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
-| 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
+| 预览变换、叠化、上层视频轨、导出滤镜、**预览合成往合成轨上接素材（秒换格子、只从末尾接、合成完裁到总长）** | [预览自由变换](docs/architecture/preview-free-transform.md)（「一份时间账」：多一格就黑屏）、[加了音效预览整个黑屏](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 从 Finder 拖文件 / ⌘V 粘贴文件进时间线、导入落点 | [拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[外部拖入被内层落点独占](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)（结论已更正）、[拖动手势](docs/architecture/timeline-drag-gestures.md)（主轨保序、§5e-2 唯一落点）、[视频轨对等化](docs/architecture/video-tracks.md) |
 | 时间线上的复制 / 剪切 / 粘贴（⌘C ⌘X ⌘V、编辑菜单、块和轨道空白处的右键菜单）、剪贴板类型、粘贴落点（鼠标优先、否则播放头）、从旧段构造新段（分割 / 复制，别漏字段） | [复制粘贴](docs/architecture/timeline-clipboard.md)（剪贴板只有一套、不写纯文本；每一样换新身份走编码往返；撞上了往上抬、几组保住上下关系）、[方案](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md)、[分割丢了隐藏和音频库的键](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
 | 时间线上的任何拖放落点（`.onDrop`：文件 / 滤镜 / 音频库 / 转场卡片）、新的自定义拖放 / 剪贴板类型 | [拖动手势 §5e-2](docs/architecture/timeline-drag-gestures.md)（整条时间线只许一个 `.onDrop`；自定义类型必须在 Info.plist 声明；不能放回 `.forbidden` 不回 `.cancel`）、[转场拖放被 `.cancel` 取消](docs/bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[自定义类型没声明](docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md)、[GUI 冒烟流程](docs/testing/gui-smoke-testing.md)（落点路由探针） |
@@ -152,7 +152,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
   不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许：
   `scripts/check-player-clock.sh`。
-- 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开：
+- 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开，
+  还有往合成轨上接素材只从末尾接、合成完正好和时间线一样长（多一格视频合成就无效 → 黑屏）：
   `scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
@@ -442,6 +443,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-26 自动检测语言拿音效当探针，明明是英语却检测不出来](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md) — 探针只取可听快照里第一段读得出来的，主轨在前，AI 视频的镜头只有音效，每个候选语言都 0 分。改成长的先、每段先用已装语言短转写听一听有没有人声（最多 6 段）。**「读得出来」不等于「有人说话」：挑样本要先确认它带着要判的东西。**
 - [2026-09-27 AI 的改动撤一步，整条时间线空了](docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md) — 撤销管理器按**用户事件**分组，AI 从 socket 来的改动不是事件、后台的 App 又一个事件都没有，所有步堆进同一组；第一版手动关掉自动开的组，下一次登记就抛异常、App 闪退（自检在命令行里当场崩出来）。改成每个改动工具自己显式开一组、暂时绕开按事件分组，包的那一段必须同步。**「按事件分组」只对用户事件成立；别去关别人自动开的组。**
 - [2026-09-27 AI 翻译按旧的原文语言去翻，等下载时又一声不吭](docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md) — AI 把原文改写成中文，工程里记的还是英文，系统按「英文→韩文」去翻；缺语言时 macOS 的下载框只能由用户点，框在后面、任务停在 0%、谁都在等，系统框的进度条还会停。改成按字判断原文语言、翻之前先查装没装、要下载就把 SrtFlow 摆到前面并在结果 / 进度 / 提示条里写明「去点下载」、自己每两秒问一次真实状态。**给 AI 用的入口按内容现判、别信旧标签；要人动手的地方必须说出来。**
+- [2026-09-27 加了几段音效，预览整个黑屏（标题照样在）](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md) — 合成器用 `CMTime(seconds:)` 换格子会**截断**：5.3 + 1.4 = 6.699999999999999 落在前一格，补空白时从那儿插进去，切下前一段音效的最后一格、一路挤到全片最后，合成比画面长 1/600 秒，视频合成判无效 → 预览只剩黑底，正式版一样。改成四舍五入、只往合成轨真正的末尾后面接、合成完裁到总长（`CompositionTime`）。二分到「中间空一截 + 最后一段收在结尾」这个组合才找到。**CMTime 截断、AVFoundation 的 insert 会挤走已有内容而不报错、合成总长多一格就黑屏。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

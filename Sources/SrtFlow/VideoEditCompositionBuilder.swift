@@ -393,6 +393,8 @@ enum VideoEditCompositionBuilder {
             }
         }
 
+        // 哪条合成轨比总长多出一格，视频合成就铺不满、判无效 → 预览黑屏（CompositionTime 第 3 条）。
+        CompositionTime.trim(composition, to: time(state.duration))
         // 清掉没有任何内容的合成轨（A/B 双轨和音轨是无条件建的）。
         // AVPlayer 容忍空轨，AVAssetExportSession 会报 InvalidVideoComposition
         //（表述是 "Operation Stopped"）—— 预渲染走导出会话，必须干净。
@@ -434,7 +436,7 @@ enum VideoEditCompositionBuilder {
     // MARK: - 小工具
 
     private static func time(_ seconds: Double) -> CMTime {
-        CMTime(seconds: max(0, seconds), preferredTimescale: 600)
+        CompositionTime.ticks(seconds)
     }
 
     static func renderSize(for state: TimelineState) -> CGSize {
@@ -470,16 +472,15 @@ enum VideoEditCompositionBuilder {
         let holdTail = clip.renderHoldTail
 
         let trackRange = (try? await source.load(.timeRange))
-            ?? CMTimeRange(start: .zero, duration: CMTime(seconds: clip.assetDuration, preferredTimescale: 600))
+            ?? CMTimeRange(start: .zero, duration: time(clip.assetDuration))
         let trackEnd = trackRange.end.seconds
         let start = max(clip.renderSourceStart, max(0, trackRange.start.seconds))
         let available = trackEnd - start
         guard available > 0.01, clip.renderSourceDuration > 0.01 else { return false }
         let sourceDuration = min(clip.renderSourceDuration, available)
 
-        if at > cursor + 0.0005 {
-            track.insertEmptyTimeRange(CMTimeRange(start: time(cursor), end: time(at)))
-        }
+        // 只往合成轨真正的末尾后面接，不信 Double 游标（CompositionTime）。
+        CompositionTime.pad(track, to: time(at))
         let isVideo = source.mediaType == .video
         var position = at
         if holdHead > 0.0005 {
@@ -488,17 +489,14 @@ enum VideoEditCompositionBuilder {
                     source: source, frameAt: start, duration: holdHead, into: track, at: position
                 )
             } else {
-                track.insertEmptyTimeRange(
-                    CMTimeRange(start: time(position), duration: CMTime(seconds: holdHead, preferredTimescale: 600))
-                )
+                CompositionTime.pad(track, to: time(position + holdHead))
             }
             position += holdHead
         }
+        let insertAt = CompositionTime.appendPoint(time(position), on: track)
         do {
             try track.insertTimeRange(
-                CMTimeRange(start: time(start), duration: CMTime(seconds: sourceDuration, preferredTimescale: 600)),
-                of: source,
-                at: time(position)
+                CMTimeRange(start: time(start), duration: time(sourceDuration)), of: source, at: insertAt
             )
         } catch {
             return false
@@ -508,8 +506,7 @@ enum VideoEditCompositionBuilder {
         let realDuration = sourceDuration / max(0.05, clip.speed)
         if abs(clip.speed - 1) > 0.001 {
             track.scaleTimeRange(
-                CMTimeRange(start: time(position), duration: CMTime(seconds: sourceDuration, preferredTimescale: 600)),
-                toDuration: CMTime(seconds: realDuration, preferredTimescale: 600)
+                CMTimeRange(start: insertAt, duration: time(sourceDuration)), toDuration: time(realDuration)
             )
         }
         position += realDuration
@@ -535,15 +532,14 @@ enum VideoEditCompositionBuilder {
         into track: AVMutableCompositionTrack, at: Double
     ) async {
         guard duration > 0.0005 else { return }
-        let frame = CMTime(seconds: await frameDuration(of: source), preferredTimescale: 600)
-        let target = CMTime(seconds: duration, preferredTimescale: 600)
+        let frame = time(await frameDuration(of: source))
+        let target = time(duration)
+        let start = CompositionTime.appendPoint(time(at), on: track)
         do {
-            try track.insertTimeRange(
-                CMTimeRange(start: time(sourceTime), duration: frame), of: source, at: time(at)
-            )
-            track.scaleTimeRange(CMTimeRange(start: time(at), duration: frame), toDuration: target)
+            try track.insertTimeRange(CMTimeRange(start: time(sourceTime), duration: frame), of: source, at: start)
+            track.scaleTimeRange(CMTimeRange(start: start, duration: frame), toDuration: target)
         } catch {
-            track.insertEmptyTimeRange(CMTimeRange(start: time(at), duration: target))
+            CompositionTime.pad(track, to: start + target)
         }
     }
 
