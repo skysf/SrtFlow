@@ -70,6 +70,10 @@ if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AIClipTools\.ap
   echo "✗ ${ROUTER} 里 edit_clip 的提交没包在 AIUndoGrouping.step 里" >&2
   exit 1
 fi
+if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AISpeechCutTool\.apply\(plan, project\) \}' "${ROUTER}" || true)" -ne 1 ]; then
+  echo "✗ ${ROUTER} 里 cut_speech 的提交没包在 AIUndoGrouping.step 里" >&2
+  exit 1
+fi
 if [ "$(grep -cE 'AIUndoGrouping\.step\(project\.effectiveUndoManager\)' Sources/SrtFlow/AITimelineTools.swift || true)" -ne 1 ]; then
   echo "✗ add_clips 那一次 perform 没包在 AIUndoGrouping.step 里" >&2
   exit 1
@@ -109,7 +113,7 @@ if grep -nE '^ +perform\(rebuildsPreview: false\) \{ \$0\.remove\(clipID\) \}' S
   echo "✗ 静帧转换失败删占位块的 perform 没包在 AIUndoGrouping.step 里（异步落账）" >&2
   exit 1
 fi
-echo "   ✓ 11 个同步的改动工具 + edit_clip / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
+echo "   ✓ 11 个同步的改动工具 + edit_clip / cut_speech / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
 echo "     删占位块这些异步落账也各是一步；没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
@@ -290,6 +294,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIEncodeOptions.swift \
   Sources/SrtFlow/AITranscriptFormat.swift \
   Sources/SrtFlow/AudioBeatTracker.swift \
+  Sources/SrtFlow/AISpeechCuts.swift \
   Sources/SrtFlow/VideoEditClipboardPayload.swift \
   Sources/SrtFlow/VideoEditClipboardPaste.swift \
   Sources/SrtFlow/VideoEditClipboardLanes.swift \
@@ -336,6 +341,7 @@ xcrun swiftc \
   checks/MCP/EncodeChecks.swift \
   checks/MCP/TranscriptFormatChecks.swift \
   checks/MCP/BeatChecks.swift \
+  checks/MCP/SpeechCutChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

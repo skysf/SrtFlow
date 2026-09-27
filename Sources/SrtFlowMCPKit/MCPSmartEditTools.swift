@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 工具清单：分析数据 + 智能剪（方案第 13 条、第 3 块）
 //
-// 管什么：transcribe（词级时间）的说明文字和参数。以后 cut_speech（按文字剪、删停顿和口头禅）、cut_to_beat（踩点）也放这一组。
+// 管什么：transcribe（词级时间）、cut_speech（按文字剪、删停顿和口头禅）的说明文字和参数；以后 cut_to_beat（踩点）也放这一组。
 // 静音段和鼓点在 listen 里（MCPSenseTools）。
 // 不管什么：怎么转写、读哪份缓存（App 里的 AITranscribeTool）。
 
@@ -34,6 +34,34 @@ enum MCPSmartEditTools {
                     "confirm_token": MCPSchema.confirmToken
                 ]),
                 readOnly: true
+            )
+        case .cutSpeech:
+            let range = MCPSchema.object([
+                "start": MCPSchema.number("Timeline seconds.", minimum: 0),
+                "end": MCPSchema.number("Timeline seconds.", minimum: 0)
+            ], required: ["start", "end"])
+            return MCPToolDefinition(
+                .cutSpeech, title: "Cut speech",
+                description: """
+                Tighten a talking clip on V1 in one step: cut out ranges (by text — pass sentence or word times from \
+                transcribe), or keep only some ranges; shorten pauses; remove filler words (um, uh, 嗯, 呃) and words \
+                said twice in a row. Cuts land in the gaps between words, never inside one. The clip becomes pieces \
+                placed back to back and later V1 clips move left; the clip's linked sound is cut with it even when \
+                linking is off. Music, texts and subtitles on other tracks do not move — regenerate subtitles \
+                afterwards (the transcript is cached, so it is quick). Filler words and repeats need transcribe first. \
+                One undo step. Returns what was removed (times before the cut) and the new pieces.
+                """,
+                input: MCPSchema.object([
+                    "clip_id": MCPSchema.string("The talking clip on V1."),
+                    "remove": MCPSchema.array(of: range, "Ranges to cut out."),
+                    "keep": MCPSchema.array(of: range, "Keep only these ranges of the clip; the rest of it is cut."),
+                    "remove_pauses": MCPSchema.number("Shorten pauses longer than this many seconds (e.g. 0.6).", minimum: 0.2),
+                    "pause_left": MCPSchema.number("Seconds of each shortened pause to leave (default 0.25).", minimum: 0, maximum: 2),
+                    "remove_fillers": MCPSchema.boolean("Cut filler words (needs transcribe first)."),
+                    "remove_repeats": MCPSchema.boolean("Cut words said twice in a row, like \"I I\" (needs transcribe first)."),
+                    "silence_db": MCPSchema.number("Quieter than this counts as a pause (default: measured from the clip).", minimum: -80, maximum: -10),
+                    "language": MCPSchema.string("Language of the transcript to use (default auto).")
+                ], required: ["clip_id"])
             )
         default:
             preconditionFailure("\(name.rawValue) is described in another group")

@@ -168,7 +168,7 @@ enum AIListenTool {
 
     /// 一个文件的波形（画时间线用的那一份，同一个文件只读一遍）。等到读完或者到点；到点时给出已经读到的部分。
     /// 读不了（没有音轨）返回 nil。
-    private static func waveform(of url: URL, until deadline: Date) async -> WaveformPeaks? {
+    static func waveform(of url: URL, until deadline: Date) async -> WaveformPeaks? {
         let reader = Task { () -> WaveformPeaks? in
             var latest: WaveformPeaks?
             for await snapshot in await WaveformStore.shared.peaks(for: url) { latest = snapshot }

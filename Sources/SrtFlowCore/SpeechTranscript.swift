@@ -19,6 +19,15 @@ public enum SpeechTranscript {
         public var sourceStart: Double
         public var sourceEnd: Double
         public var confidence: Double?
+
+        public init(text: String, start: Double, end: Double, sourceStart: Double, sourceEnd: Double, confidence: Double?) {
+            self.text = text
+            self.start = start
+            self.end = end
+            self.sourceStart = sourceStart
+            self.sourceEnd = sourceEnd
+            self.confidence = confidence
+        }
     }
 
     public struct Sentence: Hashable, Sendable {
