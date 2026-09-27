@@ -54,7 +54,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 1. **轻量化优先。** 优先复用 macOS 原生能力（AVFoundation、AppKit、SwiftUI），
    不随意引入第三方依赖。需要自写合成器、自建文件管理等重量级方案时，先征得用户
-   同意。既有产品决策：文件管理交给 Finder；混合模式不为此自建 Metal 合成器。
+   同意。既有产品决策：界面上的文件管理交给 Finder（AI 只在用户开口时帮忙整理点名文件夹里的文件，删除先问、进废纸篓，
+   见 [MCP 方案](docs/plans/2026-09-27-mcp.md) 第 23、24 条）；混合模式不为此自建 Metal 合成器。
 2. **复用优先，抽象克制。** 同一模式出现第二次时，按仓库现有粒度抽成共享组件；
    没有真实第二用例时不提前制造泛型和框架。参考：`ResizableFrameBox`、
    `LenientCodableEnum`、`liveApply` / `perform`。

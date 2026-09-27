@@ -20,6 +20,7 @@
 #      交界不漏能量）、响度曲线、片段在时间线上听到的（变速换时间、段音量和轨道推子乘进去）。
 #  11. read_document（读文稿）：现造 GBK 的 txt、RTF、docx、带字的 PDF 读回来对文字，Pages 要说清楚读不了，分段读的边界。
 #  12. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
+#  13. manage_files（整理文件）：只在点名的文件夹里动、不覆盖、改名保留后缀、不许挪进自己里面；临时目录里真做一遍（含进废纸篓）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -216,6 +217,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIFrameDescription.swift \
   Sources/SrtFlow/AIAudioLevels.swift \
   Sources/SrtFlow/AIDocumentReader.swift \
+  Sources/SrtFlow/AIFileOperations.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
   Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
@@ -239,6 +241,7 @@ xcrun swiftc \
   checks/MCP/ListenChecks.swift \
   checks/MCP/TextDecodingChecks.swift \
   checks/MCP/DocumentChecks.swift \
+  checks/MCP/FileOperationChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

@@ -85,6 +85,7 @@ final class AIToolRouter {
         case .setView: return try AIProjectTools.setView(args)
         case .openFolder: return try await AIProjectTools.openFolder(args, project)
         case .readDocument: return try await AIFileTools.readDocument(args, project)
+        case .manageFiles: return try AIFileTools.manageFiles(args, project)
         case .openProject: return try await AIProjectTools.openProject(args, project)
         case .newProject: return try AIProjectTools.newProject(args, project)
         case .saveProject: return try AIProjectTools.saveProject(args, project)
@@ -126,7 +127,8 @@ final class AIToolRouter {
                 (serialized, presentsEditor, startsRound) = (false, false, false)
             case .setView:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
-            case .openFolder, .readDocument, .getTimeline, .look, .listen, .getSubtitles, .saveProject, .exportVideo:
+            case .openFolder, .readDocument, .manageFiles, .getTimeline, .look, .listen, .getSubtitles, .saveProject,
+                 .exportVideo:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)

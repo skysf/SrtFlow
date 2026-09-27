@@ -17,6 +17,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case setView = "set_view"
     case openFolder = "open_folder"
     case readDocument = "read_document"
+    case manageFiles = "manage_files"
     case openProject = "open_project"
     case newProject = "new_project"
     case saveProject = "save_project"
@@ -50,7 +51,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
             return MCPTimelineTools.definition(for: self)
         case .look, .listen:
             return MCPSenseTools.definition(for: self)
-        case .readDocument:
+        case .readDocument, .manageFiles:
             return MCPFileTools.definition(for: self)
         case .generateSubtitles, .translateSubtitles, .getSubtitles, .editSubtitles,
              .exportVideo, .getJob, .cancelJob:
