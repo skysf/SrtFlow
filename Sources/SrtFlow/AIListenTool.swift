@@ -5,7 +5,8 @@ import SrtFlowMCPKit
 // MARK: - 工具：listen（「听」）
 //
 // 管什么：AI 听不见，就把声音量给它：一段片段在成片里听到的（段音量 / 曲线、渐入渐出、轨道推子都算上）、一个素材文件、
-// 或者整条时间线上每一段有声音的片段 —— 电平（有声音部分的 RMS）、峰值、静音段、最响的地方、一条粗的响度曲线。
+// 或者整条时间线上每一段有声音的片段 —— 电平（有声音部分的 RMS）、峰值、静音段、最响的地方、一条粗的响度曲线；
+// 要鼓点时（beats，只对一段片段或一个文件）再给速度、每一拍、小节头（AIBeats，另读一遍 11025 Hz 的单声道）。
 // 数据是画波形那一份（WaveformStore：一个文件读一遍，峰值 + 均方），不另读。方案第 31 条（2026-09-27 实测：
 // AI 拿用户电脑上的 ffmpeg 量响度）。
 // 不管什么：怎么算（AIAudioLevels）、波形怎么读（WaveformStore）、说明文字（SrtFlowMCPKit/MCPSenseTools.swift）。
@@ -22,7 +23,7 @@ enum AIListenTool {
     static func listen(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
         let silenceDB = min(max(try args.double("silence_db") ?? -45, -80), -10)
         let minSilence = min(max(try args.double("min_silence") ?? 0.5, 0.1), 10)
-        let settings = Settings(silenceDB: silenceDB, minSilence: minSilence)
+        let settings = Settings(silenceDB: silenceDB, minSilence: minSilence, beats: try args.bool("beats") ?? false)
         if let path = try args.string("file") {
             return try await listenToFile(path, args, project, settings)
         }
@@ -33,12 +34,15 @@ enum AIListenTool {
             guard let clip = state.clip(with: id) else { throw AIToolError("\(clipText) is not a clip.") }
             return .ok(.object(await listenToClip(clip, state, ids, settings, detailed: true)))
         }
+        guard !settings.beats else { throw AIToolError("beats needs a clip_id (a music clip) or a file.") }
         return .ok(try await listenToTimeline(state, ids, settings))
     }
 
     private struct Settings {
         var silenceDB: Double
         var minSilence: Double
+        /// 也找鼓点（速度、每一拍、小节头；AIBeats）。只对一段片段或一个文件。
+        var beats = false
     }
 
     // MARK: 片段
@@ -76,6 +80,15 @@ enum AIListenTool {
         let report = AIAudioLevels.report(heard, silenceDB: settings.silenceDB, minSilence: settings.minSilence)
         for (key, value) in AIAudioLevels.json(report, curve: AIAudioLevels.curve(heard), detailed: detailed) {
             object[key] = value
+        }
+        if settings.beats {
+            do {
+                let analysis = try await AIBeats.analysis(of: clip.sourceURL, from: from, to: to)
+                let beats = AIBeats.json(analysis, sourceFrom: from, sourceTo: to, speed: clip.speed) { clip.timelineTime(atSource: $0) }
+                for (key, value) in beats { object[key] = value }
+            } catch {
+                object["beats"] = .string("unreadable: \(error.localizedDescription)")
+            }
         }
         return object
     }
@@ -139,6 +152,14 @@ enum AIListenTool {
             object["note"] = .string(
                 "SrtFlow has read the first \(String(format: "%.1f", peaks.duration)) s so far; call listen again for the rest."
             )
+        }
+        if settings.beats {
+            // 鼓点另读一遍采样，不用等波形读完：没给 source_out 就到文件结尾（一次最多 15 分钟）。
+            let end = try args.double("source_out") ?? .infinity
+            let analysis = try await AIBeats.analysis(of: url, from: from, to: end)
+            for (key, value) in AIBeats.json(analysis, sourceFrom: from, sourceTo: end, speed: 1, timeline: { $0 }) {
+                object[key] = value
+            }
         }
         return .ok(.object(object))
     }

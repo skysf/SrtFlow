@@ -288,6 +288,7 @@ xcrun swiftc \
   Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/AIEncodeOptions.swift \
   Sources/SrtFlow/AITranscriptFormat.swift \
+  Sources/SrtFlow/AudioBeatTracker.swift \
   Sources/SrtFlow/VideoEditClipboardPayload.swift \
   Sources/SrtFlow/VideoEditClipboardPaste.swift \
   Sources/SrtFlow/VideoEditClipboardLanes.swift \
@@ -333,6 +334,7 @@ xcrun swiftc \
   checks/MCP/MusicLibraryChecks.swift \
   checks/MCP/EncodeChecks.swift \
   checks/MCP/TranscriptFormatChecks.swift \
+  checks/MCP/BeatChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 
