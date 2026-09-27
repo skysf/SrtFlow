@@ -5,7 +5,9 @@
 #   2. App 里 AI 改时间线的纯值规则（放素材、推 V1、ripple 删、切、转场、改一段、短 id、get_timeline）；
 #   3. 客户端配置文件的增删（Claude 的 JSON、Codex 的 TOML）、文字 / 颜色参数、字幕批量改；
 #   4. 小程序那份选项词表和 App 里的类型逐项对账（小程序不链接 App 的代码，词表是抄的）；
-#   5. 打包脚本把小程序装进了 Contents/Helpers，并且先签它、再签外层。
+#   5. 打包脚本把小程序装进了 Contents/Helpers，并且先签它、再签外层；
+#   6. AI 的每个改动各是一步撤销：改工程的工具都包在 AIUndoGrouping.step 里（扫描），显式分组确实把两步分开、
+#      而且之后按事件的普通登记不会抛异常（用真的 UndoManager）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -33,6 +35,27 @@ if [ "${SIGN_HELPER}" -gt "${SIGN_APP}" ]; then
   exit 1
 fi
 echo "   ✓ 第 ${COPY_LINE} 行拷进去、第 ${SIGN_HELPER} 行签、第 ${SIGN_APP} 行才签外层"
+
+echo "==> 路由：改工程的工具各是一步撤销"
+# 不显式分组的话 AI 的每一步都堆进同一组，⌘Z 一按全部退光；手动关自动开的那一组又会让下一次登记
+# 抛异常、App 闪退（docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md）。
+ROUTER="Sources/SrtFlow/AIToolRouter.swift"
+for tool in editClip splitClip deleteItems setTransition setText setFilter setCanvas editSubtitles; do
+  if [ "$(grep -cE "case \\.${tool}: return try AIUndoGrouping\\.step\\(undo\\)" "${ROUTER}" || true)" -ne 1 ]; then
+    echo "✗ ${ROUTER} 里 ${tool} 没包在 AIUndoGrouping.step 里：它的改动会和别的步并成一步撤销" >&2
+    exit 1
+  fi
+done
+if [ "$(grep -cE 'AIUndoGrouping\.step\(project\.effectiveUndoManager\)' Sources/SrtFlow/AITimelineTools.swift || true)" -ne 1 ]; then
+  echo "✗ add_clips 那一次 perform 没包在 AIUndoGrouping.step 里" >&2
+  exit 1
+fi
+MANUAL="$(grep -lE 'endUndoGrouping\(\)' Sources/SrtFlow/AI*.swift | grep -v 'AIUndoGrouping.swift' || true)"
+if [ -n "${MANUAL}" ]; then
+  echo "✗ 这些文件自己在关撤销组：${MANUAL}（手动关掉按事件自动开的那一组，下一次登记就抛异常、App 闪退）" >&2
+  exit 1
+fi
+echo "   ✓ 8 个同步的改动工具 + add_clips 都各是一步，没人手动关撤销组"
 
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
@@ -95,11 +118,13 @@ xcrun swiftc \
   Sources/SrtFlow/AIClipEdit.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
+  Sources/SrtFlow/AIUndoGrouping.swift \
   checks/MCP/main.swift \
   checks/MCP/Harness.swift \
   checks/MCP/ProtocolChecks.swift \
   checks/MCP/TimelineChecks.swift \
   checks/MCP/ConfigChecks.swift \
+  checks/MCP/UndoChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

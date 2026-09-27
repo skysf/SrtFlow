@@ -87,7 +87,9 @@ enum AITimelineTools {
         }
         let insert = try args.bool("insert") ?? false
         let linkage = project.linkageEnabled
-        project.perform { AITimelineEdits.place(plans, insert: insert, linkage: linkage, in: &$0) }
+        AIUndoGrouping.step(project.effectiveUndoManager) {
+            project.perform { AITimelineEdits.place(plans, insert: insert, linkage: linkage, in: &$0) }
+        }
         // 图片和拖进来一样：先上轨，静帧视频在后台转，转完无感替换。
         for image in images {
             project.trackImportTask(Task { await project.convertStillClip(image.id, from: image.url, generation: generation) })

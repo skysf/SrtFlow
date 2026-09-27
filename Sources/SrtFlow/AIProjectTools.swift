@@ -214,7 +214,7 @@ enum AIProjectTools {
 
     static func undo(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
         if try args.bool("round") == true {
-            guard AISession.shared.undoRound(project: project) else {
+            guard AIUndoGrouping.step(project.effectiveUndoManager, { AISession.shared.undoRound(project: project) }) else {
                 throw AIToolError("There is nothing from this round of AI edits to undo.")
             }
             return .ok(["undone": "round"], changed: true)

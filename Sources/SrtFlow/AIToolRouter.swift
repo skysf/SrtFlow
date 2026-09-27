@@ -67,7 +67,10 @@ final class AIToolRouter {
         }
     }
 
+    /// 改工程的同步工具各包一层 `AIUndoGrouping.step`：一个工具 = 一步撤销（为什么不能靠按事件分组，见那个文件）。
+    /// 异步的 add_clips 在它自己那一次 perform 外面包；撤销的「一轮」在 AIProjectTools.undo 里包。
     private func run(_ tool: MCPToolName, _ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
+        let undo = project.effectiveUndoManager
         switch tool {
         case .getStatus: return AIProjectTools.status(project)
         case .openFolder: return try await AIProjectTools.openFolder(args, project)
@@ -78,17 +81,17 @@ final class AIToolRouter {
         case .seek: return try AIProjectTools.seek(args, project)
         case .getTimeline: return AITimelineTools.timeline(project)
         case .addClips: return try await AITimelineTools.addClips(args, project)
-        case .editClip: return try AITimelineTools.editClip(args, project)
-        case .splitClip: return try AITimelineTools.split(args, project)
-        case .deleteItems: return try AITimelineTools.delete(args, project)
-        case .setTransition: return try AITimelineTools.transition(args, project)
-        case .setText: return try AIOverlayTools.setText(args, project)
-        case .setFilter: return try AIOverlayTools.setFilter(args, project)
-        case .setCanvas: return try AIOverlayTools.setCanvas(args, project)
+        case .editClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.editClip(args, project) }
+        case .splitClip: return try AIUndoGrouping.step(undo) { try AITimelineTools.split(args, project) }
+        case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
+        case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }
+        case .setText: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setText(args, project) }
+        case .setFilter: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setFilter(args, project) }
+        case .setCanvas: return try AIUndoGrouping.step(undo) { try AIOverlayTools.setCanvas(args, project) }
         case .generateSubtitles: return try await AISubtitleTools.generate(args, project)
         case .translateSubtitles: return try await AISubtitleTools.translate(args, project)
         case .getSubtitles: return try AISubtitleTools.read(args, project)
-        case .editSubtitles: return try AISubtitleTools.edit(args, project)
+        case .editSubtitles: return try AIUndoGrouping.step(undo) { try AISubtitleTools.edit(args, project) }
         case .exportVideo: return try await AIExportTools.export(args, project)
         case .getJob: return try await AIExportTools.job(args)
         case .cancelJob: return try AIExportTools.cancel(args)
