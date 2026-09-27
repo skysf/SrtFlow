@@ -193,6 +193,37 @@ final class TranscriptionTask: ObservableObject {
         }
     }
 
+    /// AI 的 transcribe：只把这几段转成词流进缓存（调用方从缓存读），不生成字幕、不碰工程。
+    /// 和生成字幕共用这一个串行槽：在跑就报忙 —— 两边同时跑会互相删临时目录（`sweepTempResidue`）、抢同一份缓存。
+    /// 跑的时候面板上照样看得见阶段和进度；结束（成、败、取消）阶段都回 idle，面板上不会冒出「生成了 0 句」。
+    func transcribeOnly(
+        clips: [SubtitleAudibleClips.SoundClip], sourceLocaleID: String
+    ) async throws -> TranscriptHarvester.Harvest {
+        guard !isRunning else {
+            throw TaskError(message: "SrtFlow is already transcribing (generating subtitles or another transcript).")
+        }
+        guard SpeechTranscriptionService.isAvailable else {
+            throw TaskError(message: L10n("Speech transcription isn't available on this Mac."))
+        }
+        let token = ExportCancellationToken()
+        self.token = token
+        // 第一个 await 之前就占住槽（isRunning 看的是阶段）。
+        stage = .preparingModels
+        progress = 0
+        volatileText = nil
+        skippedAssets = []
+        translationSkipNote = nil
+        defer {
+            volatileText = nil
+            modelObservation = nil
+            installProgress = nil
+            if self.token === token { self.token = nil }
+            stage = .idle
+            progress = 0
+        }
+        return try await harvester(token: token).harvest(clips: clips, sourceLocaleID: sourceLocaleID)
+    }
+
     func cancel() {
         token?.cancel()
         // 各阶段各有取消通道：模型下载靠 Progress.cancel + 任务取消传播，

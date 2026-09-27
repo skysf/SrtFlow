@@ -96,6 +96,9 @@ final class AIToolRouter {
         case .look: return try await AILookTool.look(args, project)
         case .listen: return try await AIListenTool.listen(args, project)
         case .findAudio: return try await AIAudioLibraryTools.findAudio(args)
+        case .transcribe:
+            guard #available(macOS 26.0, *) else { throw AIToolError("Transcribing speech needs macOS 26 or later on this Mac.") }
+            return try await AITranscribeTool.transcribe(args, project)
         case .compressVideos: return try await AIEncodeTools.compress(args, project)
         case .burnSubtitles: return try await AIEncodeTools.burnIn(args, project)
         case .convertSubtitles: return try AIEncodeTools.convert(args, project)
@@ -137,7 +140,7 @@ final class AIToolRouter {
                 (serialized, presentsEditor, startsRound) = (false, false, false)
             case .setView:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
-            case .openFolder, .readDocument, .manageFiles, .getTimeline, .look, .listen, .findAudio, .getSubtitles,
+            case .openFolder, .readDocument, .manageFiles, .getTimeline, .look, .listen, .transcribe, .findAudio, .getSubtitles,
                  .saveProject, .exportVideo, .compressVideos, .burnSubtitles, .convertSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:

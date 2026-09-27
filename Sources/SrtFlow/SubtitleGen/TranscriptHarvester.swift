@@ -271,12 +271,12 @@ struct TranscriptHarvester {
                 fingerprint: fingerprint,
                 localeIdentifier: locale.identifier,
                 transcriber: SpeechTranscriptionService.transcriberKind,
-                configVersion: 1
+                configVersion: TranscriptSidecarStore.configVersion
             ) ?? TranscriptCacheEntry(
                 fingerprint: fingerprint,
                 localeIdentifier: locale.identifier,
                 transcriber: SpeechTranscriptionService.transcriberKind,
-                configVersion: 1
+                configVersion: TranscriptSidecarStore.configVersion
             )
             entries[fingerprint] = entry
             let desired = group.map {

@@ -14,6 +14,10 @@ enum TranscriptSidecarStore {
     /// 缓存总量上限。词流是文本级体积（1–3MB/小时），64MB 够存几十部片。
     static let capacityBytes: Int64 = 64 * 1024 * 1024
 
+    /// 转写配置的版本（进 `TranscriptCacheEntry.configVersion`）：转写参数一改就加一，旧缓存整条失效。
+    /// 写缓存（TranscriptHarvester）、生成字幕读缓存、AI 读缓存都用这一个数。
+    static let configVersion = 1
+
     static var directory: URL {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("SrtFlow/Transcripts", isDirectory: true)

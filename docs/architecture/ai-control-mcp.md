@@ -239,6 +239,18 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 转字幕格式当场做完：读和转和批量转换页同一个函数（`SubtitleConverter.convertedContents`，编码只走 `TextDecoding`），
      写的时候 `.withoutOverwriting`。
 
+25. **词级时间（transcribe，第 3 块的原始数据）**：转写和生成字幕是**同一套**（`TranscriptHarvester`：定语言含自动检测、
+   备模型租约、按 2 分钟一窗转写、合进按素材指纹存的缓存），缓存也是同一份 —— 用户在面板上生成过字幕的素材，AI 不用再转。
+   - 缓存已经覆盖要的区间就当场按句读出来；没覆盖就起任务（`TranscriptionTask.transcribeOnly`：只转写、不生成字幕、不碰工程，
+     **和生成字幕共用一个串行槽** —— 两边同时跑会互相删临时目录、抢同一份缓存；跑的时候面板上照样看得见进度，结束阶段回
+     idle），AI 用 get_job 等完再调一次来读。
+   - 按句读（`SpeechTranscript`，Core）：词归哪段、从哪儿开口和生成字幕同一份（`SubtitleSegmenter.placed`：说话中点落在
+     片段里才算，停顿后面第一个词按估出来的开口）；成句同一个函数（`SubtitleBreaks.sentences`）；一句超过 40 个词再切，
+     优先切在逗号后面。时间：片段是时间线秒（变速换算好），文件是文件里的秒；两位小数。
+   - 一次最多约 12000 字，读不完回 `next_from`（`AITranscriptFormat`）；要逐词时每句带 [词, 开始, 结束]。
+   - 默认转视频轨上所有带声音的画面段；配乐、音效这类纯声音的段要点名才转。语言给了就用它的缓存；auto 时先认这次运行里
+     检测出来的，没有就看已装语言里哪份缓存覆盖了、词的平均可信度最高。缓存配置版本只有 `TranscriptSidecarStore.configVersion` 一个数。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，

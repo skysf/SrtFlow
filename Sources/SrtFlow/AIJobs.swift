@@ -1,7 +1,7 @@
 import Foundation
 import SrtFlowMCPKit
 
-// MARK: - AI 起的长任务：导出、生成字幕、翻译、压缩、烧录
+// MARK: - AI 起的长任务：导出、生成字幕、翻译、压缩、烧录、转写
 //
 // 管什么：任务号、进度、结局。工具起了任务就立刻回任务号（客户端对一次调用大多只等一分钟），
 // AI 用 get_job 等结果。结局在任务结束的**那一刻**记下（由各工具挂的完成回调写），
@@ -13,7 +13,7 @@ final class AIJobs {
     static let shared = AIJobs()
 
     enum Kind: String {
-        case export, subtitles, translation, compress
+        case export, subtitles, translation, compress, transcript
         case burnIn = "burn_in"
     }
 

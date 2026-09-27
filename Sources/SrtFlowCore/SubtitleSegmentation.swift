@@ -105,16 +105,9 @@ public enum SubtitleSegmenter {
         }
     }
 
-    // MARK: 分段
-
-    /// 源时间词流 → 本窗口的字幕（显示时间在 `assemble` 里排）。
-    public static func segment(
-        words: [TimedWord],
-        window: SubtitleClipWindow,
-        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
-    ) -> SegmentedSubtitles {
-        // ① 截取归属本窗口的词，② 映射到时间线（保留源时间做 provenance）。
-        let placed = attributeWords(words, to: window)
+    /// 归属本窗口的词，按时间排好、映射到时间线（保留源时间）。字幕分段和 AI 的转写结果（`SpeechTranscript`）共用。
+    static func placed(_ words: [TimedWord], in window: SubtitleClipWindow) -> [PlacedWord] {
+        attributeWords(words, to: window)
             .sorted { $0.start < $1.start }
             .map { word in
                 PlacedWord(
@@ -126,6 +119,18 @@ public enum SubtitleSegmenter {
                     confidence: word.confidence
                 )
             }
+    }
+
+    // MARK: 分段
+
+    /// 源时间词流 → 本窗口的字幕（显示时间在 `assemble` 里排）。
+    public static func segment(
+        words: [TimedWord],
+        window: SubtitleClipWindow,
+        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
+    ) -> SegmentedSubtitles {
+        // ① 截取归属本窗口的词，② 映射到时间线（保留源时间做 provenance）。
+        let placed = placed(words, in: window)
         // ③ 成句，④ 句内按逗号分小句、太短的并、放不下的在最好的地方切，⑤ 去标点成字幕。
         var result = SegmentedSubtitles()
         let sentences = SubtitleBreaks.sentences(placed, pauseThreshold: config.pauseThreshold)

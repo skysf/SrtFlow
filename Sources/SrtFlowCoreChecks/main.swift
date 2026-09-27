@@ -638,81 +638,6 @@ do {
     _ = manual; _ = fromAudio; _ = fromMain
 }
 
-// MARK: - 转写缓存区间账本
-
-do {
-    typealias R = SourceRange
-    checkEqual(
-        TranscriptLedger.normalize([R(start: 3, end: 4), R(start: 0, end: 1), R(start: 0.9995, end: 2)]),
-        [R(start: 0, end: 2), R(start: 3, end: 4)],
-        "账本：排序合并、epsilon 吸毛刺"
-    )
-    checkEqual(
-        TranscriptLedger.gaps(
-            desired: [R(start: 0, end: 10)],
-            covered: [R(start: 2, end: 3), R(start: 5, end: 7)]
-        ),
-        [R(start: 0, end: 2), R(start: 3, end: 5), R(start: 7, end: 10)],
-        "账本：缺口 = desired − covered"
-    )
-    checkEqual(
-        TranscriptLedger.gaps(desired: [R(start: 2.5, end: 2.9)], covered: [R(start: 2, end: 3)]),
-        [],
-        "账本：全覆盖无缺口"
-    )
-    checkEqual(
-        TranscriptLedger.padded(
-            [R(start: 2, end: 3), R(start: 3.5, end: 4)], padding: 0.5,
-            within: R(start: 0, end: 4.2)
-        ),
-        [R(start: 1.5, end: 4.2)],
-        "账本：padding 后夹回素材范围并合并"
-    )
-
-    // 固定窗口切分：长素材断点续跑的粒度（每窗转写完立即落盘）。
-    checkEqual(
-        TranscriptLedger.windows([R(start: 0, end: 300)], maxDuration: 120),
-        [R(start: 0, end: 120), R(start: 120, end: 240), R(start: 240, end: 300)],
-        "账本：大缺口切成固定窗口"
-    )
-    checkEqual(
-        TranscriptLedger.windows([R(start: 5, end: 20), R(start: 100, end: 130)], maxDuration: 120),
-        [R(start: 5, end: 20), R(start: 100, end: 130)],
-        "账本：小缺口不切"
-    )
-    check(
-        TranscriptLedger.windows([R(start: 0, end: 250)], maxDuration: 120)
-            .reduce(0) { $0 + $1.duration } == 250,
-        "账本：切窗后总时长不变"
-    )
-
-    var entry = TranscriptCacheEntry(
-        fingerprint: "f1", localeIdentifier: "en_US",
-        transcriber: "SpeechTranscriber", configVersion: 1
-    )
-    entry.merge(
-        words: [TimedWord(text: "old", start: 1, end: 2)],
-        analyzed: R(start: 0, end: 3)
-    )
-    // 无语音的区间也要记 covered。
-    entry.merge(words: [], analyzed: R(start: 3, end: 5))
-    checkEqual(entry.covered, [R(start: 0, end: 5)], "账本：无语音区间也记 covered")
-    // 重转区间内旧词被新结果覆盖。
-    entry.merge(
-        words: [TimedWord(text: "new", start: 1.2, end: 1.8)],
-        analyzed: R(start: 1, end: 2)
-    )
-    checkEqual(entry.words.map(\.text), ["new"], "账本：重转区间旧词被替换")
-    check(
-        entry.matches(fingerprint: "f1", localeIdentifier: "en_US", transcriber: "SpeechTranscriber", configVersion: 1),
-        "账本：指纹配置齐同才命中"
-    )
-    check(
-        !entry.matches(fingerprint: "f1", localeIdentifier: "en_US", transcriber: "SpeechTranscriber", configVersion: 2),
-        "账本：配置变了要失效"
-    )
-}
-
 // MARK: - 字幕导出规划器
 
 do {
@@ -847,6 +772,7 @@ runSubtitleRenderChecks()
 runSubtitleSegmentationChecks()
 runSubtitlePunctuationChecks()
 runSubtitleConvertChecks()
+runTranscriptChecks()
 
 if failures == 0 {
     print("All \(checks) checks passed.")

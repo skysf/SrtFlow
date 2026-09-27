@@ -53,7 +53,7 @@ enum SubtitleGenerationAssembly {
                 fingerprint: clip.fingerprint,
                 localeIdentifier: localeIdentifier,
                 transcriber: SpeechTranscriptionService.transcriberKind,
-                configVersion: 1
+                configVersion: TranscriptSidecarStore.configVersion
             )
             guard let entry else { throw Failure.timelineChanged }
             let desired = SourceRange(
