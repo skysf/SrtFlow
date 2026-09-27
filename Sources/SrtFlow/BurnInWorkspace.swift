@@ -62,9 +62,8 @@ enum BurnInWorkspace {
 enum SubtitleLoader {
     static func load(_ url: URL) throws -> SubtitleDocumentModel {
         let data = try Data(contentsOf: url)
-        guard let content = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .utf16)
-                ?? String(data: data, encoding: .init(rawValue: 0x8000_0421)) /* GBK */ else {
+        // UTF-8 → UTF-16 → GBK，规则只在 SrtFlowCore 的 TextDecoding 一处（批量转换、AI 读文稿同一份）。
+        guard let content = TextDecoding.decode(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         let format = SubtitleFormat.detect(from: url.lastPathComponent) ?? .text

@@ -18,6 +18,7 @@
 #      大图穿过小程序 ↔ App 的通道原样回来（假 App 回一张几百 KB 的图）。
 #  10. listen（「听」）：用生产的 ChunkBuilder 攒一份波形，量电平（只算有声音的部分）、峰值、静音段（窗和均方桶对齐，
 #      交界不漏能量）、响度曲线、片段在时间线上听到的（变速换时间、段音量和轨道推子乘进去）。
+#  11. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -93,6 +94,17 @@ if [ "$(grep -c 'guard always || AISession.shared.viewMode == .visible else { re
   exit 1
 fi
 echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里；后台模式不摆窗口、不跟着选中"
+
+echo "==> 用户文本文件的编码只走 TextDecoding"
+# .utf16 几乎什么都解得出来，排在 GBK 前面 GBK 就永远轮不到（docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md）。
+# 规则只许在 SrtFlowCore 的 TextDecoding 一处（docs/architecture/text-file-encoding.md）。
+STRAY_UTF16="$(grep -rn 'encoding: \.utf16)' Sources | grep -v 'Sources/SrtFlowCore/TextDecoding.swift' || true)"
+if [ -n "${STRAY_UTF16}" ]; then
+  echo "✗ 这些地方自己在按 UTF-16 解码用户文件（改用 TextDecoding.decode）：" >&2
+  echo "${STRAY_UTF16}" >&2
+  exit 1
+fi
+echo "   ✓ 只有 TextDecoding 按 UTF-16 解码"
 
 echo "==> 翻译：原文语言先按字判断，判不出来才用工程里记的"
 # 反过来的话，AI 把原文改写成中文之后，系统照旧按「英文→韩文」去翻
@@ -223,6 +235,7 @@ xcrun swiftc \
   checks/MCP/SubjectChecks.swift \
   checks/MCP/LookChecks.swift \
   checks/MCP/ListenChecks.swift \
+  checks/MCP/TextDecodingChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

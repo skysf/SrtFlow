@@ -17,7 +17,7 @@ public enum SubtitleConverter {
             throw CocoaError(.fileReadUnsupportedScheme)
         }
         let data = try Data(contentsOf: url)
-        guard let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else {
+        guard let content = TextDecoding.decode(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         let converted = convert(content, from: source, to: target)
