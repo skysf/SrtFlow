@@ -115,6 +115,9 @@ final class AIToolRouter {
             // 先 await 量声音、读转写，再把同步的那一下包起来（同 edit_clip）。
             let plan = try await AISpeechCutTool.plan(args, project)
             return try AIUndoGrouping.step(undo) { try AISpeechCutTool.apply(plan, project) }
+        case .cutToBeat:
+            let plan = try await AIBeatCutTool.plan(args, project)
+            return try AIUndoGrouping.step(undo) { try AIBeatCutTool.apply(plan, project) }
         case .deleteItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.delete(args, project) }
         case .duplicateItems: return try AIUndoGrouping.step(undo) { try AITimelineTools.duplicate(args, project) }
         case .setTransition: return try AIUndoGrouping.step(undo) { try AITimelineTools.transition(args, project) }
@@ -150,7 +153,7 @@ final class AIToolRouter {
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
             case .openProject, .newProject, .undo, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
-                 .duplicateItems, .freezeFrame, .cutSpeech,
+                 .duplicateItems, .freezeFrame, .cutSpeech, .cutToBeat,
                  .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
                  .editSubtitles:
                 (serialized, presentsEditor, startsRound) = (true, true, true)

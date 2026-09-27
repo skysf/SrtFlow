@@ -120,6 +120,8 @@ func runProtocolChecks() {
           "instructions send the AI to the music library and ask it to pass on the credits")
     check(instructions.contains("compress_videos") && instructions.contains("convert_subtitles"),
           "instructions say compressing and converting files needs no project")
+    check(instructions.contains("transcribe") && instructions.contains("cut_speech") && instructions.contains("cut_to_beat"),
+          "instructions point the AI at the smart cuts (block 3)")
 
     // 2. 工具清单：和 MCPToolName 一一对应、顺序一致、每个都有说明和对象型的参数表。
     let tools = reply(messages, id: 2)?["result"]?["tools"]?.arrayValue ?? []

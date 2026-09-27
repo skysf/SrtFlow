@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 工具清单：分析数据 + 智能剪（方案第 13 条、第 3 块）
 //
-// 管什么：transcribe（词级时间）、cut_speech（按文字剪、删停顿和口头禅）的说明文字和参数；以后 cut_to_beat（踩点）也放这一组。
+// 管什么：transcribe（词级时间）、cut_speech（按文字剪、删停顿和口头禅）、cut_to_beat（踩点）的说明文字和参数。
 // 静音段和鼓点在 listen 里（MCPSenseTools）。
 // 不管什么：怎么转写、读哪份缓存（App 里的 AITranscribeTool）。
 
@@ -62,6 +62,24 @@ enum MCPSmartEditTools {
                     "silence_db": MCPSchema.number("Quieter than this counts as a pause (default: measured from the clip).", minimum: -80, maximum: -10),
                     "language": MCPSchema.string("Language of the transcript to use (default auto).")
                 ], required: ["clip_id"])
+            )
+        case .cutToBeat:
+            return MCPToolDefinition(
+                .cutToBeat, title: "Cut to the beat",
+                description: """
+                Re-time a run of V1 clips so every cut lands on a beat of a music clip. The first clip keeps its start; \
+                each clip keeps its in point and gets a new out point on a beat — the beat nearest to where it ends now, \
+                or exactly beats_per_clip beats (fewer when the media is too short). on=downbeats cuts only on the first \
+                beat of each bar. Clips stay at least 0.4 s long; a clip that cannot reach a beat keeps its length. Later \
+                V1 clips move with the change and the clips' linked sound follows; the music does not move. Needs music \
+                with a steady beat (listen with beats=true shows it). One undo step.
+                """,
+                input: MCPSchema.object([
+                    "music_clip_id": MCPSchema.string("The music clip whose beats to cut on."),
+                    "clip_ids": MCPSchema.array(of: MCPSchema.string("Clip id."), "V1 clips next to each other (default: the V1 clips playing while the music does)."),
+                    "beats_per_clip": MCPSchema.integer("Every clip lasts exactly this many beats.", minimum: 1, maximum: 64),
+                    "on": MCPSchema.string("Cut on every beat (default) or only on the first beat of each bar.", oneOf: ["beats", "downbeats"])
+                ], required: ["music_clip_id"])
             )
         default:
             preconditionFailure("\(name.rawValue) is described in another group")

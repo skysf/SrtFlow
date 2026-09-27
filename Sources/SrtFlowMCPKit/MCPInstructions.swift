@@ -18,11 +18,13 @@ public enum MCPInstructions {
     Documents they give you (scripts, outlines) are read with read_document.
     2. Call get_timeline to see tracks, clips and their ids. Ids can be shortened as they are shown.
     3. You cannot see or hear the media any other way: use look to see frames (of a media file to choose shots, \
-    or of the timeline to check your edits) and listen to measure the sound (levels, silences).
+    or of the timeline to check your edits), listen to measure the sound (levels, silences, and with beats=true \
+    the tempo and beats), and transcribe to know what is said where.
     4. Edit with add_clips, edit_clip, split_clip, delete_items, set_transition, set_text, set_filter, \
     set_canvas and the subtitle tools. To reframe for another shape (for example 9:16), set_canvas and then \
     edit_clip fit=fill on each clip. Background music comes from SrtFlow's library: find_audio, then add_clips \
-    with its library_id.
+    with its library_id. To edit talk by its words, transcribe it, then cut_speech (it also shortens pauses and \
+    removes filler words); to cut on the music, cut_to_beat.
     5. export_video, then wait with get_job. If the video uses library music, give the user the credit lines \
     (music_credits in get_timeline) for the video's description.
 

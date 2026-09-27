@@ -27,6 +27,7 @@ runEncodeChecks()
 runTranscriptFormatChecks()
 runBeatChecks()
 runSpeechCutChecks()
+runBeatCutChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

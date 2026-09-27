@@ -34,6 +34,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case splitClip = "split_clip"
     case freezeFrame = "freeze_frame"
     case cutSpeech = "cut_speech"
+    case cutToBeat = "cut_to_beat"
     case deleteItems = "delete_items"
     case duplicateItems = "duplicate_items"
     case setTransition = "set_transition"
@@ -67,7 +68,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
             return MCPSenseTools.definition(for: self)
         case .findAudio:
             return MCPMediaTools.definition(for: self)
-        case .transcribe, .cutSpeech:
+        case .transcribe, .cutSpeech, .cutToBeat:
             return MCPSmartEditTools.definition(for: self)
         case .compressVideos, .burnSubtitles, .convertSubtitles:
             return MCPEncodeTools.definition(for: self)
