@@ -12,6 +12,7 @@ runFolderChecks()
 runFramingChecks()
 runBlackBarChecks()
 await runSubjectChecks()
+runLookChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

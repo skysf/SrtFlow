@@ -50,7 +50,7 @@ enum AIClipTools {
             var usable: CGRect?
             if request.removeBlackBars {
                 let bars = await AIPictureProbe.blackBars(of: clip)
-                plan.findings["black_bars"] = AIPictureProbe.json(bars)
+                plan.findings["black_bars"] = AIBlackBars.json(bars)
                 if let bars, !bars.isEmpty { usable = bars.active }
             }
             let crop = chosenCrop(request, usable: usable)

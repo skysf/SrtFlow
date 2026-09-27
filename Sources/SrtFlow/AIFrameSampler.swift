@@ -14,7 +14,7 @@ import ImageIO
 // 规矩，见 docs/architecture/blocking-media-reads.md）。素材从 `MediaAssetCache` 拿，和预览同一份、不另开。
 
 enum AIFrameSampler {
-    struct Frame: @unchecked Sendable {
+    struct Frame: Sendable {
         /// 源时间（秒）；图片是 0。
         var time: Double
         var image: CGImage

@@ -14,6 +14,8 @@
 #      真画一张图读回来第一行是画面最上面（上下弄反就裁错边）。
 #   8. 铺满时对准谁（AISubjectFocus）：人脸优先、几张脸放得下对准中间放不下对准最大的、几帧取中位数、走动大了要说；
 #      真画一张图（黑底左上角一块亮色）让 Vision 认，认出来的框必须在左上（Vision 是左下原点，换算反了窗就对错地方）。
+#   9. look（「看」）：几帧排成格子、拼图的大小、JPEG、每帧的文字描述、结果里图跟在文字后面（MCP 的 image）；
+#      大图穿过小程序 ↔ App 的通道原样回来（假 App 回一张几百 KB 的图）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -190,6 +192,8 @@ xcrun swiftc \
   Sources/SrtFlow/AISubjectFocus.swift \
   Sources/SrtFlow/AIVision.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
+  Sources/SrtFlow/AIContactSheet.swift \
+  Sources/SrtFlow/AIFrameDescription.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
@@ -207,6 +211,7 @@ xcrun swiftc \
   checks/MCP/FramingChecks.swift \
   checks/MCP/BlackBarChecks.swift \
   checks/MCP/SubjectChecks.swift \
+  checks/MCP/LookChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

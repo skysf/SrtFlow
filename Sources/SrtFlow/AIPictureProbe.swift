@@ -21,15 +21,6 @@ enum AIPictureProbe {
         })
     }
 
-    static func json(_ bars: AIBlackBars.Insets?) -> JSONValue {
-        guard let bars else { return "could not tell: the sampled frames were black or unreadable" }
-        guard !bars.isEmpty else { return "none" }
-        return [
-            "top": AIFormat.seconds(bars.top), "bottom": AIFormat.seconds(bars.bottom),
-            "left": AIFormat.seconds(bars.left), "right": AIFormat.seconds(bars.right)
-        ]
-    }
-
     /// 这一段的主体在哪（铺满时窗对准它）。`window`：铺满的窗有多大（归一化），判断几张脸放不放得下。
     /// 一帧都没认出东西 → nil（照正中铺）。
     static func subject(of clip: EditClip, window: CGSize) async -> AISubjectFocus.Result? {

@@ -103,6 +103,8 @@ struct AIToolResult {
     var isError = false
     /// 工程被改了（算进这一轮的改动数）。
     var changedProject = false
+    /// 跟在文字后面回给客户端的图（JPEG，「看」用）。能看图的模型直接看它；看不了的读文字那一半。
+    var images: [Data] = []
 
     static func ok(_ payload: JSONValue, changed: Bool = false) -> AIToolResult {
         AIToolResult(payload: payload, changedProject: changed)
@@ -119,9 +121,14 @@ struct AIToolResult {
         ])
     }
 
-    /// MCP 的 CallToolResult：结果写成一段 JSON 文字（所有客户端都认文字）。
+    /// MCP 的 CallToolResult：结果写成一段 JSON 文字（所有客户端都认文字），有图的话图跟在后面。
     var json: JSONValue {
-        MCPBridge.textResult(payload.encodedString(), isError: isError)
+        guard !images.isEmpty else { return MCPBridge.textResult(payload.encodedString(), isError: isError) }
+        var content: [JSONValue] = [["type": "text", "text": .string(payload.encodedString())]]
+        for image in images {
+            content.append(["type": "image", "data": .string(image.base64EncodedString()), "mimeType": "image/jpeg"])
+        }
+        return ["content": .array(content), "isError": .bool(isError)]
     }
 }
 

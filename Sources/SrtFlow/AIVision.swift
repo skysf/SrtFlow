@@ -38,8 +38,7 @@ enum AIVision {
     static let maxTexts = 6
 
     static func analyze(_ image: CGImage, _ options: Options) async -> Findings {
-        nonisolated(unsafe) let frame = image
-        return await MediaReadQueue.run(on: MediaReadQueue.analysis) { perform(frame, options) }
+        await MediaReadQueue.run(on: MediaReadQueue.analysis) { perform(image, options) }
     }
 
     /// 同步地跑完所有要的请求。**只在 `MediaReadQueue.analysis` 上调。**

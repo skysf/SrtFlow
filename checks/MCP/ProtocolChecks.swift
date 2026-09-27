@@ -5,7 +5,10 @@ import SrtFlowMCPKit
 // 旁边起一个假 App 在临时 socket 上听，看工具调用有没有原样转过去、回答有没有原样回来。
 // 两代客户端都要验：老的先 initialize，新的（2026-07-28）每个请求自带 _meta 版本。
 
-/// 假 App：收到什么工具就回「echo:工具名」，并记下每次调用报的客户端名字。
+/// 「看」回的图有几百 KB：通道一行就是一条消息，大图要原样穿过去（socket 一次只读 64KB，小程序的 stdout 一行写完）。
+let bigPicture = Data((0..<450_000).map { UInt8(truncatingIfNeeded: $0 &* 31) }).base64EncodedString()
+
+/// 假 App：收到什么工具就回「echo:工具名」（look 另外带一张大图），并记下每次调用报的客户端名字。
 final class FakeApp: @unchecked Sendable {
     let path: String
     private let lock = NSLock()
@@ -22,7 +25,13 @@ final class FakeApp: @unchecked Sendable {
                     continue
                 }
                 self?.record(request)
-                let response = MCPBridge.Response(id: request.id, result: MCPBridge.textResult("echo:\(request.tool)"))
+                var result = MCPBridge.textResult("echo:\(request.tool)")
+                if request.tool == "look" {
+                    result = ["content": [["type": "text", "text": "looked"],
+                                          ["type": "image", "data": .string(bigPicture), "mimeType": "image/jpeg"]],
+                              "isError": false]
+                }
+                let response = MCPBridge.Response(id: request.id, result: result)
                 if let data = try? JSONEncoder().encode(response) { try? MCPUnixSocket.writeLine(client, data) }
                 close(client)
             }
@@ -138,7 +147,8 @@ private func runModernChecks(_ app: FakeApp) {
         #"{"jsonrpc":"2.0","id":10,"method":"server/discover","params":{\#(meta)}}"#,
         #"{"jsonrpc":"2.0","id":11,"method":"tools/list","params":{\#(meta)}}"#,
         #"{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{\#(meta),"name":"get_timeline","arguments":{}}}"#,
-        #"{"jsonrpc":"2.0","id":13,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"1900-01-01"}}}"#
+        #"{"jsonrpc":"2.0","id":13,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"1900-01-01"}}}"#,
+        #"{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{\#(meta),"name":"look","arguments":{"time":1}}}"#
     ]
     let (messages, _) = talkToHelper(lines, socket: app.path)
     let discover = reply(messages, id: 10)?["result"]
@@ -154,6 +164,9 @@ private func runModernChecks(_ app: FakeApp) {
     checkEqual(call?["resultType"]?.stringValue, "complete", "modern tools/call carries resultType")
     check(app.requests.contains { $0.tool == "get_timeline" && $0.client == "modern-client" },
           "the modern client name (from _meta) reaches the app")
+    let picture = reply(messages, id: 14)?["result"]?["content"]?.arrayValue?.last
+    checkEqual(picture?["type"]?.stringValue, "image", "a picture from the app comes back as MCP image content")
+    check(picture?["data"]?.stringValue == bigPicture, "a picture of several hundred KB crosses the channel unchanged")
     let unsupported = reply(messages, id: 13)?["error"]
     checkEqual(unsupported?["code"]?.intValue, -32022, "an unknown version is UnsupportedProtocolVersionError")
     check((unsupported?["data"]?["supported"]?.arrayValue ?? []).contains("2026-07-28"), "the error lists supported versions")

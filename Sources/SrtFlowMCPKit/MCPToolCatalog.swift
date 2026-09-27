@@ -9,7 +9,7 @@ import Foundation
 //
 // 说明文字用英文写（模型读英文最准）；AI 回用户时用用户的语言。每条说明写清三件事：
 // 做什么、不传的参数怎么办、什么时候会反过来问用户（needs_confirmation）。
-// 各组工具的文字在 MCPProjectTools / MCPTimelineTools / MCPSubtitleExportTools 里。
+// 各组工具的文字在 MCPProjectTools / MCPTimelineTools / MCPSenseTools / MCPSubtitleExportTools 里。
 
 /// 全部工具的名字。**顺序就是 `tools/list` 的顺序**（2026-07-28 版协议要求清单顺序稳定）。
 public enum MCPToolName: String, CaseIterable, Sendable {
@@ -19,6 +19,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case newProject = "new_project"
     case saveProject = "save_project"
     case getTimeline = "get_timeline"
+    case look = "look"
     case addClips = "add_clips"
     case editClip = "edit_clip"
     case splitClip = "split_clip"
@@ -44,6 +45,8 @@ public enum MCPToolName: String, CaseIterable, Sendable {
         case .getTimeline, .addClips, .editClip, .splitClip, .deleteItems, .setTransition,
              .setText, .setFilter, .setCanvas:
             return MCPTimelineTools.definition(for: self)
+        case .look:
+            return MCPSenseTools.definition(for: self)
         case .generateSubtitles, .translateSubtitles, .getSubtitles, .editSubtitles,
              .exportVideo, .getJob, .cancelJob:
             return MCPSubtitleExportTools.definition(for: self)

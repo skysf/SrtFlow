@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import SrtFlowMCPKit
 
 // MARK: - 找黑边（纯值）
 //
@@ -91,6 +92,16 @@ enum AIBlackBars {
                 left: min(result.left, next.left), right: min(result.right, next.right)
             )
         }
+    }
+
+    /// 写给 AI 看。nil = 看不出来（抽不到帧，或者抽到的全是黑场）。
+    static func json(_ bars: Insets?) -> JSONValue {
+        guard let bars else { return "could not tell: the sampled frames were black or unreadable" }
+        guard !bars.isEmpty else { return "none" }
+        return [
+            "top": AIFormat.seconds(bars.top), "bottom": AIFormat.seconds(bars.bottom),
+            "left": AIFormat.seconds(bars.left), "right": AIFormat.seconds(bars.right)
+        ]
     }
 
     private static func isBlack(row: Int, _ luma: Luma) -> Bool {
