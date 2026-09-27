@@ -337,41 +337,42 @@ forbid "导出面板不许再自己选烧哪条轨" \
 require "时间线要给译文轨一只自己的眼睛" \
   Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleTranslationHidden\(\)'
 
-# 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
+# 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。（2026-09-27 起这段代码在 TranscriptHarvester：
+# 生成字幕和 AI 的 transcribe 共用；守卫跟着代码走，留在老文件上的 forbid 会悄悄变成永远通过。）
 require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleAudibleClips\.selectProbe\('
 require "生产抽取器必须真接上 AudioWindowReader" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'AudioWindowReader\.extract\('
 # selectProbe 自己也要拿到任务的取消通道 —— 只靠抽取器内部那道，
 # 无音轨素材在检查之前就抛 ReadError，取消会被跳过逻辑吞成「素材都读不了」。
 if ! grep -A2 'SubtitleAudibleClips\.selectProbe(' \
-      Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+      Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
       | grep -c 'isCancelled: { token.isCancelled }' >/dev/null; then
   echo "✗ 接线守卫：selectProbe 必须收到 token 的取消通道" >&2
   WIRING_FAIL=1
 fi
 require "metadata 顺序必须以选定的探针为首" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleAudibleClips\.metadataOrder\(in: clips, probe:'
 require "metadata 查询必须吃 [SoundClip] 快照" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'metadataLanguageTag\(in clips: \[SoundClip\]\)'
 forbid "metadata 不许再从 TimelineState 自己枚举素材" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'state\.mainClips \+ state\.audioTracks'
 forbid "Auto-detect 不许留「单候选直接采用」的无证据捷径" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'candidates\.count == 1'
 require "候选去重必须走按语言的 selectCandidates" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleLanguageDetection\.selectCandidates\('
 forbid "候选不许再按 locale 标识符自己去重截断（同语言变体会吃光名额）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'candidates\.count < 3'
 require "已装语言那一档必须排序（系统返回顺序实测会变）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'installed\.map\(\\\.identifier\)\.sorted\(\)'
 
 # 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
