@@ -3,8 +3,9 @@ import Foundation
 
 // MARK: - edit_clip 里和画面有关的参数（纯值）
 //
-// 管什么：fit / focus_x / focus_y / crop / x / y / scale 读成类型，互相冲突的组合当场挡掉
-// （fit 和 x/y/scale 不能一起给、focus 只跟 fit=fill 走）。纯值，自检够得着（scripts/check-mcp.sh）。
+// 管什么：fit / focus_x / focus_y / crop / remove_black_bars / x / y / scale 读成类型，互相冲突的组合当场挡掉
+// （fit 和 x/y/scale 不能一起给、focus 只跟 fit=fill 走、手动裁切和去黑边二选一）。纯值，自检够得着
+// （scripts/check-mcp.sh）。
 // 不管什么：按这些参数算裁切和摆放（AIFrameFit）、去看画面（AIClipTools）。
 
 /// edit_clip 里和画面有关的那几个参数（读的时候就把互相冲突的组合挡掉）。
@@ -15,12 +16,14 @@ struct AIFramingRequest {
     var focusPoint: CGPoint?
     /// 手动的四边裁切（`crop` 参数）；给了全 0 就是不裁。
     var crop: ClipCrop?
+    /// 抽几帧找黑边、裁掉（找到的黑边当作「可用区域」，fit / fill 在它里面算）。
+    var removeBlackBars = false
     var x: Double?
     var y: Double?
     var scale: Double?
 
     var touchesPicture: Bool {
-        fit != nil || crop != nil || x != nil || y != nil || scale != nil
+        fit != nil || crop != nil || removeBlackBars || x != nil || y != nil || scale != nil
     }
 
     init(_ args: AIToolArguments) throws {
@@ -42,6 +45,10 @@ struct AIFramingRequest {
                 top: try edges.double("top") ?? 0, bottom: try edges.double("bottom") ?? 0,
                 leading: try edges.double("left") ?? 0, trailing: try edges.double("right") ?? 0
             )
+        }
+        removeBlackBars = try args.bool("remove_black_bars") ?? false
+        if removeBlackBars, crop != nil {
+            throw AIToolError("Pass either crop or remove_black_bars, not both.")
         }
         if fit != nil, x != nil || y != nil || scale != nil {
             throw AIToolError("Use fit to fill or fit the frame, or x/y/scale to place the picture yourself, not both.")

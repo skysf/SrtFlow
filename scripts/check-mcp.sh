@@ -9,7 +9,9 @@
 #   6. AI 的每个改动各是一步撤销：改工程的工具都包在 AIUndoGrouping.step 里（扫描），显式分组确实把两步分开、
 #      而且之后按事件的普通登记不会抛异常（用真的 UndoManager）。
 #   7. edit_clip 的画面（AIFrameFit）：铺满时源画面上那扇窗正好映到整幅画布（各种横竖比例、焦点贴边、超宽转竖屏），
-#      完整显示 / 按位置大小摆、只改裁切不拉变形、约等于默认布局就存 nil；参数组合的冲突当场挡掉。
+#      完整显示 / 按位置大小摆、只改裁切不拉变形、约等于默认布局就存 nil；参数组合的冲突当场挡掉；
+#      去黑边（AIBlackBars）：遮幅、柱边、暗场不算数、夜空的星星不是遮幅、遮幅里的字幕留着、几帧取最小，
+#      真画一张图读回来第一行是画面最上面（上下弄反就裁错边）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -182,6 +184,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIClipEdit.swift \
   Sources/SrtFlow/AIFrameFit.swift \
   Sources/SrtFlow/AIFramingRequest.swift \
+  Sources/SrtFlow/AIBlackBars.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
@@ -197,6 +200,7 @@ xcrun swiftc \
   checks/MCP/LanguageChecks.swift \
   checks/MCP/FolderChecks.swift \
   checks/MCP/FramingChecks.swift \
+  checks/MCP/BlackBarChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

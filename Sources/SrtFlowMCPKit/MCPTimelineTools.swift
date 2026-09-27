@@ -141,7 +141,9 @@ public enum MCPTimelineTools {
             Picture (video and image clips): fit=fill fills the whole frame and cuts off what sticks out \
             (use it to turn wide footage into 9:16 and back); focus_x/focus_y pick the point of the source \
             picture to keep in the middle. fit=fit shows the whole picture with bars around it (SrtFlow's default). \
-            fit starts from the whole picture unless crop says which part to use. \
+            fit starts from the whole picture unless crop or remove_black_bars says which part to use. \
+            remove_black_bars=true looks at a few frames and cuts off letterbox / pillarbox bars (the result \
+            says what it found). \
             Without fit, x/y/scale place the picture yourself (x/y: its centre as fractions of the frame; \
             scale 1 = the whole picture just fits the frame), e.g. a small picture in a corner. \
             The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file.
@@ -162,6 +164,7 @@ public enum MCPTimelineTools {
                 "focus_x": MCPSchema.number("With fit=fill: horizontal point of the source picture to keep centred, 0 = left edge.", minimum: 0, maximum: 1),
                 "focus_y": MCPSchema.number("With fit=fill: vertical point to keep centred, 0 = top edge.", minimum: 0, maximum: 1),
                 "crop": crop,
+                "remove_black_bars": MCPSchema.boolean("Find black bars around the picture and cut them off (instead of crop)."),
                 "x": MCPSchema.number("Horizontal centre of the picture on the frame, 0–1.", minimum: 0, maximum: 1),
                 "y": MCPSchema.number("Vertical centre of the picture on the frame, 0–1.", minimum: 0, maximum: 1),
                 "scale": MCPSchema.number("Picture size, 1 = the whole picture just fits the frame.", minimum: 0.05, maximum: 6),

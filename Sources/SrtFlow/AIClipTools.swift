@@ -46,7 +46,14 @@ enum AIClipTools {
         var plan = Plan(id: id, change: change, canvas: canvas)
         let request = try AIFramingRequest(args)
         if request.touchesPicture {
-            plan.change.framing = try framing(request, clip: clip, canvas: canvas)
+            try requirePicture(clip)
+            var usable: CGRect?
+            if request.removeBlackBars {
+                let bars = await AIPictureProbe.blackBars(of: clip)
+                plan.findings["black_bars"] = AIPictureProbe.json(bars)
+                if let bars, !bars.isEmpty { usable = bars.active }
+            }
+            plan.change.framing = try framing(request, clip: clip, canvas: canvas, usable: usable)
         }
         return plan
     }
@@ -71,7 +78,9 @@ enum AIClipTools {
                 Move or trim that clip first, choose another start or track, or use ripple on V1.
                 """)
         }
-        project.perform { $0 = next }
+        // 什么都没变（没找到黑边、给的就是现在的值）：不提交，免得撤销栈里多一步空的。
+        let changed = next != state
+        if changed { project.perform { $0 = next } }
         let fresh = project.state
         guard let clip = fresh.clip(with: plan.id), let location = fresh.location(of: plan.id) else {
             return .ok(["changed": .string(ids.short(plan.id))], changed: true)
@@ -87,18 +96,26 @@ enum AIClipTools {
             summary["picture"] = AITimelineSummary.picture(clip, canvas: context.renderSize, always: true)
         }
         for (key, value) in plan.findings { summary[key] = value }
-        return .ok(.object(summary), changed: true)
+        if !changed { summary["unchanged"] = true }
+        return .ok(.object(summary), changed: changed)
     }
 
     // MARK: 画面怎么放
 
-    /// 按 AI 说的算出裁切和摆放。
-    private static func framing(_ request: AIFramingRequest, clip: EditClip, canvas: CGSize) throws -> AIFrameFit.Framing {
+    private static func requirePicture(_ clip: EditClip) throws {
         guard !clip.isAudioOnly else { throw AIToolError("\(clip.name) is audio; it has no picture to crop or place.") }
         guard clip.info?.displaySize != nil else {
             throw AIToolError("SrtFlow does not know the picture size of \(clip.name) yet. Try again in a moment.")
         }
-        let chosenCrop = request.crop.map { AIFrameFit.crop(keeping: AIFrameFit.region(of: $0)) }
+    }
+
+    /// 按 AI 说的算出裁切和摆放。`usable`：去黑边找到的可用区域（没找 / 没找到是 nil）。
+    private static func framing(
+        _ request: AIFramingRequest, clip: EditClip, canvas: CGSize, usable: CGRect?
+    ) throws -> AIFrameFit.Framing {
+        // 手动裁切和去黑边二选一（AIFramingRequest 挡过）：哪个给了，哪个就是这次的裁切。
+        let chosenCrop: ClipCrop?? = request.crop.map { AIFrameFit.crop(keeping: AIFrameFit.region(of: $0)) }
+            ?? usable.map { AIFrameFit.crop(keeping: $0) }
         switch request.fit {
         case .fit?:
             return AIFrameFit.fit(active: AIFrameFit.region(of: chosenCrop ?? nil))
