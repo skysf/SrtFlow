@@ -50,13 +50,21 @@ enum AIOverlayTools {
         if let word = AITextFit.brokenWord(in: layout, text: overlay.settledText) {
             warnings.append("On this \(Int(canvas.width))×\(Int(canvas.height)) frame \"\(word)\" does not fit on one line and is broken in the middle. Use a smaller font_size or a wider box_width.")
         }
+        let block = TextRenderer.layoutFrame(overlay, canvas: canvas)
+        if let out = AITextFit.overflow(of: block, canvas: canvas) {
+            warnings.append("On this \(Int(canvas.width))×\(Int(canvas.height)) frame the text block sticks out of the frame (\(AITextFit.describe(out))). Move it with position or x/y, or use a smaller font_size.")
+        }
         var result: [String: JSONValue] = [
             "text_id": .string(AIShortIDs(state: project.state).short(id)),
             "start": AIFormat.seconds(overlay.timelineStart),
             "end": AIFormat.seconds(overlay.timelineEnd),
             "x": AIFormat.seconds(overlay.centerX),
             "y": AIFormat.seconds(overlay.centerY),
-            "lines": .number(Double(layout.lines.count))
+            "lines": .number(Double(layout.lines.count)),
+            // 文字块在画面上占哪儿（左、上、右、下，画面的比例）：和字幕、主体避开用。
+            "block": .array([block.minX / canvas.width, block.minY / canvas.height,
+                             block.maxX / canvas.width, block.maxY / canvas.height]
+                .map { .number(($0 * 100).rounded() / 100) })
         ]
         if !warnings.isEmpty { result["warnings"] = .array(warnings.map { .string($0) }) }
         return .ok(.object(result), changed: true)

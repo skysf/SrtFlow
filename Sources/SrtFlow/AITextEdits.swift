@@ -160,8 +160,35 @@ struct AITextChange {
 }
 
 /// 字放不放得下：AI 看不见画面，字号给大了它自己不知道（2026-09-27 端到端实测：竖屏里 110 号的
-/// 「Antarctica」被从词中间折成「Antarctic / a」）。结果里回行数，词被折断了给一句提示让它改。
+/// 「Antarctica」被从词中间折成「Antarctic / a」；同一天冒烟：130 号的「南极探险」折成两行、顶出了画面上沿）。
+/// 结果里回行数和文字块的位置，词被折断了、块出了画面，各给一句提示让它改。
 enum AITextFit {
+    /// 文字块（版面框）出了画面多少像素。
+    struct Overflow: Equatable {
+        var top = 0.0
+        var bottom = 0.0
+        var left = 0.0
+        var right = 0.0
+    }
+
+    /// 版面框（`TextRenderer.layoutFrame`，预览选中框也是它）出了画面：各边出去多少像素；
+    /// 差不到半个像素的不算，全在画面里是 nil。
+    static func overflow(of frame: CGRect, canvas: CGSize) -> Overflow? {
+        let out = Overflow(
+            top: max(0, -frame.minY), bottom: max(0, frame.maxY - canvas.height),
+            left: max(0, -frame.minX), right: max(0, frame.maxX - canvas.width)
+        )
+        return max(out.top, out.bottom, out.left, out.right) > 0.5 ? out : nil
+    }
+
+    /// 「top by 12 px, right by 3 px」。
+    static func describe(_ overflow: Overflow) -> String {
+        [("top", overflow.top), ("bottom", overflow.bottom), ("left", overflow.left), ("right", overflow.right)]
+            .filter { $0.1 > 0.5 }
+            .map { "\($0.0) by \(Int($0.1.rounded(.up))) px" }
+            .joined(separator: ", ")
+    }
+
     /// 被从中间折断的那个词（折行正好落在两个相邻的字母之间）；没有就是 nil。
     /// 中文、日文、韩文本来就逐字折行，不算。
     static func brokenWord(in layout: TextLayout, text: String) -> String? {

@@ -93,6 +93,19 @@ private func textChecks() {
     chinese.style.fontSize = 110
     check(AITextFit.brokenWord(in: TextTypesetter.layout(chinese, canvas: portrait), text: chinese.text) == nil,
           "Chinese wrapping between characters is normal, not a broken word")
+
+    // 文字块出了画面：贴着顶上放、字又大，块的上半截在画面外（2026-09-27 冒烟：「南极探险」折成两行顶出上沿）。
+    var high = TextOverlay(text: "南极探险", timelineStart: 0)
+    high.style.fontSize = 130
+    high.centerY = 0.02
+    let out = AITextFit.overflow(of: TextRenderer.layoutFrame(high, canvas: portrait), canvas: portrait)
+    check((out?.top ?? 0) > 100, "a text pushed against the top sticks out and says by how much (got \(String(describing: out)))")
+    high.centerY = 0.5
+    check(AITextFit.overflow(of: TextRenderer.layoutFrame(high, canvas: portrait), canvas: portrait) == nil,
+          "the same text in the middle fits")
+    checkEqual(AITextFit.describe(.init(top: 12.2, right: 3)), "top by 13 px, right by 3 px", "the overflow is written per edge")
+    check(AITextFit.overflow(of: CGRect(x: 0, y: -0.4, width: 100, height: 100), canvas: portrait) == nil,
+          "less than half a pixel does not count")
 }
 
 private func subtitleEditChecks() {
