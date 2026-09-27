@@ -31,6 +31,9 @@ public enum MCPInstructions {
     wait_seconds instead of starting them again.
     - If a result has "status": "needs_confirmation", ask the user its question in your own words and only \
     call again with its confirm_token after the user agrees. Never guess or reuse a token.
+    - If a result or a job carries "waiting_for_user", SrtFlow is waiting for the user to do something (for example \
+    click Download in a macOS dialog). Tell the user exactly what it says right away, then keep waiting with get_job; \
+    never just wait silently.
     - If a call fails because the user pressed Stop in SrtFlow, stop calling tools and ask the user what to do next.
     - Only use folders and files the user gave you or that these tools returned.
     """

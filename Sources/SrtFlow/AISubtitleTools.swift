@@ -44,17 +44,28 @@ enum AISubtitleTools {
             ),
             onlyClipIDs: only
         )
-        let job = AIJobs.shared.start(.subtitles, progress: { task.progress }, cancel: { task.cancel() })
+        let waiting = WaitingNote()
+        let job = AIJobs.shared.start(.subtitles, progress: { task.progress }, waitingForUser: {
+            task.stage == .translating && !AITranslationReadiness.isProducingTranslations ? waiting.watch?.note : nil
+        }, cancel: { task.cancel() })
         // `stage` 只在主线程上写（TranscriptionTask 是 @MainActor），回调就在主线程上。
         // dropFirst：订阅那一刻发的是**上一次**任务留下的结局（比如上次的 done），不是这一次的。
         subscriptions[job.id] = task.$stage.dropFirst().sink { stage in
             MainActor.assumeIsolated {
+                if stage == .translating, let targetID {
+                    // 生成完接着翻：到这一步才知道原文是什么语言，这时再查要不要下载（同 translate 那一路）。
+                    Task { @MainActor in await guideDownloadIfNeeded(project, target: targetID, into: waiting) }
+                    return
+                }
                 switch stage {
                 case .done(let count):
+                    waiting.watch?.stop()
                     AIJobs.shared.finish(job, .done, detail: ["lines": .number(Double(count))])
                 case .failed(let message):
+                    waiting.watch?.stop()
                     AIJobs.shared.finish(job, .failed, message: message)
                 case .cancelled:
+                    waiting.watch?.stop()
                     AIJobs.shared.finish(job, .cancelled)
                 default:
                     return
@@ -63,6 +74,20 @@ enum AISubtitleTools {
             }
         }
         return .ok(started(job), changed: true)
+    }
+
+    /// 生成之后接着翻的那一步：这一对语言没装就把 SrtFlow 摆到前面、提示条和任务进度里都说清楚。
+    /// 这里**可以先信工程里记的语言**，和 translate 那一路相反：切到 translating 之前，
+    /// `replaceSubtitleForGeneration` 刚把转写实际用的语言写进去，翻译用的也正是它。
+    @available(macOS 26.0, *)
+    private static func guideDownloadIfNeeded(_ project: VideoEditProject, target: String, into waiting: WaitingNote) async {
+        let texts = project.state.subtitleCues(of: .original).map(\.text)
+        guard let source = project.state.subtitleCompanion?.sourceLanguage ?? AITextLanguage.dominant(in: texts),
+              await AITranslationReadiness.needsDownload(from: source, to: target) else { return }
+        let watch = AIDownloadWatch(source: source, target: target)
+        waiting.watch = watch
+        let task = TranscriptionTask.shared
+        watch.start(isOver: { task.stage != .translating || AITranslationReadiness.isProducingTranslations })
     }
 
     // MARK: translate_subtitles
@@ -74,23 +99,29 @@ enum AISubtitleTools {
         }
         let coordinator = TranslationJobCoordinator.shared
         if case .running = coordinator.phase { throw AIToolError("A translation is already running. Wait for that job first.") }
-        let source = project.state.subtitleCompanion?.sourceLanguage
+        let source = try translationSource(args, project)
         let targetID = try await translationTarget(try args.requiredString("target_language"), source: source)
-        if let source, TranslationPreflight.isSameTranslationLanguage(
+        if TranslationPreflight.isSameTranslationLanguage(
             Locale.Language(identifier: source), Locale.Language(identifier: targetID)
         ) {
-            throw AIToolError("The subtitles are already in that language.")
+            throw AIToolError("The subtitles are already in that language (\(source)).")
         }
         let scope: SubtitleRetranslation.Scope = try args.choice("scope", from: ["all", "missing"]) == "missing"
             ? .missingAndStale : .all
+        // 这一对语言没装：macOS 会弹下载框，而且只能由用户点。摆到前面、提示条和进度里都说清楚（AIDownloadWatch）。
+        let watch = await AITranslationReadiness.needsDownload(from: source, to: targetID)
+            ? AIDownloadWatch(source: source, target: targetID) : nil
+        let translating = { AITranslationReadiness.isProducingTranslations }
         let job = AIJobs.shared.start(.translation, progress: {
             if case .running(let completed, let total) = coordinator.phase { return Double(completed) / Double(max(total, 1)) }
             return nil
-        }, cancel: { coordinator.cancel() })
+        }, waitingForUser: { translating() ? nil : watch?.note }, cancel: { coordinator.cancel() })
+        watch?.start(isOver: { translating() || job.status != .running })
         Task { @MainActor in
             let outcome = await SubtitleTranslationService.shared.translateCurrentSubtitle(
                 project: project, scope: scope, sourceLanguage: source, targetLanguage: targetID
             )
+            watch?.stop()
             switch outcome {
             case .translated(let count): AIJobs.shared.finish(job, .done, detail: ["lines": .number(Double(count))])
             case .nothingToDo: AIJobs.shared.finish(job, .done, message: "Every line already had an up-to-date translation.")
@@ -98,7 +129,19 @@ enum AISubtitleTools {
             case .failed(let message): AIJobs.shared.finish(job, .failed, message: message)
             }
         }
-        return .ok(started(job), changed: true)
+        var result = started(job).objectValue ?? [:]
+        if let watch { result["waiting_for_user"] = .string(watch.note) }
+        return .ok(.object(result), changed: true)
+    }
+
+    /// 原文是什么语言：AI 说了就用它；否则**按字判断**（AI 可能刚把原文整轨改写成别的语言，工程里记的
+    /// 还是旧的，docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md）；判不出来才用记的。
+    private static func translationSource(_ args: AIToolArguments, _ project: VideoEditProject) throws -> String {
+        if let stated = try args.string("source_language") { return stated }
+        let texts = project.state.subtitleCues(of: .original).map(\.text)
+        if let detected = AITextLanguage.dominant(in: texts) { return detected }
+        if let stored = project.state.subtitleCompanion?.sourceLanguage { return stored }
+        throw AIToolError("SrtFlow cannot tell which language the subtitles are in. Pass source_language.")
     }
 
     /// AI 写的语言（zh-Hans、en、ja…）→ 系统翻译认的那一项。先认全名，再按语言 + 文字对。
@@ -181,6 +224,12 @@ enum AISubtitleTools {
             "deleted": .number(Double(edits.deletions.count))
         ], changed: true)
     }
+}
+
+/// 生成任务「在等用户下载翻译语言」的那一份：到翻译那一步才知道要不要。
+@MainActor
+private final class WaitingNote {
+    var watch: AIDownloadWatch?
 }
 
 private extension Optional {

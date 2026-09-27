@@ -57,6 +57,23 @@ if [ -n "${MANUAL}" ]; then
 fi
 echo "   ✓ 8 个同步的改动工具 + add_clips 都各是一步，没人手动关撤销组"
 
+echo "==> 翻译：原文语言先按字判断，判不出来才用工程里记的"
+# 反过来的话，AI 把原文改写成中文之后，系统照旧按「英文→韩文」去翻
+#（docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md）。
+SUBTITLE_TOOLS="Sources/SrtFlow/AISubtitleTools.swift"
+SOURCE_BODY="$(awk '/private static func translationSource\(/,/^    \}/' "${SUBTITLE_TOOLS}")"
+DETECT_AT="$(grep -n 'AITextLanguage\.dominant' <<<"${SOURCE_BODY}" | head -1 | cut -d: -f1 || true)"
+STORED_AT="$(grep -n 'subtitleCompanion?\.sourceLanguage' <<<"${SOURCE_BODY}" | head -1 | cut -d: -f1 || true)"
+if [ -z "${DETECT_AT}" ] || [ -z "${STORED_AT}" ] || [ "${DETECT_AT}" -gt "${STORED_AT}" ]; then
+  echo "✗ ${SUBTITLE_TOOLS} 的 translationSource 没有先按字判断原文语言（判断在第 ${DETECT_AT:-?} 行、旧记录在第 ${STORED_AT:-?} 行）" >&2
+  exit 1
+fi
+if [ "$(grep -c 'let source = try translationSource(args, project)' "${SUBTITLE_TOOLS}" || true)" -ne 1 ]; then
+  echo "✗ translate_subtitles 没走 translationSource：原文语言又会信旧记录" >&2
+  exit 1
+fi
+echo "   ✓ 先判断（第 ${DETECT_AT} 行）、再退回旧记录（第 ${STORED_AT} 行）"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -119,12 +136,14 @@ xcrun swiftc \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
+  Sources/SrtFlow/AITextLanguage.swift \
   checks/MCP/main.swift \
   checks/MCP/Harness.swift \
   checks/MCP/ProtocolChecks.swift \
   checks/MCP/TimelineChecks.swift \
   checks/MCP/ConfigChecks.swift \
   checks/MCP/UndoChecks.swift \
+  checks/MCP/LanguageChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

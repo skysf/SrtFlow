@@ -26,16 +26,23 @@ final class AIJobs {
         let startedAt = Date()
         /// 跑着的时候的进度（0…1），读不到就是 nil。
         let progress: @MainActor () -> Double?
+        /// 在等用户做一件事（比如在 macOS 的框里点「下载」）时的那句话；没在等就是 nil。
+        /// AI 查进度时看到它，才会去告诉用户，而不是对着 0% 干等。
+        let waitingForUser: @MainActor () -> String?
         let cancelAction: @MainActor () -> Void
         fileprivate(set) var status: Status = .running
         fileprivate(set) var message: String?
         fileprivate(set) var detail: JSONValue?
         fileprivate(set) var finishedAt: Date?
 
-        init(id: String, kind: Kind, progress: @escaping @MainActor () -> Double?, cancel: @escaping @MainActor () -> Void) {
+        init(
+            id: String, kind: Kind, progress: @escaping @MainActor () -> Double?,
+            waitingForUser: @escaping @MainActor () -> String?, cancel: @escaping @MainActor () -> Void
+        ) {
             self.id = id
             self.kind = kind
             self.progress = progress
+            self.waitingForUser = waitingForUser
             self.cancelAction = cancel
         }
     }
@@ -46,10 +53,15 @@ final class AIJobs {
     private init() {}
 
     func start(
-        _ kind: Kind, progress: @escaping @MainActor () -> Double?, cancel: @escaping @MainActor () -> Void
+        _ kind: Kind, progress: @escaping @MainActor () -> Double?,
+        waitingForUser: @escaping @MainActor () -> String? = { nil },
+        cancel: @escaping @MainActor () -> Void
     ) -> Job {
         counter += 1
-        let job = Job(id: "\(kind.rawValue)-\(counter)", kind: kind, progress: progress, cancel: cancel)
+        let job = Job(
+            id: "\(kind.rawValue)-\(counter)", kind: kind, progress: progress,
+            waitingForUser: waitingForUser, cancel: cancel
+        )
         jobs[job.id] = job
         return job
     }
@@ -96,6 +108,9 @@ final class AIJobs {
         ]
         if job.status == .running, let progress = job.progress() {
             object["progress"] = .number((progress * 100).rounded() / 100)
+        }
+        if job.status == .running, let waiting = job.waitingForUser() {
+            object["waiting_for_user"] = .string(waiting)
         }
         if let message = job.message { object["message"] = .string(message) }
         if let detail = job.detail, case .object(let extra) = detail {

@@ -15,7 +15,8 @@ public enum MCPSubtitleExportTools {
                 description: """
                 Transcribe the speech on the timeline into the subtitle track, on this Mac (needs macOS 26). \
                 It replaces the current subtitles as one undoable step. Hidden clips are skipped. \
-                Optionally translate right after. Returns a job id; wait for it with get_job.
+                Optionally translate right after (the same language download dialog as translate_subtitles can appear). \
+                Returns a job id; wait for it with get_job.
                 """,
                 input: MCPSchema.object([
                     "language": MCPSchema.string("Spoken language: auto (default) or a locale such as en-US, zh-CN, ja-JP."),
@@ -28,11 +29,15 @@ public enum MCPSubtitleExportTools {
                 .translateSubtitles, title: "Translate subtitles",
                 description: """
                 Translate the original subtitle track into a second track in another language, on this Mac. \
+                The original's language is read from its text (so rewriting the original first is fine). \
                 scope all rebuilds every translated line (lines edited by hand are replaced); \
-                missing only fills lines with no translation or whose original changed. Returns a job id.
+                missing only fills lines with no translation or whose original changed. Returns a job id. \
+                If this Mac still has to download the languages, macOS shows a download dialog in SrtFlow that only \
+                the user can click; the result and get_job then carry waiting_for_user, which you must pass on to the user.
                 """,
                 input: MCPSchema.object([
-                    "target_language": MCPSchema.string("Language tag, e.g. zh-Hans, en, ja, es."),
+                    "target_language": MCPSchema.string("Language tag, e.g. zh-Hans, en, ja, ko, es."),
+                    "source_language": MCPSchema.string("Language the original lines are written in. Default: detected from their text."),
                     "scope": MCPSchema.string("all (default) or missing.", oneOf: ["all", "missing"])
                 ], required: ["target_language"])
             )

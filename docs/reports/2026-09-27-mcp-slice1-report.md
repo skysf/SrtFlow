@@ -32,7 +32,8 @@
    9:16、30 帧 → 裁第一段并 ripple → 在 1 秒处切开 → 加一句字幕 → 撤一步（只退掉那句字幕）→ 再撤一步
    （切开的合回去）→ 导出 720p（5 秒完成）→ 同名再导出先问、带令牌才覆盖。成片 10.00 秒、720×1280、
    30 帧、有声音；抽帧看标题、滤镜、字幕都在。
-3. 测试版：`scripts/build-app.sh` + `scripts/build-beta-app.sh` → `SrtFlow Beta.app`（bundle id
+3. **用户在 Claude Code（Claude 桌面 App 的 Code 页）里实测**：连得上、能剪、能调翻译（暴露了上面第五条）。
+4. 测试版：`scripts/build-app.sh` + `scripts/build-beta-app.sh` → `SrtFlow Beta.app`（bundle id
    `com.srtflow.SrtFlow.beta`，和正式版互不干扰），装在「应用程序」里；Claude Code 已接上
    （`claude mcp list` 显示 `srtflow ✔ Connected`）。
 
@@ -44,6 +45,8 @@
 - `timeline-drag-wiring` 守卫只许放素材的落点函数有两处调用，AI 放素材成了第三处：守卫改成把 AI 那一处
   单独数（恰好一处，没有反倒红），本意「只有一份落点」不变。
 - 竖屏里 AI 给的 110 号「Antarctica」被从词中间折断：`set_text` 现在回行数、折断了给提示。
+- 用户在 Claude Code 里实测「中文 + 韩文」：[AI 翻译按旧的原文语言去翻，等下载时又一声不吭](../bugfixes/2026-09-27-ai-translation-stale-source-language.md)
+  —— 原文语言改成按字判断；缺语言时把 SrtFlow 摆到前面、提示条和 AI 都说「去点下载」，自己盯真实的下载状态。
 
 ## 还差什么 / 已知不足
 

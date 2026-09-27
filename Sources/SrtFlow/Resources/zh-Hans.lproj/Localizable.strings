@@ -956,3 +956,5 @@
 "Could not update %@: %@" = "改不了 %@ 的配置：%@";
 "Please connect the SrtFlow video editor to Claude Code: run this command in the terminal, then tell me to start a new session.\n\nclaude mcp add --scope user srtflow -- \"%@\"" = "请帮我把 SrtFlow 视频剪辑接进 Claude Code：在终端运行下面这行命令，然后告诉我新开一个会话就能用了。\n\nclaude mcp add --scope user srtflow -- \"%@\"";
 "Please connect the SrtFlow video editor to Codex: run this command in the terminal, then tell me to start a new session.\n\ncodex mcp add srtflow -- \"%@\"" = "请帮我把 SrtFlow 视频剪辑接进 Codex：在终端运行下面这行命令，然后告诉我新开一个会话就能用了。\n\ncodex mcp add srtflow -- \"%@\"";
+"Downloading the translation languages. In the window that opened, click Download next to each language if you haven't yet. Its progress bar can lag: System Settings › General › Language & Region › Translation Languages shows the real progress." = "正在下载翻译语言。还没点的话，在弹出的窗口里对每种语言点「Download / 下载」。那个窗口的进度条可能不刷新，真实进度看「系统设置 › 通用 › 语言与地区 › 翻译语言」。";
+"The translation languages are downloaded. If the download window is still open, click Done and translating starts." = "翻译语言已经下好了。下载窗口还开着的话，点「Done / 完成」，翻译就开始。";

@@ -32,6 +32,8 @@ final class AISession: ObservableObject {
     @Published private(set) var clientName = ""
     /// 这一轮改了几处（每个改动工程的调用算一处）。
     @Published private(set) var changeCount = 0
+    /// 要用户动手的那一句（比如「在弹出的窗口里点下载」）。有它的时候提示条先显示它。
+    @Published private(set) var hint: String?
 
     static let roundIdleSeconds = 30.0
     static let stopQuietSeconds = 10.0
@@ -81,6 +83,10 @@ final class AISession: ObservableObject {
 
     func noteChange() {
         changeCount += 1
+    }
+
+    func setHint(_ text: String?) {
+        if hint != text { hint = text }
     }
 
     /// AI 开了 / 建了另一个工程：快照换成新工程此刻的样子，「撤销这一轮」只退这个工程上的改动。

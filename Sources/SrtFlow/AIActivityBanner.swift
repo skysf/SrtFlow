@@ -16,7 +16,9 @@ struct AIActivityBanner: View {
         case .idle:
             EmptyView()
         case .working:
-            bar(icon: "sparkles", message: String(format: L10n("%@ is editing this project…"), clientName)) {
+            // 要用户动手的时候先说这件事（比如去点「下载」），不然用户只看到「正在剪辑」、一直干等。
+            bar(icon: session.hint == nil ? "sparkles" : "hand.point.up.left",
+                message: session.hint ?? String(format: L10n("%@ is editing this project…"), clientName)) {
                 Button("Stop") { session.stop() }
                     .instantHelp("Stop the AI and cancel its exports and subtitle jobs")
             }
@@ -60,9 +62,11 @@ struct AIActivityBanner: View {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .foregroundStyle(.tint)
+                // 平时一行；引导用户动手的那句长，允许折到三行、别被截掉关键的那半句。
                 Text(verbatim: message)
-                    .lineLimit(1)
+                    .lineLimit(3)
                     .truncationMode(.tail)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 buttons()
                     .controlSize(.small)
