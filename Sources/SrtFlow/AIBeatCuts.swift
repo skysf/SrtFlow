@@ -29,6 +29,17 @@ enum AIBeatCuts {
 
     static let minLength = 0.4
 
+    /// 拍点先对齐到工程的帧（同 cut_speech 的切口）：切口落在两帧中间时，预览和成片可能各取一边、差一帧。
+    /// 24 fps 下最多挪 21 毫秒，听不出来。
+    static func onFrames(_ beats: [Double], frame: Double) -> [Double] {
+        guard frame > 0 else { return beats }
+        var seen = Set<Int>()
+        return beats.compactMap { beat in
+            let index = Int((beat / frame).rounded())
+            return seen.insert(index).inserted ? Double(index) * frame : nil
+        }
+    }
+
     static func layout(_ clips: [Clip], beats: [Double], beatsPerClip: Int?) -> [Placed] {
         guard let first = clips.first else { return [] }
         var cursor = first.start

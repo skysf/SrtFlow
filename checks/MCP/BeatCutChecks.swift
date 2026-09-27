@@ -36,6 +36,10 @@ private func checkBeatLayout() {
     check(near(fitted[0].duration, 1.0) && fitted[0].beats == 2, "media too short for four beats: the most that fit (two)")
     check(fitted[1].beats == nil && near(fitted[1].duration, 0.3), "shorter than one beat: keeps its length")
 
+    let framed = AIBeatCuts.onFrames([0.24, 0.71, 2.113, 2.12], frame: 1.0 / 24)
+    check(zip(framed, [0.25, 0.7083333333333333, 2.125]).allSatisfy(near) && framed.count == 3,
+          "beats snap to the nearest frame, and two beats on one frame count once")
+
     let late = AIBeatCuts.layout([AIBeatCuts.Clip(id: ids[0], start: 19.8, duration: 3, maxDuration: 10)], beats: everyHalfSecond, beatsPerClip: nil)
     check(late[0].beats == nil && near(late[0].duration, 3), "after the music's last beat: keeps its length")
 }

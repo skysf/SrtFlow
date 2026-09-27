@@ -37,9 +37,9 @@ enum AIBeatCutTool {
                     + "beat (find_audio; listen with beats=true shows it) or cut by hand."
             )
         }
-        let beats = (on == "downbeats" ? analysis.downbeats : analysis.beats)
+        let beats = AIBeatCuts.onFrames((on == "downbeats" ? analysis.downbeats : analysis.beats)
             .map { music.timelineTime(atSource: $0) }
-            .filter { $0 >= music.timelineStart - 0.001 && $0 <= music.timelineEnd + 0.001 }
+            .filter { $0 >= music.timelineStart - 0.001 && $0 <= music.timelineEnd + 0.001 }, frame: state.frameRate.secondsPerFrame)
         let placed = AIBeatCuts.layout(chosen.map { clip in
             AIBeatCuts.Clip(
                 id: clip.id, start: clip.timelineStart, duration: clip.timelineDuration,
