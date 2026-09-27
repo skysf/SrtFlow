@@ -673,8 +673,8 @@ extension VideoEditProject {
         return true
     }
 
-    /// 探测好的素材 → 时间线上的一段。起点由 `insertImported` 按落点写。
-    private func clip(for media: MediaFileImport) -> EditClip {
+    /// 探测好的素材 → 时间线上的一段。起点由 `insertImported` 按落点写（AI 的 add_clips 也走这一份）。
+    func clip(for media: MediaFileImport) -> EditClip {
         switch media.kind {
         case .video:
             return EditClip(

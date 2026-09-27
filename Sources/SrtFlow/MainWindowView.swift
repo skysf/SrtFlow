@@ -90,7 +90,8 @@ struct MainWindowView: View {
         NavigationSplitView(columnVisibility: $state.sidebarVisibility) {
             sidebar
         } detail: {
-            detail
+            // AI 在剪的时候顶上一条「谁在剪 · 停止」（只订阅 AISession，不读工程）。
+            detail.safeAreaInset(edge: .top, spacing: 0) { AIActivityBanner() }
         }
         // **标题栏不放应用名和栏目名**（2026-09-21 用户拍板：「SrtFlow / 视频剪辑
         // 这几个字很多余」）。空标题是有意的：应用名 Dock 和菜单栏已经说了一遍，
@@ -108,6 +109,8 @@ struct MainWindowView: View {
             toolchain.resolveIfNeeded()
             // 启动时就是被文件唤起的，这时中转站里已经有东西了。
             routeStagedFiles()
+            // 用户把主窗口关了之后，AI 要剪的时候靠它把窗口开回来（AIEditorPresenter）。
+            AIEditorPresenter.openMainWindow = openWindow
         }
         // 拖到侧边栏或窗口空白处的文件按类型分流。拖到某个工具的列表上则由那个
         // 工具自己接（子视图的 onDrop 优先），直接进它的队列。

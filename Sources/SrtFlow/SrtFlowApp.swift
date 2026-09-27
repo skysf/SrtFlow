@@ -10,6 +10,16 @@ enum WindowID {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
+    /// 开始听 AI 小程序的调用（docs/architecture/ai-control-mcp.md）。一启动就听：
+    /// 小程序可能正是为了一次调用才把 App 拉起来的，它在等着连。
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AIBridgeServer.shared.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        AIBridgeServer.shared.stop()
+    }
+
     // MARK: - 剪切 / 拷贝 / 粘贴（剪辑页时间线上的东西，2026-09-26 起不止滤镜段）
     //
     // 动作本身在 `VideoEditTimelineClipboard.swift`（拿什么、落到哪、吸附、一步撤销）。
@@ -176,7 +186,7 @@ struct SrtFlowApp: App {
     }
 }
 
-/// 「设置…」(⌘,)。目前只有语言一项。
+/// 「设置…」(⌘,)。语言，和「连接 AI」。
 private struct SettingsView: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
@@ -192,9 +202,10 @@ private struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            AIConnectSection()
         }
         .formStyle(.grouped)
-        .frame(width: 420)
+        .frame(width: 480)
         .padding(.vertical, 8)
     }
 }
