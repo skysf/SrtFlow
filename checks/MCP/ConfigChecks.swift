@@ -140,6 +140,11 @@ private func vocabularyChecks() {
                "canvas ratios match CanvasRatio")
     checkEqual(MCPVocabulary.resolutions, ResolutionLimit.allCases.map { $0.maxShortSide.map { "\($0)p" } ?? "original" },
                "resolutions match ResolutionLimit")
+    checkEqual(MCPVocabulary.clipAnimations, ClipPresetKind.allCases.map(\.rawValue), "clip animations match ClipPresetKind")
+    checkEqual(MCPVocabulary.soundScenes, ["none"] + SoundSceneKind.allCases.map(\.rawValue), "sound scenes match SoundSceneKind")
+    checkEqual(MCPVocabulary.markerColors, MarkerColor.allCases.map(\.rawValue), "marker colours match MarkerColor")
+    checkEqual(AIClipDetails.presetNames, MCPVocabulary.clipAnimations, "edit_clip reads the same animation names it advertises")
+    checkEqual(AIClipDetails.sceneNames, MCPVocabulary.soundScenes, "edit_clip reads the same scene names it advertises")
     for position in MCPVocabulary.textPositions {
         check(AITextPlacement.centerY(for: position) > 0 && AITextPlacement.centerY(for: position) < 1, "\(position) is on screen")
     }

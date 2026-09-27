@@ -44,6 +44,8 @@ enum AIClipTools {
         change.ripple = try args.bool("ripple") ?? false
         let canvas = VideoEditCompositionBuilder.renderSize(for: state)
         var plan = Plan(id: id, change: change, canvas: canvas)
+        let details = try AIClipDetails(args)
+        if details.touchesPicture || details.touchesSound || details.markers != nil { plan.change.details = details }
         let request = try AIFramingRequest(args)
         if request.touchesPicture {
             try requirePicture(clip)

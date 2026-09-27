@@ -94,6 +94,7 @@ enum AITimelineSummary {
         if !clip.isAudioOnly, let picture = picture(clip, canvas: context.renderSize, always: false) {
             object["picture"] = picture
         }
+        for (key, value) in AIClipDetails.summary(clip) { object[key] = value }
         return .object(object)
     }
 

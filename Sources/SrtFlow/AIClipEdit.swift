@@ -26,6 +26,8 @@ struct AIClipChange {
     var fadeOut: Double?
     /// 画面的裁切和摆放（AIFrameFit 算好的，两样一起换）。
     var framing: AIFrameFit.Framing?
+    /// 旋转、不透明度、翻转、入场出场、音量曲线、声音场景、标记（AIClipDetails）。
+    var details: AIClipDetails?
     var ripple = false
 }
 
@@ -50,7 +52,13 @@ enum AIClipEdit {
         if let speed = change.speed { updated.speed = min(max(speed, 0.1), 8) }
         if let start = change.start { updated.timelineStart = max(0, start) }
         if let db = change.volumeDB {
-            updated.volume = min(max(AudioGain.linear(fromDecibels: min(max(db, AudioGain.minimumDB), 6)), 0), 2)
+            let target = AudioGain.clampedDecibels(db)
+            if updated.hasVolumeCurve {
+                // 曲线盖着 `volume`：整条曲线平移到「段开头那一点 = 给的 dB」（同检查器的滑杆）。
+                updated.shiftWholeVolume(byDecibels: target - updated.volumeLineDecibels(atTimeline: updated.timelineStart))
+            } else {
+                updated.volume = AudioGain.linear(fromDecibels: target)
+            }
         }
         if let muted = change.muted { updated.isMuted = muted }
         if let hidden = change.hidden { updated.isHidden = hidden }
@@ -79,6 +87,7 @@ enum AIClipEdit {
                 from: clip.timelineEnd, by: delta, excluding: partners.union([id]), linkage: linkage, in: &state
             )
         }
+        if let details = change.details { try details.apply(to: id, in: &state, frameRate: original.frameRate) }
         state.pruneEmptyTracks()
         AITimelineEdits.sortLanes(&state)
         if let other = AITimelineEdits.conflict(for: id, in: state), let slot = state.location(of: id)?.track {

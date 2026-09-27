@@ -148,7 +148,13 @@ public enum MCPTimelineTools {
             says what it found). \
             Without fit, x/y/scale place the picture yourself (x/y: its centre as fractions of the frame; \
             scale 1 = the whole picture just fits the frame), e.g. a small picture in a corner. \
-            The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file.
+            The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file. \
+            Also: rotation, opacity, flips; entrance / exit animations (\(MCPVocabulary.clipAnimations.dropFirst().joined(separator: ", ")); \
+            fade is a plain fade; a V1 transition replaces the animation on that edge); volume_curve (points in timeline \
+            seconds and dB, replacing the whole curve; [] removes it; volume_db on a clip with a curve moves the whole \
+            curve); sound_scene (a speaker, room or outdoor sound: telephone, megaphone, radio have distortion and tone; \
+            room, bathroom, hall, outdoor, forest, valley have room_size and distance; all 0–1 plus intensity 0–1; "none" \
+            removes it); markers (the full list for this clip; [] removes them all).
             """,
             input: MCPSchema.object([
                 "clip_id": MCPSchema.string("Clip id from get_timeline."),
@@ -157,7 +163,7 @@ public enum MCPTimelineTools {
                 "source_in": MCPSchema.number("New start inside the source file, seconds.", minimum: 0),
                 "source_out": MCPSchema.number("New end inside the source file, seconds.", minimum: 0),
                 "speed": MCPSchema.number("Playback speed, 1 = normal.", minimum: 0.1, maximum: 8),
-                "volume_db": MCPSchema.number("Volume change in dB, 0 = original.", minimum: -60, maximum: 6),
+                "volume_db": MCPSchema.number("Volume change in dB, 0 = original.", minimum: -60, maximum: 6.02),
                 "muted": MCPSchema.boolean("Silence the clip."),
                 "hidden": MCPSchema.boolean("Hide the clip from preview and export without deleting it."),
                 "fade_in": MCPSchema.number("Audio fade-in, seconds.", minimum: 0),
@@ -171,6 +177,32 @@ public enum MCPTimelineTools {
                 "x": MCPSchema.number("Horizontal centre of the picture on the frame, 0–1.", minimum: 0, maximum: 1),
                 "y": MCPSchema.number("Vertical centre of the picture on the frame, 0–1.", minimum: 0, maximum: 1),
                 "scale": MCPSchema.number("Picture size, 1 = the whole picture just fits the frame.", minimum: 0.05, maximum: 6),
+                "rotation": MCPSchema.number("Clockwise degrees.", minimum: -360, maximum: 360),
+                "opacity": MCPSchema.number("0 = invisible, 1 = solid.", minimum: 0, maximum: 1),
+                "flip_horizontal": MCPSchema.boolean("Mirror left-right."),
+                "flip_vertical": MCPSchema.boolean("Mirror top-bottom."),
+                "entrance": MCPSchema.string("How the picture comes in.", oneOf: MCPVocabulary.clipAnimations),
+                "entrance_duration": MCPSchema.number("Seconds (default 0.6 when an entrance is chosen).", minimum: 0),
+                "exit": MCPSchema.string("How the picture goes out.", oneOf: MCPVocabulary.clipAnimations),
+                "exit_duration": MCPSchema.number("Seconds (default 0.6 when an exit is chosen).", minimum: 0),
+                "animation_intensity": MCPSchema.number("How far rise / pop / zoom move, 0–1 (default 0.6).", minimum: 0, maximum: 1),
+                "volume_curve": MCPSchema.array(of: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "db": MCPSchema.number("Volume there in dB.", minimum: -60, maximum: 6)
+                ], required: ["time", "db"]), "Volume points; the level moves in straight lines between them."),
+                "sound_scene": MCPSchema.object([
+                    "kind": MCPSchema.string("Scene.", oneOf: MCPVocabulary.soundScenes),
+                    "intensity": MCPSchema.number("How much of the effect, 0–1.", minimum: 0, maximum: 1),
+                    "distortion": MCPSchema.number("Speaker scenes, 0–1.", minimum: 0, maximum: 1),
+                    "tone": MCPSchema.number("Speaker scenes, 0–1.", minimum: 0, maximum: 1),
+                    "room_size": MCPSchema.number("Room and outdoor scenes, 0–1.", minimum: 0, maximum: 1),
+                    "distance": MCPSchema.number("Room and outdoor scenes, 0–1.", minimum: 0, maximum: 1)
+                ], description: "Make the sound come from a speaker, a room or outdoors."),
+                "markers": MCPSchema.array(of: MCPSchema.object([
+                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "note": MCPSchema.string("Note shown on the marker."),
+                    "color": MCPSchema.string("Colour.", oneOf: MCPVocabulary.markerColors)
+                ], required: ["time"]), "This clip's markers (replaces all of them)."),
                 "ripple": MCPSchema.boolean("On V1: move the later V1 clips by the same amount the clip's end moves.")
             ], required: ["clip_id"])
         )

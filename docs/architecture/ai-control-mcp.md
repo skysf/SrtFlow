@@ -182,6 +182,14 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    等授权框时 osascript 不返回，等它的线程在 `MediaReadQueue.analysis` 上，最多等 50 秒，到点请 AI 让用户点完再来；
    用户拒绝（-1743）就告诉 AI 去系统设置哪儿开。边跑边读走输出（选中上千个文件时路径会超过管道的 64KB）。
 
+17. **一段的其余设置（edit_clip，方案「分块」第 2 块的现有功能铺满）**：规则在 `AIClipDetails`（纯值），能调现成的都调 ——
+   旋转 / 不透明度照检查器夹紧（±360°、0…1），**做了关键帧的那一行不改**（报错）；入场 / 出场的种类和时长成对改
+   （`kind == .none` ⟺ 0 秒：只给时长当渐显、只给种类给默认 0.6 秒）；音量曲线给的是时间线秒、存成源时间，按音量线的容差
+   去重，空列表去掉曲线；**有曲线时 `volume_db` 整条平移**（同检查器，[案例](../bugfixes/2026-09-27-ai-volume-ignored-on-curved-clips.md)）；
+   声音场景走 `setSoundSceneKind / setSoundSceneValue`（检查器同一份），旋钮名按场景分（喇叭类 distortion / tone，
+   空间类 room_size / distance），给错了报错；标记给整份列表，走 `EditClip.addMarker`（半帧容差，同按 M）。
+   动画、场景、标记颜色的词表在小程序里抄一份，`check-mcp.sh` 和 App 的类型对账。`get_timeline` 带上这些设置（默认的不写）。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，

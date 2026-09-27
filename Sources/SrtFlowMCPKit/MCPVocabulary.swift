@@ -47,6 +47,15 @@ public enum MCPVocabulary {
     /// 文字的几个常用位置（画面高度的比例见 App 里的 `AITextPlacement`）。
     public static let textPositions = ["top", "upper_third", "center", "lower_third", "bottom"]
 
+    /// = `ClipPresetKind.allCases` 的原始值（画面段的入场 / 出场）。
+    public static let clipAnimations = ["none", "fade", "rise", "pop", "zoom", "wipe"]
+
+    /// = `SoundSceneKind.allCases` 的原始值，前面加一个 "none"（去掉场景）。
+    public static let soundScenes = ["none", "telephone", "megaphone", "radio", "room", "bathroom", "hall", "outdoor", "forest", "valley"]
+
+    /// = `MarkerColor.allCases` 的原始值。
+    public static let markerColors = ["red", "orange", "yellow", "green", "blue", "purple"]
+
     public static let textAlignments = ["left", "center", "right"]
 
     public static var filterPresetIDs: [String] { filterPresets.map(\.id) }

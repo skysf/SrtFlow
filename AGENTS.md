@@ -455,6 +455,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-27 加了几段音效，预览整个黑屏（标题照样在）](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md) — 合成器用 `CMTime(seconds:)` 换格子会**截断**：5.3 + 1.4 = 6.699999999999999 落在前一格，补空白时从那儿插进去，切下前一段音效的最后一格、一路挤到全片最后，合成比画面长 1/600 秒，视频合成判无效 → 预览只剩黑底，正式版一样。改成只往合成轨真正的末尾后面接、合成完裁到总长（`CompositionTime`）；第一版顺手把换算改成四舍五入，CI（macOS 15）的声音渐变自检卡死 30 分钟，退回截断，并给那项自检加了看门狗。二分到「中间空一截 + 最后一段收在结尾」这个组合才找到。**CMTime 截断、AVFoundation 的 insert 会挤走已有内容而不报错、合成总长多一格就黑屏；修 bug 别顺手改到处在用的换算。**
 - [2026-09-27 拼图函数叫 `sheet(`，被 sheet 语言守卫当成了 SwiftUI 的 `.sheet`](docs/bugfixes/2026-09-27-contact-sheet-name-trips-sheet-guard.md) — AI「看」把几帧拼成一张的函数叫 `AIContactSheet.sheet(`，按调用名扫的守卫把它当成弹出的 sheet，CI 第 1 组红；改名 `draw`。**按名字扫的守卫，名字就是接口：别给自己的函数取 SwiftUI 修饰器的名字；推之前把 `checks/*.sh` 的扫描守卫也跑一遍（秒级）。**
 - [2026-09-27 GBK 编码的字幕文件读出来是乱码](docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md) — 读字幕（剪辑页挂字幕、字幕编辑、烧录）和批量转换都是「UTF-8 → UTF-16 → GBK」，而 `.utf16` 几乎什么都解得出来，GBK 永远轮不到，整份读成乱码；两份抄来的规则还不一样。给 AI 写读文稿的自检时造了一份 GBK 才撞出来。改成只有 `TextDecoding` 一处、先看 BOM、像 UTF-16 才按 UTF-16。**「解得出来」不等于「解对了」：宽容的解码器只能放最后，或者先用特征确认。**
+- [2026-09-27 段上画了音量曲线时，AI 调 volume_db 听不出变化](docs/bugfixes/2026-09-27-ai-volume-ignored-on-curved-clips.md) — 有曲线时曲线取代 `volume`，AI 却一律写 `volume`；检查器早就改成整条曲线平移。改成同检查器、回给 AI 的状态带上曲线。**给 AI 开参数之前先看检查器改同一个值时做了什么。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

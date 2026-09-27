@@ -22,6 +22,8 @@
 #  12. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
 #  13. manage_files（整理文件）：只在点名的文件夹里动、不覆盖、改名保留后缀、不许挪进自己里面；临时目录里真做一遍（含进废纸篓）。
 #  14. open_folder from_finder：选中的东西登记哪个文件夹、只列哪些；Info.plist 有控制访达的用途说明（扫描）。
+#  15. edit_clip 的其余设置（AIClipDetails）：旋转 / 不透明度、入场出场成对、音量曲线换源时间、有曲线时 volume_db 平移整条、
+#      声音场景的旋钮名、标记；小程序抄的动画 / 场景 / 标记颜色词表和 App 的类型对账。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -220,6 +222,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIClipEdit.swift \
   Sources/SrtFlow/AIFrameFit.swift \
   Sources/SrtFlow/AIFramingRequest.swift \
+  Sources/SrtFlow/AIClipDetails.swift \
   Sources/SrtFlow/AIBlackBars.swift \
   Sources/SrtFlow/AISubjectFocus.swift \
   Sources/SrtFlow/AIVision.swift \
@@ -255,6 +258,7 @@ xcrun swiftc \
   checks/MCP/DocumentChecks.swift \
   checks/MCP/FileOperationChecks.swift \
   checks/MCP/FinderChecks.swift \
+  checks/MCP/ClipDetailChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 
