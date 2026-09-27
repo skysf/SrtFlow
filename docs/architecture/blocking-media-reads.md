@@ -41,7 +41,7 @@
 | `overview` | utility | 2 | 波形总览，整个文件从头读到尾；打开工程时几十个文件一起排队 |
 | `detail` | userInitiated | 2 | 深度放大时读原始采样，一秒一块，用户正盯着看 |
 | `export` | userInitiated | 1 | 导出时把整条混音离线读成文件（[成片的声音](export-audio-mixdown.md)）；一次只导一个，单独一条不占波形那两条 |
-| `analysis` | userInitiated | 2 | AI 看画面：Vision 的 `VNImageRequestHandler.perform`（认人脸、标签、字）同样卡住线程、等 Vision 自己队列上的活（[AI 接口](ai-control-mcp.md)）；不是读采样，但同属下面「等本进程里别的活」那一类 |
+| `analysis` | userInitiated | 2 | AI 看画面、读文稿：Vision 的 `VNImageRequestHandler.perform`（认人脸、标签、字）同样卡住线程、等 Vision 自己队列上的活；PDFKit 抽大 PDF 的字也要一两秒（[AI 接口](ai-control-mcp.md)）。不是读采样，但同属下面「等本进程里别的活」那一类 |
 
 宽度只关系到性能（和播放抢 CPU、内存），和死锁无关。43 个短素材：宽度 1 用 0.92 秒，
 宽度 2 用 0.77 秒，3 以上约 0.7 秒。宽度取 2，这样一条被长录屏占住时，另一条照样往下走。

@@ -29,8 +29,8 @@ enum MediaReadQueue {
     /// 导出时把整条混音离线读成文件（ExportAudioMixdown）：一次只导一个，一条就够；
     /// 单独一条队列，长工程读上半分钟也不占波形放大要用的那两条。
     static let export = make("SrtFlow.MediaRead.export", qos: .userInitiated, width: 1)
-    /// AI 看画面（Vision 认人脸 / 标签 / 字）：`VNImageRequestHandler.perform` 同样会卡住线程、等 Vision 自己
-    /// 队列上的活，照这里的规矩挪出协作线程池。AI 的调用是一个接一个的，两条够「看」一次抽的几帧并排认。
+    /// AI 看画面（Vision 认人脸 / 标签 / 字）、读文稿（PDFKit、富文本导入）：`VNImageRequestHandler.perform`、读大文件
+    /// 同样会卡住线程，照这里的规矩挪出协作线程池。AI 的调用是一个接一个的，两条够「看」一次抽的几帧并排认。
     static let analysis = make("SrtFlow.MediaRead.analysis", qos: .userInitiated, width: 2)
 
     /// 在 `queue` 上把一段阻塞的读取跑完，结果交回来（等的这一方只是挂起，不占线程）。

@@ -30,11 +30,13 @@ enum AIMediaScan {
         var hasOutputFolder: Bool
     }
 
-    static let documentExtensions: Set<String> = ["pdf", "doc", "docx", "txt", "md", "rtf", "pages"]
+    static let documentExtensions: Set<String> = ["pdf", "doc", "docx", "odt", "txt", "md", "markdown", "rtf", "pages"]
 
     static func kind(of url: URL) -> Kind? {
         let ext = url.pathExtension.lowercased()
         if ext == VideoEditProjectFile.fileExtension { return .project }
+        // .txt 字幕能认，但文件夹里的 .txt 多半是讲稿、笔记：列成文稿（read_document 读），当字幕用照样 add_clips。
+        if ext == "txt" { return .document }
         if MediaFileTypes.isSubtitle(url) { return .subtitle }
         if MediaFileTypes.isVideo(url) { return .video }
         if MediaFileTypes.isImage(url) { return .image }

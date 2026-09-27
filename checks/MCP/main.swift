@@ -15,6 +15,7 @@ await runSubjectChecks()
 runLookChecks()
 runListenChecks()
 runTextDecodingChecks()
+runDocumentChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

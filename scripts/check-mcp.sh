@@ -18,7 +18,8 @@
 #      大图穿过小程序 ↔ App 的通道原样回来（假 App 回一张几百 KB 的图）。
 #  10. listen（「听」）：用生产的 ChunkBuilder 攒一份波形，量电平（只算有声音的部分）、峰值、静音段（窗和均方桶对齐，
 #      交界不漏能量）、响度曲线、片段在时间线上听到的（变速换时间、段音量和轨道推子乘进去）。
-#  11. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
+#  11. read_document（读文稿）：现造 GBK 的 txt、RTF、docx、带字的 PDF 读回来对文字，Pages 要说清楚读不了，分段读的边界。
+#  12. 用户文本文件的编码识别（SrtFlowCore 的 TextDecoding）：GBK 字幕单双字节都读对、UTF-16 带不带 BOM 都认、UTF-8 的 BOM 不留下。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -214,6 +215,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIContactSheet.swift \
   Sources/SrtFlow/AIFrameDescription.swift \
   Sources/SrtFlow/AIAudioLevels.swift \
+  Sources/SrtFlow/AIDocumentReader.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
   Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
@@ -236,6 +238,7 @@ xcrun swiftc \
   checks/MCP/LookChecks.swift \
   checks/MCP/ListenChecks.swift \
   checks/MCP/TextDecodingChecks.swift \
+  checks/MCP/DocumentChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

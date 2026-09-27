@@ -163,6 +163,12 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 三种问法：一段（带静音段列表和响度曲线）、一个文件、整条时间线（每段一行，只给静音段个数）。一次最多等波形读
      40 秒，没读完先把读到的给出去、说一声再调一次。
 
+14. **读文稿（read_document，方案第 22 条）**：用户给的讲稿、大纲、卖点清单读成文字（`AIDocumentReader`）：PDF 用 PDFKit，
+   Word / RTF / ODT 用系统的富文本导入，txt / md 按 [用户文本文件的编码](text-file-encoding.md) 读；Pages 和扫描件读不了，
+   明说请用户导出 PDF / Word。整理换行和空行省 token，长文稿按 `from_char` / `max_chars` 分段读。读大 PDF 会卡线程，
+   在 `MediaReadQueue.analysis` 上跑。点名文件夹以外的文件先问。`open_folder` 把 .txt 列成文稿（文件夹里的 .txt 多半是讲稿；
+   当字幕用照样 `add_clips`）。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
