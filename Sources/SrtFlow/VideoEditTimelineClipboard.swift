@@ -158,7 +158,8 @@ extension VideoEditProject {
     }
 
     /// 复制时静帧还没转完的图片段：照原图再转一次（同导入那条路，登记进后台任务、切工程时能取消）。
-    private func convertPastedStills(_ stills: [TimelinePasteResult.StillConversion]) {
+    /// AI 的 duplicate_items 也走这里（同一条「照原图再转一次」的路）。
+    func convertPastedStills(_ stills: [TimelinePasteResult.StillConversion]) {
         guard !stills.isEmpty else { return }
         let generation = documentGeneration
         trackImportTask(Task { [weak self] in

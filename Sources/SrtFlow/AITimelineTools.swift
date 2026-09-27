@@ -190,6 +190,38 @@ enum AITimelineTools {
         return .ok(.object(result), changed: true)
     }
 
+    // MARK: duplicate_items
+
+    static func duplicate(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
+        let state = project.state
+        let ids = AIShortIDs(state: state)
+        guard let raw = try args.stringArray("ids"), !raw.isEmpty else { throw AIToolError("ids is required.") }
+        let selection = try AIDuplicate.selection(try raw.map { try ids.resolve($0) }, in: state, linkage: project.linkageEnabled)
+        let pointing: TrackSlot? = try args.string("track").map { name in
+            switch try AITrackSettings.target(name, in: state) {
+            case .track(let slot): return slot
+            case .master: throw AIToolError("track must be V1, V2… or A1, A2….")
+            }
+        }
+        var next = state
+        let result = try AIDuplicate.apply(selection, to: &next, at: try args.double("start"), pointing: pointing)
+        // 和 ⌘V 同一条路：一步撤销、粘完选中粘出来的、静帧没转完的照原图再转一次。
+        project.perform(rebuildsPreview: !result.clips.isEmpty) { $0 = next }
+        project.convertPastedStills(result.stillConversions)
+        let fresh = AIShortIDs(state: project.state)
+        let created = result.clips.union(result.shapes).union(result.texts).union(result.cues).union(result.filters)
+        let starts = project.state.allClips.filter { result.clips.contains($0.id) }.map(\.timelineStart)
+            + project.state.textOverlays.filter { result.texts.contains($0.id) }.map(\.timelineStart)
+        AIEditorPresenter.reveal(.init(
+            clips: result.clips, shapes: result.shapes, texts: result.texts, filters: result.filters, cues: result.cues,
+            time: starts.min()
+        ), project: project)
+        return .ok([
+            "new_ids": .array(created.map { .string(fresh.short($0)) }.sorted { ($0.stringValue ?? "") < ($1.stringValue ?? "") }),
+            "timeline_duration": AIFormat.seconds(project.state.duration)
+        ], changed: true)
+    }
+
     // MARK: split / delete / transition
 
     static func split(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {

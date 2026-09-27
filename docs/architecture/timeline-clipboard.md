@@ -87,3 +87,10 @@
 - [ ] 一个工程里 ⌘C，打开另一个工程 ⌘V：粘得出来、素材能播。
 - [ ] 在 Finder 里 ⌘C 一个视频，鼠标停在某条轨的空白处 ⌘V：落在鼠标那儿、那条轨。
 - [ ] 切到简体中文（系统英文时）：右键菜单是「剪切 / 拷贝 / 粘贴」。
+
+## AI 的「复制一份」
+
+AI 接口的 `duplicate_items` 走同一对纯函数（`AIDuplicate`：`TimelineClipboardPayload(copying:)` → `TimelinePaste.apply`），
+不碰系统剪贴板、不另算落点；粘完照样 `convertPastedStills`。改这里的落点规则，AI 那边跟着变，不用另改
+（[AI 接口](ai-control-mcp.md) 第四节第 21 条）。
+

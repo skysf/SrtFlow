@@ -93,6 +93,22 @@ public enum MCPTimelineTools {
                 ], required: ["ids"]),
                 destructive: true
             )
+        case .duplicateItems:
+            return MCPToolDefinition(
+                .duplicateItems, title: "Duplicate",
+                description: """
+                Copy clips, texts, shapes, filters or subtitle lines (ids can be mixed) and place the copies with the \
+                same spacing, the earliest at start (default: right after the last of them ends). Landing works like \
+                paste in SrtFlow: a clip that would overlap goes up to the next free video track (or another audio \
+                track), groups keep their order, linked audio comes along. track picks where a single group of clips \
+                goes. Returns the new ids.
+                """,
+                input: MCPSchema.object([
+                    "ids": MCPSchema.array(of: MCPSchema.string("Id from get_timeline or get_subtitles."), "What to copy.", minItems: 1),
+                    "start": MCPSchema.number("Timeline time for the earliest copy.", minimum: 0),
+                    "track": MCPSchema.string("V1, V2… or A1, A2…: where the copied clips should go.")
+                ], required: ["ids"])
+            )
         case .setTransition:
             return MCPToolDefinition(
                 .setTransition, title: "Set a transition",

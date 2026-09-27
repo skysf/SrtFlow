@@ -21,6 +21,7 @@ runFinderChecks()
 runClipDetailChecks()
 runTrackKeyframeChecks()
 runShapeChecks()
+runDuplicateChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")
