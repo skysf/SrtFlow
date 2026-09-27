@@ -26,11 +26,14 @@ final class WaveformChunk: Sendable {
     /// `levels[k][channel]` = 第 k 级、某个声道的 (min, max) 交错数组：
     /// `[min0, max0, min1, max1, …]`，Int16 满幅 ±32767 对应 ±1.0。
     let levels: [[[Int16]]]
+    /// `power[channel]` = 每 `WaveformPowerBuilder.bucket` 帧一个均方（「听」量响度用，VideoEditWaveformPower.swift）。
+    let power: [[Float]]
 
-    init(startFrame: Int, frameCount: Int, levels: [[[Int16]]]) {
+    init(startFrame: Int, frameCount: Int, levels: [[[Int16]]], power: [[Float]] = []) {
         self.startFrame = startFrame
         self.frameCount = frameCount
         self.levels = levels
+        self.power = power
     }
 }
 
@@ -334,10 +337,13 @@ struct ChunkBuilder {
     private var currentMax: [Float]
     /// 当前块的第 0 级：每声道一条 (min, max) 交错数组。
     private var base: [[Int16]]
+    /// 当前块的均方（同一遍读里顺手攒）。
+    private var power: WaveformPowerBuilder
 
     init(channels: Int, startFrame: Int) {
         self.channels = max(1, channels)
         self.startFrame = startFrame
+        power = WaveformPowerBuilder(channels: channels)
         currentMin = Array(repeating: .greatestFiniteMagnitude, count: max(1, channels))
         currentMax = Array(repeating: -.greatestFiniteMagnitude, count: max(1, channels))
         base = Array(repeating: [], count: max(1, channels))
@@ -353,7 +359,9 @@ struct ChunkBuilder {
                 let value = samples[offset + ch]
                 if value < currentMin[ch] { currentMin[ch] = value }
                 if value > currentMax[ch] { currentMax[ch] = value }
+                power.add(value, channel: ch)
             }
+            power.endFrame()
             framesInBucket += 1
             framesInChunk += 1
             if framesInBucket == WaveformPeaks.baseBucket {
@@ -407,7 +415,7 @@ struct ChunkBuilder {
             levels.append(next)
             previous = next
         }
-        let chunk = WaveformChunk(startFrame: startFrame, frameCount: framesInChunk, levels: levels)
+        let chunk = WaveformChunk(startFrame: startFrame, frameCount: framesInChunk, levels: levels, power: power.take())
         startFrame += framesInChunk
         framesInChunk = 0
         bucketCount = 0

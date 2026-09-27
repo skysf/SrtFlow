@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 波形数据（多级峰值）的真实回归：ffmpeg 现造每个采样都算得出来的素材，走生产的
+# 波形数据（多级峰值 + 给「听」用的均方）的真实回归：ffmpeg 现造每个采样都算得出来的素材，走生产的
 # WaveformStore → WaveformDecoder → ChunkBuilder 读一遍，逐项对账。
 #
 # 用法：
@@ -37,6 +37,7 @@ xcrun swiftc \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditWaveformData.swift \
+  Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditWaveformDetail.swift \
   checks/Waveform/main.swift
 

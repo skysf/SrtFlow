@@ -11,9 +11,37 @@ public enum MCPSenseTools {
         switch name {
         case .look:
             return look
+        case .listen:
+            return listen
         default:
             preconditionFailure("\(name.rawValue) is described in another group")
         }
+    }
+
+    private static var listen: MCPToolDefinition {
+        MCPToolDefinition(
+            .listen, title: "Measure the sound",
+            description: """
+            Hear the sound as numbers instead of guessing. With clip_id: that clip as it plays in the video \
+            (its volume, fades and track fader included), times on the timeline. With file: a media file, times in \
+            seconds of the file (source_in/source_out narrow it). With neither: every clip with sound on the timeline, \
+            one line each. You get level_db (RMS of the parts that are not silent), peak_db, silences (stretches \
+            quieter than silence_db for at least min_silence seconds), loudest_at, and for one clip or file a coarse \
+            curve of the level (one value per step seconds). dB are dBFS; -60 means silent or quieter. Use it to set \
+            volumes (speech usually sits around -20 to -14 dB level, background music about 12-20 dB under the voice) \
+            and to find pauses to cut. Files outside the opened folder need the user's OK (the result asks).
+            """,
+            input: MCPSchema.object([
+                "clip_id": MCPSchema.string("A clip on the timeline."),
+                "file": MCPSchema.string("A media file instead (absolute, or relative to the opened folder)."),
+                "source_in": MCPSchema.number("With file: start, seconds in the file.", minimum: 0),
+                "source_out": MCPSchema.number("With file: end, seconds in the file.", minimum: 0),
+                "silence_db": MCPSchema.number("Quieter than this counts as silence (default -45).", minimum: -80, maximum: -10),
+                "min_silence": MCPSchema.number("Shortest silence to report, seconds (default 0.5).", minimum: 0.1, maximum: 10),
+                "confirm_token": MCPSchema.confirmToken
+            ]),
+            readOnly: true
+        )
     }
 
     private static var look: MCPToolDefinition {

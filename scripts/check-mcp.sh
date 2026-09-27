@@ -16,6 +16,8 @@
 #      真画一张图（黑底左上角一块亮色）让 Vision 认，认出来的框必须在左上（Vision 是左下原点，换算反了窗就对错地方）。
 #   9. look（「看」）：几帧排成格子、拼图的大小、JPEG、每帧的文字描述、结果里图跟在文字后面（MCP 的 image）；
 #      大图穿过小程序 ↔ App 的通道原样回来（假 App 回一张几百 KB 的图）。
+#  10. listen（「听」）：用生产的 ChunkBuilder 攒一份波形，量电平（只算有声音的部分）、峰值、静音段（窗和均方桶对齐，
+#      交界不漏能量）、响度曲线、片段在时间线上听到的（变速换时间、段音量和轨道推子乘进去）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -194,6 +196,9 @@ xcrun swiftc \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AIContactSheet.swift \
   Sources/SrtFlow/AIFrameDescription.swift \
+  Sources/SrtFlow/AIAudioLevels.swift \
+  Sources/SrtFlow/VideoEditWaveformData.swift \
+  Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
@@ -212,6 +217,7 @@ xcrun swiftc \
   checks/MCP/BlackBarChecks.swift \
   checks/MCP/SubjectChecks.swift \
   checks/MCP/LookChecks.swift \
+  checks/MCP/ListenChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 
