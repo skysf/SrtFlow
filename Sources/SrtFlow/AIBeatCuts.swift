@@ -58,10 +58,16 @@ enum AIBeatCuts {
             }
             let start = cursor
             let duration = end.map { $0 - start } ?? clip.duration
-            let count = end.map { stop in beats.filter { $0 > start + 0.0005 && $0 <= stop + 0.0005 }.count }
+            let count = end.map { beatCount(beats, from: start, to: $0) }
             cursor = start + duration
             return Placed(id: clip.id, start: start, duration: duration, beats: count)
         }
+    }
+
+    /// 占了几拍 = 这一段里头一拍到切口那一拍之间有几个拍子间隔。开头不在拍上（音乐自己的引子，比如第一拍在 0.24 秒）
+    /// 那一小截不算一拍：每段 4 拍时第一段也回 4（2026-09-28 冒烟时回了 5，AI 会以为没照它说的做）。
+    static func beatCount(_ beats: [Double], from start: Double, to end: Double) -> Int {
+        max(0, beats.filter { $0 >= start - 0.0005 && $0 <= end + 0.0005 }.count - 1)
     }
 
     /// 排好的落到时间线上：每段改开头和长度（入点不动）；它链接的声音跟着挪同样多、出点改同样多（不超出那段声音自己的素材）；

@@ -280,7 +280,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    保持原长并在结果里说。落到时间线上：链接的声音跟着挪、出点改同样多（不超出它自己的素材），这一串后面的 V1 片段按总长的
    变化整体挪；音乐和别的轨不动。拍子不清楚（可信度低于 `clearConfidence`）不踩，照实告诉 AI 换一首或手剪。
    拍点先对齐到工程的帧（`AIBeatCuts.onFrames`，同 cut_speech 的切口：落在两帧中间时预览和成片可能各取一边）。
-   两步 plan / apply，同 cut_speech。
+   结果里每段的 `beats` 是这一段里头一拍到切口之间的拍子间隔数（`AIBeatCuts.beatCount`）：音乐自己的引子（第一拍前那一小截）
+   不算一拍，每段 4 拍时第一段也回 4。两步 plan / apply，同 cut_speech。
 
 ## 五、这一轮、停止、撤销这一轮
 

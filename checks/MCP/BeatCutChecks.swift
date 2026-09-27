@@ -23,10 +23,16 @@ private func checkBeatLayout() {
     let snapped = AIBeatCuts.layout(clips, beats: everyHalfSecond, beatsPerClip: nil)
     check(zip(snapped.map { $0.start + $0.duration }, [2.5, 3.5, 6.5]).allSatisfy(near), "each cut moves to the nearest beat (2.5, 3.5, 6.5)")
     check(near(snapped[1].start, 2.5) && near(snapped[2].start, 3.5), "each clip starts where the one before ends")
-    checkEqual(snapped.map(\.beats), [5, 2, 6], "beats per clip")
+    checkEqual(snapped.map(\.beats), [4, 2, 6], "beats per clip (the lead-in before the first beat is not a beat)")
 
     let even = AIBeatCuts.layout(clips, beats: everyHalfSecond, beatsPerClip: 4)
     check(zip(even.map { $0.start + $0.duration }, [2.5, 4.5, 6.5]).allSatisfy(near), "beats_per_clip 4: every cut four beats on")
+    checkEqual(even.map(\.beats), [4, 4, 4], "beats_per_clip 4 reports 4 for every clip, the first one too")
+
+    // 2026-09-28 冒烟：128 BPM 的鼓点第一拍在 0.24 秒，每段 4 拍，第一段回了 5。
+    let offBeat = (0..<16).map { 0.24 + Double($0) * 60 / 128 }
+    let smoke = AIBeatCuts.layout([AIBeatCuts.Clip(id: ids[0], start: 0, duration: 10, maxDuration: 10)], beats: offBeat, beatsPerClip: 4)
+    check(near(smoke[0].duration, offBeat[4]) && smoke[0].beats == 4, "a lead-in of half a beat: cut on the fifth beat, reported as 4 beats")
 
     let short = [
         AIBeatCuts.Clip(id: ids[0], start: 2.5, duration: 3, maxDuration: 1.2),
