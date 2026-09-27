@@ -90,8 +90,7 @@ struct MainWindowView: View {
         NavigationSplitView(columnVisibility: $state.sidebarVisibility) {
             sidebar
         } detail: {
-            // AI 在剪的时候顶上一条「谁在剪 · 停止」（只订阅 AISession，不读工程）。
-            detail.safeAreaInset(edge: .top, spacing: 0) { AIActivityBanner() }
+            detail
         }
         // **标题栏不放应用名和栏目名**（2026-09-21 用户拍板：「SrtFlow / 视频剪辑
         // 这几个字很多余」）。空标题是有意的：应用名 Dock 和菜单栏已经说了一遍，
