@@ -79,6 +79,20 @@ private func textChecks() {
     checkEqual(overlay.animation.entrance, .pop, "entrance animation")
     checkEqual(overlay.style.fontSize, 120, "numbers written as strings are accepted")
     checkThrows("an unknown position is refused") { _ = try AITextChange(args(["position": "left"])) }
+
+    // 字放不放得下：竖屏 1080 宽、框宽 0.8，110 号的「Antarctica」放不下、被从中间折断；小一号就放下了。
+    var title = TextOverlay(text: "南极 Antarctica", timelineStart: 0)
+    title.style.fontSize = 110
+    let portrait = CGSize(width: 1080, height: 1920)
+    checkEqual(AITextFit.brokenWord(in: TextTypesetter.layout(title, canvas: portrait), text: title.text), "Antarctica",
+               "a word broken in the middle is reported")
+    title.style.fontSize = 70
+    check(AITextFit.brokenWord(in: TextTypesetter.layout(title, canvas: portrait), text: title.text) == nil,
+          "a smaller size fits and reports nothing")
+    var chinese = TextOverlay(text: "这是一段很长很长很长很长很长很长很长的中文标题", timelineStart: 0)
+    chinese.style.fontSize = 110
+    check(AITextFit.brokenWord(in: TextTypesetter.layout(chinese, canvas: portrait), text: chinese.text) == nil,
+          "Chinese wrapping between characters is normal, not a broken word")
 }
 
 private func subtitleEditChecks() {

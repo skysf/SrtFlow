@@ -44,12 +44,19 @@ enum AIOverlayTools {
             throw AIToolError("The text disappeared while it was being changed.")
         }
         AIEditorPresenter.reveal(.init(texts: [id], time: overlay.timelineStart + min(0.5, overlay.duration / 2)), project: project)
+        // 按成片的画面排一次版：几行、有没有词被从中间折断（AI 看不见画面，只能靠这个自己改字号）。
+        let canvas = VideoEditCompositionBuilder.renderSize(for: project.state)
+        let layout = TextTypesetter.layout(overlay, canvas: canvas)
+        if let word = AITextFit.brokenWord(in: layout, text: overlay.settledText) {
+            warnings.append("On this \(Int(canvas.width))×\(Int(canvas.height)) frame \"\(word)\" does not fit on one line and is broken in the middle. Use a smaller font_size or a wider box_width.")
+        }
         var result: [String: JSONValue] = [
             "text_id": .string(AIShortIDs(state: project.state).short(id)),
             "start": AIFormat.seconds(overlay.timelineStart),
             "end": AIFormat.seconds(overlay.timelineEnd),
             "x": AIFormat.seconds(overlay.centerX),
-            "y": AIFormat.seconds(overlay.centerY)
+            "y": AIFormat.seconds(overlay.centerY),
+            "lines": .number(Double(layout.lines.count))
         ]
         if !warnings.isEmpty { result["warnings"] = .array(warnings.map { .string($0) }) }
         return .ok(.object(result), changed: true)

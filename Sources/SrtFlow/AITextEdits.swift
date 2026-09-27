@@ -158,3 +158,31 @@ struct AITextChange {
         if let hidden { overlay.isHidden = hidden }
     }
 }
+
+/// 字放不放得下：AI 看不见画面，字号给大了它自己不知道（2026-09-27 端到端实测：竖屏里 110 号的
+/// 「Antarctica」被从词中间折成「Antarctic / a」）。结果里回行数，词被折断了给一句提示让它改。
+enum AITextFit {
+    /// 被从中间折断的那个词（折行正好落在两个相邻的字母之间）；没有就是 nil。
+    /// 中文、日文、韩文本来就逐字折行，不算。
+    static func brokenWord(in layout: TextLayout, text: String) -> String? {
+        let units = Array(text.utf16)
+        for (line, next) in zip(layout.lines, layout.lines.dropFirst()) {
+            guard let last = line.glyphs.map(\.characterIndex).max(),
+                  let first = next.glyphs.map(\.characterIndex).min(),
+                  first == last + 1, isWordUnit(units, last), isWordUnit(units, first) else { continue }
+            var lower = last
+            while lower > 0, isWordUnit(units, lower - 1) { lower -= 1 }
+            var upper = first
+            while upper + 1 < units.count, isWordUnit(units, upper + 1) { upper += 1 }
+            return String(utf16CodeUnits: Array(units[lower...upper]), count: upper - lower + 1)
+        }
+        return nil
+    }
+
+    /// 拼音文字的字母或数字（CJK 从 U+2E80 起，那一带逐字折行是正常的）。
+    private static func isWordUnit(_ units: [UInt16], _ index: Int) -> Bool {
+        guard units.indices.contains(index), units[index] < 0x2E80,
+              let scalar = Unicode.Scalar(UInt32(units[index])) else { return false }
+        return scalar.properties.isAlphabetic || ("0"..."9").contains(Character(scalar))
+    }
+}
