@@ -14,6 +14,7 @@ import Foundation
 /// 全部工具的名字。**顺序就是 `tools/list` 的顺序**（2026-07-28 版协议要求清单顺序稳定）。
 public enum MCPToolName: String, CaseIterable, Sendable {
     case getStatus = "get_status"
+    case setView = "set_view"
     case openFolder = "open_folder"
     case openProject = "open_project"
     case newProject = "new_project"
@@ -41,7 +42,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
 
     public var definition: MCPToolDefinition {
         switch self {
-        case .getStatus, .openFolder, .openProject, .newProject, .saveProject, .undo, .seek:
+        case .getStatus, .setView, .openFolder, .openProject, .newProject, .saveProject, .undo, .seek:
             return MCPProjectTools.definition(for: self)
         case .getTimeline, .addClips, .editClip, .splitClip, .deleteItems, .setTransition,
              .setText, .setFilter, .setCanvas:

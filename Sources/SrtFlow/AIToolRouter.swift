@@ -55,10 +55,12 @@ final class AIToolRouter {
             )
         }
         do {
-            // 窗口只在一轮开始时摆到前面（docs/plans/2026-09-27-mcp.md 第 32 条）：这一轮中途不再一步一跳。
+            // 窗口只在一轮开始时摆到前面（docs/plans/2026-09-27-mcp.md 第 32 条）：这一轮中途不再一步一跳；
+            // 后台模式（第 7 条）一次都不摆。
             if policy.presentsEditor {
                 let startsNewRound = AISession.shared.phase != .working
-                try await AIEditorPresenter.prepareEditor(project: project, bringForward: startsNewRound)
+                let visible = AISession.shared.viewMode == .visible
+                try await AIEditorPresenter.prepareEditor(project: project, bringForward: startsNewRound && visible)
             }
             if policy.startsRound { AISession.shared.beginRoundIfNeeded(project: project) }
             let result = try await run(tool, arguments, project)
@@ -80,6 +82,7 @@ final class AIToolRouter {
         let undo = project.effectiveUndoManager
         switch tool {
         case .getStatus: return AIProjectTools.status(project)
+        case .setView: return try AIProjectTools.setView(args)
         case .openFolder: return try await AIProjectTools.openFolder(args, project)
         case .openProject: return try await AIProjectTools.openProject(args, project)
         case .newProject: return try AIProjectTools.newProject(args, project)
@@ -120,6 +123,8 @@ final class AIToolRouter {
             switch tool {
             case .getStatus, .getJob, .cancelJob:
                 (serialized, presentsEditor, startsRound) = (false, false, false)
+            case .setView:
+                (serialized, presentsEditor, startsRound) = (true, false, false)
             case .openFolder, .getTimeline, .look, .listen, .getSubtitles, .saveProject, .exportVideo:
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:

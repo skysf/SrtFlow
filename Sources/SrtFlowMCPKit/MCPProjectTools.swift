@@ -12,10 +12,23 @@ public enum MCPProjectTools {
                 .getStatus, title: "SrtFlow status",
                 description: """
                 What SrtFlow is doing right now: the open project (name, path, length, unsaved changes), \
-                the folders you may use, running jobs, and whether the user pressed Stop. \
+                the folders you may use, running jobs, whether the user pressed Stop, and the view mode (set_view). \
                 Cheap; call it first in a new conversation.
                 """,
                 readOnly: true
+            )
+        case .setView:
+            return MCPToolDefinition(
+                .setView, title: "Watch or work in the background",
+                description: """
+                visible (the default): SrtFlow comes forward when a round of edits starts and each edit is selected \
+                and shown in the preview. background: SrtFlow stays where it is and does not follow the edits; they \
+                still go into the project and can be undone. Ask the user once per conversation which they want, \
+                unless they already said. Lasts until SrtFlow quits.
+                """,
+                input: MCPSchema.object([
+                    "mode": MCPSchema.string("How the user follows your edits.", oneOf: ["visible", "background"])
+                ], required: ["mode"])
             )
         case .openFolder:
             return MCPToolDefinition(

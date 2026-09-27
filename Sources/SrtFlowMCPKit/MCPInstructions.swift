@@ -28,6 +28,8 @@ public enum MCPInstructions {
     tracks. x/y positions are fractions of the frame.
 
     Rules:
+    - Unless the user already said, ask once per conversation whether they want to watch the edits happen in \
+    SrtFlow (the default) or have them done in the background, and call set_view with the answer.
     - Every edit is one undo step in SrtFlow; the user can press Command-Z or ask you to call undo \
     (round=true undoes everything from this round of edits).
     - Subtitle generation, translation and export are jobs: they return a job id; call get_job with \

@@ -77,7 +77,7 @@ echo "==> 看得见：窗口只在一轮开始时摆到前面"
 #（docs/plans/2026-09-27-mcp.md 第 32 条）。
 PRESENTER="Sources/SrtFlow/AIEditorPresenter.swift"
 if [ "$(grep -c 'let startsNewRound = AISession.shared.phase != .working' "${ROUTER}" || true)" -ne 1 ] \
-   || [ "$(grep -c 'prepareEditor(project: project, bringForward: startsNewRound)' "${ROUTER}" || true)" -ne 1 ]; then
+   || [ "$(grep -c 'prepareEditor(project: project, bringForward: startsNewRound && visible)' "${ROUTER}" || true)" -ne 1 ]; then
   echo "✗ ${ROUTER} 没按「这一轮是不是刚开始」决定要不要把窗口摆到前面" >&2
   exit 1
 fi
@@ -87,7 +87,12 @@ if [ "$(grep -c 'orderFrontRegardless' "${PRESENTER}" || true)" -ne 2 ] \
   echo "✗ ${PRESENTER} 在 if bringForward 外面也把窗口摆到前面（一轮中途又会一步一跳）" >&2
   exit 1
 fi
-echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里"
+# 后台模式（方案第 7 条）：一次都不摆窗口、不跟着选中 / 挪播放头（seek 除外，它就是要给用户看那一刻）。
+if [ "$(grep -c 'guard always || AISession.shared.viewMode == .visible else { return }' "${PRESENTER}" || true)" -ne 1 ]; then
+  echo "✗ ${PRESENTER} 的 reveal 在后台模式下照样选中、挪播放头" >&2
+  exit 1
+fi
+echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里；后台模式不摆窗口、不跟着选中"
 
 echo "==> 翻译：原文语言先按字判断，判不出来才用工程里记的"
 # 反过来的话，AI 把原文改写成中文之后，系统照旧按「英文→韩文」去翻

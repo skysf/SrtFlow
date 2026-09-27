@@ -65,7 +65,9 @@ enum AIEditorPresenter {
         var time: Double?
     }
 
-    static func reveal(_ reveal: Reveal, project: VideoEditProject) {
+    /// 后台模式（`AISession.viewMode`）下不选中、不挪播放头、不滚时间线 —— 除非 `always`（seek：AI 就是要给用户看这一刻）。
+    static func reveal(_ reveal: Reveal, project: VideoEditProject, always: Bool = false) {
+        guard always || AISession.shared.viewMode == .visible else { return }
         let selectsSomething = !reveal.clips.isEmpty || !reveal.texts.isEmpty
             || !reveal.filters.isEmpty || !reveal.cues.isEmpty
         if selectsSomething {

@@ -35,7 +35,8 @@ enum AIProjectTools {
             "folders": .array(workspace.folders.map { .string($0.path) }),
             "output_folder": .string(workspace.outputFolder(.exports, project: project).path),
             "jobs": .array(AIJobs.shared.running.map { AIJobs.shared.json($0) }),
-            "stopped_by_user": .bool(session.phase == .stopped)
+            "stopped_by_user": .bool(session.phase == .stopped),
+            "view": .string(session.viewMode.rawValue)
         ]
         if #available(macOS 26.0, *) {
             result["subtitle_generation"] = .bool(SpeechTranscriptionService.isAvailable)
@@ -258,9 +259,22 @@ enum AIProjectTools {
         return .ok(["undone_steps": .number(Double(undone))], changed: true)
     }
 
+    /// 看得见还是后台（方案第 7 条）。
+    static func setView(_ args: AIToolArguments) throws -> AIToolResult {
+        guard let raw = try args.choice("mode", from: ["visible", "background"]),
+              let mode = AISession.ViewMode(rawValue: raw) else { throw AIToolError("mode is required: visible or background.") }
+        AISession.shared.setViewMode(mode)
+        return .ok([
+            "view": .string(mode.rawValue),
+            "note": .string(mode == .visible
+                ? "SrtFlow comes forward when you start a round of edits and shows each change."
+                : "SrtFlow stays where it is and does not follow your edits; they still land in the project and can be undone.")
+        ])
+    }
+
     static func seek(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
         let time = min(max(try args.requiredDouble("time"), 0), project.state.duration)
-        AIEditorPresenter.reveal(.init(time: time), project: project)
+        AIEditorPresenter.reveal(.init(time: time), project: project, always: true)
         return .ok(["playhead": AIFormat.seconds(time)])
     }
 }

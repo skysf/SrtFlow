@@ -35,6 +35,18 @@ final class AISession: ObservableObject {
     /// 要用户动手的那一句（比如「在弹出的窗口里点下载」）。有它的时候提示条先显示它。
     @Published private(set) var hint: String?
 
+    /// 看得见（默认）还是后台（方案第 7 条）：后台时 SrtFlow 不摆窗口、不跟着选中 / 挪播放头，改动照样进工程、照样能 ⌘Z。
+    /// 这次运行里一直有效，App 重开回到看得见。
+    enum ViewMode: String {
+        case visible, background
+    }
+
+    private(set) var viewMode: ViewMode = .visible
+
+    func setViewMode(_ mode: ViewMode) {
+        viewMode = mode
+    }
+
     static let roundIdleSeconds = 30.0
     static let stopQuietSeconds = 10.0
 
