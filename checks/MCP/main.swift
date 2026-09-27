@@ -11,6 +11,7 @@ runLanguageChecks()
 runFolderChecks()
 runFramingChecks()
 runBlackBarChecks()
+await runSubjectChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

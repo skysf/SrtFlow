@@ -139,8 +139,10 @@ public enum MCPTimelineTools {
             A move or trim that would overlap another clip on the same track fails and names that clip; \
             ripple=true on V1 moves the later V1 clips along instead. \
             Picture (video and image clips): fit=fill fills the whole frame and cuts off what sticks out \
-            (use it to turn wide footage into 9:16 and back); focus_x/focus_y pick the point of the source \
-            picture to keep in the middle. fit=fit shows the whole picture with bars around it (SrtFlow's default). \
+            (use it to turn wide footage into 9:16 and back). It aims at the subject SrtFlow finds in a few frames \
+            (faces first, then people, then whatever stands out; the result says what it found), or at \
+            focus_x/focus_y if you pass them; focus=center skips the search. \
+            fit=fit shows the whole picture with bars around it (SrtFlow's default). \
             fit starts from the whole picture unless crop or remove_black_bars says which part to use. \
             remove_black_bars=true looks at a few frames and cuts off letterbox / pillarbox bars (the result \
             says what it found). \
@@ -161,6 +163,7 @@ public enum MCPTimelineTools {
                 "fade_in": MCPSchema.number("Audio fade-in, seconds.", minimum: 0),
                 "fade_out": MCPSchema.number("Audio fade-out, seconds.", minimum: 0),
                 "fit": MCPSchema.string("fill: cover the whole frame; fit: show the whole picture.", oneOf: ["fill", "fit"]),
+                "focus": MCPSchema.string("With fit=fill: aim at the subject (default) or the centre.", oneOf: ["subject", "center"]),
                 "focus_x": MCPSchema.number("With fit=fill: horizontal point of the source picture to keep centred, 0 = left edge.", minimum: 0, maximum: 1),
                 "focus_y": MCPSchema.number("With fit=fill: vertical point to keep centred, 0 = top edge.", minimum: 0, maximum: 1),
                 "crop": crop,

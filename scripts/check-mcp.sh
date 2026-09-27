@@ -12,6 +12,8 @@
 #      完整显示 / 按位置大小摆、只改裁切不拉变形、约等于默认布局就存 nil；参数组合的冲突当场挡掉；
 #      去黑边（AIBlackBars）：遮幅、柱边、暗场不算数、夜空的星星不是遮幅、遮幅里的字幕留着、几帧取最小，
 #      真画一张图读回来第一行是画面最上面（上下弄反就裁错边）。
+#   8. 铺满时对准谁（AISubjectFocus）：人脸优先、几张脸放得下对准中间放不下对准最大的、几帧取中位数、走动大了要说；
+#      真画一张图（黑底左上角一块亮色）让 Vision 认，认出来的框必须在左上（Vision 是左下原点，换算反了窗就对错地方）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -185,6 +187,9 @@ xcrun swiftc \
   Sources/SrtFlow/AIFrameFit.swift \
   Sources/SrtFlow/AIFramingRequest.swift \
   Sources/SrtFlow/AIBlackBars.swift \
+  Sources/SrtFlow/AISubjectFocus.swift \
+  Sources/SrtFlow/AIVision.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
@@ -201,6 +206,7 @@ xcrun swiftc \
   checks/MCP/FolderChecks.swift \
   checks/MCP/FramingChecks.swift \
   checks/MCP/BlackBarChecks.swift \
+  checks/MCP/SubjectChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 

@@ -53,7 +53,14 @@ enum AIClipTools {
                 plan.findings["black_bars"] = AIPictureProbe.json(bars)
                 if let bars, !bars.isEmpty { usable = bars.active }
             }
-            plan.change.framing = try framing(request, clip: clip, canvas: canvas, usable: usable)
+            let crop = chosenCrop(request, usable: usable)
+            var focus = request.focusPoint
+            if request.fit == .fill, focus == nil, request.focus == .subject,
+               let found = await subjectFocus(clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil)) {
+                focus = found.point
+                plan.findings["subject"] = found.json
+            }
+            plan.change.framing = try framing(request, clip: clip, canvas: canvas, crop: crop, focus: focus)
         }
         return plan
     }
@@ -109,26 +116,42 @@ enum AIClipTools {
         }
     }
 
-    /// 按 AI 说的算出裁切和摆放。`usable`：去黑边找到的可用区域（没找 / 没找到是 nil）。
-    private static func framing(
-        _ request: AIFramingRequest, clip: EditClip, canvas: CGSize, usable: CGRect?
-    ) throws -> AIFrameFit.Framing {
-        // 手动裁切和去黑边二选一（AIFramingRequest 挡过）：哪个给了，哪个就是这次的裁切。
-        let chosenCrop: ClipCrop?? = request.crop.map { AIFrameFit.crop(keeping: AIFrameFit.region(of: $0)) }
+    /// 这次的裁切：手动裁切和去黑边二选一（AIFramingRequest 挡过），哪个给了就是哪个。
+    /// 外层 nil = 两个都没给（按位置摆时沿用原来的裁切）；里层 nil = 不裁。
+    private static func chosenCrop(_ request: AIFramingRequest, usable: CGRect?) -> ClipCrop?? {
+        request.crop.map { AIFrameFit.crop(keeping: AIFrameFit.region(of: $0)) }
             ?? usable.map { AIFrameFit.crop(keeping: $0) }
+    }
+
+    /// 铺满时对准的主体。不用裁（素材和画布同比例）就不去认；认不出来时写一句「照正中铺」、点是正中。
+    private static func subjectFocus(
+        _ clip: EditClip, canvas: CGSize, active: CGRect
+    ) async -> (point: CGPoint, json: JSONValue)? {
+        guard let display = clip.info?.displaySize else { return nil }
+        let centre = CGPoint(x: active.midX, y: active.midY)
+        let window = AIFrameFit.fillWindow(display: display, canvas: canvas, active: active, focus: centre)
+        guard abs(window.width - active.width) > 0.001 || abs(window.height - active.height) > 0.001 else { return nil }
+        let subject = await AIPictureProbe.subject(of: clip, window: window.size)
+        return (subject?.point ?? centre, AIPictureProbe.json(subject, window: window.size))
+    }
+
+    /// 按 AI 说的算出裁切和摆放。`crop` 见 `chosenCrop`；`focus` 是铺满时窗对准的点（nil = 可用区域的正中）。
+    private static func framing(
+        _ request: AIFramingRequest, clip: EditClip, canvas: CGSize, crop: ClipCrop??, focus: CGPoint?
+    ) throws -> AIFrameFit.Framing {
         switch request.fit {
         case .fit?:
-            return AIFrameFit.fit(active: AIFrameFit.region(of: chosenCrop ?? nil))
+            return AIFrameFit.fit(active: AIFrameFit.region(of: crop ?? nil))
         case .fill?:
-            let active = AIFrameFit.region(of: chosenCrop ?? nil)
-            let focus = request.focusPoint ?? CGPoint(x: active.midX, y: active.midY)
-            guard let filled = AIFrameFit.fill(clip, canvas: canvas, active: active, focus: focus) else {
+            let active = AIFrameFit.region(of: crop ?? nil)
+            let aim = focus ?? CGPoint(x: active.midX, y: active.midY)
+            guard let filled = AIFrameFit.fill(clip, canvas: canvas, active: active, focus: aim) else {
                 throw AIToolError("SrtFlow cannot fill the frame with \(clip.name).")
             }
             return filled
         case nil:
             return AIFrameFit.place(
-                clip, canvas: canvas, crop: chosenCrop ?? clip.crop, x: request.x, y: request.y, scale: request.scale
+                clip, canvas: canvas, crop: crop ?? clip.crop, x: request.x, y: request.y, scale: request.scale
             )
         }
     }
