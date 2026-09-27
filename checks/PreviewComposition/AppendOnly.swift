@@ -5,15 +5,11 @@ import Foundation
 // 往合成轨上接素材：只从真正的末尾接、合成完每条轨裁到时间线总长
 // （Sources/SrtFlow/CompositionTime.swift，docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md）。
 //
-// 复现用户南极工程里的那条音效轨：一段从 5.3 秒起、长 1.4 秒（5.3 + 1.4 在浮点里是 6.699999999999999），
-// 空一截，最后一段正好收在画面结尾。修之前：空白从第 4019 格插进去，切下前一段的最后一格、挤到全片最后，
-// 合成比画面长 1/600 秒，视频合成的指令铺不满 → 判无效 → 预览整个黑屏。
+// 复现用户南极工程里的那条音效轨：一段从 5.3 秒起、长 1.4 秒（5.3 + 1.4 在浮点里是 6.699999999999999，
+// 截断落在第 4019 格），空一截，最后一段正好收在画面结尾。修之前：空白从 4019 插进去，切下前一段的最后
+// 一格、挤到全片最后，合成比画面长 1/600 秒，视频合成的指令铺不满 → 判无效 → 预览整个黑屏。
 
 func checkAppendOnly(root: URL) async throws {
-    // 换算四舍五入到格子：CMTime(seconds:preferredTimescale:) 向零截断，6.699999999999999 会落在 4019。
-    checkEqual(CompositionTime.ticks(5.3 + 1.4).value, 4020, "5.3 + 1.4（6.699999999999999）落在第 4020 格")
-    checkEqual(CompositionTime.ticks(5.3).value, 3180, "5.3 落在第 3180 格")
-
     let picture = try await makeSolidVideo(white: 1, seconds: 7, name: "append-picture.mp4")
     let whoosh = try makeToneWAV(seconds: 1.4, name: "append-whoosh.wav")
     let hit = try makeToneWAV(seconds: 1, name: "append-hit.wav")

@@ -171,6 +171,7 @@ func previewEnvelope(_ state: TimelineState, name: String) async -> Envelope? {
 }
 
 func main() async {
+    startWatchdog(seconds: 240)  // 本机整项不到一分钟；卡住就别挂到 CI 的 30 分钟超时（Watchdog.swift）
     guard FileManager.default.isExecutableFile(atPath: ffmpegPath) else {
         print("找不到 ffmpeg：\(ffmpegPath)（跑 scripts/vendor-ffmpeg.sh，或设 SRTFLOW_FFMPEG）")
         finish(1)
@@ -186,6 +187,7 @@ func main() async {
     checkFlatEnvelope(sourceEnvelope, "素材本身")
 
     // ---- 1. 音频轨（audioChain 分支，纯音频导出）----
+    group("1. 音频轨（audioChain 分支，纯音频导出）")
     let faded = audioOnlyTimeline(audioSource, fadeIn: 1, fadeOut: 1)
     if let envelope = await exportEnvelope(faded, name: "audio-faded.m4a", audioOnly: true) {
         checkFadedEnvelope(envelope, "音频轨导出")
@@ -202,6 +204,7 @@ func main() async {
     }
 
     // ---- 2. 主轨自带的音轨（段内滤镜分支）----
+    group("2. 主轨自带的音轨（段内滤镜分支）")
     let mainFaded = mainTrackTimeline(videoSource, fadeIn: 1, fadeOut: 1)
     if let envelope = await exportEnvelope(mainFaded, name: "main-faded.mp4", audioOnly: false) {
         checkFadedEnvelope(envelope, "主轨导出")
@@ -215,6 +218,7 @@ func main() async {
     }
 
     // ---- 3. 变速：渐变按**时间线秒**算 ----
+    group("3. 变速：渐变按时间线秒算")
     //
     // 2 倍速的 4 秒素材在时间线上是 2 秒。渐入 1 秒应当占**时间线的前半段**；
     // 若淡出起点误用源长度算，afade 会落在 4-1=3 秒（早已越过 2 秒的段尾），
@@ -243,6 +247,7 @@ func main() async {
     }
 
     // ---- 4. 渐入起点不许有爆音（段**不从 0 开始**时的增益跳变）----
+    group("4. 渐入起点不许有爆音（段不从 0 开始时的增益跳变）")
     //
     // 2026-08-12 的用户报告：渐入开头「砰」的一下，很短促。根因是
     // AVFoundation 混音器把音量跳变按一个缓冲区（实测约 17ms）平滑过去，而
@@ -292,6 +297,7 @@ func main() async {
     }
 
     // ---- 4b. 每条合成音轨从第 0 帧起就必须有确定的音量 ----
+    group("4b. 每条合成音轨从第 0 帧起就必须有确定的音量")
     //
     // 上面第 4 组量的是 PCM 包络，它只能证明**离线**管线不出爆音，而离线
     // （AVAssetReader）和实时（AVPlayer）的 de-zipper 窗口不是一个量级：
@@ -351,6 +357,7 @@ func main() async {
     await checkPinnedFromZero(mutedState, "静音的音频段")
 
     // ---- 5. 「只换 audioMix」的快路径必须与整条重建等价 ----
+    group("5. 「只换 audioMix」的快路径必须与整条重建等价")
     //
     // 改音量/渐变时预览不重建合成（重建要 replaceCurrentItem，画面会闪），
     // 而是拿建好时记下的 `audioPlan` 重算一份 mix 换上去。两条路一旦分叉，
@@ -402,6 +409,7 @@ func main() async {
     }
 
     // ---- 6. 转场仲裁：接缝那条边归转场管，段内不能再淡一次 ----
+    group("6. 转场仲裁：接缝那条边归转场管，段内不能再淡一次")
     //
     // 两段都设了渐入 1s + 渐出 1s，中间一个转场。期望：
     // 第一段只保留渐入（渐出让给转场），第二段只保留渐出（渐入让给转场）——
@@ -459,17 +467,21 @@ func main() async {
     }
 
     // ---- 6b. 正在播的预览换上的那份 mix，和成片是同一份（展开过转场的几何）----
+    group("6b. 正在播的预览换上的那份 mix，和成片是同一份（展开过转场的几何）")
     await checkLiveMixFollowsExpandedSeams(videoSource: videoSource)
 
     // ---- 7. 音量曲线与推子（checks/AudioFade/VolumeCurve.swift）----
+    group("7. 音量曲线与推子")
     await checkVolumeCurvesAndFaders(audioSource: audioSource, videoSource: videoSource)
 
     // ---- 8. 电平表（checks/AudioFade/Meter.swift；环形缓冲收到 0 之前的位置：MeterRing.swift）----
+    group("8. 电平表")
     checkMeterRingBeforeZero()
     await checkMeters(audioSource: audioSource, videoSource: videoSource)
     await checkMetersAcrossFormatChange(audioSource: audioSource, videoSource: videoSource)
 
     // ---- 9. 声音场景（checks/AudioFade/SoundScene.swift）----
+    group("9. 声音场景")
     await checkSoundScenes(videoSource: videoSource)
 
     print("\(checks) checks, \(failures) failures")

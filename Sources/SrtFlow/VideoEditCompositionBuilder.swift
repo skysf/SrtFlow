@@ -435,8 +435,8 @@ enum VideoEditCompositionBuilder {
 
     // MARK: - 小工具
 
-    private static func time(_ seconds: Double) -> CMTime {
-        CompositionTime.ticks(seconds)
+    private static func time(_ seconds: Double) -> CMTime {  // 截断；别改成四舍五入，见 CompositionTime 文件头
+        CMTime(seconds: max(0, seconds), preferredTimescale: 600)
     }
 
     static func renderSize(for state: TimelineState) -> CGSize {
