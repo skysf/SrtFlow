@@ -59,9 +59,10 @@ for page in "${PAGES[@]}"; do
   fi
 done
 
-# 5. 剪辑页和 AI 不直接用烧录队列的样式。
+# 5. 剪辑页和 AI 不直接用烧录队列的样式。烧录页自己、队列、AI 的 burn_subtitles（烧外部文件，本来就是烧录页那套）除外。
 STYLE_READS="$(grep -rn --include='*.swift' 'burnInStyle' Sources/SrtFlow \
-  | grep -v -e '^Sources/SrtFlow/BurnInView.swift:' -e '^Sources/SrtFlow/EncodeQueue' | grep -v 'appWide' || true)"
+  | grep -v -e '^Sources/SrtFlow/BurnInView.swift:' -e '^Sources/SrtFlow/EncodeQueue' -e '^Sources/SrtFlow/AIEncodeTools.swift:' \
+  | grep -v 'appWide' || true)"
 if [ -n "${STYLE_READS}" ]; then
   fail "这几处直接用了烧录页的字幕样式，工程自己的样式（AI 改的）会被忽略 —— 改成 state.subtitleStyle(appWide:)：
 ${STYLE_READS}"

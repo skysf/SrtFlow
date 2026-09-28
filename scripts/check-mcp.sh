@@ -33,6 +33,8 @@
 #  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）；
 #      配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、说话部分同一个响度），两种声音都只经一处写文件（扫描）。
 #  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、切段、拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
+#  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
+#      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -65,7 +67,7 @@ echo "==> 路由：改工程的工具各是一步撤销"
 # 不显式分组的话 AI 的每一步都堆进同一组，⌘Z 一按全部退光；手动关自动开的那一组又会让下一次登记
 # 抛异常、App 闪退（docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md）。
 ROUTER="Sources/SrtFlow/AIToolRouter.swift"
-for tool in setKeyframes setTrack splitClip deleteItems duplicateItems setTransition setText setShape setFilter setCanvas editSubtitles; do
+for tool in setKeyframes setTrack splitClip deleteItems duplicateItems setTransition setText setShape setFilter setCanvas; do
   if [ "$(grep -cE "case \\.${tool}: return try AIUndoGrouping\\.step\\(undo\\)" "${ROUTER}" || true)" -ne 1 ]; then
     echo "✗ ${ROUTER} 里 ${tool} 没包在 AIUndoGrouping.step 里：它的改动会和别的步并成一步撤销" >&2
     exit 1
@@ -74,6 +76,11 @@ done
 # edit_clip 先 await 看画面（去黑边、对准主体），再把同步的提交包起来：包的那一段不许有 await。
 if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AIClipTools\.apply\(plan, project\) \}' "${ROUTER}" || true)" -ne 1 ]; then
   echo "✗ ${ROUTER} 里 edit_clip 的提交没包在 AIUndoGrouping.step 里" >&2
+  exit 1
+fi
+# edit_subtitles 给了字体要先等字体表（await），同样只把同步的提交包起来。
+if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AISubtitleTools\.edit\(args, style: style, project\) \}' "${ROUTER}" || true)" -ne 1 ]; then
+  echo "✗ ${ROUTER} 里 edit_subtitles 的提交没包在 AIUndoGrouping.step 里" >&2
   exit 1
 fi
 for tool in AISpeechCutTool AIBeatCutTool AIVoiceoverTool; do
@@ -121,7 +128,7 @@ if grep -nE '^ +perform\(rebuildsPreview: false\) \{ \$0\.remove\(clipID\) \}' S
   echo "✗ 静帧转换失败删占位块的 perform 没包在 AIUndoGrouping.step 里（异步落账）" >&2
   exit 1
 fi
-echo "   ✓ 11 个同步的改动工具 + edit_clip / cut_speech / cut_to_beat / add_voiceover / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
+echo "   ✓ 10 个同步的改动工具 + edit_clip / edit_subtitles / cut_speech / cut_to_beat / add_voiceover / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
 echo "     删占位块这些异步落账也各是一步；没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
@@ -372,6 +379,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditWaveformPower.swift \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
+  Sources/SrtFlow/AISubtitleStyle.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
   Sources/SrtFlow/AIReadGrants.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
@@ -404,6 +412,7 @@ xcrun swiftc \
   checks/MCP/RecipeChecks.swift \
   checks/MCP/VoiceChecks.swift \
   checks/MCP/VoiceLevelChecks.swift \
+  checks/MCP/SubtitleStyleChecks.swift \
   checks/MCP/KokoroChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \

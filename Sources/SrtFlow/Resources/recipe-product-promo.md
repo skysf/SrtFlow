@@ -34,7 +34,9 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Keyword text: Chinese PingFang SC bold; English Avenir Next bold (or Futura). On 9:16, font_size 110–140.
 - White with a dark outline, or on a solid box (background_color). animation_in pop or cascade (0.3 s). In the upper third
   (subtitles take the bottom).
-- Subtitles: on, big, above the bottom safe area.
+- Subtitles: on, big and bold, the word being spoken highlighted. Before generate_subtitles or add_voiceover, set
+  edit_subtitles style: size 64–72, bold true, highlight #FFD400, highlight_scale 1.1; on 9:16 also position bottom,
+  margin 0.22 (above the platform's buttons).
 
 ## Sound
 

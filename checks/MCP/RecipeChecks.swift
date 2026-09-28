@@ -134,8 +134,9 @@ private func knownNames() -> Set<String> {
     walk(MCPToolName.listJSON)
     names.formUnion(MCPVocabulary.transitions + MCPVocabulary.filterPresetIDs + MCPVocabulary.textAnimations
         + MCPVocabulary.clipAnimations + MCPVocabulary.soundScenes + MCPVocabulary.textEmphasis
-        + MCPVocabulary.numberStyles + MCPVocabulary.voiceRoles + MCPVocabulary.textPositions)
+        + MCPVocabulary.numberStyles + MCPVocabulary.voiceRoles + MCPVocabulary.textPositions + MCPVocabulary.subtitlePositions)
     names.insert("music_credits")  // get_timeline 的结果里的字段
+    names.insert("lines_with_word_times")  // get_subtitles 的结果里的字段
     return names
 }
 

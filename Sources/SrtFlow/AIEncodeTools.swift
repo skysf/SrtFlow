@@ -45,6 +45,15 @@ enum AIEncodeTools {
         guard Set(pairs.map(\.video.standardizedFileURL.path)).count == pairs.count else {
             throw AIToolError("The same video appears twice in items.")
         }
+        // 这一批自带的字幕样式（烧录页记住的那套不动）；字幕文件里没有词的时间，逐词高亮不适用。
+        var styleChange = try AISubtitleStyleChange(args)
+        if styleChange?.changesHighlight == true {
+            throw AIToolError("style.highlight needs word times, which subtitle files do not have. It works on the project's own subtitles (edit_subtitles).")
+        }
+        let fonts = await FontCatalogStore.shared.loadedFonts()
+        styleChange = try styleChange?.resolvingFont(in: fonts.map(\.familyName))
+        let batchStyle = styleChange.map { $0.applied(to: EncodeQueue.burnIn.burnInStyle) }
+        let batchFontURL = batchStyle.flatMap { style in fonts.first { $0.familyName == style.fontName }?.fileURL }
         let all = pairs.flatMap { [$0.video, $0.subtitles] }
         if let ask = try AIWorkspace.shared.confirmReading(all, verb: "read", args: args, project: project) {
             return ask
@@ -58,7 +67,9 @@ enum AIEncodeTools {
                 throw AIToolError("\(pair.subtitles.lastPathComponent) could not be read: \(error.localizedDescription)")
             }
             guard !document.cues.isEmpty else { throw AIToolError("\(pair.subtitles.lastPathComponent) has no subtitle lines.") }
-            return (pair.video, BurnInRequest(subtitleURL: pair.subtitles, document: document))
+            return (pair.video, BurnInRequest(
+                subtitleURL: pair.subtitles, document: document, style: batchStyle, styleFontURL: batchFontURL
+            ))
         }
         return try await enqueue(entries, on: .burnIn, kind: .burnIn, args, project)
     }

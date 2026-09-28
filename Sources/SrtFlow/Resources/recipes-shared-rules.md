@@ -15,3 +15,6 @@
    each part, the end) and listen to the whole timeline.
 8. When done, tell the user which recipe you followed, the length, the shape and where the video is; with library music, give
    the credit lines (music_credits).
+9. Subtitles: set how they look with edit_subtitles style before generate_subtitles or add_voiceover subtitles=true (lines are
+   cut to fit that size). It changes only this project, never the user's Burn In Subtitles page. Word highlight only lights
+   lines SrtFlow made from speech or a voiceover (get_subtitles tells lines_with_word_times).

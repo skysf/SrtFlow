@@ -32,6 +32,9 @@
    「点主页链接了解」这类通用话）。
 7. **导出前自检**：每张卡最后一节的清单逐条过；`look` 时间线上几个关键时刻（开头、每段第一帧、结尾），`listen` 整条时间线。
 8. **做完告诉用户**：用了哪套、多长、画幅、导出在哪；用了音乐库的音乐给出署名句（`music_credits`）。
+9. **字幕的样子**：生成字幕、配音字幕**之前**先用 `edit_subtitles style` 设好（一行放多少按设的字号切）；只改这个工程，
+   不动用户在烧录页记住的那套（方案第 54 条）。逐词高亮只亮 SrtFlow 自己从语音、配音做出来的句子（`get_subtitles` 会报
+   `lines_with_word_times`）。
 
 ## 三、五张卡
 
@@ -49,7 +52,7 @@
 | 画面动画 | 关键产品镜头 `entrance: pop` 或 `zoom`（0.3 秒）；静止的产品图用 `set_keyframes` 慢慢放大（大小 1 → 1.08） |
 | 滤镜 | 产品、室内、干净：`coldWhite`；生活场景：`warmSun`。强度 0.5–0.7，整条片子一个 |
 | 文字 | 关键词大字：中文 `PingFang SC` 粗体，英文 `Avenir Next` 粗体（或 `Futura`）；9:16 字号 110–140；白字 + 深色描边，或纯色底框（`background_color`）；`animation_in: pop` 或 `cascade`；放在上三分之一（字幕在下）。数字用数字滚动（0 → 目标值，1 秒） |
-| 字幕 | 开；逐词高亮（第 ④ 刀做完后）；9:16 放在下安全区之上 |
+| 字幕 | 开，大字粗体，逐词高亮：生成之前 `edit_subtitles style` 字号 64–72、`bold`、高亮 `#FFD400`、放大 1.1；9:16 再加 `position bottom`、`margin 0.22`（在平台按钮之上） |
 | 配乐 | 轻快、明亮：`find_audio` 搜 bright / hopeful / electronic。**音乐库现在缺轻快的**：找不到合适的就不放，告诉用户可以给一首自己的 |
 | 配音 | 有口播用原声。纯产品画面才配旁白：`zh_female_lively` / `en_female_lively`，语速 1.1× |
 | 自检 | 前 3 秒 `look`：有大字、有主体；每 3 秒画面有变化；人声清楚、音乐不盖人声；时长在范围内；最后一帧有号召、停够 1.5 秒 |
@@ -76,7 +79,7 @@
 | 画面动画 | 静止或很稳的镜头用 `set_keyframes` 慢推（大小 1 → 1.06–1.1，整个镜头的时长） |
 | 滤镜 | 大片感 `tealOrange`，怀旧 `fadedFilm`；强度 0.6–0.8 |
 | 文字 | 片名：英文 `Didot` / `Bodoni 72` / `Optima` 大写、字距拉宽（`letter_spacing` 20–40）；中文 `Songti SC`（宋体）；字号 90–120；`animation_in: focus`（1–1.5 秒），`animation_out: fade`；不压在遮幅上。<br>地名、年份：小字 `Avenir Next` / `PingFang SC` 常规体 36–44，左下角，`fade`，4 秒。除此之外不加字 |
-| 字幕 | 默认关（没有对白）；有对白才开，白字小字、不要底框 |
+| 字幕 | 默认关（没有对白）；有对白才开，白字小字、不要底框（字号 44–48、不高亮） |
 | 配乐 | 宏大、动情：`find_audio` 搜 epic / trailer / opening / orchestral / emotional。从片头就起，片名落在强拍上，结尾淡出 2–3 秒 |
 | 配音 | 一般不配；要旁白用 `zh_male` / `en_male`，语速 0.9×，句子短、句间留 1–2 秒 |
 | 自检 | 遮幅上下对称、字不压在遮幅上；片名那一刻 `look`；音乐结尾有淡出；开头是黑场渐入 |
@@ -95,7 +98,7 @@
 | 画面动画 | `entrance: zoom` 或 `wipe`（0.3 秒）点缀 |
 | 滤镜 | 赛博朋克 `neon`；冷硬工业 `coldIron`；太空、实验室 `mistBlue` 或 `coldWhite` |
 | 文字 | 英文 `DIN Condensed` / `DIN Alternate`，HUD 标签用等宽的 `Menlo`；中文 `PingFang SC` 细体；全大写、字距拉宽（`letter_spacing` 10–30）；颜色青 `#00E5FF`、品红 `#FF2BD6` 或纯白。<br>角落放小的 HUD 标签（坐标、时间码、「REC」）：字号 28–36；再用 `set_shape` 的细线、方框做取景框（线宽 2–3），半透明的实心长方形（如 `#00E5FF33`）垫在标签后面当面板。<br>数字用数字滚动做倒计时、数据跳动。<br>结尾标题用 `strokeDraw` 要先有描边（`stroke_color`），不然用 `wipe`；停够 2 秒 |
-| 字幕 | 有旁白就开，白字细体 |
+| 字幕 | 有旁白就开，白字细体、不高亮 |
 | 配乐 | `find_audio` 搜 space / electronic / synth / dark / tense |
 | 配音 | `zh_male` / `en_male`（或 `*_female_warm`），语速 1.0×；想要「舰载电脑」的感觉给旁白挂 `sound_scene: radio` |
 | 自检 | HUD 字不压主体；闪白次数；结尾标题停够 2 秒 |
@@ -114,7 +117,7 @@
 | 画面动画 | 不用入场动画；照片、静止镜头用 `set_keyframes` 慢推（大小 1 → 1.05） |
 | 滤镜 | 写实 `flatGrey` 或不加；寒冷场景 `mistBlue` / `coldWhite`；暖光 `warmSun`；强度 0.3–0.5，轻用 |
 | 文字 | 地点和时间字卡：「南极半岛 · 1 月」，左下角，`Avenir Next` / `PingFang SC` 常规体 40–48，`fade`，4 秒。片名：`Songti SC` / `Baskerville` / `Optima`，居中，`fade` |
-| 字幕 | 有旁白、采访就开：白字 + 轻阴影，底部，不要底框 |
+| 字幕 | 有旁白、采访就开：白字 + 轻阴影，底部，不要底框、不高亮（`highlight none`） |
 | 配乐 | `find_audio` 搜 documentary / nature / calm / piano / hopeful / emotional；旁白时比人声低 15–18 dB；旁白的间隙让现场声（风、动物叫声）出来 |
 | 配音 | `zh_male` / `en_male` 或 `*_female_warm`，语速 0.95×；旁白写短句（中文 ≤ 20 字、英文 ≤ 15 个词），句间留 1–2 秒给画面。旁白按段放在对应画面上（说企鹅时画面是企鹅） |
 | 声音 | 保留有意义的现场声（`listen` 找响的地方、`look` 确认是什么） |
@@ -134,7 +137,7 @@
 | 画面动画 | `entrance: pop` / `zoom` 点缀，别每段都用 |
 | 滤镜 | 暖 `warmSun`，胶片感 `fadedFilm`；强度 0.4–0.6 |
 | 文字 | 手写 / 圆体：中文 `Yuanti SC`（圆体）、`Hannotate SC`（手札体）、`HanziPen SC`（翩翩体）—— **这三个要在「字体册」里下载**，没装就用 `PingFang SC`（`set_text` 会提醒没装）；英文 `Marker Felt` / `Noteworthy` / `Chalkboard SE`。字号 70–100，`pop` / `rise`，白字 + 阴影或黄字 |
-| 字幕 | 开；逐词高亮（第 ④ 刀做完后）；大字，放在下安全区之上 |
+| 字幕 | 开，大字，逐词高亮但不放大：`edit_subtitles style` 字号 60–66、高亮 `#FFD400`、放大 1；9:16 再加 `position bottom`、`margin 0.22` |
 | 配乐 | 轻快：`find_audio` 搜 bright / hopeful / guitar；**音乐库现在缺轻快的**，找不到就用原声、告诉用户可以给一首自己的。说话的地方音乐压低 |
 | 配音 | 一般不配（原声就是 vlog 的味道）；要配用 `zh_female_warm` / `en_female_warm`，语速 1.05× |
 | 自检 | 钩子在前 2 秒；字和字幕都在安全区里；结尾有互动的一句 |
@@ -165,8 +168,8 @@
 | --- | --- | --- |
 | `set_text` 补参数：字距、数字滚动（老虎机）、强调（呼吸）、入场 / 出场动画时长和强度 | 全部 | 第 ① 刀已补（模型里都有，只是 AI 调不到） |
 | 实心长方形（形状原来只有描边）：电影遮幅、色块底、HUD 面板 | 电影开头、科幻、带货 | 第 ① 刀已补（`set_shape filled`，工程格式 v24） |
-| 逐词高亮字幕 | 带货、vlog | 第 ④ 刀 |
-| 字幕样式 AI 改不了（全 App 一份，烧录页那套） | 全部 | 第 ④ 刀一起定：逐词高亮要按剪辑风格选样式 |
+| 逐词高亮字幕 | 带货、vlog | 第 ④ 刀已补（`edit_subtitles style` 的 `highlight`、字幕表表头的开关；工程格式 v25） |
+| 字幕样式 AI 改不了（全 App 一份，烧录页那套） | 全部 | 第 ④ 刀已补：每个工程一份自己的样式，AI 只改它（方案第 54 条）；`burn_subtitles` 也能给这一批一份样式 |
 | 轻快的配乐、音效库 | 带货、vlog、科幻 | **不在这一块**：音乐库 79 首几乎都是氛围、古典、钢琴（轻快的只有 bright 4 首、hopeful 7 首），要走素材管线补；先记下来，第 ⑤ 刀实剪时看缺得多厉害再问用户 |
 
 ## 六、给 App 用的格式

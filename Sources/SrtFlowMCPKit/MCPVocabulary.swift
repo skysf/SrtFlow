@@ -60,6 +60,9 @@ public enum MCPVocabulary {
     /// 文字的几个常用位置（画面高度的比例见 App 里的 `AITextPlacement`）。
     public static let textPositions = ["top", "upper_third", "center", "lower_third", "bottom"]
 
+    /// 字幕放哪儿（= App 里 `AISubtitleStyleChange.positions` 的名字：九宫格里居中的那一列）。
+    public static let subtitlePositions = ["bottom", "middle", "top"]
+
     /// = `ClipPresetKind.allCases` 的原始值（画面段的入场 / 出场）。
     public static let clipAnimations = ["none", "fade", "rise", "pop", "zoom", "wipe"]
 

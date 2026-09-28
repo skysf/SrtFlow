@@ -15,6 +15,10 @@ enum SidebarActivity: Equatable {
 struct BurnInRequest: Sendable {
     var subtitleURL: URL?
     var document: SubtitleDocumentModel?
+    /// AI 排进来的这一条自带的字幕样式（burn_subtitles 的 style，只用于这一条）；nil = 烧录页的那套。
+    var style: BurnInStyle?
+    /// 自带样式的字体文件（同 `EncodeQueue.burnInFontURL`：软链进任务目录，libass 才认得出）。
+    var styleFontURL: URL?
     /// 有没有改过但还没写回文件的内容。
     var hasUnsavedEdits = false
 
@@ -152,7 +156,13 @@ final class EncodeQueue: ObservableObject {
 
     func updateBurnIn(_ burnIn: BurnInRequest?, for id: EncodeItem.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].burnIn = burnIn
+        var next = burnIn
+        // 页面上换了字幕文件：AI 给这一条自带的样式照留（它属于这一条，不属于那个文件）。
+        if next != nil, let own = items[index].burnIn, own.style != nil {
+            next?.style = own.style
+            next?.styleFontURL = own.styleFontURL
+        }
+        items[index].burnIn = next
         items[index].errorMessage = nil
     }
 
@@ -396,8 +406,8 @@ final class EncodeQueue: ObservableObject {
     private func prepareBurnInDirectory(_ request: BurnInRequest, info: MediaInfo) throws -> PreparedBurnIn {
         let prepared = try BurnInWorkspace.create(
             cues: request.cues,
-            style: burnInStyle,
-            fontFileURL: burnInFontURL,
+            style: request.style ?? burnInStyle,
+            fontFileURL: request.style == nil ? burnInFontURL : request.styleFontURL,
             aspectRatio: info.aspectRatio,
             title: request.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow"
         )

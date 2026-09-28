@@ -32,7 +32,7 @@ use_for: Tech products, AI and future topics, space, cyberpunk cities, game prom
   set_shape (line_width 2–3) as a viewfinder; a translucent filled rectangle (e.g. #00E5FF33) as a panel behind a label.
 - Numbers roll (set_text number) for countdowns and data.
 - Title: strokeDraw needs an outline (stroke_color), or use wipe. Hold it at least 2 s.
-- Subtitles: on when there is narration, white light text.
+- Subtitles: on when there is narration, white light text, no word highlight.
 
 ## Sound
 

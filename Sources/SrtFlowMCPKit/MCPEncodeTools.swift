@@ -34,11 +34,12 @@ enum MCPEncodeTools {
                 Draw a subtitle file permanently into a video, for videos that are not in the project (to burn the \
                 project's own subtitles, use export_video). One output per video (<name>_sub.mp4 in SrtFlow/Exports \
                 inside the opened folder; never overwrites). The subtitles look the way the user set them up on \
-                SrtFlow's Burn In Subtitles page; encoding options apply to this batch only. Returns a job id: wait \
-                with get_job.
+                SrtFlow's Burn In Subtitles page; style and the encoding options change this batch only (highlight \
+                does not apply: subtitle files have no word times). Returns a job id: wait with get_job.
                 """,
                 input: MCPSchema.object(encodeOptions.merging([
                     "items": MCPSchema.array(of: item, "Each video with its subtitle file.", minItems: 1),
+                    "style": MCPSubtitleExportTools.subtitleStyle,
                     "confirm_token": MCPSchema.confirmToken
                 ]) { current, _ in current }, required: ["items"])
             )

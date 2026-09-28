@@ -201,28 +201,42 @@ enum AISubtitleTools {
         var result: [String: JSONValue] = [:]
         if which != "translation" { result["original"] = lines(.original) }
         if which != "original" { result["translation"] = lines(.translation) }
+        result["style"] = AISubtitleStyleChange.describe(state, appWide: EncodeQueue.burnIn.burnInStyle)
+        // 逐词高亮只亮知道词时间的句子（SrtFlow 自己从语音、配音做的）。
+        result["lines_with_word_times"] = .number(Double(state.allSubtitleCues.filter { $0.words != nil }.count))
         return .ok(.object(result))
     }
 
     // MARK: edit_subtitles
 
-    static func edit(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
+    /// edit_subtitles 的 style 先读好：给了字体要等字体表（await），所以在提交之前单独做（同 edit_clip 先看画面）。
+    static func style(_ args: AIToolArguments) async throws -> AISubtitleStyleChange? {
+        guard let change = try AISubtitleStyleChange(args) else { return nil }
+        guard change.font != nil else { return change }
+        return try change.resolvingFont(in: await FontCatalogStore.shared.loadedFonts().map(\.familyName))
+    }
+
+    static func edit(_ args: AIToolArguments, style: AISubtitleStyleChange?, _ project: VideoEditProject) throws -> AIToolResult {
         let state = project.state
         let ids = AIShortIDs(state: state)
         let edits = try AISubtitleEdits.parse(args, ids: ids, in: state)
-        guard !edits.isEmpty else { throw AIToolError("Pass changes, add or delete.") }
+        guard !edits.isEmpty || style != nil else { throw AIToolError("Pass changes, add, delete or style.") }
         var next = state
         let created = edits.apply(to: &next)
+        // 只改这个工程自己的样式（方案第 54 条），烧录页记住的那套不动。
+        style?.apply(to: &next, appWide: EncodeQueue.burnIn.burnInStyle)
         project.perform(rebuildsPreview: false) { $0 = next }
         let fresh = AIShortIDs(state: project.state)
         let firstTime = (edits.changes.compactMap { project.state.subtitleCue($0.id)?.start }
             + created.compactMap { project.state.subtitleCue($0)?.start }).min()
         AIEditorPresenter.reveal(.init(cues: Set(created + edits.changes.map(\.id)), time: firstTime), project: project)
-        return .ok([
+        var result: [String: JSONValue] = [
             "changed": .number(Double(edits.changes.count)),
             "added": .array(created.map { .string(fresh.short($0)) }),
             "deleted": .number(Double(edits.deletions.count))
-        ], changed: true)
+        ]
+        if style != nil { result["style"] = AISubtitleStyleChange.describe(project.state, appWide: EncodeQueue.burnIn.burnInStyle) }
+        return .ok(.object(result), changed: true)
     }
 }
 

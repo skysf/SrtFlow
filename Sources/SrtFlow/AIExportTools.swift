@@ -45,13 +45,11 @@ enum AIExportTools {
             state.subtitle = nil
             state.subtitleCompanion = nil
         }
-        let fonts = FontCatalogStore.shared
-        fonts.loadIfNeeded()
-        for _ in 0..<50 where fonts.isLoading { try? await Task.sleep(nanoseconds: 100_000_000) }
+        let fonts = await FontCatalogStore.shared.loadedFonts()
         let style = state.subtitleStyle(appWide: EncodeQueue.burnIn.burnInStyle)
         exporter.export(
             state: state, to: output, subtitleStyle: style,
-            subtitleFontURL: fonts.font(named: style.fontName)?.fileURL, settingsOverride: settings
+            subtitleFontURL: fonts.first { $0.familyName == style.fontName }?.fileURL, settingsOverride: settings
         )
         guard exporter.isExporting else { throw AIToolError(exporter.errorMessage ?? "The export could not start.") }
 

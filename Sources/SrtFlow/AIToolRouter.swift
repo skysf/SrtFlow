@@ -139,7 +139,10 @@ final class AIToolRouter {
         case .generateSubtitles: return try await AISubtitleTools.generate(args, project)
         case .translateSubtitles: return try await AISubtitleTools.translate(args, project)
         case .getSubtitles: return try AISubtitleTools.read(args, project)
-        case .editSubtitles: return try AIUndoGrouping.step(undo) { try AISubtitleTools.edit(args, project) }
+        case .editSubtitles:
+            // 给了字体要先等字体表（await），再同步提交：包进撤销组的那一段不许有 await。
+            let style = try await AISubtitleTools.style(args)
+            return try AIUndoGrouping.step(undo) { try AISubtitleTools.edit(args, style: style, project) }
         case .exportVideo: return try await AIExportTools.export(args, project)
         case .getJob: return try await AIExportTools.job(args)
         case .cancelJob: return try AIExportTools.cancel(args)

@@ -32,7 +32,7 @@ use_for: The opening of a short film or travel film, a trailer feel, a portfolio
   animation_in focus (1–1.5 s), animation_out fade. Keep it off the letterbox bars.
 - Place and year: small Avenir Next or PingFang SC regular, 36–44, bottom left inside the picture, fade, 4 s.
 - No other text.
-- Subtitles: off unless there is dialogue; then small white text without a box.
+- Subtitles: off unless there is dialogue; then small white text without a box (style size 44–48, highlight none).
 
 ## Sound
 

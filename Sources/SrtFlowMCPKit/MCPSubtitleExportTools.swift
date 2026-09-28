@@ -46,7 +46,8 @@ public enum MCPSubtitleExportTools {
                 .getSubtitles, title: "Read subtitles",
                 description: """
                 Subtitle lines with ids, start and end on the timeline and text, from the original track, \
-                the translated track, or both; optionally only those inside a time range.
+                the translated track, or both; optionally only those inside a time range. Also how the subtitles \
+                look (style) and how many lines know their word times (for highlight).
                 """,
                 input: MCPSchema.object([
                     "track": MCPSchema.string("Which track (default both).", oneOf: ["original", "translation", "both"]),
@@ -84,6 +85,22 @@ public enum MCPSubtitleExportTools {
         }
     }
 
+    /// 字幕长什么样：edit_subtitles（这个工程的）和 burn_subtitles（那一批的）共用这一份。
+    static let subtitleStyle = MCPSchema.object([
+        "position": MCPSchema.string("Where the subtitles sit.", oneOf: MCPVocabulary.subtitlePositions),
+        "margin": MCPSchema.number("Distance from that edge, as a fraction of the frame height (default 0.056).", minimum: 0, maximum: 0.45),
+        "size": MCPSchema.number("Font size in pixels on a frame 1080 pixels tall (default 56; 64-80 for bold short-video captions).", minimum: 20, maximum: 140),
+        "font": MCPSchema.string("Font family installed on this Mac that can burn Chinese or English, e.g. Hiragino Sans GB, Heiti SC, Helvetica Neue."),
+        "bold": MCPSchema.boolean("Bold text."),
+        "color": MCPSchema.string("Text colour, #RRGGBB."),
+        "outline": MCPSchema.string("Outline colour #RRGGBB, or none."),
+        "outline_width": MCPSchema.number("Outline thickness (the padding of the box when there is one).", minimum: 0, maximum: 12),
+        "box": MCPSchema.string("A bar behind the text instead of an outline: #RRGGBBAA (e.g. #00000099), or none."),
+        "highlight": MCPSchema.string("Word-by-word highlight: the word being spoken turns this colour (#RRGGBB), or none. Project subtitles only."),
+        "highlight_scale": MCPSchema.number("How much the spoken word grows (1-1.3, default 1.1; 1 for long lines).", minimum: 1, maximum: 1.3),
+        "reset": MCPSchema.boolean("Go back to the style from SrtFlow's Burn In Subtitles page first.")
+    ])
+
     private static var editSubtitles: MCPToolDefinition {
         let change = MCPSchema.object([
             "id": MCPSchema.string("Line id from get_subtitles."),
@@ -101,12 +118,16 @@ public enum MCPSubtitleExportTools {
             .editSubtitles, title: "Edit subtitles",
             description: """
             Change subtitle lines as one undoable step: edit text or times by id, add new lines, delete lines. \
-            Creates the subtitle track if the project has none.
+            Creates the subtitle track if the project has none. style sets how this project's subtitles look (the \
+            user's Burn In Subtitles page keeps its own). Set it before generate_subtitles or add_voiceover \
+            subtitles=true: lines are cut to fit that size. highlight only lights lines SrtFlow made from speech or \
+            a voiceover (get_subtitles tells how many know their word times).
             """,
             input: MCPSchema.object([
                 "changes": MCPSchema.array(of: change, "Lines to change."),
                 "add": MCPSchema.array(of: addition, "Lines to add."),
-                "delete": MCPSchema.array(of: MCPSchema.string("Line id."), "Lines to delete.")
+                "delete": MCPSchema.array(of: MCPSchema.string("Line id."), "Lines to delete."),
+                "style": subtitleStyle
             ])
         )
     }
