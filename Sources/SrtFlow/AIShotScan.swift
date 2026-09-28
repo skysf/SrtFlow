@@ -58,6 +58,20 @@ enum AIShotScan {
         return nil
     }
 
+    /// 跟拍用：这一段用到的那一截里换镜头的源秒（不含两头）。扫过就用缓存；没扫过、素材不长（不超过
+    /// `quickScanSeconds`，短素材零点几秒就扫完）当场扫；长的不等，当没有切点（AI 先 look shots=true 就有了）。
+    static func cuts(of clip: EditClip) async -> [Double] {
+        let from = clip.sourceStart
+        let to = clip.sourceStart + clip.sourceDuration
+        var found = cached(clip.sourceURL)
+        if found == nil, clip.assetDuration > 0, clip.assetDuration <= quickScanSeconds {
+            found = try? await result(for: clip.sourceURL, waiting: 15)
+        }
+        return (found?.shots ?? []).dropFirst().map(\.start).filter { $0 > from + 0.05 && $0 < to - 0.05 }
+    }
+
+    static let quickScanSeconds = 120.0
+
     /// 还在扫的那个文件给 AI 的任务（同一次扫描只有一个任务）。扫完 / 没在扫回 nil。
     static func job(for url: URL) -> AIJobs.Job? {
         guard let scan = scans[key(for: url)] else { return nil }

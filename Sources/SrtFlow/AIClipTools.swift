@@ -59,7 +59,10 @@ enum AIClipTools {
             var focus = request.focusPoint
             var followed: AIFrameFit.Framing?
             if request.fit == .fill, focus == nil, request.focus == .subject,
-               let found = await subjectFocus(clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil), follow: request.follow) {
+               let found = await subjectFocus(
+                   clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil), follow: request.follow,
+                   frame: state.frameRate.secondsPerFrame * clip.speed
+               ) {
                 focus = found.point
                 followed = found.followed
                 plan.findings["subject"] = found.json
@@ -127,10 +130,11 @@ enum AIClipTools {
             ?? usable.map { AIFrameFit.crop(keeping: $0) }
     }
 
-    /// 铺满时对准的主体；主体走动大、`follow` 开着就跟着走（`followed`：带位置关键帧的放法，第四块）。
+    /// 铺满时对准的主体；主体走动大、`follow` 开着就跟着走（`followed`：带位置关键帧的放法，第四块；`frame` = 一帧是几个源秒，
+    /// 换镜头处两个关键帧隔这么远）。
     /// 不用裁（素材和画布同比例）就不去认；认不出来时写一句「照正中铺」、点是正中。
     private static func subjectFocus(
-        _ clip: EditClip, canvas: CGSize, active: CGRect, follow: Bool
+        _ clip: EditClip, canvas: CGSize, active: CGRect, follow: Bool, frame: Double
     ) async -> (point: CGPoint, json: JSONValue, followed: AIFrameFit.Framing?)? {
         guard let display = clip.info?.displaySize else { return nil }
         let centre = CGPoint(x: active.midX, y: active.midY)
@@ -142,7 +146,9 @@ enum AIClipTools {
         if follow, !clip.isStillImage {
             let targets = AIFollowSubject.targets(samples, window: window.size)
             if AIFollowSubject.needsFollow(targets, window: window.size) {
-                followed = AIFollowSubject.framing(AIFollowSubject.path(targets, window: window.size, active: active), window: window.size)
+                let cuts = await AIShotScan.cuts(of: clip)
+                let path = AIFollowSubject.path(targets.points, window: window.size, active: active, cuts: cuts, frame: frame)
+                followed = AIFollowSubject.framing(path, window: window.size)
             }
         }
         let json = AIPictureProbe.json(subject, window: window.size, followKeyframes: followed.map { $0.follow.count })

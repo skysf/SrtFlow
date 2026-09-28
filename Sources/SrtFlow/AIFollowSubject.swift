@@ -7,8 +7,11 @@ import Foundation
 // 窗中心的一串点（平滑过、精简过）→ 裁切 + 摆放框 + 摆放框中心的关键帧。第四块「横竖屏转换按人脸裁」
 // （方案第 11 条）；第二块只有固定的窗、走动大了只提醒（第二块报告的已知不足）。
 // 口径：
-// - 目标（每帧的主体）散开超过窗宽 / 窗高的 `followOver` 才跟：走动小的一个固定的窗就框得住，不打关键帧
-//   （主轨上带关键帧的段导出时要先渲一遍中间片，能不打就不打）。
+// - **只跟人脸和人**：「显眼的东西」一帧一跳（2026-09-28 冒烟：企鹅那段没人脸，窗从最左甩到最右），它只用来定固定的窗。
+//   大半的帧（`seenShare`）认出了人、而且散开超过窗宽 / 窗高的 `followOver` 才跟：走动小的一个固定的窗就框得住，
+//   不打关键帧（主轨上带关键帧的段导出时要先渲一遍中间片，能不打就不打）。
+// - 素材里有切点（换镜头）：每个镜头各自平滑、各自精简，在切点前一帧和切点上各打一个关键帧 —— 跳过去，不从上一个镜头
+//   平移过去（同一次冒烟：企鹅那段中间有一刀）。
 // - 前后 `smoothingSeconds` 秒的平均抹掉 Vision 一帧一帧的抖动；再用 RDP 精简，只留转折处的点（摆放框中心的
 //   关键帧之间是直线插值，所以精简到 `simplifyTolerance` 以内，画面几乎一样，关键帧少很多）。
 // - **裁切不能做关键帧**（docs/architecture/keyframe-animation.md），所以裁切固定成盖住所有窗的那一块，
@@ -18,6 +21,8 @@ import Foundation
 
 enum AIFollowSubject {
     static let followOver = 0.3
+    /// 至少这么多帧认出了人（人脸或上半身）才跟。
+    static let seenShare = 0.6
     static let smoothingSeconds = 0.75
     static let simplifyTolerance = 0.015
 
@@ -32,33 +37,59 @@ enum AIFollowSubject {
         var center: CGPoint
     }
 
-    /// 每个样本对准哪（没认出东西的那几帧，沿用前后最近的那一帧）。一帧都没认出 → 空。
-    static func targets(_ samples: [Sample], window: CGSize) -> [Point] {
-        let aims = samples.map { AISubjectFocus.focus(in: $0.findings, window: window)?.point }
-        guard aims.contains(where: { $0 != nil }) else { return [] }
-        return samples.indices.map { index in
+    /// 每个样本对准哪：只认人脸和人（没认出人的那几帧，沿用前后最近认出人的那一帧）；`seen` = 认出人的帧数。
+    /// 一帧都没认出人 → 空。
+    static func targets(_ samples: [Sample], window: CGSize) -> (points: [Point], seen: Int) {
+        let aims: [CGPoint?] = samples.map { sample in
+            guard let aim = AISubjectFocus.focus(in: sample.findings, window: window), aim.kind != .salient else { return nil }
+            return aim.point
+        }
+        let seen = aims.filter { $0 != nil }.count
+        guard seen > 0 else { return ([], 0) }
+        let points = samples.indices.map { index in
             let nearest = aims.indices
                 .filter { aims[$0] != nil }
                 .min { abs($0 - index) < abs($1 - index) } ?? index
             return Point(time: samples[index].time, center: aims[nearest] ?? CGPoint(x: 0.5, y: 0.5))
         }
+        return (points, seen)
     }
 
-    /// 要不要跟：目标横向或纵向散开超过窗的 `followOver`。
-    static func needsFollow(_ targets: [Point], window: CGSize) -> Bool {
-        guard let spread = spread(targets) else { return false }
+    /// 要不要跟：大半的帧认出了人，而且人横向或纵向散开超过窗的 `followOver`。
+    static func needsFollow(_ targets: (points: [Point], seen: Int), window: CGSize) -> Bool {
+        guard !targets.points.isEmpty, Double(targets.seen) >= seenShare * Double(targets.points.count),
+              let spread = spread(targets.points) else { return false }
         return spread.x > window.width * followOver || spread.y > window.height * followOver
     }
 
-    /// 平滑 + 精简 + 夹在窗能到的范围里（窗出不了 `active`）→ 窗中心的关键帧点。
-    static func path(_ targets: [Point], window: CGSize, active: CGRect) -> [Point] {
-        let smoothed = targets.map { point in
-            let near = targets.filter { abs($0.time - point.time) <= smoothingSeconds }
-            let x = near.map { Double($0.center.x) }.reduce(0, +) / Double(near.count)
-            let y = near.map { Double($0.center.y) }.reduce(0, +) / Double(near.count)
-            return Point(time: point.time, center: clamp(CGPoint(x: x, y: y), window: window, active: active))
+    /// 平滑 + 精简 + 夹在窗能到的范围里（窗出不了 `active`）→ 窗中心的关键帧点。`cuts`：这一段素材里换镜头的
+    /// 源秒 —— 每个镜头各算各的，切点前 `frame` 秒和切点上各一个关键帧（跳过去）。
+    static func path(_ targets: [Point], window: CGSize, active: CGRect, cuts: [Double] = [], frame: Double = 1.0 / 30) -> [Point] {
+        let bounds = cuts.sorted().filter { cut in targets.contains { $0.time < cut } && targets.contains { $0.time >= cut } }
+        var segments: [[Point]] = []
+        var rest = targets
+        for cut in bounds {
+            segments.append(rest.filter { $0.time < cut })
+            rest = rest.filter { $0.time >= cut }
         }
-        return simplify(smoothed, tolerance: simplifyTolerance)
+        segments.append(rest)
+        var result: [Point] = []
+        for (index, segment) in segments.enumerated() where !segment.isEmpty {
+            let smoothed = segment.map { point in
+                let near = segment.filter { abs($0.time - point.time) <= smoothingSeconds }
+                let x = near.map { Double($0.center.x) }.reduce(0, +) / Double(near.count)
+                let y = near.map { Double($0.center.y) }.reduce(0, +) / Double(near.count)
+                return Point(time: point.time, center: clamp(CGPoint(x: x, y: y), window: window, active: active))
+            }
+            var simplified = simplify(smoothed, tolerance: simplifyTolerance)
+            if index > 0, let previous = result.last, let first = simplified.first {
+                let cut = bounds[index - 1]
+                result.append(Point(time: cut - frame, center: previous.center))
+                simplified.insert(Point(time: cut, center: first.center), at: 0)
+            }
+            result += simplified
+        }
+        return result
     }
 
     /// 窗中心的一串点 → 裁切（盖住所有的窗）+ 静态摆放框（第一个点那一刻）+ 每个点的摆放框中心（`follow`）。

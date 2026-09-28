@@ -39,12 +39,23 @@ private func checkFollowDecision() {
           "a subject walking across the frame: follow it")
     var gappy = walking
     gappy[3].findings = AISubjectFocus.FrameFindings()
-    let targets = AIFollowSubject.targets(gappy, window: window)
-    checkEqual(targets.count, 10, "a frame where nothing was found still gets a target")
+    let targets = AIFollowSubject.targets(gappy, window: window).points
+    checkEqual(targets.count, 10, "a frame where nobody was found still gets a target")
     check(abs(targets[3].center.x - targets[2].center.x) < 1e-9 || abs(targets[3].center.x - targets[4].center.x) < 1e-9,
           "…the nearest frame's")
-    check(AIFollowSubject.targets([AIFollowSubject.Sample(time: 0, findings: .init())], window: window).isEmpty,
+    check(AIFollowSubject.targets([AIFollowSubject.Sample(time: 0, findings: .init())], window: window).points.isEmpty,
           "nothing found at all: no targets")
+    let salient = (0..<10).map { index in
+        AIFollowSubject.Sample(time: Double(index), findings: AISubjectFocus.FrameFindings(
+            salient: [CGRect(x: 0.05 + 0.08 * Double(index), y: 0.3, width: 0.1, height: 0.1)]
+        ))
+    }
+    check(!AIFollowSubject.needsFollow(AIFollowSubject.targets(salient, window: window), window: window),
+          "only 'whatever stands out' (no face, no person): no following, it jumps from frame to frame")
+    var few = walking
+    for index in 0..<6 { few[index].findings = AISubjectFocus.FrameFindings() }
+    check(!AIFollowSubject.needsFollow(AIFollowSubject.targets(few, window: window), window: window),
+          "a person seen in only 4 of 10 frames: no following")
 }
 
 private func checkFollowPath() {
@@ -62,6 +73,14 @@ private func checkFollowPath() {
     check(path.allSatisfy { $0.center.x >= window.width / 2 - 1e-9 && $0.center.x <= 1 - window.width / 2 + 1e-9 },
           "the window never leaves the picture")
     check(path.allSatisfy { abs($0.center.x - 0.5) < 0.2 }, "frame-to-frame jitter is smoothed away")
+
+    let before = (0..<8).map { AIFollowSubject.Point(time: Double($0) * 0.5, center: CGPoint(x: 0.3, y: 0.5)) }
+    let after = (8..<16).map { AIFollowSubject.Point(time: Double($0) * 0.5, center: CGPoint(x: 0.7, y: 0.5)) }
+    let jumped = AIFollowSubject.path(before + after, window: window, active: AIFrameFit.wholePicture, cuts: [3.8], frame: 1.0 / 24)
+    check(jumped.contains { abs($0.time - (3.8 - 1.0 / 24)) < 1e-9 && abs($0.center.x - 0.3) < 0.01 }
+          && jumped.contains { abs($0.time - 3.8) < 1e-9 && abs($0.center.x - 0.7) < 0.01 },
+          "a shot change inside the clip: the window jumps there within one frame")
+    check(!jumped.contains { $0.center.x > 0.35 && $0.center.x < 0.65 }, "…and neither shot is smoothed into the other")
 }
 
 /// 这一刻源画面上归一化的一点落在画布的哪儿（照合同：裁切 → 缩放进这一刻的摆放框）。
