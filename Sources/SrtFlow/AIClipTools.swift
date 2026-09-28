@@ -58,10 +58,10 @@ enum AIClipTools {
             let crop = chosenCrop(request, usable: usable)
             var focus = request.focusPoint
             var followed: AIFrameFit.Framing?
-            if request.fit == .fill, focus == nil, request.focus == .subject,
+            if request.fit == .fill, focus == nil, request.focus != .center,
                let found = await subjectFocus(
-                   clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil), follow: request.follow,
-                   frame: state.frameRate.secondsPerFrame * clip.speed
+                   clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil), textFirst: request.focus == .text,
+                   follow: request.follow && request.focus != .text, frame: state.frameRate.secondsPerFrame * clip.speed
                ) {
                 focus = found.point
                 followed = found.followed
@@ -134,14 +134,14 @@ enum AIClipTools {
     /// 换镜头处两个关键帧隔这么远）。
     /// 不用裁（素材和画布同比例）就不去认；认不出来时写一句「照正中铺」、点是正中。
     private static func subjectFocus(
-        _ clip: EditClip, canvas: CGSize, active: CGRect, follow: Bool, frame: Double
+        _ clip: EditClip, canvas: CGSize, active: CGRect, textFirst: Bool, follow: Bool, frame: Double
     ) async -> (point: CGPoint, json: JSONValue, followed: AIFrameFit.Framing?)? {
         guard let display = clip.info?.displaySize else { return nil }
         let centre = CGPoint(x: active.midX, y: active.midY)
         let window = AIFrameFit.fillWindow(display: display, canvas: canvas, active: active, focus: centre)
         guard abs(window.width - active.width) > 0.001 || abs(window.height - active.height) > 0.001 else { return nil }
         let samples = await AIPictureProbe.subjectSamples(of: clip)
-        let subject = AISubjectFocus.combine(samples.map(\.findings), window: window.size)
+        let subject = AISubjectFocus.combine(samples.map(\.findings), window: window.size, textFirst: textFirst)
         var followed: AIFrameFit.Framing?
         if follow, !clip.isStillImage {
             let targets = AIFollowSubject.targets(samples, window: window.size)

@@ -18,6 +18,7 @@ enum AIFrameDescription {
     }
 
     static let maxFaces = 5
+    static let maxTexts = 6
 
     static func describe(_ input: Input) -> JSONValue {
         var object: [String: JSONValue] = ["time": AIFormat.seconds(input.time)]
@@ -40,7 +41,8 @@ enum AIFrameDescription {
             ]
         }
         if !vision.texts.isEmpty {
-            object["text"] = .array(vision.texts.map { .string($0) })
+            // 字连同它在哪（[x, y, 宽, 高]）：AI 挪字幕、按字取景、找水印都要位置。最多写 6 块。
+            object["text"] = .array(vision.texts.prefix(maxTexts).map { ["text": .string($0.string), "box": box($0.box)] })
         }
         if let luma = input.luma {
             object["brightness"] = rounded(brightness(luma))
@@ -59,7 +61,7 @@ enum AIFrameDescription {
     }
 
     /// [x, y, 宽, 高]，两位小数。
-    private static func box(_ rect: CGRect) -> JSONValue {
+    static func box(_ rect: CGRect) -> JSONValue {
         .array([rounded(rect.minX), rounded(rect.minY), rounded(rect.width), rounded(rect.height)])
     }
 

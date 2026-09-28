@@ -18,19 +18,13 @@ enum AILookShots {
     static let pageSize = 24
     static let waitSeconds = 20.0
 
-    private struct Target {
-        var url: URL
-        /// 看文件的哪一截（源秒）；上限可能比文件长，扫完再裁。
-        var range: ClosedRange<Double>
-        /// 看的是时间线上的一段：时间按时间线写，再附上源秒。
-        var clip: EditClip?
-    }
-
     static func look(
         _ args: AIToolArguments, _ project: VideoEditProject, size: AIContactSheet.Size, wantsImage: Bool
     ) async throws -> AIToolResult {
-        let target: Target
-        switch try resolve(args, project) {
+        let target: AILookTarget
+        switch try AILookTarget.resolve(args, project, option: "shots", stillImage: {
+            "\($0) has no moving picture to split into shots; look at it without shots."
+        }) {
         case .ask(let question): return question
         case .target(let found): target = found
         }
@@ -82,8 +76,7 @@ enum AILookShots {
             labels.append(String(format: "#%d %.1fs", item.number, entry["start"]?.doubleValue ?? item.shot.start))
         }
         var payload: [String: JSONValue] = [
-            "looked_at": .string(target.clip.map { "clip \(AIShortIDs(state: project.state).short($0.id)) (\($0.name))" }
-                ?? AIWorkspace.shared.display(target.url)),
+            "looked_at": .string(target.label(project)),
             "shot_count": .number(Double(shots.count)),
             "shots": .array(described),
             "note": .string(
@@ -98,33 +91,5 @@ enum AILookShots {
         let shown = frames.filter { frame in middles.contains { abs($0 - frame.time) < 0.001 } }
         let shownLabels = shown.map { frame in labels[middles.firstIndex { abs($0 - frame.time) < 0.001 } ?? 0] }
         return AILookTool.finish(&payload, frames: shown, labels: shownLabels, size: size, wantsImage: wantsImage)
-    }
-
-    private enum Resolution {
-        case ask(AIToolResult)
-        case target(Target)
-    }
-
-    private static func resolve(_ args: AIToolArguments, _ project: VideoEditProject) throws -> Resolution {
-        if let path = try args.string("file") {
-            let url = AIWorkspace.shared.resolve(path)
-            guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("\(path) does not exist.") }
-            if let ask = try AIWorkspace.shared.confirmReading([url], verb: "look at", args: args, project: project) {
-                return .ask(ask)
-            }
-            guard !MediaFileTypes.isImage(url) else {
-                throw AIToolError("\(url.lastPathComponent) is a still picture, so it is one shot. Look at it without shots.")
-            }
-            let lower = max(0, try args.double("source_in") ?? 0)
-            let upper = max(lower, try args.double("source_out") ?? .greatestFiniteMagnitude)
-            return .target(Target(url: url, range: lower...upper, clip: nil))
-        }
-        guard let text = try args.string("clip_id") else { throw AIToolError("With shots=true pass file (a video) or clip_id.") }
-        let state = project.state
-        guard let clip = state.clip(with: try AIShortIDs(state: state).resolve(text)) else { throw AIToolError("\(text) is not a clip.") }
-        guard !clip.isAudioOnly, !clip.isStillImage else {
-            throw AIToolError("\(clip.name) has no moving picture to split into shots.")
-        }
-        return .target(Target(url: clip.sourceURL, range: clip.sourceStart...(clip.sourceStart + clip.sourceDuration), clip: clip))
     }
 }

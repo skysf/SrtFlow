@@ -10,7 +10,8 @@ import SrtFlowMCPKit
 // AIFrameComposer 合成），给 file 看**素材文件**（挑镜头用，AIFrameSampler 抽帧）。几帧拼成一张（AIContactSheet），
 // 每帧配一段文字描述（AIFrameDescription：Vision 认出来的东西、字、亮度、黑边）。看不了图的模型传 image=false，
 // 只拿文字。方案第 31 条（2026-09-27 实测：AI 看不见画面，只好拿用户电脑上的 ffmpeg 抽帧）。
-// 第四块加的两种看法各在自己的文件里：shots=true 把一个文件分成镜头（AILookShots），files 一次看好几个文件（AILookFiles）。
+// 第四块加的两种看法各在自己的文件里：shots=true 把一个文件分成镜头（AILookShots），files 一次看好几个文件（AILookFiles）；
+// 第五块的 text_scan=true 扫一遍画面里的字（AILookText）。
 // 不管什么：合成 / 抽帧 / 描述 / 拼图本身（各自的文件）、说明文字（SrtFlowMCPKit/MCPSenseTools.swift）。
 //
 // 只读：不改工程、不动界面（不挪播放头、不摆窗口）。点名文件夹以外的文件照「动硬盘才问」的规矩先问。
@@ -28,6 +29,9 @@ enum AILookTool {
         }
         if try args.bool("shots") == true {
             return try await AILookShots.look(args, project, size: size, wantsImage: wantsImage)
+        }
+        if try args.bool("text_scan") == true {
+            return try await AILookText.look(args, project)
         }
         if let files = try args.stringArray("files") {
             return try await AILookFiles.look(files, args, project, size: size, wantsImage: wantsImage)

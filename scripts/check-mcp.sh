@@ -33,6 +33,7 @@
 #  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）；
 #      配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、说话部分同一个响度），两种声音都只经一处写文件（扫描）。
 #  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、切段、拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
+#  24. 扫画面里的字（look text_scan）：字幕带、固定的字、满屏的字各认得出来；铺满时没人、字多就对准字，focus=text，字比窗宽说多少。
 #  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
 #      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
 #
@@ -367,6 +368,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipboardLanes.swift \
   Sources/SrtFlow/AIBlackBars.swift \
   Sources/SrtFlow/AISubjectFocus.swift \
+  Sources/SrtFlow/AITextRegions.swift \
   Sources/SrtFlow/AIVision.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AIContactSheet.swift \
@@ -413,6 +415,7 @@ xcrun swiftc \
   checks/MCP/VoiceChecks.swift \
   checks/MCP/VoiceLevelChecks.swift \
   checks/MCP/SubtitleStyleChecks.swift \
+  checks/MCP/TextScanChecks.swift \
   checks/MCP/KokoroChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \

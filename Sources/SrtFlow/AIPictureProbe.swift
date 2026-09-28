@@ -32,7 +32,8 @@ enum AIPictureProbe {
         let frames = await AIFrameSampler.frames(of: clip, count: count, maxSide: 640)
         var samples: [AIFollowSubject.Sample] = []
         for frame in frames {
-            samples.append(.init(time: frame.time, findings: await AIVision.analyze(frame.image, .subject).subject))
+            // 字在哪也认一下（fast，一帧几十毫秒）：没有人的幻灯片、录屏按字对准（AISubjectFocus）。
+            samples.append(.init(time: frame.time, findings: await AIVision.analyze(frame.image, [.subject, .textRegions]).subject))
         }
         return samples
     }
@@ -51,7 +52,13 @@ enum AIPictureProbe {
                 "The subject moves around, so the crop follows it with \(followKeyframes) position keyframes. "
                     + "Pass follow=false for one fixed crop."
             )
-        } else if AISubjectFocus.movesTooMuch(subject, window: window) {
+        } else if subject.kind == .text, subject.textCut > 0.05 {
+            object["text_cut"] = AIFormat.seconds(subject.textCut)
+            object["note"] = .string(
+                "The text is wider than the frame: about \(Int((subject.textCut * 100).rounded()))% of it falls outside. "
+                    + "fit=fit shows all of it (with bars), or keep this crop if the middle is enough."
+            )
+        } else if subject.kind != .text, AISubjectFocus.movesTooMuch(subject, window: window) {
             object["note"] = .string(
                 "The subject moves around in this clip, so one fixed crop may lose it. "
                     + "Leave follow on to follow it with keyframes, or split the clip where it moves."

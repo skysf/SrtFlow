@@ -11,8 +11,9 @@ import Foundation
 /// edit_clip 里和画面有关的那几个参数（读的时候就把互相冲突的组合挡掉）。
 struct AIFramingRequest {
     enum Fit: String { case fit, fill }
-    /// 铺满时窗对准哪儿：认出来的主体（人脸 → 人 → 显眼的东西，默认），或者正中。
-    enum Focus: String { case subject, center }
+    /// 铺满时窗对准哪儿：认出来的主体（人脸 → 人 → 字多时对准字 → 显眼的东西，默认）、只对准字（幻灯片、录屏，
+    /// 方案第 55 条），或者正中。
+    enum Focus: String { case subject, text, center }
 
     var fit: Fit?
     var focus: Focus = .subject
@@ -37,7 +38,7 @@ struct AIFramingRequest {
         x = try args.double("x")
         y = try args.double("y")
         scale = try args.double("scale")
-        let namedFocus = try args.choice("focus", from: ["subject", "center"]).flatMap(Focus.init(rawValue:))
+        let namedFocus = try args.choice("focus", from: ["subject", "text", "center"]).flatMap(Focus.init(rawValue:))
         focus = namedFocus ?? .subject
         let focusX = try args.double("focus_x")
         let focusY = try args.double("focus_y")

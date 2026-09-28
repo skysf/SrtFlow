@@ -4,7 +4,7 @@ import Vision
 
 // MARK: - 用 macOS 自带的 Vision 看一帧
 //
-// 管什么：一张 CGImage → 认出来的人脸、人（上半身）、显眼的东西、这是什么（标签）、画面上的字。
+// 管什么：一张 CGImage → 认出来的人脸、人（上半身）、显眼的东西、这是什么（标签）、画面上的字（连同它在哪）。
 // 框一律换成**左上原点**的归一化值（Vision 给的是左下原点）。edit_clip 铺满时对准主体、look 给不能看图的
 // 模型写文字描述，都从这里拿。
 // 不管什么：拿这些结果干什么（AISubjectFocus、AIFrameDescription）、帧从哪来（AIFrameSampler / AIFrameComposer）。
@@ -18,7 +18,16 @@ enum AIVision {
         let rawValue: Int
         static let subject = Options(rawValue: 1)
         static let labels = Options(rawValue: 2)
+        /// 画面上的字，认准（accurate、自动判语言）：look 写给 AI 的、扫字幕带和水印用。
         static let text = Options(rawValue: 4)
+        /// 只要字在哪（fast，快十来倍，字认得粗）：铺满时按字对准用。和 `text` 一起给时按 `text`。
+        static let textRegions = Options(rawValue: 8)
+    }
+
+    /// 画面上的一块字：认出来的原文和它的框（归一化、左上原点）。
+    struct Text: Equatable, Sendable {
+        var string: String
+        var box: CGRect
     }
 
     struct Label: Equatable, Sendable {
@@ -29,13 +38,12 @@ enum AIVision {
     struct Findings: Sendable {
         var subject = AISubjectFocus.FrameFindings()
         var labels: [Label] = []
-        var texts: [String] = []
+        var texts: [Text] = []
     }
 
     /// 标签：Vision 的分类是一棵很宽的树（「动物」「鸟」「企鹅」都会有），只留够把握的前几个。
     static let labelConfidence = 0.3
     static let maxLabels = 6
-    static let maxTexts = 6
 
     static func analyze(_ image: CGImage, _ options: Options) async -> Findings {
         await MediaReadQueue.run(on: MediaReadQueue.analysis) { perform(image, options) }
@@ -48,13 +56,19 @@ enum AIVision {
         let salient = VNGenerateAttentionBasedSaliencyImageRequest()
         let classify = VNClassifyImageRequest()
         let text = VNRecognizeTextRequest()
-        text.recognitionLevel = .accurate
-        text.automaticallyDetectsLanguage = true
-        text.usesLanguageCorrection = true
+        let wantsText = options.contains(.text) || options.contains(.textRegions)
+        if options.contains(.text) {
+            text.recognitionLevel = .accurate
+            text.automaticallyDetectsLanguage = true
+            text.usesLanguageCorrection = true
+        } else {
+            text.recognitionLevel = .fast
+            text.usesLanguageCorrection = false
+        }
         var requests: [VNRequest] = []
         if options.contains(.subject) { requests += [faces, people, salient] }
         if options.contains(.labels) { requests.append(classify) }
-        if options.contains(.text) { requests.append(text) }
+        if wantsText { requests.append(text) }
         guard !requests.isEmpty else { return Findings() }
         let handler = VNImageRequestHandler(cgImage: image, orientation: .up, options: [:])
         try? handler.perform(requests)
@@ -72,12 +86,14 @@ enum AIVision {
                 .prefix(maxLabels)
                 .map { Label(name: $0.identifier.replacingOccurrences(of: "_", with: " "), confidence: Double($0.confidence)) }
         }
-        if options.contains(.text) {
-            findings.texts = (text.results ?? [])
-                .compactMap { $0.topCandidates(1).first }
-                .filter { $0.confidence >= 0.5 && !$0.string.trimmingCharacters(in: .whitespaces).isEmpty }
-                .prefix(maxTexts)
-                .map(\.string)
+        if wantsText {
+            findings.texts = (text.results ?? []).compactMap { observation in
+                guard let best = observation.topCandidates(1).first, best.confidence >= 0.5,
+                      !best.string.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+                return Text(string: best.string, box: topLeft(observation.boundingBox))
+            }
+            // 铺满时按字对准（AISubjectFocus）要的是字在哪。
+            findings.subject.texts = findings.texts.map(\.box)
         }
         return findings
     }

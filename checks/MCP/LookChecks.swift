@@ -58,7 +58,7 @@ private func checkFrameDescription() {
     var vision = AIVision.Findings()
     vision.labels = [.init(name: "penguin", confidence: 0.9), .init(name: "snow", confidence: 0.6)]
     vision.subject.faces = [CGRect(x: 0.1, y: 0.2, width: 0.05, height: 0.05), CGRect(x: 0.6, y: 0.3, width: 0.2, height: 0.2)]
-    vision.texts = ["SOUTH POLE"]
+    vision.texts = [AIVision.Text(string: "SOUTH POLE", box: CGRect(x: 0.3, y: 0.8, width: 0.4, height: 0.08))]
     // 上下各 18 行黑边的亮画面。
     var pixels = [UInt8](repeating: 200, count: 256 * 144)
     for y in 0..<144 where y < 18 || y >= 126 { for x in 0..<256 { pixels[y * 256 + x] = 0 } }
@@ -67,7 +67,9 @@ private func checkFrameDescription() {
     checkEqual(described["time"]?.doubleValue, 2.5, "the frame's time")
     checkEqual(described["shows"]?.arrayValue?.compactMap(\.stringValue), ["penguin", "snow"], "what Vision says it shows")
     checkEqual(described["faces"]?.arrayValue?.first?.arrayValue?.first?.doubleValue, 0.6, "the biggest face comes first")
-    checkEqual(described["text"]?.arrayValue?.first?.stringValue, "SOUTH POLE", "words on screen")
+    checkEqual(described["text"]?.arrayValue?.first?["text"]?.stringValue, "SOUTH POLE", "words on screen")
+    checkEqual(described["text"]?.arrayValue?.first?["box"]?.arrayValue?.compactMap(\.doubleValue), [0.3, 0.8, 0.4, 0.08],
+               "and where they are (left, top, width, height)")
     checkEqual(described["subject"]?["kind"]?.stringValue, "face", "the main subject")
     checkEqual(described["black_bars"]?["top"]?.doubleValue, 0.125, "black bars on the frame")
     checkEqual(described["brightness"]?.doubleValue, 0.59, "average brightness")

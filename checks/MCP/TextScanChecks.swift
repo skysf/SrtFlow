@@ -1,0 +1,91 @@
+import CoreGraphics
+import Foundation
+import SrtFlowMCPKit
+
+// 扫画面里的字（look text_scan，方案第 55 条）：烧进去的字幕带（下方居中、字一直在变）、固定的字（水印、固定的标题）、
+// 满屏的字（幻灯片）各认得出来、互不混；铺满时没有人、字多就对准字，focus=text 只看字，字比窗宽时说宽出去多少。
+// 编法见 scripts/check-mcp.sh。
+
+func runTextScanChecks() {
+    textRegionChecks()
+    textFocusChecks()
+}
+
+private func text(_ string: String, _ x: Double, _ y: Double, _ width: Double, _ height: Double) -> AIVision.Text {
+    AIVision.Text(string: string, box: CGRect(x: x, y: y, width: width, height: height))
+}
+
+private func textRegionChecks() {
+    // 十帧：八帧底部有在变的字幕，每帧右上角有水印，底部正中一直是同一行标题（不变 → 不算字幕），前六帧是满屏的幻灯片。
+    let frames = (0..<10).map { index -> AITextRegions.Frame in
+        var texts = [text("SKYLU", 0.86, 0.04, 0.1, 0.03), text("Lesson 1", 0.42, 0.95, 0.16, 0.03)]
+        if index < 8 { texts.append(text("line number \(index)", 0.3, 0.84, 0.4, 0.06)) }
+        if index < 6 {
+            texts += [text("Title \(index)", 0.1, 0.15, 0.8, 0.08), text("point a \(index)", 0.12, 0.3, 0.6, 0.05),
+                      text("point b \(index)", 0.12, 0.4, 0.6, 0.05), text("point c \(index)", 0.12, 0.5, 0.6, 0.05)]
+        }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    let report = AITextRegions.report(frames)
+    checkEqual(report.band?.coverage, 0.8, "text scan: burned-in subtitles along the bottom, in 8 of 10 frames")
+    check(abs((report.band?.box.minY ?? 0) - 0.84) < 0.01 && abs((report.band?.box.maxY ?? 0) - 0.9) < 0.01,
+          "text scan: the band's top and bottom are where the subtitle lines are (the fixed title below does not widen it)")
+    checkEqual(report.band?.from, 0, "text scan: first seen")
+    checkEqual(report.band?.to, 14, "text scan: last seen")
+    checkEqual(Set(report.fixed.map(\.text)), ["SKYLU", "Lesson 1"], "text scan: the watermark and the fixed title stay in place")
+    checkEqual(report.fixed.first { $0.text == "SKYLU" }?.coverage, 1, "text scan: the watermark is in every frame")
+    checkEqual(report.heavy?.coverage, 0.6, "text scan: slides in 6 of 10 frames")
+    check(abs((report.heavy?.box.minX ?? 0) - 0.1) < 0.01 && abs((report.heavy?.box.maxX ?? 0) - 0.9) < 0.01,
+          "text scan: the slides' text spans 0.1–0.9 across (subtitles and watermark left out)")
+    let json = AITextRegions.json(report, timeline: { $0 + 100 })
+    checkEqual(json["subtitle_band"]?["from"]?.doubleValue, 100, "text scan: times on the timeline for a clip")
+    check(json["subtitle_band"]?["hint"]?.stringValue?.contains("crop bottom 0.17") == true, "text scan: how much to crop off")
+    checkEqual(AITextRegions.json(AITextRegions.report([.init(time: 0, texts: [])]))["found"]?.stringValue,
+               "No text stays on screen.", "text scan: says so when there is nothing")
+
+    // 跳角的水印：左下、右上来回出现 → 会动，报两处；同一处挨着的两个词并成一块。
+    let jumping = (0..<8).map { index -> AITextRegions.Frame in
+        let corner = index % 2 == 0 ? (x: 0.02, y: 0.93) : (x: 0.85, y: 0.03)
+        return AITextRegions.Frame(time: Double(index), texts: [text("Studio", corner.x, corner.y, 0.05, 0.02)])
+    }
+    let moves = AITextRegions.report(jumping).fixed.first
+    check(moves?.text == "Studio" && moves?.places.count == 2, "text scan: a watermark that jumps between corners is reported with its places")
+    let twoWords = (0..<5).map { AITextRegions.Frame(time: Double($0), texts: [
+        text("Sky", 0.01, 0.93, 0.03, 0.02), text("Studio", 0.045, 0.93, 0.05, 0.02)
+    ]) }
+    checkEqual(AITextRegions.report(twoWords).fixed.map(\.text), ["Sky Studio"], "text scan: neighbouring words in one place become one mark")
+    let stacked = (0..<5).map { AITextRegions.Frame(time: Double($0), texts: [
+        text("Studio", 0.01, 0.95, 0.05, 0.02), text("Sky", 0.012, 0.925, 0.03, 0.02)
+    ]) }
+    checkEqual(AITextRegions.report(stacked).fixed.map(\.text), ["Sky Studio"], "text scan: a logo stacked in two lines reads top line first")
+    // 居中的幻灯片标题在顶上一直在变：不是字幕（只认下面）。
+    let titles = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("SLIDE TITLE \($0)", 0.1, 0.08, 0.8, 0.08)]) }
+    checkEqual(AITextRegions.report(titles).band, nil, "text scan: centred slide titles at the top are not a subtitle band")
+
+    // 同一行字一直不变：不是字幕（是固定的标题）。
+    let fixedTitle = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("Chapter One", 0.3, 0.85, 0.4, 0.06)]) }
+    checkEqual(AITextRegions.report(fixedTitle).band, nil, "text scan: a line that never changes is not a subtitle band")
+    checkEqual(AITextRegions.report(fixedTitle).fixed.first?.text, "Chapter One", "text scan: it is fixed text instead")
+}
+
+private func textFocusChecks() {
+    let window = CGSize(width: 0.316, height: 1)   // 16:9 素材转 9:16 时那扇窗
+    let slide = AISubjectFocus.FrameFindings(texts: [
+        CGRect(x: 0.1, y: 0.2, width: 0.8, height: 0.08), CGRect(x: 0.1, y: 0.35, width: 0.5, height: 0.05),
+        CGRect(x: 0.1, y: 0.45, width: 0.5, height: 0.05)
+    ], salient: [CGRect(x: 0.7, y: 0.7, width: 0.1, height: 0.1)])
+    let aim = AISubjectFocus.focus(in: slide, window: window)
+    checkEqual(aim?.kind, .text, "focus: no people but lots of text → aim at the text (before whatever stands out)")
+    check(abs((aim?.point.x ?? 0) - 0.5) < 0.001, "focus: at the middle of the text")
+    var withFace = slide
+    withFace.faces = [CGRect(x: 0.8, y: 0.1, width: 0.1, height: 0.15)]
+    checkEqual(AISubjectFocus.focus(in: withFace, window: window)?.kind, .face, "focus: a face still comes first")
+    checkEqual(AISubjectFocus.focus(in: withFace, window: window, textFirst: true)?.kind, .text, "focus=text: only the text")
+    let watermarkOnly = AISubjectFocus.FrameFindings(texts: [CGRect(x: 0.86, y: 0.04, width: 0.1, height: 0.03)],
+                                                     salient: [CGRect(x: 0.2, y: 0.3, width: 0.2, height: 0.2)])
+    checkEqual(AISubjectFocus.focus(in: watermarkOnly, window: window)?.kind, .salient, "focus: one small corner text is not \"lots of text\"")
+    let combined = AISubjectFocus.combine(Array(repeating: slide, count: 5), window: window)
+    checkEqual(combined?.kind, .text, "focus: five slide frames → text")
+    check(abs((combined?.textCut ?? 0) - (0.8 - 0.316) / 0.8) < 0.001, "focus: says how much of the text is wider than the window")
+    checkEqual((try? AIFramingRequest(AIToolArguments(["fit": "fill", "focus": "text"])))?.focus, .text, "edit_clip: focus=text")
+}
