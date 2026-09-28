@@ -319,6 +319,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [AI 接口（MCP）第二块实施报告](docs/reports/2026-09-27-mcp-slice2-report.md) — 第二块起手「AI 的手和眼」（方案第 31 条）：`edit_clip` 的画面放法、去黑边、对准主体、`look`、`listen`、总说明里不用外部工具那一句，窗口一轮只摆一次（第 32 条）；然后现有功能铺满（后台模式、读文稿、整理文件、访达选中、剪辑的其余设置、推子关键帧、形状、复制、定格、音乐库、压缩烧录转换，工具 23 → 37 个）；每一刀的 CI、本机自检、测试版冒烟的证据，过程中撞上的事（三个老 bug），还差什么。
 - [AI 接口（MCP）第三块实施报告](docs/reports/2026-09-28-mcp-slice3-report.md) — 分析数据 + 智能剪：`transcribe`（词级时间，和生成字幕同一套 `TranscriptHarvester`）、`listen beats=true`（鼓点）、`cut_speech`（按文字剪、删停顿、口头禅、说重了）、`cut_to_beat`（音乐踩点），工具 37 → 40 个（到预算）；CI 与测试版冒烟的证据、撞上的事（切开之后链接成对、new_audio 接在 A1 后面两个老 bug），还差什么（音频库没有鼓点清楚的音乐、转写要 macOS 26）。
 - [AI 接口（MCP）第四块实施报告](docs/reports/2026-09-28-mcp-slice4-report.md) — 本机识别画面：`look shots=true` 分镜头（切点学 PySceneDetect、整个文件扫一遍缓存、长视频走任务）、`look files` 一次看 24 个文件、`edit_clip fit=fill` 跟着人走（位置关键帧、换镜头跳过去）；解码速度和切点的探针实测、测试版冒烟（素材A 47 个镜头、14.6 分钟的课 130 个镜头）、跟拍第一版乱晃怎么改的、还差什么。
+- [AI 接口（MCP）第五块实施报告（进行中）](docs/reports/2026-09-28-mcp-slice5-report.md) — 剪辑套路 + 配音 + 逐词高亮字幕：第 ① 刀套路与零件（recipes / save_recipe、实心形状 v24、set_text 补参数）、第 ② 刀 macOS 配音（add_voiceover，词的标记只从代理方法来、语速按实测表换）、第 ③ 刀 Kokoro 与 Qwen3-TTS 的 CoreML 探针（M1 上 Kokoro 实时 10 倍、Qwen3 实时 0.2 倍、段尾逗号让 Kokoro 冒杂音），等用户听了定。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
