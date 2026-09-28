@@ -983,3 +983,9 @@
 "Could not update %@: %@" = "改不了 %@ 的配置：%@";
 "Downloading the translation languages. In the window that opened, click Download next to each language if you haven't yet. Its progress bar can lag: System Settings › General › Language & Region › Translation Languages shows the real progress." = "正在下载翻译语言。还没点的话，在弹出的窗口里对每种语言点「Download / 下载」。那个窗口的进度条可能不刷新，真实进度看「系统设置 › 通用 › 语言与地区 › 翻译语言」。";
 "The translation languages are downloaded. If the download window is still open, click Done and translating starts." = "翻译语言已经下好了。下载窗口还开着的话，点「Done / 完成」，翻译就开始。";
+"Highlight each word" = "逐词高亮";
+"The word being spoken changes colour, in the preview and in the exported video. Only subtitles SrtFlow made (from speech or a voiceover) know when each word is said" = "说到哪个词，哪个词换色，预览和导出的成片里都一样。只有 SrtFlow 自己做的字幕（从语音生成、配音）知道每个词什么时候说";
+"Colour of the word being spoken" = "正在说的那个词的颜色";
+"This project has its own subtitle style." = "这个工程用自己的字幕样式。";
+"Use Burn In style" = "用烧录页的样式";
+"Use the subtitle style from the Burn In Subtitles page again" = "重新用「烧录字幕」页设的字幕样式";

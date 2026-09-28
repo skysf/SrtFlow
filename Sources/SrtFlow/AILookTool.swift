@@ -58,7 +58,9 @@ enum AILookTool {
             throw AIToolError("The timeline is \(String(format: "%.2f", state.duration)) s long; \(beyond) s is past the end.")
         }
         times = times.map { min(max(0, $0), lastFrame) }
-        let frames = await AIFrameComposer.frames(of: state, at: times, subtitleStyle: EncodeQueue.burnIn.burnInStyle)
+        let frames = await AIFrameComposer.frames(
+            of: state, at: times, subtitleStyle: state.subtitleStyle(appWide: EncodeQueue.burnIn.burnInStyle)
+        )
         guard !frames.isEmpty else { throw AIToolError("SrtFlow could not render the timeline at those times.") }
         var described: [JSONValue] = []
         for frame in frames {

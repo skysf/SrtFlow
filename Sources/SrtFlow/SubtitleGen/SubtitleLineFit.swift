@@ -10,11 +10,20 @@ import SrtFlowCore
 // 生成之后再改字号 / 边距，已生成的字幕不重排 —— 放不下时由渲染自动折行。
 
 enum SubtitleLineFit {
+    /// 这个工程生成字幕时一行放得下几个字号宽：用工程此刻的样式（`subtitleStyle(appWide:)`，AI 改过就是工程自己的）、
+    /// 原文的布局；打开了逐词高亮、那个词会放大时再留一点余量（放大的词按占一行的一半算），不然说到它时整行变宽、
+    /// 折到第二行。生成字幕、配音的字幕都问这里。
+    static func ems(for state: TimelineState, appWide: BurnInStyle, renderSize: CGSize) -> Double {
+        let base = ems(style: state.subtitleStyle(appWide: appWide), layout: state.subtitleLayout, renderSize: renderSize)
+        guard let highlight = state.subtitleHighlight else { return base }
+        return base / (1 + (highlight.scale - 1) * 0.5)
+    }
+
     /// 给描边、字距和「粗体英文比估的宽」留的余量。
     static let safety = 0.95
 
     /// - Parameters:
-    ///   - style: 全局烧录样式（预览同一份）。
+    ///   - style: 这个工程用的字幕样式（预览同一份）。
     ///   - layout: 原文轨的工程布局覆盖（`TimelineState.subtitleLayout`），nil = 按全局样式。
     ///   - renderSize: 画面尺寸（只用它的宽高比）。
     static func ems(style: BurnInStyle, layout: SubtitleLayout?, renderSize: CGSize) -> Double {

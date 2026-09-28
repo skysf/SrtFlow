@@ -339,7 +339,7 @@ struct VideoEditView: View {
                     project: project,
                     clock: clock,
                     boxSize: size,
-                    style: burnInQueue.burnInStyle,
+                    appWideStyle: burnInQueue.burnInStyle,
                     editingCueID: $previewEditingCueID
                 )
             }

@@ -386,11 +386,13 @@ struct VideoEditExportSheet: View {
         if isAudioOnly { state.subtitle = nil; state.subtitleCompanion = nil }
         // 这次用的文件夹就是「上次导出的文件夹」，下次打开面板还在这儿。
         exporter.exportFolder = folder
+        // 这个工程有自己的字幕样式（AI 改过）就用它，没有就是烧录页的那套 —— 和预览同一个函数。
+        let subtitleStyle = state.subtitleStyle(appWide: burnInQueue.burnInStyle)
         exporter.export(
             state: state,
             to: outputURL,
-            subtitleStyle: burnInQueue.burnInStyle,
-            subtitleFontURL: fontCatalog.font(named: burnInQueue.burnInStyle.fontName)?.fileURL
+            subtitleStyle: subtitleStyle,
+            subtitleFontURL: fontCatalog.font(named: subtitleStyle.fontName)?.fileURL
         )
     }
 }

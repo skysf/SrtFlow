@@ -110,7 +110,7 @@ enum AIVoiceoverTool {
         }
         let config = SubtitleSegmentationConfig.generation(
             languageCode: plan.language, frameDuration: project.state.frameRate.secondsPerFrame,
-            maxLineEms: SubtitleLineFit.ems(style: EncodeQueue.burnIn.burnInStyle, layout: project.state.subtitleLayout,
+            maxLineEms: SubtitleLineFit.ems(for: project.state, appWide: EncodeQueue.burnIn.burnInStyle,
                                             renderSize: project.renderSize)
         )
         var subtitles = AIVoiceoverSubtitles.Outcome()

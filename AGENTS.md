@@ -123,7 +123,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）**、**生成 / 翻译结束时回写工程** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[回写要自己成一步撤销](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（包在 `AIUndoGrouping.step` 里）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)、[自动检测拿音效当探针](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md)（探针长的先、先听有没有人声） |
 | 生成出来的字幕长什么样：**去标点**、**断句**（逗号拆小句、太短的并、放不下的怎么切、中文按词边界）、**一行多长**（字数 + 画面宽度）、**显示时间**（最短、2 帧间隔、接上、说完多停）、**几段素材同时有字只留一条**、面板上「只用选中的片段」、机器翻译落字去标点 | [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md)（先断句后去标点、时间在整条轨上排；**停顿被识别器并进相邻的词，先估开口**；切法是动态规划不是贪心；中文按整句判语言；去重叠只比不同素材）、[停顿被算进相邻的词](docs/bugfixes/2026-09-26-pause-stretches-next-word.md)、[方案与调研](docs/plans/2026-09-26-subtitle-generation-style.md)（别的剪辑软件怎么做、Netflix / BBC 的数字、用户逐条拍的板） |
-| 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
+| 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**工程自己的字幕样式（`subtitleStyle(appWide:)`）与逐词高亮（词的时间、预览和烧录同一份）**、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉；「工程自己的样式与逐词高亮」：用样式只问 `subtitleStyle(appWide:)`、只有带词时间的句子亮、词的时间跟着编辑走）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
 | 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点）、[AI 接口](docs/architecture/ai-control-mcp.md) §4 第 23 条（AI 搜音乐、放上时间线、署名句，和界面同一个搜索函数、同一个署名口径） |
 | 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名（面板上先问再替换；批量转换、压缩 / 烧录、AI 的输出加编号，`ExportFileName.unoccupied`）、**压缩 / 烧录记住的设置和全 App 的字幕样式** | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置；记住的设置在队列创建时读回来，不挂在页面的 `onAppear` 上）、[字幕样式要先去烧录页转一圈](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
@@ -148,7 +148,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `.github/workflows/checks.yml`，按 `--shard N --of 5` 分到 5 台免费的 macOS runner 上并行跑，
   由一个叫 `check-all` 的汇总 job 给结论（分组、组数校验、汇总 job 为什么不能被跳过，见
   [构建与打包「CI」一节](docs/build/build-and-packaging.md)）。新加检查要放进某个 `shard`。
-- 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
+- 核心库：`swift run --arch arm64 SrtFlowCoreChecks`（含逐词高亮：词对到去完标点的字上、此刻亮哪个、跟着编辑走、按词切段、ASS 标签，`SubtitleWordChecks`）。
 - 生成的字幕长什么样（去标点、断句、一行多长、显示时间、几段素材同时有字只留一条，用例是用户工程里真实转写出来的句子）：
   `SrtFlowCoreChecks` 的 `SubtitlePunctuationChecks` / `SubtitleSegmentationChecks` / `SubtitleSourceOverlapChecks`；
   藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift` + 扫描守卫）。
@@ -241,7 +241,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
-- 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来（不挂在页面的 `onAppear` 上）：`checks/encode-settings-memory.sh`。
+- 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来（不挂在页面的 `onAppear` 上），剪辑页和 AI 的字幕样式都经
+  `subtitleStyle(appWide:)`（工程自己的样式优先）：`checks/encode-settings-memory.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
 - 代码文件的行数上限（超过 600 行就红，老文件只许降不许涨，变短了用 `--update` 改小基线）：
   `checks/source-file-size.sh`。
@@ -364,7 +365,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [检查器的排版](docs/architecture/inspector-layout.md) — 固定的窄栏（约 220pt）：一行的最小宽度不许超过它，否则整列被撑宽、右边被裁；菜单 Picker 不许锁宽度；长名字的下拉标题单独一行。
 - [定格](docs/architecture/freeze-frame.md) — 一次性提交、PNG 归属、波纹范围与静帧管线。
 - [字幕语言流](docs/architecture/subtitle-language-flow.md) — 目标语言可见性、预检与自动检测。
-- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、**两条轨独立**（2026-09-26 起：各自的 ID 和时间、来源表现算过期 / 缺译文、两个翻译按钮各动哪些句子）、画面上的布局（译文叠在原文下面或各摆各的、预览和烧录读同一份按时间切好的块）、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
+- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、**两条轨独立**（2026-09-26 起：各自的 ID 和时间、来源表现算过期 / 缺译文、两个翻译按钮各动哪些句子）、画面上的布局（译文叠在原文下面或各摆各的、预览和烧录读同一份按时间切好的块）、**工程自己的样式与逐词高亮**（2026-09-28：样式两层只问 `subtitleStyle(appWide:)`、词的时间记在句子上并跟着编辑走、按词切段、ASS 标签与预览同一份位置）、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
 - [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、标记对所有选择互斥、命中区分层。
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑、**sheet / popover 不继承应用内语言**与已知盲区。

@@ -119,6 +119,9 @@
   `VideoEditExporter` 在 init 里读同一个做法），**不许挪回页面的 `onAppear`**：烧录队列上的样式是全 App 的
   字幕样式，剪辑页预览、剪辑导出、AI 都读它，烧录页没出现过也必须是用户存的那套
   （[案例](../bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)，`checks/encode-settings-memory.sh` 钉着）。
+  2026-09-28 起工程可以有**自己的**字幕样式（AI 改的就是它，方案第 54 条）：剪辑页和 AI 一律问
+  `TimelineState.subtitleStyle(appWide:)`，烧录队列的样式只当「全 App 的」传进去（同一个守卫的第 5 条），
+  见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md)「工程自己的样式与逐词高亮」。
 
 ## 回归矩阵
 
@@ -129,7 +132,7 @@
 | `SrtFlowCoreChecks`（标题 → 文件名主干一节） | `ExportFileName.stem` 的清理规则 |
 | `SrtFlowCoreChecks`（字幕导出规划器一节） | 同名旧文件被整份原子替换、失败不碰已有文件 |
 | `SrtFlowCoreChecks`（`SubtitleConvertChecks`） | 批量转换撞名加编号：旁边手改过的同名文件一个字不动、同格式转回源文件夹不盖源文件 |
-| `checks/encode-settings-memory.sh`（第一组） | 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来；键和读法只有 `EncodeQueueMemory` 一处，页面不自己读 |
+| `checks/encode-settings-memory.sh`（第一组） | 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来；键和读法只有 `EncodeQueueMemory` 一处，页面不自己读；剪辑页和 AI 的字幕样式都经 `subtitleStyle(appWide:)` |
 | `scripts/check-export-frame-rate.sh`（第三组） | 剪辑导出**真跑一遍**读成片尺寸：16:9 / 9:16 选 720p、跟随工程、档位不小于画布时不缩；奇怪比例下像素是方的（守 `setsar=1`） |
 
 ## 人工回归清单（自动化够不着，发版前实机过）

@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
@@ -97,6 +98,7 @@ xcrun swiftc \
   checks/ProjectFile/SubtitleTracks.swift \
   checks/ProjectFile/SubtitleSources.swift \
   checks/ProjectFile/FilledShapes.swift \
+  checks/ProjectFile/SubtitleLook.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -251,7 +253,7 @@ require "ffmpeg 导出要滤掉隐藏的段" \
 forbid "ffmpeg 导出不许按轨去 lane.clips 里取段（走 overlayVisible 那一份清单）" \
   Sources/SrtFlow/VideoEditExportGraph.swift '^[^/]*in lane\.clips'
 require "「只导出选中的」也要滤掉隐藏的段" \
-  Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
+  Sources/SrtFlow/VideoEditExportSelection.swift 'ClipVisibility\.visible\(state\.allClips'
 require "V 键切的是选中的那几段" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelection\(\)'
 # 回到开头（Return / 小键盘 Enter / Home，2026-09-26）：按键在编辑器的监听里接、只认主窗口，

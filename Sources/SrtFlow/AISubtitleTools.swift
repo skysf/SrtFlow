@@ -40,7 +40,7 @@ enum AISubtitleTools {
             targetLanguageID: targetID,
             // 和面板同一个算法：按当前字幕样式和画面宽度算一行放得下多少（竖屏更短）。
             lineFitEms: SubtitleLineFit.ems(
-                style: EncodeQueue.burnIn.burnInStyle, layout: project.state.subtitleLayout, renderSize: project.renderSize
+                for: project.state, appWide: EncodeQueue.burnIn.burnInStyle, renderSize: project.renderSize
             ),
             onlyClipIDs: only
         )

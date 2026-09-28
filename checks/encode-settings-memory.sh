@@ -6,11 +6,13 @@
 # 可 App 一启动直接进剪辑页（主窗口回到上次的栏目）时烧录页从没出现过 —— 用的是默认样式，要先去烧录页
 # 转一圈才换成自己存的那套。
 #
-# 钉四件事：
+# 钉五件事：
 #   1. 两个全局队列创建时带着 memory（EncodeQueueMemory.compress / .burnIn）；
 #   2. EncodeQueue.init 里调 EncodeQueueMemory.restore；
 #   3. 这几个 UserDefaults 键的字面量只在 EncodeQueueMemory.swift 里（页面引用常量，不另写一份）；
-#   4. 两页不再自己解码（不出现 JSONDecoder）—— 页面只管改动时写。
+#   4. 两页不再自己解码（不出现 JSONDecoder）—— 页面只管改动时写；
+#   5. 剪辑页和 AI 用的字幕样式只从 `TimelineState.subtitleStyle(appWide:)` 取（2026-09-28 方案第 54 条：工程可以有
+#      自己的样式，AI 改的就是它）：烧录队列的样式在烧录页以外出现的每一行，都只是当「全 App 的」传进去。
 #
 # 用法：checks/encode-settings-memory.sh
 set -euo pipefail
@@ -57,7 +59,15 @@ for page in "${PAGES[@]}"; do
   fi
 done
 
+# 5. 剪辑页和 AI 不直接用烧录队列的样式。
+STYLE_READS="$(grep -rn --include='*.swift' 'burnInStyle' Sources/SrtFlow \
+  | grep -v -e '^Sources/SrtFlow/BurnInView.swift:' -e '^Sources/SrtFlow/EncodeQueue' | grep -v 'appWide' || true)"
+if [ -n "${STYLE_READS}" ]; then
+  fail "这几处直接用了烧录页的字幕样式，工程自己的样式（AI 改的）会被忽略 —— 改成 state.subtitleStyle(appWide:)：
+${STYLE_READS}"
+fi
+
 if [ "${FAILED}" -ne 0 ]; then
   exit 1
 fi
-echo "✓ encode-settings-memory：两个队列创建时读回记住的设置，键和读法都只有 EncodeQueueMemory 一处"
+echo "✓ encode-settings-memory：两个队列创建时读回记住的设置，键和读法都只有 EncodeQueueMemory 一处；剪辑页和 AI 的字幕样式都经 subtitleStyle(appWide:)"

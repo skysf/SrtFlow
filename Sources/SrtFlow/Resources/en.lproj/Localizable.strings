@@ -983,3 +983,9 @@
 "Could not update %@: %@" = "Could not update %@: %@";
 "Downloading the translation languages. In the window that opened, click Download next to each language if you haven't yet. Its progress bar can lag: System Settings › General › Language & Region › Translation Languages shows the real progress." = "Downloading the translation languages. In the window that opened, click Download next to each language if you haven't yet. Its progress bar can lag: System Settings › General › Language & Region › Translation Languages shows the real progress.";
 "The translation languages are downloaded. If the download window is still open, click Done and translating starts." = "The translation languages are downloaded. If the download window is still open, click Done and translating starts.";
+"Highlight each word" = "Highlight each word";
+"The word being spoken changes colour, in the preview and in the exported video. Only subtitles SrtFlow made (from speech or a voiceover) know when each word is said" = "The word being spoken changes colour, in the preview and in the exported video. Only subtitles SrtFlow made (from speech or a voiceover) know when each word is said";
+"Colour of the word being spoken" = "Colour of the word being spoken";
+"This project has its own subtitle style." = "This project has its own subtitle style.";
+"Use Burn In style" = "Use Burn In style";
+"Use the subtitle style from the Burn In Subtitles page again" = "Use the subtitle style from the Burn In Subtitles page again";

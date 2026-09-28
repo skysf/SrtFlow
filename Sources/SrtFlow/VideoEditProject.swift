@@ -920,10 +920,10 @@ final class VideoEditProject {
     var canConvertStills: Bool { MediaToolchain.shared.runtime != nil }
 
     /// 要导出的时间线：完整的，或只含选中内容（逻辑在
-    /// `TimelineState.selectionForExport`，纯值变换，工程文件自检里有回归）。
+    /// `TimelineExportSelection.subset`，纯值变换，工程文件自检里有回归）。
     func stateForExport(selectionOnly: Bool) -> TimelineState {
         guard selectionOnly, !selectedClipIDs.isEmpty else { return state }
-        return state.selectionForExport(ids: selectedClipIDs)
+        return TimelineExportSelection.subset(of: state, ids: selectedClipIDs)
     }
 
     // MARK: - 剪辑操作

@@ -5,7 +5,8 @@
 沉淀的长期约束；2026-09-26 **原文、译文拆成两条独立的轨**（用户拍板，推翻当初「译文是原文的镜像」
 那条，拍过的板见 [方案](../plans/2026-09-26-hide-guides-independent-subtitles.md)）。改
 `VideoEditSubtitleDocuments` / `SubtitleTrackEditing` / `SubtitleRetranslation` / `SubtitleFrameCanvas` /
-`BurnInSubtitleOverlay` / `SubtitleLayout` / `EditSelection` / 分段默认值前必读。
+`BurnInSubtitleOverlay` / `SubtitleLayout` / `EditSelection` / 分段默认值、`SubtitleCueWords` / `SubtitleWordHighlight` /
+`subtitleStyle(appWide:)`（工程自己的样式、逐词高亮）前必读。
 语言流（自动检测/翻译预检）的姊妹合同见
 [subtitle-language-flow.md](subtitle-language-flow.md)。
 
@@ -109,6 +110,34 @@
 5. **`subtitleLayout` 是 v6 字段**：它决定字幕的位置/换行宽度/字号，旧版丢掉
    它会直接改变导出画面。加字段时的判断标准见
    [video-edit-project-file.md](video-edit-project-file.md)。
+
+## 工程自己的样式与逐词高亮（2026-09-28，方案第 38、54 条）
+
+1. **样式两层**：全 App 的（烧录页记住的那套，`EncodeQueue.burnIn.burnInStyle`）和这个工程自己的
+   （`TimelineState.projectSubtitleStyle`，v25）。用的时候**只问** `TimelineState.subtitleStyle(appWide:)`：有工程自己的
+   就用它，没有就是全 App 的。预览、剪辑导出、AI 的导出和「看」、生成字幕和配音字幕时算一行放多少，全部经它 ——
+   `checks/encode-settings-memory.sh` 第 5 条钉着：烧录队列的样式在烧录页以外出现的每一行，都只当「全 App 的」传进去。
+   - AI 改样式**只改工程自己的这一份**（用户拍板，方案第 54 条），不动用户在烧录页记住的；字幕表表头说一声「这个工程用
+     自己的字幕样式」，点「用烧录页的样式」回去（`useAppWideSubtitleStyle`，一步撤销）。
+   - 拖框的布局覆盖（`subtitleLayout` / `translationLayout`）照旧叠在样式上面：有覆盖时锚定底部中心、边距 / 字号倍率听它的。
+2. **逐词高亮**：`TimelineState.subtitleHighlight`（颜色 + 放大倍数 1–1.3，nil = 不高亮，v25）。说到哪个词，哪个词换色、放大。
+   - **只有带词时间的句子亮**：SrtFlow 自己生成的字幕（转写、配音）在断句时把每个词对到去完标点、排好行的字上
+     （`SubtitleCueWords.align`，记在 `SubtitleCue.words`：字里的位置 + 相对这句开头的秒）。有一个词对不上就整句不记 ——
+     宁可不亮，也不亮错地方。导入的、手打的句子没有词的时间，不亮；字幕表表头的开关在一句都没有时是灰的。
+   - 此刻亮哪个词：最后一个开了口的；词和词中间的停顿里前一个接着亮；第一个词开口之前、最后一个说完之后不亮（字还在屏上）。
+   - **预览和烧录同一份**：`SubtitleTimeSlicing.display(at:layers:highlighting:)` 给「此刻的字 + 亮的那个词在字里的位置」；
+     烧录按每个词开口、最后一个说完的时刻切段（`timeline`），每段的样子就是段起点那一刻的 `display`。ASS 里亮的词前后加
+     `{\1c&HBBGGRR&\1a&HAA&\fscx…\fscy…}…{\r}`（`SubtitleWordHighlight.assText`，颜色是 BGR、alpha 反着写）；预览按同一份
+     位置、颜色、倍数画（`BurnInSubtitleOverlay`：描边的八份副本也放大那个词、只是不换色，不然描边错位）。叠在一起时位置按
+     整块的字算（原文在上）。没打开高亮时切段和 ASS 逐字和以前一样。
+   - **词的时间跟着编辑走**（`SubtitleTrackEditing`，规则本体在 `SubtitleCueWords`）：整句挪动（拖、粘贴、两头改一样多）
+     词跟着走（记的是相对这句开头的秒，不用改）；裁（只动一头）声音没动，词留在原来那一刻；改字按字符对齐（最长公共子序列）
+     保住没改的字的时间，改掉几个字母的词照旧亮、整个换掉的词不再记；拆（不给字）字和词都留在前一半；合并时有一句没有词的
+     时间就整句不亮（一半亮一半不亮更怪）。字里带 ASS 标签的句子不亮（位置对不上）。
+   - 放大那个词时整行会微微变宽（居中的行跟着挪一点）。生成字幕、配音字幕算一行放多少时按倍数留了余量
+     （`SubtitleLineFit.ems(for:appWide:renderSize:)`，放大的词按占一行的一半算），不然说到它时整行折到第二行 ——
+     所以**先设样式、再生成字幕**；已经生成的字幕不重排。放大只适合一条只有几个词的短字幕；长的一行设 1（只换色）更稳。
+   - 词的时间只存在工程里（v25）：.srt / .vtt / .ass 都没有这一项，导出字幕文件、外挂字幕文件都不带。
 
 ## 选择模型：点选互斥 / 框选混选（剪辑 / 形状 / 字幕 cue）
 
@@ -284,6 +313,18 @@
 - [ ] **删光一格文字再导出**：把某条译文/原文删成空，Original/Translated 的
       SRT+VTT 都要能导出，文件里跳过这条空 cue（案例见
       [bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md](../bugfixes/2026-08-22-subtitle-export-empty-cue-verification.md)）。
+
+### 工程自己的样式与逐词高亮（2026-09-28 加）
+
+- [ ] **逐词高亮**：生成一段字幕后，字幕表表头勾「逐词高亮」：预览播放时说到哪个词哪个词变色（换个颜色也跟着变）；
+      导出一版，同一时刻抽帧对比，亮的是同一个词、颜色一样。
+- [ ] **跟着编辑走**：改一句里的错字 → 那句照样逐词亮、亮的是改好的字；拖动整句 → 高亮跟着字幕走；裁掉开头 → 没被裁掉的
+      词还在原来那一刻亮；⌘Z 一步退回开关。
+- [ ] **没有词的时间**：只挂了一份导入的 .srt 时，「逐词高亮」是灰的，悬停说明为什么。
+- [ ] **工程自己的样式**：让 AI 改字幕样式（放到顶上、换颜色）→ 预览、导出都变了，字幕表表头出现「这个工程用自己的字幕样式」；
+      去烧录页看，那边记住的样式没变；点「用烧录页的样式」回去，一步撤销。
+- [ ] **放大的词**：AI 设了放大（1.2）后再生成字幕：说到的词变大，一行不会忽然折成两行。
+- [ ] **老版本**：0.17.1 测试版打开存过高亮 / 工程样式的工程：拒绝打开（v25）。
 
 ### 两条独立轨（2026-09-26 加）
 

@@ -48,7 +48,7 @@ enum AIExportTools {
         let fonts = FontCatalogStore.shared
         fonts.loadIfNeeded()
         for _ in 0..<50 where fonts.isLoading { try? await Task.sleep(nanoseconds: 100_000_000) }
-        let style = EncodeQueue.burnIn.burnInStyle
+        let style = state.subtitleStyle(appWide: EncodeQueue.burnIn.burnInStyle)
         exporter.export(
             state: state, to: output, subtitleStyle: style,
             subtitleFontURL: fonts.font(named: style.fontName)?.fileURL, settingsOverride: settings

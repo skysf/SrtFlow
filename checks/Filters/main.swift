@@ -296,7 +296,7 @@ func model() {
         // 整段在区间之外，应当被切掉。
         FilterClip(preset: .coldIron, timelineStart: 0, duration: 1, layer: 1),
     ]
-    let onlySecond = pick.selectionForExport(ids: [b.id])
+    let onlySecond = TimelineExportSelection.subset(of: pick, ids: [b.id])
     checkEqual(onlySecond.filters.count, 1, "区间外的滤镜段不进子时间线")
     checkClose(onlySecond.filters.first?.timelineStart ?? -1, 0, 1e-9,
                "求交后平移到 0 起点")
@@ -315,7 +315,7 @@ func model() {
     gapped.mainClips = [c1, c2, c3]
     // 只染第 3 段（8…12s）。选中第 1 段和第 3 段之后，第 3 段被拼到 4…8s。
     gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 8, duration: 4, layer: 0)]
-    let skipMiddle = gapped.selectionForExport(ids: [c1.id, c3.id])
+    let skipMiddle = TimelineExportSelection.subset(of: gapped, ids: [c1.id, c3.id])
     checkEqual(skipMiddle.mainClips.count, 2, "两段进了子时间线")
     checkClose(skipMiddle.mainClips.last?.timelineStart ?? -1, 4, 1e-9, "第 3 段被拼到 4s")
     checkEqual(skipMiddle.filters.count, 1, "滤镜还在")
@@ -325,7 +325,7 @@ func model() {
 
     // 跨两段的滤镜：两段都被选中且拼在一起时，应当合成**一截**，不是两块。
     gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 2, duration: 4, layer: 0)]
-    let across = gapped.selectionForExport(ids: [c1.id, c2.id])
+    let across = TimelineExportSelection.subset(of: gapped, ids: [c1.id, c2.id])
     checkEqual(across.filters.count, 1, "跨两段但两段相接 → 合成一截")
     checkClose(across.filters.first?.timelineStart ?? -1, 2, 1e-9, "起点跟着第 1 段")
     checkClose(across.filters.first?.duration ?? -1, 4, 1e-9, "两截接上之后总长不变")
@@ -334,7 +334,7 @@ func model() {
     // 本来就不在这次导出里。剩下的两截落在 2…4 和 4…6，**拼拢之后正好首尾相接**，
     // 所以合成一截：那和两块 2…4 + 4…6 是同一份画面，没必要留两个块。
     gapped.filters = [FilterClip(preset: .coldIron, timelineStart: 2, duration: 8, layer: 0)]
-    let split = gapped.selectionForExport(ids: [c1.id, c3.id])
+    let split = TimelineExportSelection.subset(of: gapped, ids: [c1.id, c3.id])
     checkEqual(split.filters.count, 1, "丢掉中间那截之后，剩下两截相接 → 合成一截")
     checkClose(split.filters.first?.timelineStart ?? -1, 2, 1e-9, "从第 1 段的 2s 起")
     checkClose(split.filters.first?.duration ?? -1, 4, 1e-9,
@@ -346,7 +346,7 @@ func model() {
         FilterClip(preset: .coldIron, timelineStart: 2, duration: 2, layer: 0),
         FilterClip(preset: .coldIron, timelineStart: 9, duration: 2, layer: 0),
     ]
-    let twoPieces = gapped.selectionForExport(ids: [c1.id, c2.id, c3.id])
+    let twoPieces = TimelineExportSelection.subset(of: gapped, ids: [c1.id, c2.id, c3.id])
     checkEqual(twoPieces.filters.count, 2, "中间那段没被染 → 两段各自独立，不合并")
     checkClose(twoPieces.filters.first?.timelineStart ?? -1, 2, 1e-9, "第一段原位")
     checkClose(twoPieces.filters.last?.timelineStart ?? -1, 9, 1e-9,
@@ -361,7 +361,7 @@ func model() {
         EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 12, timelineStart: 0)
     ])]
     let audioIDs: Set<UUID> = [c1.id, c3.id, withAudio.audioTracks[0].clips[0].id]
-    let kept = withAudio.selectionForExport(ids: audioIDs)
+    let kept = TimelineExportSelection.subset(of: withAudio, ids: audioIDs)
     checkEqual(kept.filters.count, 1, "不拼紧凑时不裂开")
     checkClose(kept.filters.first?.timelineStart ?? -1, 2, 1e-9, "按原样平移")
 }

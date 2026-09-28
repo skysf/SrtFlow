@@ -4,7 +4,8 @@ import SrtFlowCore
 // MARK: - 两条字幕轨在时间线上的读法，以及画面上排成几块
 //
 // 管什么：原文 / 译文两条轨的句子怎么找（按 ID、按轨）、哪条轨藏着、导出字幕文件用哪份文档，
-// 以及**预览和烧录共用的**「看得见的字幕排成几块、每块用哪个布局」（`subtitleScreenBlocks`）。
+// 以及**预览和烧录共用的**「看得见的字幕排成几块、每块用哪个布局」（`subtitleScreenBlocks`）、用哪套样式
+// （`subtitleStyle(appWide:)`：工程自己的，没有就是全 App 的）。
 // 不管什么：怎么改（SrtFlowCore 的 `SubtitleTrackEditing`，工程层入口在 VideoEditProjectSubtitleLink.swift）、
 // 一块在某一刻显示什么 / 怎么按时间切（SrtFlowCore 的 `SubtitleTimeSlicing`）。
 // checks/ProjectFile 把本文件编进自检。
@@ -21,12 +22,19 @@ struct SubtitleScreenBlock: Equatable {
     var layers: [[SubtitleCue]]
     /// nil = 全局烧录样式原样。
     var layout: SubtitleLayout?
+    /// 逐词高亮（工程的 `subtitleHighlight`），nil = 不高亮。
+    var highlight: SubtitleWordHighlight?
 
     var isStacked: Bool { tracks.count > 1 }
 
-    /// 这一刻这一块显示的字（预览）。烧录每一段的字也是这个函数给的（`renderBlock`）。
+    /// 这一刻这一块显示的字（点选、量高度、AI 的「看」用）。
     func text(at time: Double) -> String? {
         SubtitleTimeSlicing.text(at: time, layers: layers)
+    }
+
+    /// 这一刻这一块的样子：字，和正在说的那个词（高亮打开时）。预览画它；烧录每一段的样子也是这个函数给的（`renderBlock`）。
+    func display(at time: Double) -> SubtitleDisplay? {
+        SubtitleTimeSlicing.display(at: time, layers: layers, highlighting: highlight != nil)
     }
 
     /// 这一刻这一块里某条轨在屏上的句子（合同序）。
@@ -41,9 +49,9 @@ struct SubtitleScreenBlock: Equatable {
         return SubtitleTimeSlicing.text(at: time, layers: [layers[index]])
     }
 
-    /// 烧录用：按时间切好的一段段事件 + 布局。
+    /// 烧录用：按时间切好的一段段事件 + 布局（高亮时每个词开口切一刀、带上亮的那个词）。
     var renderBlock: SubtitleRenderBlock {
-        SubtitleRenderBlock(cues: SubtitleTimeSlicing.slices(layers), layout: layout)
+        SubtitleRenderBlock(layers: layers, layout: layout, highlight: highlight)
     }
 }
 
@@ -123,6 +131,15 @@ extension TimelineState {
         }
     }
 
+    // MARK: - 用哪套样式（预览、烧录、AI 的「看」、断句共用）
+
+    /// 这个工程的字幕此刻用哪套样式：工程自己的（AI 改过，方案第 54 条），没有就是全 App 的（烧录页记住的那套）。
+    /// 预览、导出、AI 的「看」、生成字幕时算一行放多少都问这里 —— 别自己去读烧录队列的样式
+    /// （checks/encode-settings-memory.sh 钉着）。
+    func subtitleStyle(appWide: BurnInStyle) -> BurnInStyle {
+        projectSubtitleStyle ?? appWide
+    }
+
     // MARK: - 画面上排成几块（预览与烧录共用）
 
     /// 看得见的字幕排成几块。**看得见的就是会被烧进成片的**：预览每一刻画这几块、烧录把这几块
@@ -132,17 +149,20 @@ extension TimelineState {
         let showsTranslation = hasVisibleTranslation
         let original = showsOriginal ? renderedSubtitleCues(of: .original) : []
         let translation = showsTranslation ? renderedSubtitleCues(of: .translation) : []
+        let highlight = subtitleHighlight
         if showsOriginal, showsTranslation, translationLayout == nil {
-            return [SubtitleScreenBlock(tracks: [.original, .translation], layers: [original, translation], layout: subtitleLayout)]
+            return [SubtitleScreenBlock(
+                tracks: [.original, .translation], layers: [original, translation], layout: subtitleLayout, highlight: highlight
+            )]
         }
         var blocks: [SubtitleScreenBlock] = []
         if showsOriginal {
-            blocks.append(SubtitleScreenBlock(tracks: [.original], layers: [original], layout: subtitleLayout))
+            blocks.append(SubtitleScreenBlock(tracks: [.original], layers: [original], layout: subtitleLayout, highlight: highlight))
         }
         if showsTranslation {
             // 没有自己的布局 = 叠在原文那一块的位置上（原文藏着时它就占那个位置）。
             blocks.append(SubtitleScreenBlock(
-                tracks: [.translation], layers: [translation], layout: translationLayout ?? subtitleLayout
+                tracks: [.translation], layers: [translation], layout: translationLayout ?? subtitleLayout, highlight: highlight
             ))
         }
         return blocks

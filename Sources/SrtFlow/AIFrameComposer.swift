@@ -113,9 +113,10 @@ enum AIFrameComposer {
     private static func subtitleImages(_ state: TimelineState, at time: Double, canvas: CGSize, style: BurnInStyle) -> [CGImage] {
         let scale = canvas.height / Double(BurnInStyle.referenceHeight)
         return state.subtitleScreenBlocks().compactMap { block in
-            guard let text = block.text(at: time) else { return nil }
+            guard let display = block.display(at: time) else { return nil }
             let renderer = ImageRenderer(content: BurnInSubtitleOverlay(
-                text: text, style: style, scale: scale, boxSize: canvas, layout: block.layout
+                text: display.text, style: style, scale: scale, boxSize: canvas, layout: block.layout,
+                highlights: display.highlights, highlight: block.highlight
             ))
             renderer.scale = 1
             renderer.isOpaque = false

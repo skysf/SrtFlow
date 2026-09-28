@@ -91,21 +91,21 @@ private func checkHiddenClips(root: URL) throws {
 
     // ---- 2/3. 只导出选中的 ----
     //
-    // 带上一段音频：只挑主轨内容时 `selectionForExport` 会 `packMain()` 拼紧凑，
+    // 带上一段音频：只挑主轨内容时 `TimelineExportSelection.subset` 会 `packMain()` 拼紧凑，
     // 位移多少都看不出来。带着音频轨才保持相对位置 —— 这一条才量得到起点。
     state.setHidden(false, ids: [first.id, second.id])
     state.setHidden(true, ids: [first.id])
     var withAudio = state
     let audioClip = EditClip(sourceURL: media, isAudioOnly: true, sourceDuration: 3, timelineStart: 4)
     withAudio.audioTracks = [EditLane(clips: [audioClip])]
-    let subset = withAudio.selectionForExport(ids: [first.id, second.id, audioClip.id])
+    let subset = TimelineExportSelection.subset(of: withAudio, ids: [first.id, second.id, audioClip.id])
     checkEqual(subset.mainClips.count, 1, "隐藏的段不进「只导出选中的」")
     checkEqual(subset.mainClips.first?.id, second.id, "留下的是没藏的那一段")
     checkEqual(subset.mainClips.first?.timelineStart, 0,
                "起点按真会导出的段算：藏在最前面的那段不许把成片往后推出一截黑场")
     checkEqual(subset.audioTracks.first?.clips.first?.timelineStart, 0,
                "音频跟着同一个起点走，音画不许错位")
-    let allHidden = state.selectionForExport(ids: [first.id])
+    let allHidden = TimelineExportSelection.subset(of: state, ids: [first.id])
     check(allHidden.mainClips.isEmpty && allHidden.overlayTracks.isEmpty
               && allHidden.audioTracks.isEmpty,
           "选中的全是隐藏段 → 给一份空时间线让导出报错，绝不能退回整条时间线")
@@ -207,7 +207,7 @@ private func checkHiddenOverlays(root: URL) throws {
     check(state.requiresFormatVersion22, "藏了文字 / 形状的工程 → v22 判据为真")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 24, "带隐藏的文字 / 形状 / 滤镜的工程写 latest（v24）")
+    checkEqual(raw?["formatVersion"] as? Int, 25, "带隐藏的文字 / 形状 / 滤镜的工程写 latest（v25）")
     let back = try VideoEditProjectIO.load(from: path).timeline
     checkEqual(back.shapes.first { $0.id == box.id }?.isHidden, true, "往返不丢形状的隐藏")
     checkEqual(back.textOverlays.first { $0.id == low.id }?.isHidden, false, "放出来的文字往返后照旧显示")

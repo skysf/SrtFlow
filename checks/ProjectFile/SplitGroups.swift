@@ -17,6 +17,7 @@ func runSplitOutGroups(root: URL) {
         ("两条字幕轨", checkSubtitleTracks),           // 34：SubtitleTracks.swift
         ("字幕生成：只用选中的片段", checkSubtitleSources),  // 35：SubtitleSources.swift
         ("实心的形状", checkFilledShapes),             // 36：FilledShapes.swift
+        ("工程自己的字幕样式与逐词高亮", checkSubtitleLook),  // 37：SubtitleLook.swift
     ]
     for group in groups {
         do {

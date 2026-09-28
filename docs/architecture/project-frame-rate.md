@@ -25,7 +25,7 @@
    - 方法签名强制显式传 `tolerance`，不给默认值 —— 逼调用方想清楚自己在哪个空间。
    - 30 fps 的半帧恰等于迁移前写死的 `1/60`，30 fps 工程行为不变。
 
-4. **`selectionForExport` 与预渲染的临时 `TimelineState` 必须继承帧率**，
+4. **`TimelineExportSelection.subset`（只导出选中的）与预渲染的临时 `TimelineState` 必须继承帧率**，
    漏了就是「选段导出退回 24」「预渲染产物接缝对不上」。
 
 5. **`minimumFrameInterval` 是上限不是固定帧率**（录屏侧，Phase 0 实测）：

@@ -41,7 +41,7 @@
 ## 「只导出选中的」：滤镜跟着画面走
 
 滤镜挂在**时间范围**上，不是挂在片段上，所以选段导出时不要求用户额外把它选中。
-映射有两种，判据就是 `selectionForExport` 里那句 `packMain()` 跑不跑：
+映射有两种，判据就是 `TimelineExportSelection.subset` 里那句 `packMain()` 跑不跑：
 
 | 情况 | 映射 |
 | --- | --- |
