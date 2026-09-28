@@ -159,6 +159,7 @@ public enum SubtitleSegmenter {
             cues.append(contentsOf: part.cues)
             meta.merge(part.meta) { a, _ in a }
         }
+        let bornAt = Dictionary(cues.map { ($0.id, $0.start) }, uniquingKeysWith: { a, _ in a })
         let windowByClip = Dictionary(windows.map { ($0.clipID, $0) }, uniquingKeysWith: { a, _ in a })
         func window(of cue: SubtitleCue) -> SubtitleClipWindow? {
             meta[cue.id]?.provenance?.clipID.flatMap { windowByClip[$0] }
@@ -166,6 +167,10 @@ public enum SubtitleSegmenter {
         let laneRank: (UUID?) -> Int = { clipID in clipID.flatMap { windowByClip[$0]?.laneRank } ?? -1 }
         // 几段素材同时有字：只留一条（谁识别得更清楚留谁）；丢掉的连旁表一起丢。
         cues = SubtitleSourceOverlap.resolve(cues, meta: meta, laneRank: laneRank, config: config)
+        // 给别的素材让开时截掉了开头：声音没动，词（逐词高亮）留在原来那一刻。
+        for i in cues.indices {
+            if let born = bornAt[cues[i].id] { SubtitleCueWords.keepInPlace(&cues[i], oldStart: born) }
+        }
         let keptIDs = Set(cues.map(\.id))
         meta = meta.filter { keptIDs.contains($0.key) }
         cues = SubtitleOverlap.ordered(cues, meta: meta, laneRank: laneRank)
@@ -206,7 +211,9 @@ public enum SubtitleSegmenter {
         guard !text.isEmpty else { return }
 
         let confidences = chunk.compactMap(\.confidence)
-        let cue = SubtitleCue(start: first.start, end: last.end, text: text)
+        // 每个词说在哪一刻、落在去完标点排好行的哪几个字上（逐词高亮用，SubtitleCueWords.align）。
+        let words = SubtitleCueWords.align(chunk.map { ($0.text, $0.start, $0.end) }, in: text, cueStart: first.start)
+        let cue = SubtitleCue(start: first.start, end: last.end, text: text, words: words)
         result.cues.append(cue)
         result.meta[cue.id] = CueMeta(
             recognitionConfidence: confidences.isEmpty

@@ -10,6 +10,7 @@ func runSubtitleRenderChecks() {
     checkRetranslationAfterSplitAndMerge()
     checkTimeSlicing()
     checkMultiBlockASS()
+    runSubtitleWordChecks()     // SubtitleWordChecks.swift：逐词高亮
 }
 
 /// 一句原文 + 一句跟着它的译文。

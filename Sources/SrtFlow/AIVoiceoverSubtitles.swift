@@ -61,7 +61,9 @@ enum AIVoiceoverSubtitles {
                     outcome.skipped += 1
                     continue
                 }
-                let fresh = SubtitleCue(id: UUID(), start: cue.start, end: cue.end, text: cue.text)
+                // 整句抄过来、只换身份：词的时间（逐词高亮）跟着走，别手写逐字段构造（漏字段）。
+                var fresh = cue
+                fresh.id = UUID()
                 if let id = SubtitleTrackEditing.insertCue(fresh, into: .original, original: &original, companion: &companion) {
                     outcome.added.append(id)
                 }

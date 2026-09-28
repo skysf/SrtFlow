@@ -287,7 +287,13 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
                 copy.styleName = style.name
                 // 只有一块时不动原来的 Layer（外挂 ASS 自带的层照旧），产物和以前逐字一样。
                 if blocks.count > 1 { copy.layer = index }
-                copy.text = SubtitleSerializer.assText(SubtitleSerializer.plainText(cue.text))
+                let plain = SubtitleSerializer.plainText(cue.text)
+                if let highlight = block.highlight, let ranges = block.highlights[cue.id], !ranges.isEmpty {
+                    // 逐词高亮：此刻正在说的词换色、放大（SubtitleWordHighlight.swift），预览按同一份位置画。
+                    copy.text = highlight.assText(plain, ranges: ranges)
+                } else {
+                    copy.text = SubtitleSerializer.assText(plain)
+                }
                 copy.marginL = nil
                 copy.marginR = nil
                 copy.marginV = nil

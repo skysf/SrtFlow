@@ -127,6 +127,9 @@ public struct SubtitleCue: Identifiable, Codable, Hashable, Sendable {
     public var marginV: Int?
     public var effect: String
     public var rawOverride: String?
+    /// 每个词什么时候说（逐词高亮用，SubtitleCueWords.swift）。只有 SrtFlow 自己生成的字幕（转写、配音）有；
+    /// 字幕文件里读不出来、也不写进去（.srt / .vtt / .ass 都没有这一项），只存在工程里（v25）。
+    public var words: [SubtitleCueWord]?
 
     public init(
         id: UUID = UUID(),
@@ -141,7 +144,8 @@ public struct SubtitleCue: Identifiable, Codable, Hashable, Sendable {
         marginR: Int? = nil,
         marginV: Int? = nil,
         effect: String = "",
-        rawOverride: String? = nil
+        rawOverride: String? = nil,
+        words: [SubtitleCueWord]? = nil
     ) {
         self.id = id
         self.index = index
@@ -156,6 +160,7 @@ public struct SubtitleCue: Identifiable, Codable, Hashable, Sendable {
         self.marginV = marginV
         self.effect = effect
         self.rawOverride = rawOverride
+        self.words = words
     }
 
     public var duration: TimeInterval { max(0, end - start) }
