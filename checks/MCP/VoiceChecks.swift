@@ -98,6 +98,9 @@ private func wordChecks() {
 private func placementChecks() {
     checkEqual(AIVoiceoverPlacement.starts(given: [nil, nil, 5, nil], durations: [2, 1, 3, 1], playhead: 1),
                [1, 3.3, 5, 8.3], "lines without a start follow the previous one with a short gap; the first is at the playhead")
+    checkEqual(AIVoiceoverPlacement.fileStem("在地球的最南端，冰山沉默地漂在海上。"), "在地球的最南端 冰山沉默地漂在海上",
+               "voiceover file names drop punctuation")
+    checkEqual(AIVoiceoverPlacement.fileStem("Hello,  world! Don't"), "Hello world Don't", "and squeeze the spaces, keeping apostrophes")
 }
 
 private func subtitleChecks() {

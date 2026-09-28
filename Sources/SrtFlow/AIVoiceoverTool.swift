@@ -78,7 +78,7 @@ enum AIVoiceoverTool {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         var spoken: [Spoken] = []
         for (index, line) in lines.enumerated() {
-            let stem = ExportFileName.stem(from: String(line.text.prefix(24)), droppingExtension: "m4a", fallback: "Voiceover")
+            let stem = ExportFileName.stem(from: AIVoiceoverPlacement.fileStem(line.text), droppingExtension: "m4a", fallback: "Voiceover")
             let url = ExportFileName.unoccupied(in: folder, stem: stem, pathExtension: "m4a") {
                 FileManager.default.fileExists(atPath: $0.path)
             }
