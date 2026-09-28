@@ -59,7 +59,11 @@ public enum MCPSenseTools {
             labelled with its time. Every frame also gets a short description from macOS Vision: what it shows, \
             faces [x, y, w, h], people, the main subject, words on screen, brightness 0–1 and black bars; on the \
             timeline also which clips, texts and subtitles are on screen. If you cannot see images, pass image=false \
-            and use the descriptions. Files outside the opened folder need the user's OK (the result asks).
+            and use the descriptions. Files outside the opened folder need the user's OK (the result asks). \
+            To choose footage: files looks at several media files at once (one frame from the middle of each, up to 24); \
+            shots=true with file (a video) or clip_id splits it into shots: each shot's start and end and what its middle \
+            frame shows, one thumbnail per shot, 24 per call (pass next_from as from for more). A long video is scanned \
+            once: the first call may return a job id; wait for it with get_job, then call look again.
             """,
             input: MCPSchema.object([
                 "time": MCPSchema.number("One moment, seconds (timeline, or in the file with file).", minimum: 0),
@@ -69,6 +73,9 @@ public enum MCPSenseTools {
                 "source_in": MCPSchema.number("With file and no times: where to start spreading the frames, seconds.", minimum: 0),
                 "source_out": MCPSchema.number("With file and no times: where to stop, seconds.", minimum: 0),
                 "count": MCPSchema.integer("How many frames to spread (1–12).", minimum: 1, maximum: 12),
+                "files": MCPSchema.array(of: MCPSchema.string("A media file."), "Several media files at once (up to 24)."),
+                "shots": MCPSchema.boolean("Split file (a video) or clip_id into shots."),
+                "from": MCPSchema.number("With shots: list shots from this time on (next_from of the last call).", minimum: 0),
                 "size": MCPSchema.string("Picture size (default medium).", oneOf: ["small", "medium", "large"]),
                 "image": MCPSchema.boolean("false: only the text descriptions, no picture (for models that cannot see images)."),
                 "confirm_token": MCPSchema.confirmToken

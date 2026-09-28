@@ -41,6 +41,7 @@
 | `overview` | utility | 2 | 波形总览，整个文件从头读到尾；打开工程时几十个文件一起排队 |
 | `detail` | userInitiated | 2 | 深度放大时读原始采样，一秒一块，用户正盯着看 |
 | `export` | userInitiated | 1 | 导出时把整条混音离线读成文件（[成片的声音](export-audio-mixdown.md)）；一次只导一个，单独一条不占波形那两条 |
+| `shots` | utility | 1 | AI 找镜头切换点（`AIShotScan`）：一个视频从头解到尾，1440p 的课 M1 上约 17 倍速、分段并行也不更快（硬件解码器只有一个），长的要几十秒；单独一条，扫着的时候不占 `analysis` 那两条（[AI 接口](ai-control-mcp.md)） |
 | `analysis` | userInitiated | 2 | AI 看画面、读文稿：Vision 的 `VNImageRequestHandler.perform`（认人脸、标签、字）同样卡住线程、等 Vision 自己队列上的活；PDFKit 抽大 PDF 的字也要一两秒（[AI 接口](ai-control-mcp.md)）。不是读采样，但同属下面「等本进程里别的活」那一类 |
 
 宽度只关系到性能（和播放抢 CPU、内存），和死锁无关。43 个短素材：宽度 1 用 0.92 秒，

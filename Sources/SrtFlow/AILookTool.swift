@@ -10,6 +10,7 @@ import SrtFlowMCPKit
 // AIFrameComposer 合成），给 file 看**素材文件**（挑镜头用，AIFrameSampler 抽帧）。几帧拼成一张（AIContactSheet），
 // 每帧配一段文字描述（AIFrameDescription：Vision 认出来的东西、字、亮度、黑边）。看不了图的模型传 image=false，
 // 只拿文字。方案第 31 条（2026-09-27 实测：AI 看不见画面，只好拿用户电脑上的 ffmpeg 抽帧）。
+// 第四块加的两种看法各在自己的文件里：shots=true 把一个文件分成镜头（AILookShots），files 一次看好几个文件（AILookFiles）。
 // 不管什么：合成 / 抽帧 / 描述 / 拼图本身（各自的文件）、说明文字（SrtFlowMCPKit/MCPSenseTools.swift）。
 //
 // 只读：不改工程、不动界面（不挪播放头、不摆窗口）。点名文件夹以外的文件照「动硬盘才问」的规矩先问。
@@ -24,6 +25,12 @@ enum AILookTool {
         let wantsImage = try args.bool("image") ?? true
         if let count = try args.int("count"), !(1...maxFrames).contains(count) {
             throw AIToolError("count must be between 1 and \(maxFrames).")
+        }
+        if try args.bool("shots") == true {
+            return try await AILookShots.look(args, project, size: size, wantsImage: wantsImage)
+        }
+        if let files = try args.stringArray("files") {
+            return try await AILookFiles.look(files, args, project, size: size, wantsImage: wantsImage)
         }
         if let path = try args.string("file") {
             return try await lookAtFile(path, args, project, size: size, wantsImage: wantsImage)
@@ -144,19 +151,22 @@ enum AILookTool {
     }
 
     /// 一帧的文字描述：Vision 认一遍（缩小到 768 再认，够用又快）。
-    private static func describe(_ frame: AIFrameSampler.Frame) async -> JSONValue {
+    static func describe(_ frame: AIFrameSampler.Frame) async -> JSONValue {
         let small = AIContactSheet.scaled(frame.image, maxSide: 768) ?? frame.image
         let vision = await AIVision.analyze(small, [.subject, .labels, .text])
         return AIFrameDescription.describe(.init(time: frame.time, luma: AIBlackBars.luma(of: small), vision: vision))
     }
 
-    /// 拼图、写上「图怎么读」，装进结果。
-    private static func finish(
-        _ payload: inout [String: JSONValue], frames: [AIFrameSampler.Frame], size: AIContactSheet.Size, wantsImage: Bool
+    /// 拼图、写上「图怎么读」，装进结果。每格标它的时刻，给了 `labels` 就标那个。
+    static func finish(
+        _ payload: inout [String: JSONValue], frames: [AIFrameSampler.Frame], labels: [String]? = nil,
+        size: AIContactSheet.Size, wantsImage: Bool
     ) -> AIToolResult {
         var result = AIToolResult.ok(.object(payload))
         guard wantsImage else { return result }
-        let labelled = frames.map { (label: String(format: "%.2fs", $0.time), image: $0.image) }
+        let labelled = frames.enumerated().map { index, frame in
+            (label: labels.flatMap { index < $0.count ? $0[index] : nil } ?? String(format: "%.2fs", frame.time), image: frame.image)
+        }
         guard let sheet = AIContactSheet.draw(labelled, size: size), let jpeg = AIContactSheet.jpeg(sheet) else {
             payload["image"] = "SrtFlow could not draw the picture; the descriptions above are all there is."
             return .ok(.object(payload))
@@ -166,7 +176,7 @@ enum AILookTool {
             let grid = AIContactSheet.grid(count: frames.count, aspect: aspect)
             payload["image"] = .string(
                 "One picture: \(grid.columns) columns × \(grid.rows) rows, read left to right, top to bottom; "
-                + "each frame is labelled with its time."
+                + (labels == nil ? "each frame is labelled with its time." : "each frame is labelled as in the list above.")
             )
         }
         result = .ok(.object(payload))

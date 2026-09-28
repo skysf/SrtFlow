@@ -32,6 +32,9 @@ enum MediaReadQueue {
     /// AI 看画面（Vision 认人脸 / 标签 / 字）、读文稿（PDFKit、富文本导入）：`VNImageRequestHandler.perform`、读大文件
     /// 同样会卡住线程，照这里的规矩挪出协作线程池。AI 的调用是一个接一个的，两条够「看」一次抽的几帧并排认。
     static let analysis = make("SrtFlow.MediaRead.analysis", qos: .userInitiated, width: 2)
+    /// AI 找镜头切换点（AIShotScan）：一个视频从头解到尾，长的课要几十秒（M1 上 1440p 约 17 倍速，几条并行也不更快 ——
+    /// 硬件解码器只有一个）。单独一条，扫着的时候不占「看」要用的那两条；在后台扫，低一档。
+    static let shots = make("SrtFlow.MediaRead.shots", qos: .utility, width: 1)
 
     /// 在 `queue` 上把一段阻塞的读取跑完，结果交回来（等的这一方只是挂起，不占线程）。
     static func run<T: Sendable>(on queue: OperationQueue, _ work: @escaping @Sendable () -> T) async -> T {
