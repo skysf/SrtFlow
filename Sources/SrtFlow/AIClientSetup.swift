@@ -146,10 +146,14 @@ final class AIClientSetup: ObservableObject {
                     let status = await Self.run(cli, ["mcp", "add", "--scope", "user", AIClientConfigFiles.serverName, "--", helper])
                     guard status == 0 else { throw AIClientConfigFiles.FormatError(message: "claude mcp add exited with \(status).") }
                 }
+                // 只在真要加 / 要删时才动 settings.json（已经是这样就不重写；断开时没有这条就不去碰、更不新建文件）。
                 let rule = AIClientConfigFiles.claudeCodeAllowRule
-                try rewrite(claudeCodeSettings) { data in
-                    connecting ? try AIClientConfigFiles.jsonAllowing(rule: rule, in: data)
-                        : try AIClientConfigFiles.jsonDisallowing(rule: rule, in: data)
+                let allows = AIClientConfigFiles.jsonAllows(rule: rule, in: FileManager.default.contents(atPath: claudeCodeSettings))
+                if connecting != allows {
+                    try rewrite(claudeCodeSettings) { data in
+                        connecting ? try AIClientConfigFiles.jsonAllowing(rule: rule, in: data)
+                            : try AIClientConfigFiles.jsonDisallowing(rule: rule, in: data)
+                    }
                 }
             }
             if !connecting {
