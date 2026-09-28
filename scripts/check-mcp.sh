@@ -224,6 +224,28 @@ if grep -nE 'queue\.(settings|burnInStyle|outputDirectory|attachSoftSubtitleTrac
 fi
 echo "   ✓ 自带设置先用、输出位置不被重算、有用户没开始的条目就不排、不改页面上的设置"
 
+echo "==> 什么时候问：只有删文件，外加点名文件夹以外的文件问一次、记住那个文件夹"
+# 2026-09-28 用户拍板（docs/plans/2026-09-27-mcp.md 第 34 条）：删进废纸篓先问；读点名文件夹以外的文件问一次，同意了就记住
+# 那个文件夹（AIReadGrants），以后不问；从不覆盖（撞名加编号）、开着的工程没存过就先存下来再换，这两样都不问。
+ASKERS="$(grep -rl 'AIConfirmations.shared.ask(' Sources/SrtFlow | sort | xargs -n1 basename | tr '\n' ' ')"
+if [ "${ASKERS}" != "AIFileTools.swift AIWorkspace.swift " ]; then
+  echo "✗ 会回 needs_confirmation 的地方变了：${ASKERS}（只许删文件的 AIFileTools、读别处文件的 AIWorkspace）" >&2
+  exit 1
+fi
+if [ "$(grep -c 'AIReadGrants.shared.remember(' Sources/SrtFlow/AIWorkspace.swift || true)" -ne 1 ]; then
+  echo "✗ AIWorkspace.confirmReading 点过头之后没记住那个文件夹：同一个文件夹里的文件会一次次地问" >&2
+  exit 1
+fi
+for wiring in "Sources/SrtFlow/AIExportTools.swift:1" "Sources/SrtFlow/AIProjectTools.swift:3"; do
+  file="${wiring%%:*}"
+  want="${wiring##*:}"
+  if [ "$(grep -c 'ExportFileName.unoccupied' "${file}" || true)" -lt "${want}" ]; then
+    echo "✗ ${file} 撞名没走 ExportFileName.unoccupied（应有 ${want} 处）：AI 会覆盖文件、或者又回头问" >&2
+    exit 1
+  fi
+done
+echo "   ✓ 只有删文件和读别处的文件会问；读过的文件夹记住；导出、新建、另存撞名都加编号"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -316,6 +338,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditPlacementDefault.swift \
   Sources/SrtFlow/AISubtitleEdits.swift \
   Sources/SrtFlow/AIClientConfigFiles.swift \
+  Sources/SrtFlow/AIReadGrants.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
   Sources/SrtFlow/AITextLanguage.swift \
   Sources/SrtFlow/DefaultFolder.swift \
@@ -324,6 +347,7 @@ xcrun swiftc \
   checks/MCP/ProtocolChecks.swift \
   checks/MCP/TimelineChecks.swift \
   checks/MCP/ConfigChecks.swift \
+  checks/MCP/ReadGrantChecks.swift \
   checks/MCP/UndoChecks.swift \
   checks/MCP/LanguageChecks.swift \
   checks/MCP/FolderChecks.swift \

@@ -94,7 +94,8 @@ public struct MCPToolDefinition: Sendable {
     public var inputSchema: JSONValue
     /// 只读：不改工程、不写文件（客户端据此决定要不要每次都问用户）。
     public var readOnly: Bool
-    /// 可能覆盖或丢掉东西（SrtFlow 自己在真正覆盖之前还会走 needs_confirmation）。
+    /// 会删掉东西（时间线上的、撤销掉的、进废纸篓的文件；删文件时 SrtFlow 自己还会走 needs_confirmation）。
+    /// SrtFlow 从不覆盖文件（撞名加编号），所以只是「写新文件」的工具不算。
     public var destructive: Bool
 
     public init(

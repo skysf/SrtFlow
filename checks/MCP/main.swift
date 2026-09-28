@@ -6,6 +6,7 @@ import Foundation
 runProtocolChecks()
 runTimelineChecks()
 runConfigChecks()
+runReadGrantChecks()
 runUndoChecks()
 runLanguageChecks()
 runFolderChecks()

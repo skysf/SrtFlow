@@ -55,11 +55,11 @@ public enum MCPProjectTools {
                 .openProject, title: "Open a project",
                 description: """
                 Open an existing SrtFlow project file (.srtflowproj) in the editor. \
-                If the open project was never saved and has edits, the result asks for confirmation first.
+                If the open project was never saved and has edits, SrtFlow saves it first (into SrtFlow/Projects) \
+                and the result says where (previous_project_saved_to).
                 """,
                 input: MCPSchema.object([
-                    "path": MCPSchema.string("Absolute path of the .srtflowproj file."),
-                    "confirm_token": MCPSchema.confirmToken
+                    "path": MCPSchema.string("Absolute path of the .srtflowproj file.")
                 ], required: ["path"])
             )
         case .newProject:
@@ -69,12 +69,12 @@ public enum MCPProjectTools {
                 Start a new, empty project and save it at once as <name>.srtflowproj, so every later edit autosaves. \
                 It goes into the folder you pass, otherwise into SrtFlow/Projects inside the folder the user named \
                 (open_folder), the open project's folder, or Downloads when there is neither. \
-                If the open project was never saved and has edits, or the file already exists, the result asks for confirmation first.
+                A name that is taken gets a number (the result has the real path). If the open project was never saved \
+                and has edits, SrtFlow saves it first and the result says where (previous_project_saved_to).
                 """,
                 input: MCPSchema.object([
                     "name": MCPSchema.string("Project name without extension. Default: the workspace folder's name."),
-                    "folder": MCPSchema.string("Folder to save the project in, when there is no workspace yet."),
-                    "confirm_token": MCPSchema.confirmToken
+                    "folder": MCPSchema.string("Folder to save the project in, when there is no workspace yet.")
                 ])
             )
         case .saveProject:
@@ -84,11 +84,10 @@ public enum MCPProjectTools {
                 Save the open project now. SrtFlow already autosaves a saved project two seconds after every edit, \
                 and saves a never-saved one by itself after your first change, so this is mainly for saving under \
                 another path. Without a path a never-saved project goes into SrtFlow/Projects inside the folder the \
-                user named (Downloads when there is none). Asks for confirmation before replacing an existing file.
+                user named (Downloads when there is none). Never replaces another file: a name that is taken gets a number.
                 """,
                 input: MCPSchema.object([
-                    "path": MCPSchema.string("Where to save (.srtflowproj). Leave out to keep the current location."),
-                    "confirm_token": MCPSchema.confirmToken
+                    "path": MCPSchema.string("Where to save (.srtflowproj). Leave out to keep the current location.")
                 ])
             )
         case .undo:

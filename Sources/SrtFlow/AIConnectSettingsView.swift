@@ -2,8 +2,9 @@ import SwiftUI
 
 // MARK: - 设置里的「AI」一节
 //
-// 管什么：三个客户端各一行（连没连 + 连接 / 断开 / 复制一段话），外加给别的客户端的配置。
-// 不管什么：配置文件怎么改（AIClientSetup / AIClientConfigFiles）。
+// 管什么：三个客户端各一行（连没连 + 连接 / 断开 / 复制一段话），外加给别的客户端的配置；
+// 用户同意过、AI 读起来不再问的地方（AIReadGrants），一条一行、可以删。
+// 不管什么：配置文件怎么改（AIClientSetup / AIClientConfigFiles）、什么时候问（AIWorkspace）。
 
 struct AIConnectSection: View {
     @ObservedObject private var setup = AIClientSetup.shared
@@ -33,6 +34,7 @@ struct AIConnectSection: View {
                     }
                     .instantHelp("Copy the MCP configuration (JSON) for apps such as Cursor or Cherry Studio")
                 }
+                AIReadGrantsList()
             }
             if let message = setup.message {
                 Text(verbatim: message)
@@ -62,12 +64,13 @@ private struct AIClientRow: View {
                     }
                     .instantHelp("Copy a message you can paste into this app so it connects SrtFlow itself")
                 }
-                if status == .connected {
+                if status != .connected && status != .notInstalled {
+                    Button("Connect") { Task { await setup.connect(client) } }
+                        .instantHelp("Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking")
+                }
+                if status == .connected || status == .connectedAsking {
                     Button("Disconnect") { Task { await setup.disconnect(client) } }
                         .instantHelp("Remove SrtFlow from this app's MCP settings")
-                } else if status != .notInstalled {
-                    Button("Connect") { Task { await setup.connect(client) } }
-                        .instantHelp("Add SrtFlow to this app's MCP settings")
                 }
             }
             .controlSize(.small)
@@ -82,12 +85,43 @@ private struct AIClientRow: View {
         switch status {
         case .connected:
             Text("Connected").foregroundStyle(.green)
+        case .connectedAsking:
+            Text("Connected · asks each time").foregroundStyle(.orange)
         case .connectedElsewhere:
             Text("Connected to another copy").foregroundStyle(.orange)
         case .notConnected:
             Text("Not connected").foregroundStyle(.secondary)
         case .notInstalled:
             Text("Not installed").foregroundStyle(.tertiary)
+        }
+    }
+}
+
+/// 用户在对话里同意过「读这个文件」之后记下的地方：AI 再读这里的文件不问（方案第 34 条）。删一条 = 下次再问。
+private struct AIReadGrantsList: View {
+    @ObservedObject private var grants = AIReadGrants.shared
+
+    var body: some View {
+        let _ = PerfCounters.body(Self.self)
+        if !grants.paths.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AI may also read these places without asking, because you allowed it once:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                ForEach(grants.paths, id: \.self) { path in
+                    HStack(spacing: 6) {
+                        Text(verbatim: (path as NSString).abbreviatingWithTildeInPath)
+                            .font(.caption)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Button("Forget") { grants.remove(path) }
+                            .controlSize(.small)
+                            .instantHelp("Ask again before AI reads files here")
+                    }
+                }
+            }
         }
     }
 }

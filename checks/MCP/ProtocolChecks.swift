@@ -135,7 +135,10 @@ func runProtocolChecks() {
             check(properties[required.stringValue ?? ""] != nil, "\(name): required \(required) is a property")
         }
     }
-    check(tools.count <= 40, "the catalog stays at or under 40 tools (the plan's budget)")
+    // 不按个数卡（2026-09-28 用户拍板，方案第 33 条），卡说明的总长度：工具说明每一轮都进 AI 的上下文，
+    // 用户那边还开着别的 MCP。上限约 2 万 token（按 3.6 个字符一个 token 估）；超了先把说明写短、或者并掉长得像的工具。
+    let catalogCharacters = tools.reduce(0) { $0 + $1.encodedString().count }
+    check(catalogCharacters <= 72_000, "the tool list stays under 72,000 characters (about 20k tokens); it is \(catalogCharacters)")
 
     // 3. 工具调用原样转给 App，客户端名字是 initialize 里报的那个；字符串 id 原样回。
     checkEqual(reply(messages, id: "abc")?["result"]?["content"]?.arrayValue?.first?["text"]?.stringValue,

@@ -118,8 +118,8 @@ public enum MCPSubtitleExportTools {
             Render the timeline to an .mp4 (a timeline with only audio becomes .m4a). By default the file is named \
             after the project and goes into SrtFlow/Exports inside the folder the user named (otherwise the \
             project's folder, or Downloads). Subtitles that are visible on \
-            the timeline are burned in unless burn_subtitles is false. If the file already exists the result asks \
-            for confirmation. Returns a job id; wait for it with get_job.
+            the timeline are burned in unless burn_subtitles is false. A name that is taken gets a number (the \
+            result has the real path); SrtFlow never replaces a file. Returns a job id; wait for it with get_job.
             """,
             input: MCPSchema.object([
                 "path": MCPSchema.string("Full output path. Leave out to use name and the default folder."),
@@ -127,10 +127,8 @@ public enum MCPSubtitleExportTools {
                 "resolution": MCPSchema.string(
                     "Cap on the short side (default original; never upscales).", oneOf: MCPVocabulary.resolutions
                 ),
-                "burn_subtitles": MCPSchema.boolean("Burn visible subtitles into the picture (default true)."),
-                "confirm_token": MCPSchema.confirmToken
-            ]),
-            destructive: true
+                "burn_subtitles": MCPSchema.boolean("Burn visible subtitles into the picture (default true).")
+            ])
         )
     }
 }

@@ -13,6 +13,10 @@ import SrtFlowMCPKit
 // - **Claude Code**：配置在 ~/.claude.json，正在跑的 Claude Code 会随时整份重写它，直接改会被冲掉。
 //   所以走它自己的命令行 `claude mcp add`；找不到命令行就让用户「复制一段话」贴给它自己装。
 // - **Codex**：~/.codex/config.toml，桌面版和命令行共用一份，很少被程序重写，直接改（先备份）。
+//
+// 连上的同时放行 SrtFlow 的工具（方案第 35 条：少问，只有删文件由 SrtFlow 自己在对话里问）：Claude Code 往
+// ~/.claude/settings.json 的 permissions.allow 里加 `mcp__srtflow`（先备份），Codex 在那张表里写不问就放行。
+// Claude 桌面版的「总是允许」只能在它自己的界面里点，连上之后的提示里告诉用户在哪点。
 
 @MainActor
 final class AIClientSetup: ObservableObject {
@@ -36,6 +40,8 @@ final class AIClientSetup: ObservableObject {
         case notInstalled
         case notConnected
         case connected
+        /// 连着这一份，但工具还没放行（以前连的、或者用户自己删了那条规则）：每个工具都会问。再点一次「连接」补上。
+        case connectedAsking
         /// 连着的是另一份 SrtFlow（App 挪过位置、或者装过测试版）。
         case connectedElsewhere
     }
@@ -69,7 +75,17 @@ final class AIClientSetup: ObservableObject {
         case .codex: command = (try? String(contentsOfFile: codexConfig, encoding: .utf8)).flatMap(AIClientConfigFiles.tomlCommand(in:))
         }
         guard let command else { return .notConnected }
-        return command == helperURL?.path ? .connected : .connectedElsewhere
+        guard command == helperURL?.path else { return .connectedElsewhere }
+        switch client {
+        case .claudeDesktop:
+            return .connected
+        case .claudeCode:
+            let settings = FileManager.default.contents(atPath: claudeCodeSettings)
+            return AIClientConfigFiles.jsonAllows(rule: AIClientConfigFiles.claudeCodeAllowRule, in: settings) ? .connected : .connectedAsking
+        case .codex:
+            let text = (try? String(contentsOfFile: codexConfig, encoding: .utf8)) ?? ""
+            return AIClientConfigFiles.tomlApproves(in: text) ? .connected : .connectedAsking
+        }
     }
 
     private func isInstalled(_ client: Client) -> Bool {
@@ -85,6 +101,7 @@ final class AIClientSetup: ObservableObject {
     }
 
     private var claudeDesktopConfig: String { home + "/Library/Application Support/Claude/claude_desktop_config.json" }
+    private var claudeCodeSettings: String { home + "/.claude/settings.json" }
     private var codexConfig: String { home + "/.codex/config.toml" }
 
     // MARK: 连接 / 断开
@@ -129,11 +146,22 @@ final class AIClientSetup: ObservableObject {
                     let status = await Self.run(cli, ["mcp", "add", "--scope", "user", AIClientConfigFiles.serverName, "--", helper])
                     guard status == 0 else { throw AIClientConfigFiles.FormatError(message: "claude mcp add exited with \(status).") }
                 }
+                let rule = AIClientConfigFiles.claudeCodeAllowRule
+                try rewrite(claudeCodeSettings) { data in
+                    connecting ? try AIClientConfigFiles.jsonAllowing(rule: rule, in: data)
+                        : try AIClientConfigFiles.jsonDisallowing(rule: rule, in: data)
+                }
             }
-            message = String(
-                format: connecting ? L10n("Connected. Restart %@ so it picks up SrtFlow.") : L10n("Disconnected. Restart %@ to finish."),
-                L10n(client.title)
-            )
+            if !connecting {
+                message = String(format: L10n("Disconnected. Restart %@ to finish."), L10n(client.title))
+            } else if client == .claudeDesktop {
+                message = L10n("Connected. Restart Claude Desktop so it picks up SrtFlow. It asks before each SrtFlow tool until you choose Always allow, in the prompt or for all of srtflow's tools at once in Claude's Connectors settings.")
+            } else {
+                message = String(
+                    format: L10n("Connected. Restart %@ so it picks up SrtFlow. It will use SrtFlow's tools without asking; SrtFlow itself asks before moving files to the Trash."),
+                    L10n(client.title)
+                )
+            }
         } catch let error as AIClientConfigFiles.FormatError {
             message = String(format: L10n("Could not update %@: %@"), L10n(client.title), error.message)
         } catch {
@@ -186,9 +214,9 @@ final class AIClientSetup: ObservableObject {
         guard let helper = helperURL?.path else { return nil }
         switch client {
         case .claudeCode:
-            return String(format: L10n("Please connect the SrtFlow video editor to Claude Code: run this command in the terminal, then tell me to start a new session.\n\nclaude mcp add --scope user srtflow -- \"%@\""), helper)
+            return String(format: L10n("Please connect the SrtFlow video editor to Claude Code: run this command in the terminal, add \"mcp__srtflow\" to permissions.allow in ~/.claude/settings.json so its tools run without asking, then tell me to start a new session.\n\nclaude mcp add --scope user srtflow -- \"%@\""), helper)
         case .codex:
-            return String(format: L10n("Please connect the SrtFlow video editor to Codex: run this command in the terminal, then tell me to start a new session.\n\ncodex mcp add srtflow -- \"%@\""), helper)
+            return String(format: L10n("Please connect the SrtFlow video editor to Codex: run this command in the terminal, add the line default_tools_approval_mode = \"approve\" under [mcp_servers.srtflow] in ~/.codex/config.toml so its tools run without asking, then tell me to start a new session.\n\ncodex mcp add srtflow -- \"%@\""), helper)
         case .claudeDesktop:
             return nil
         }

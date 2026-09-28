@@ -8,8 +8,9 @@ import SrtFlowMCPKit
 // 产品口径见 docs/plans/2026-09-27-mcp.md 第 21–25 条。
 // 不管什么：文件夹里有什么（AIMediaScan）、工具怎么做。
 //
-// **只有动硬盘上的文件才问**：覆盖已有文件、读点名文件夹以外的文件。时间线上的改动
-// 一律不问 —— 有 ⌘Z 和「撤销这一轮」兜底。问法是结果里回 needs_confirmation + 令牌，
+// **只有删文件才问**（方案第 34 条，2026-09-28 用户拍板）：删进废纸篓先问；读点名文件夹以外的文件问一次，
+// 同意了就记住那个文件夹、以后不再问（AIReadGrants）；从不覆盖（撞名加编号），所以也不问；开着的工程没存过就先存下来再换，
+// 不问也不丢。时间线上的改动一律不问 —— 有 ⌘Z 和「撤销这一轮」兜底。问法是结果里回 needs_confirmation + 令牌，
 // AI 把问题转述给用户，用户同意之后带着令牌再调一次（令牌一次有效、十分钟过期）。
 
 @MainActor
@@ -38,28 +39,35 @@ final class AIWorkspace {
         AIFormat.path(url, relativeTo: current)
     }
 
-    /// 不用再问就能读的文件：在点名的文件夹里、在工程的家里（DefaultFolder.home）、或者工程里本来就在用。
+    /// 不用再问就能读的文件：在点名的文件夹里、在工程的家里（DefaultFolder.home）、在用户同意过的地方（AIReadGrants）、
+    /// 或者工程里本来就在用。
     func allowsReading(_ url: URL, project: VideoEditProject) -> Bool {
         let path = url.standardizedFileURL.path
         let roots = folders.map(\.path) + [projectHome(project)?.standardizedFileURL.path].compactMap { $0 }
         if roots.contains(where: { path.hasPrefix($0 + "/") }) { return true }
+        if AIReadGrants.shared.covers(url) { return true }
         return project.state.mediaURLs.contains { $0.standardizedFileURL.path == path }
     }
 
     /// 读点名文件夹以外的文件要用户点头：都能读就 nil，否则回 needs_confirmation。令牌绑着这一组文件
-    /// （换了文件拿它来不认）。`verb` 写进问题里：「read」「look at」「listen to」。
+    /// （换了文件拿它来不认）；点过头就记住它们的文件夹，以后不再问。`verb` 写进问题里：「read」「look at」「listen to」。
     func confirmReading(
         _ urls: [URL], verb: String, args: AIToolArguments, project: VideoEditProject
     ) throws -> AIToolResult? {
         let outside = Set(urls.map(\.standardizedFileURL).filter { !allowsReading($0, project: project) }.map(\.path)).sorted()
         guard !outside.isEmpty else { return nil }
         let action = "read:" + outside.joined(separator: "|")
-        if AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) { return nil }
+        if AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
+            AIReadGrants.shared.remember(outside.map { URL(fileURLWithPath: $0) })
+            return nil
+        }
         var names = outside.prefix(5).map { ($0 as NSString).lastPathComponent }.joined(separator: ", ")
         if outside.count > 5 { names += " and \(outside.count - 5) more" }
         let which = outside.count == 1 ? "which is" : "which are"
         return AIConfirmations.shared.ask(
-            "SrtFlow needs to \(verb) \(names), \(which) outside the folder you opened. Allow it?", action: action
+            "SrtFlow needs to \(verb) \(names), \(which) outside the folder you opened. Allow it? "
+                + "SrtFlow then remembers that folder and does not ask again for files in it.",
+            action: action
         )
     }
 

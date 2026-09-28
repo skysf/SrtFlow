@@ -6,7 +6,7 @@ import SrtFlowMCPKit
 // MARK: - 工具：导出、任务进度、取消任务
 //
 // 管什么：export_video 走导出面板那同一个导出器（`VideoEditExporter`），只是不弹面板：
-// 文件名默认是工程名、放在打开的文件夹的 SrtFlow/导出 里，已经有同名文件就先问；
+// 文件名默认是工程名、放在打开的文件夹的 SrtFlow/导出 里，已经有同名文件就加编号（从不覆盖，所以不问，方案第 34 条）；
 // 烧字幕、分辨率的口径和面板一样（烧看得见的轨；分辨率封短边、只降不升）。
 // get_job / cancel_job 管所有长任务（AIJobs）。
 // 不管什么：说明文字（SrtFlowMCPKit/MCPSubtitleExportTools.swift）、导出本身。
@@ -26,15 +26,11 @@ enum AIExportTools {
         }
         var state = project.stateForExport(selectionOnly: false)
         let audioOnly = VideoEditExportGraph.isAudioOnly(state)
-        let output = try outputURL(args, project: project, fileExtension: audioOnly ? "m4a" : "mp4")
-        let action = "export:\(output.path)"
-        if FileManager.default.fileExists(atPath: output.path),
-           !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-            return AIConfirmations.shared.ask(
-                "\(output.lastPathComponent) already exists in \(output.deletingLastPathComponent().path). Replace it?",
-                action: action
-            )
-        }
+        let requested = try outputURL(args, project: project, fileExtension: audioOnly ? "m4a" : "mp4")
+        let output = ExportFileName.unoccupied(
+            in: requested.deletingLastPathComponent(), stem: requested.deletingPathExtension().lastPathComponent,
+            pathExtension: requested.pathExtension
+        ) { FileManager.default.fileExists(atPath: $0.path) }
         try FileManager.default.createDirectory(at: output.deletingLastPathComponent(), withIntermediateDirectories: true)
 
         var settings = exporter.settings

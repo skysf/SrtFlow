@@ -9,8 +9,8 @@ import SrtFlowMCPKit
 // 不管什么：参数表和说明（SrtFlowMCPKit/MCPProjectTools.swift）、时间线上的活（AITimelineTools）。
 //
 // 打开 / 新建工程会碰到「当前工程从没存过、又剪了东西」：界面上那条路弹一个模态框问要不要存，
-// AI 这条路**不许弹模态框**（用户在对话框那边，看不见也点不着，调用就一直挂着）。所以先回
-// needs_confirmation 让 AI 在对话里问，用户同意丢掉之后再清空、再走原来那条路。
+// AI 这条路**不许弹模态框**（用户在对话框那边，看不见也点不着，调用就一直挂着），也不问（方案第 34 条：只有删文件才问）：
+// 先把它存进 `<起点>/SrtFlow/工程`（撞名加编号）再换，结果里写存到了哪。新建 / 另存撞了同名文件同样加编号，从不覆盖。
 
 @MainActor
 enum AIProjectTools {
@@ -147,7 +147,7 @@ enum AIProjectTools {
               FileManager.default.fileExists(atPath: url.path) else {
             throw AIToolError("\(url.path) is not an existing .\(VideoEditProjectFile.fileExtension) file.")
         }
-        if let question = try discardUnsavedIfConfirmed(args, project, action: "open:\(url.path)") { return question }
+        let kept = try keepUnsavedEdits(project)
         await project.openProject(at: url)
         guard project.documentURL?.standardizedFileURL.path == url.standardizedFileURL.path else {
             throw AIToolError(project.notice ?? "SrtFlow could not open \(url.lastPathComponent).")
@@ -161,6 +161,7 @@ enum AIProjectTools {
         if !project.missingMedia.isEmpty {
             result["missing_media"] = .array(project.missingMedia.map { .string($0.path) })
         }
+        if let kept { result["previous_project_saved_to"] = .string(kept.path) }
         return .ok(.object(result))
     }
 
@@ -173,17 +174,11 @@ enum AIProjectTools {
             from: try args.string("name") ?? fallbackName,
             droppingExtension: VideoEditProjectFile.fileExtension, fallback: fallbackName
         )
-        let url = folder.appendingPathComponent(stem).appendingPathExtension(VideoEditProjectFile.fileExtension)
-        let exists = FileManager.default.fileExists(atPath: url.path)
-        let discards = project.isUntitled && !project.state.isEmpty
-        let action = "new:\(url.path)"
-        if exists || discards, !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-            var parts: [String] = []
-            if discards { parts.append("the project open in SrtFlow was never saved, so its edits will be thrown away") }
-            if exists { parts.append("\(url.lastPathComponent) already exists in \(folder.path) and will be replaced") }
-            return AIConfirmations.shared.ask("Start a new project? Note: " + parts.joined(separator: "; ") + ".", action: action)
+        let kept = try keepUnsavedEdits(project)
+        // 撞名加编号（在存下没存过的那个之后再算，免得正好撞上它）。
+        let url = ExportFileName.unoccupied(in: folder, stem: stem, pathExtension: VideoEditProjectFile.fileExtension) {
+            FileManager.default.fileExists(atPath: $0.path)
         }
-        if discards { project.replaceStateForDocument(TimelineState()) }
         project.newProject()
         guard project.documentURL == nil, project.state.isEmpty else {
             throw AIToolError(project.notice ?? "SrtFlow could not close the current project.")
@@ -193,7 +188,9 @@ enum AIProjectTools {
             throw AIToolError(project.notice ?? "SrtFlow could not save the new project to \(url.path).")
         }
         AISession.shared.rebase(project: project)
-        return .ok(["created": .string(url.path)])
+        var result: [String: JSONValue] = ["created": .string(url.path)]
+        if let kept { result["previous_project_saved_to"] = .string(kept.path) }
+        return .ok(.object(result))
     }
 
     static func saveProject(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
@@ -208,13 +205,15 @@ enum AIProjectTools {
             guard project.flushAutosave() else { throw AIToolError(project.notice ?? "SrtFlow could not save the project.") }
             return .ok(["saved": .string(project.documentURL?.path ?? "")])
         }
-        let url = requested ?? AIWorkspace.shared.outputFolder(.projects, project: project)
+        var url = requested ?? AIWorkspace.shared.outputFolder(.projects, project: project)
             .appendingPathComponent(defaultStem(project))
             .appendingPathExtension(VideoEditProjectFile.fileExtension)
-        let action = "save:\(url.path)"
-        if FileManager.default.fileExists(atPath: url.path), url != project.documentURL,
-           !AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) {
-            return AIConfirmations.shared.ask("\(url.lastPathComponent) already exists. Replace it?", action: action)
+        // 撞了别的文件就加编号，从不覆盖（存回它自己原来的位置不算撞）。
+        if url.standardizedFileURL.path != project.documentURL?.standardizedFileURL.path {
+            url = ExportFileName.unoccupied(
+                in: url.deletingLastPathComponent(), stem: url.deletingPathExtension().lastPathComponent,
+                pathExtension: VideoEditProjectFile.fileExtension
+            ) { FileManager.default.fileExists(atPath: $0.path) }
         }
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard project.saveDocument(as: url) else {
@@ -228,16 +227,11 @@ enum AIProjectTools {
     /// 用户同意改成自动存）。撞名就换个名字、不覆盖也不问：这一步是兜底，不该打断 AI。
     static func saveIfNeverSaved(_ project: VideoEditProject, after result: AIToolResult) -> AIToolResult {
         guard project.isUntitled, !project.state.isEmpty, case .object(var payload) = result.payload else { return result }
-        let folder = AIWorkspace.shared.outputFolder(.projects, project: project)
-        let url = ExportFileName.unoccupied(
-            in: folder, stem: defaultStem(project), pathExtension: VideoEditProjectFile.fileExtension
-        ) { FileManager.default.fileExists(atPath: $0.path) }
-        if (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
-           project.saveDocument(as: url) {
+        if let url = saveUntitled(project) {
             payload["project_saved_to"] = .string(url.path)
         } else {
             payload["warning"] = .string(
-                "SrtFlow could not save this never-saved project to \(url.path): \(project.notice ?? "unknown error"). "
+                "SrtFlow could not save this never-saved project: \(project.notice ?? "unknown error"). "
                     + "Call save_project with a path the user agrees on, or the edits are lost if SrtFlow quits."
             )
         }
@@ -246,25 +240,34 @@ enum AIProjectTools {
         return saved
     }
 
+    /// 从没存过的工程存进 `<起点>/SrtFlow/<工程>`，撞名加编号。存不下回 nil（原因在 `project.notice`）。
+    private static func saveUntitled(_ project: VideoEditProject) -> URL? {
+        let folder = AIWorkspace.shared.outputFolder(.projects, project: project)
+        let url = ExportFileName.unoccupied(
+            in: folder, stem: defaultStem(project), pathExtension: VideoEditProjectFile.fileExtension
+        ) { FileManager.default.fileExists(atPath: $0.path) }
+        guard (try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)) != nil,
+              project.saveDocument(as: url) else { return nil }
+        return url
+    }
+
     /// 没存过的工程叫什么：主轨第一段素材的名字（和手动「存储为」建议的一样），没有就 Untitled。
     private static func defaultStem(_ project: VideoEditProject) -> String {
         ExportFileName.stem(from: project.state.mainClips.first?.name ?? L10n("Untitled"),
                             droppingExtension: "", fallback: L10n("Untitled"))
     }
 
-    /// 当前工程没存过、又剪了东西：还没点头就回问题；点过头就清掉，好让原来那条路不再弹模态框。
-    private static func discardUnsavedIfConfirmed(
-        _ args: AIToolArguments, _ project: VideoEditProject, action: String
-    ) throws -> AIToolResult? {
+    /// 当前工程没存过、又剪了东西（手动剪的；AI 改过的早就自动存了）：换工程之前先存下来，不问也不丢，
+    /// 原来那条路也就不会弹模态框。存不下就报错、不换。返回存到了哪（没有要存的就 nil）。
+    private static func keepUnsavedEdits(_ project: VideoEditProject) throws -> URL? {
         guard project.isUntitled, !project.state.isEmpty else { return nil }
-        guard AIConfirmations.shared.consume(try args.string("confirm_token"), action: action) else {
-            return AIConfirmations.shared.ask(
-                "The project open in SrtFlow was never saved and has edits. Opening another project throws them away. Continue?",
-                action: action
+        guard let url = saveUntitled(project) else {
+            throw AIToolError(
+                "The project open in SrtFlow was never saved and SrtFlow could not save it (\(project.notice ?? "unknown error")), "
+                    + "so it is still open. Ask the user to save it in SrtFlow first."
             )
         }
-        project.replaceStateForDocument(TimelineState())
-        return nil
+        return url
     }
 
     // MARK: 撤销、播放头

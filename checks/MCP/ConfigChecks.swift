@@ -8,6 +8,7 @@ import SrtFlowMCPKit
 func runConfigChecks() {
     jsonConfigChecks()
     tomlConfigChecks()
+    permissionConfigChecks()
     textChecks()
     subtitleEditChecks()
     vocabularyChecks()
@@ -52,8 +53,47 @@ private func tomlConfigChecks() {
     let removed = AIClientConfigFiles.tomlRemoving(from: added)
     check(AIClientConfigFiles.tomlCommand(in: removed) == nil, "the srtflow table is removed")
     check(removed.contains("[projects.\"/Users/me/code\"]"), "removing keeps the other tables")
-    checkEqual(AIClientConfigFiles.tomlAdding(command: "/x", to: ""), "[mcp_servers.srtflow]\ncommand = \"/x\"\n",
+    checkEqual(AIClientConfigFiles.tomlAdding(command: "/x", to: ""),
+               "[mcp_servers.srtflow]\ncommand = \"/x\"\ndefault_tools_approval_mode = \"approve\"\n",
                "an empty file gets just the table")
+}
+
+/// 连上的同时放行 SrtFlow 的工具（方案第 35 条）：Claude Code 的 permissions.allow 加一条 mcp__srtflow，
+/// Codex 那张表里写 default_tools_approval_mode = "approve"。别的设置原样留着，格式不对就不写。
+private func permissionConfigChecks() {
+    let rule = AIClientConfigFiles.claudeCodeAllowRule
+    checkEqual(rule, "mcp__srtflow", "Claude Code's rule names the whole srtflow server")
+    func allowList(_ data: Data?) -> [String]? {
+        let root = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        return (root?["permissions"] as? [String: Any])?["allow"] as? [String]
+    }
+    let existing = Data(#"{"model":"opus","permissions":{"allow":["Bash(ls:*)"],"deny":["Read(./.env)"]},"env":{"A":"1"}}"#.utf8)
+    let allowed = try? AIClientConfigFiles.jsonAllowing(rule: rule, in: existing)
+    check(AIClientConfigFiles.jsonAllows(rule: rule, in: allowed), "connecting adds the rule")
+    checkEqual(allowList(allowed), ["Bash(ls:*)", rule], "the user's own allow rules stay, ours goes last")
+    let root = allowed.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+    checkEqual((root["permissions"] as? [String: Any])?["deny"] as? [String], ["Read(./.env)"], "deny rules stay")
+    checkEqual(root["model"] as? String, "opus", "other settings stay")
+    checkEqual(allowList(try? AIClientConfigFiles.jsonAllowing(rule: rule, in: allowed)), ["Bash(ls:*)", rule],
+               "connecting twice adds it once")
+    let removed = try? AIClientConfigFiles.jsonDisallowing(rule: rule, in: allowed)
+    check(!AIClientConfigFiles.jsonAllows(rule: rule, in: removed), "disconnecting removes the rule")
+    checkEqual(allowList(removed), ["Bash(ls:*)"], "…and only ours")
+    check(AIClientConfigFiles.jsonAllows(rule: rule, in: try? AIClientConfigFiles.jsonAllowing(rule: rule, in: nil)),
+          "no settings file yet: it gets just the rule")
+    checkThrows("an allow that is not a list is left alone") {
+        _ = try AIClientConfigFiles.jsonAllowing(rule: rule, in: Data(#"{"permissions":{"allow":"Bash"}}"#.utf8))
+    }
+    checkThrows("broken settings JSON is left alone") { _ = try AIClientConfigFiles.jsonAllowing(rule: rule, in: Data("{oops".utf8)) }
+
+    let codex = AIClientConfigFiles.tomlAdding(command: "/x", to: "model = \"gpt-5\"\n")
+    check(AIClientConfigFiles.tomlApproves(in: codex), "Codex: the srtflow table runs its tools without asking")
+    check(!AIClientConfigFiles.tomlApproves(in: "[mcp_servers.srtflow]\ncommand = \"/x\"\n"),
+          "an earlier connection without the line is seen as asking")
+    check(!AIClientConfigFiles.tomlApproves(
+        in: "[mcp_servers.other]\ndefault_tools_approval_mode = \"approve\"\n\n[mcp_servers.srtflow]\ncommand = \"/x\"\n"
+    ), "another server's line does not count")
+    check(!AIClientConfigFiles.tomlApproves(in: AIClientConfigFiles.tomlRemoving(from: codex)), "disconnecting removes it with the table")
 }
 
 private func textChecks() {
