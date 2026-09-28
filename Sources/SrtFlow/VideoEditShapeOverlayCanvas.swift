@@ -118,8 +118,14 @@ struct ShapeOverlayCanvas: View {
                     .rotationEffect(.degrees(shape.rotationDegrees))
                     .frame(width: max(2, frame.width), height: max(strokeWidth, frame.width))
             case .rectangle, .square:
+                // 实心的整块涂满（导出 ShapePNGRenderer 同一个判据 `drawsFilled`）。
                 Rectangle()
-                    .strokeBorder(shape.color.swiftUIColor, lineWidth: strokeWidth)
+                    .fill(shape.drawsFilled ? shape.color.swiftUIColor : .clear)
+                    .overlay {
+                        if !shape.drawsFilled {
+                            Rectangle().strokeBorder(shape.color.swiftUIColor, lineWidth: strokeWidth)
+                        }
+                    }
                     .frame(width: max(2, frame.width), height: max(2, frame.height))
             }
         }

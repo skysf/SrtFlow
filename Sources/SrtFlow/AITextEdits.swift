@@ -84,6 +84,13 @@ struct AITextChange {
     var background: SubtitleColor??
     var animationIn: TextAnimationKind?
     var animationOut: TextAnimationKind?
+    var animationInDuration: Double?
+    var animationOutDuration: Double?
+    var animationIntensity: Double?
+    var emphasis: TextEmphasisKind?
+    var letterSpacing: Double?
+    /// 数字滚动（AITextNumberChange）；没给是 nil。
+    var number: AINumberRollChange?
     var hidden: Bool?
 
     init(_ args: AIToolArguments) throws {
@@ -117,6 +124,12 @@ struct AITextChange {
         if let text = try args.string("background_color") { background = .some(try AIColor.parse(text)) }
         animationIn = try Self.animation(args, "animation_in")
         animationOut = try Self.animation(args, "animation_out")
+        animationInDuration = try args.double("animation_in_duration")
+        animationOutDuration = try args.double("animation_out_duration")
+        animationIntensity = try args.double("animation_intensity")
+        emphasis = try args.choice("emphasis", from: MCPVocabulary.textEmphasis).flatMap(TextEmphasisKind.init(rawValue:))
+        letterSpacing = try args.double("letter_spacing")
+        number = try AINumberRollChange(args)
         hidden = try args.bool("hidden")
     }
 
@@ -155,6 +168,12 @@ struct AITextChange {
         }
         if let animationIn { overlay.animation.entrance = animationIn }
         if let animationOut { overlay.animation.exit = animationOut }
+        if let animationInDuration { overlay.animation.entranceDuration = animationInDuration }
+        if let animationOutDuration { overlay.animation.exitDuration = animationOutDuration }
+        if let animationIntensity { overlay.animation.intensity = animationIntensity }
+        if let emphasis { overlay.animation.emphasis = emphasis }
+        if let letterSpacing { overlay.style.letterSpacing = letterSpacing }
+        number?.apply(to: &overlay)
         if let hidden { overlay.isHidden = hidden }
     }
 }

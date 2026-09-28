@@ -89,6 +89,7 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v21 | `TextOverlay.row` —— 文字在时间线上哪一行，行序就是画面上的叠放序（**无条件落盘**，有文字就是 v21）；`NumberRoll.delay` —— 数字元件先等几秒再滚（**按需写入**：0 不落键） | **直接决定成片**：只认 v20 的旧版打开后行号消失、重叠的文字按时间重排，谁压谁跟着变；等待消失、数字从段起点就开始滚。随手编辑触发自动保存即永久丢失。老工程没有 `row` 键，载入时按当年的自动排布补（`normalizeTextRows`）。合同见 [画面文字](text-overlays.md)「时间线上的行」「等待」 |
 | v22 | `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` —— 文字、形状、滤镜段单个藏起来（V，**按需写入**：没藏过的不落键） | **直接决定成片里有没有这一个**：只认 v21 的旧版打开后藏起来的文字、形状、调色全部回到画面上，随手编辑触发自动保存即永久抹掉。合同见 [段的显隐](clip-visibility.md) |
 | v23 | 字幕拆成两条独立轨：译文句有**自己的 ID 和时间**，从哪句原文翻来记在 `SubtitleCompanion.translationLinks`（键是译文句的 ID）；`translationLayout` —— 译文在画面上自己的位置和大小（**按需写入**：叠在原文下面时不落键）；`SubtitleCompanion.hiddenCueIDs` —— 字幕单句藏起来（V，**按需写入**） | 只认 v22 的旧版把译文当成原文的镜像、按 ID 对原文，新工程里的译文一句都对不上，读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失。**老工程（< v23）打开时拆开**：每句译文换新 ID、来源记成原来那句原文，当年标过「过期」的照样过期（`SubtitleCompanion.splitMirroredTranslation`，载入时按版本号判）。合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md) |
+| v24 | `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（电影遮幅、色块底；2026-09-28 MCP 第 5 块补的零件，**按需写入**：描边的不落键） | **直接决定成片**：只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，随手编辑触发自动保存即永久丢失。预览和导出都问同一个 `drawsFilled`（线条永远是线），导出的画法在 `ShapePNGRenderer`（VideoEditShapePNGRenderer.swift） |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

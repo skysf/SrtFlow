@@ -294,6 +294,8 @@
 "Shows for" = "显示时长";
 "Drag the shape on the preview to place it; drag its block on the timeline to retime it." = "在预览画面上拖动形状调位置；在时间线上拖它的块调时间。";
 "Delete Shape" = "删除形状";
+"Filled" = "实心";
+"Fill the whole shape with its colour instead of drawing an outline" = "用颜色把整个形状涂满，不只画一圈边";
 "Project" = "项目";
 "Total length" = "总时长";
 "Main track clips" = "主轨片段";
@@ -949,6 +951,13 @@
 "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking" = "把 SrtFlow 加进这个 AI 应用的 MCP 设置，并让它用 SrtFlow 的工具时不再每次问你";
 "AI may also read these places without asking, because you allowed it once:" = "你同意过一次，AI 读下面这些地方的文件不再问：";
 "Forget" = "移除";
+"Editing recipes" = "剪辑套路";
+"Open Folder" = "打开文件夹";
+"Show the folder with your own recipes in Finder" = "在访达里打开放你自己套路的文件夹";
+"When AI edits a whole video it follows one of SrtFlow's recipes (promo, cinematic opening, sci-fi, documentary, vlog). Ask it to save a style you like as your own recipe and it shows up here." = "AI 剪整条片子时会照 SrtFlow 的一套路子剪（带货、电影开头、科幻、纪录片、vlog）。喜欢哪种风格，让它存成你自己的套路，就会出现在这里。";
+"Replaces the built-in one" = "替换了内置的那套";
+"Open this recipe's file in Finder; any text editor can change it" = "在访达里显示这套的文件，用任何文本编辑器都能改";
+"Move this recipe to the Trash" = "把这套移到废纸篓";
 "Ask again before AI reads files here" = "移除之后，AI 再读这里的文件会先问你";
 "Connected. Restart Claude Desktop so it picks up SrtFlow. It asks before each SrtFlow tool until you choose Always allow, in the prompt or for all of srtflow's tools at once in Claude's Connectors settings." = "已连接。重启 Claude 桌面版之后就能用了。它第一次用 SrtFlow 的每个工具都会问一次，直到你选「总是允许」：可以在弹出的询问里点，也可以在 Claude 设置的「连接器」里给 srtflow 的工具一次性全设成总是允许。";
 "Connected. Restart %@ so it picks up SrtFlow. It will use SrtFlow's tools without asking; SrtFlow itself asks before moving files to the Trash." = "已连接。重启 %@ 之后就能用了。它用 SrtFlow 的工具不会再每次问你；只有把文件删进废纸篓之前，SrtFlow 会在对话里问你。";

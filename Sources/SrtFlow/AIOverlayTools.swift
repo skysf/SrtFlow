@@ -27,8 +27,10 @@ enum AIOverlayTools {
             }
             project.perform(rebuildsPreview: false) { $0.updateTextOverlay(id) { change.apply(to: &$0) } }
         } else {
-            guard let text = change.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw AIToolError("text is required when adding a text.")
+            // 数字元件的字是滚出来的，不用给 text。
+            let hasWords = !(change.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard hasWords || (change.number.map { !$0.remove } ?? false) else {
+                throw AIToolError("text (or number) is required when adding a text.")
             }
             var overlay = TextOverlay(timelineStart: change.start ?? project.clock.time)
             change.apply(to: &overlay)

@@ -35,6 +35,18 @@ public enum MCPVocabulary {
         "none", "fade", "rise", "pop", "typewriter", "cascade", "blur", "focus", "wipe", "strokeDraw"
     ]
 
+    /// = `TextEmphasisKind.allCases` 的原始值（文字在画面上期间一直循环的强调）。
+    public static let textEmphasis = ["none", "breathe"]
+
+    /// = `NumberRollStyle.allCases` 的原始值（数字滚动：整体数上去 / 每一位各自转的老虎机）。
+    public static let numberStyles = ["count", "odometer"]
+
+    /// 配音的角色（配方卡里写的是角色，具体用哪个声音运行时按这台 Mac 挑；方案第 16、43 条）。
+    public static let voiceRoles = [
+        "zh_female_lively", "zh_female_warm", "zh_male_steady",
+        "en_female_lively", "en_female_warm", "en_male_steady"
+    ]
+
     /// 画面比例：`auto` + `CanvasRatio` 里固定比例的那几个（按界面上的写法）。
     public static let canvasRatios = ["auto", "16:9", "9:16", "4:3", "3:4", "1:1"]
 

@@ -294,6 +294,8 @@
 "Shows for" = "Shows for";
 "Drag the shape on the preview to place it; drag its block on the timeline to retime it." = "Drag the shape on the preview to place it; drag its block on the timeline to retime it.";
 "Delete Shape" = "Delete Shape";
+"Filled" = "Filled";
+"Fill the whole shape with its colour instead of drawing an outline" = "Fill the whole shape with its colour instead of drawing an outline";
 "Project" = "Project";
 "Total length" = "Total length";
 "Main track clips" = "Main track clips";
@@ -949,6 +951,13 @@
 "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking" = "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking";
 "AI may also read these places without asking, because you allowed it once:" = "AI may also read these places without asking, because you allowed it once:";
 "Forget" = "Forget";
+"Editing recipes" = "Editing recipes";
+"Open Folder" = "Open Folder";
+"Show the folder with your own recipes in Finder" = "Show the folder with your own recipes in Finder";
+"When AI edits a whole video it follows one of SrtFlow's recipes (promo, cinematic opening, sci-fi, documentary, vlog). Ask it to save a style you like as your own recipe and it shows up here." = "When AI edits a whole video it follows one of SrtFlow's recipes (promo, cinematic opening, sci-fi, documentary, vlog). Ask it to save a style you like as your own recipe and it shows up here.";
+"Replaces the built-in one" = "Replaces the built-in one";
+"Open this recipe's file in Finder; any text editor can change it" = "Open this recipe's file in Finder; any text editor can change it";
+"Move this recipe to the Trash" = "Move this recipe to the Trash";
 "Ask again before AI reads files here" = "Ask again before AI reads files here";
 "Connected. Restart Claude Desktop so it picks up SrtFlow. It asks before each SrtFlow tool until you choose Always allow, in the prompt or for all of srtflow's tools at once in Claude's Connectors settings." = "Connected. Restart Claude Desktop so it picks up SrtFlow. It asks before each SrtFlow tool until you choose Always allow, in the prompt or for all of srtflow's tools at once in Claude's Connectors settings.";
 "Connected. Restart %@ so it picks up SrtFlow. It will use SrtFlow's tools without asking; SrtFlow itself asks before moving files to the Trash." = "Connected. Restart %@ so it picks up SrtFlow. It will use SrtFlow's tools without asking; SrtFlow itself asks before moving files to the Trash.";

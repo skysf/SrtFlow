@@ -2,7 +2,8 @@ import Foundation
 import SrtFlowMCPKit
 
 // set_shape（AIShapeChange）：新加要给种类、各种的默认大小（同检查器「加形状」）、夹紧（线宽 1…24、尺寸 0.02…1、线的角度 ±90°、
-// 至少 0.2 秒）、正方形的高永远等于宽、只有线能转、颜色不许是 none；写回给 AI 的样子。编法见 scripts/check-mcp.sh。
+// 至少 0.2 秒）、正方形的高永远等于宽、只有线能转、颜色不许是 none、实心只给长方形 / 正方形；写回给 AI 的样子。
+// 编法见 scripts/check-mcp.sh。
 
 func runShapeChecks() {
     checkThrows("adding needs a kind") { _ = try AIShapeChange(args(["x": 0.5])).makeShape(at: 0) }
@@ -23,6 +24,18 @@ func runShapeChecks() {
         checkEqual(existing.color.opacity, 128.0 / 255, "#RRGGBBAA sets the opacity")
         checkEqual(existing.centerX, 0, "the centre stays on the frame")
         checkEqual(existing.width, 0.3, "fields not passed are kept")
+    }
+    // 实心（2026-09-28）：长方形 / 正方形涂满、线条永远是线；回给 AI 的是 filled 而不是线宽。
+    let bar = try? AIShapeChange(args(["kind": "rectangle", "filled": true, "color": "#000000", "width": 1, "height": 0.128]))
+        .makeShape(at: 0)
+    check(bar?.drawsFilled == true, "filled=true makes a solid rectangle")
+    let filledLine = try? AIShapeChange(args(["kind": "line", "filled": true])).makeShape(at: 0)
+    check(filledLine?.isFilled == false, "a line is never filled")
+    if let bar {
+        var state = TimelineState()
+        state.shapes = [bar]
+        let summary = AIShapeChange.summary(bar, ids: AIShortIDs(state: state))
+        check(summary["filled"]?.boolValue == true && summary["line_width"] == nil, "a filled shape is reported as filled, without a line width")
     }
     if let square {
         var state = TimelineState()

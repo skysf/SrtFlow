@@ -27,6 +27,9 @@
 #  16. set_track（推子、藏轨、总推子）和 set_keyframes（时间换源时间、大小按默认布局、空列表去掉那一行）。
 #  17. set_shape：新加要种类、默认大小、夹紧、正方形高等于宽、只有线能转。
 #  18. duplicate_items：走 ⌘C / ⌘V 的纯函数，落点、往上抬、链接伙伴、新身份。
+#  19. 剪辑套路（recipes / save_recipe）：配方卡的格式、合并与查找、存一套 / 删一套、工具的结果；五张内置卡都在，
+#      卡里提到的工具名、参数名、选项值都存在。
+#  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -303,6 +306,10 @@ xcrun swiftc \
   Sources/SrtFlow/AIShortIDs.swift \
   Sources/SrtFlow/AITimelineSummary.swift \
   Sources/SrtFlow/AITextEdits.swift \
+  Sources/SrtFlow/AITextNumberChange.swift \
+  Sources/SrtFlow/AIRecipe.swift \
+  Sources/SrtFlow/AIRecipeStore.swift \
+  Sources/SrtFlow/AIRecipeTools.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
   Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \
@@ -367,6 +374,8 @@ xcrun swiftc \
   checks/MCP/ClipDetailChecks.swift \
   checks/MCP/TrackKeyframeChecks.swift \
   checks/MCP/ShapeChecks.swift \
+  checks/MCP/TextPartChecks.swift \
+  checks/MCP/RecipeChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \
   checks/MCP/EncodeChecks.swift \

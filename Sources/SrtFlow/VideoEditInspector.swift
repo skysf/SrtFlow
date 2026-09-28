@@ -307,11 +307,17 @@ struct VideoEditInspectorView: View {
         Divider()
 
         VStack(alignment: .leading, spacing: 8) {
-            labelledSlider(
-                "Line width",
-                value: liveShapeBinding(shape, \.lineWidth),
-                range: 1...24
-            )
+            if shape.kind != .line {
+                Toggle("Filled", isOn: shapeFilledBinding(shape))
+                    .instantHelp("Fill the whole shape with its colour instead of drawing an outline")
+            }
+            if !shape.drawsFilled {
+                labelledSlider(
+                    "Line width",
+                    value: liveShapeBinding(shape, \.lineWidth),
+                    range: 1...24
+                )
+            }
             if shape.kind == .line {
                 labelledSlider(
                     "Length",
@@ -514,6 +520,14 @@ struct VideoEditInspectorView: View {
             set: { newColor in
                 project.updateShape(shape.id) { $0.color = SubtitleColor(newColor) }
             }
+        )
+    }
+
+    /// 实心开关是离散控件：一次改动一步撤销，不走 live 绑定（checks/inspector-live-binding-wiring.sh）。
+    private func shapeFilledBinding(_ shape: ShapeAnnotation) -> Binding<Bool> {
+        Binding(
+            get: { shape.isFilled },
+            set: { newValue in project.updateShape(shape.id) { $0.isFilled = newValue } }
         )
     }
 

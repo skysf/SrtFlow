@@ -96,6 +96,7 @@ xcrun swiftc \
   checks/ProjectFile/HiddenItems.swift \
   checks/ProjectFile/SubtitleTracks.swift \
   checks/ProjectFile/SubtitleSources.swift \
+  checks/ProjectFile/FilledShapes.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----

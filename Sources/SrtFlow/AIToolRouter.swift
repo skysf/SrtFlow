@@ -86,6 +86,11 @@ final class AIToolRouter {
         case .setView: return try AIProjectTools.setView(args)
         case .openFolder: return try await AIProjectTools.openFolder(args, project)
         case .readDocument: return try await AIFileTools.readDocument(args, project)
+        case .recipes: return try AIRecipeTools.recipes(args)
+        case .saveRecipe:
+            let result = try AIRecipeTools.save(args)
+            AIRecipeLibrary.shared.refresh()
+            return result
         case .manageFiles: return try AIFileTools.manageFiles(args, project)
         case .openProject: return try await AIProjectTools.openProject(args, project)
         case .newProject: return try AIProjectTools.newProject(args, project)
@@ -144,6 +149,9 @@ final class AIToolRouter {
         init(_ tool: MCPToolName) {
             switch tool {
             case .getStatus, .getJob, .cancelJob:
+                (serialized, presentsEditor, startsRound) = (false, false, false)
+            // 套路不碰工程：不排队、不摆窗口、不算这一轮的改动。
+            case .recipes, .saveRecipe:
                 (serialized, presentsEditor, startsRound) = (false, false, false)
             case .setView:
                 (serialized, presentsEditor, startsRound) = (true, false, false)

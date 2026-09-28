@@ -141,9 +141,14 @@ enum AITimelineSummary {
             "font_size": .number(overlay.style.fontSize.rounded()),
             "color": .string(AIColor.hex(overlay.style.fill.primaryColor))
         ]
-        if overlay.number != nil { object["kind"] = "number" }
+        if let roll = overlay.number {
+            object["kind"] = "number"
+            object["number"] = AINumberRollChange.summary(roll)
+        }
         if overlay.animation.entrance != .none { object["animation_in"] = .string(overlay.animation.entrance.rawValue) }
         if overlay.animation.exit != .none { object["animation_out"] = .string(overlay.animation.exit.rawValue) }
+        if overlay.animation.emphasis != .none { object["emphasis"] = .string(overlay.animation.emphasis.rawValue) }
+        if abs(overlay.style.letterSpacing) > 0.01 { object["letter_spacing"] = AIFormat.seconds(overlay.style.letterSpacing) }
         if overlay.isHidden { object["hidden"] = true }
         return .object(object)
     }

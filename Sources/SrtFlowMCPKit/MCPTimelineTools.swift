@@ -144,7 +144,8 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .setShape, title: "Add or change a shape",
                 description: """
-                Draw a line, rectangle or square outline over the video for a while (to point at or frame something), \
+                Draw a line, rectangle or square over the video for a while (an outline to point at or frame something; \
+                filled=true paints a solid block, e.g. black letterbox bars or a colour panel behind a text), \
                 or change one when shape_id is given; only the fields you pass change. x/y is the centre as fractions \
                 of the frame; width (a line's length) and height are fractions of the frame (a square uses width). \
                 rotation turns lines only. line_width is pixels on a 1080-high frame. Shapes are drawn under texts. \
@@ -162,6 +163,7 @@ public enum MCPTimelineTools {
                     "rotation": MCPSchema.number("Lines only: clockwise degrees.", minimum: -90, maximum: 90),
                     "color": MCPSchema.string("#RRGGBB or #RRGGBBAA."),
                     "line_width": MCPSchema.number("Pixels on a 1080-high frame (default 6).", minimum: 1, maximum: 24),
+                    "filled": MCPSchema.boolean("Rectangles and squares: solid instead of an outline."),
                     "hidden": MCPSchema.boolean("Hide it without deleting it.")
                 ])
             )
@@ -342,8 +344,25 @@ public enum MCPTimelineTools {
                 "stroke_width": MCPSchema.number("Outline width in pixels.", minimum: 0.5, maximum: 24),
                 "shadow": MCPSchema.boolean("Soft drop shadow."),
                 "background_color": MCPSchema.string("Box behind the text; \"none\" removes it."),
+                "letter_spacing": MCPSchema.number("Extra space between letters, pixels (0 = normal).", minimum: -20, maximum: 80),
                 "animation_in": MCPSchema.string("Entrance animation.", oneOf: MCPVocabulary.textAnimations),
                 "animation_out": MCPSchema.string("Exit animation.", oneOf: MCPVocabulary.textAnimations),
+                "animation_in_duration": MCPSchema.number("Entrance seconds (default 0.6).", minimum: 0),
+                "animation_out_duration": MCPSchema.number("Exit seconds (default 0.6).", minimum: 0),
+                "animation_intensity": MCPSchema.number("How far the animations move, 0–1 (default 0.6).", minimum: 0, maximum: 1),
+                "emphasis": MCPSchema.string("Loops while on screen: breathe = a slight slow pulse.", oneOf: MCPVocabulary.textEmphasis),
+                "number": MCPSchema.object([
+                    "from": MCPSchema.number("Start value."),
+                    "to": MCPSchema.number("End value."),
+                    "decimals": MCPSchema.integer("Digits after the point (default 0).", minimum: 0, maximum: 4),
+                    "thousands": MCPSchema.boolean("Group thousands with commas (default true)."),
+                    "prefix": MCPSchema.string("Before the number, e.g. \"$\"."),
+                    "suffix": MCPSchema.string("After the number, e.g. \"+\" or \" days\"."),
+                    "style": MCPSchema.string("count counts up; odometer spins each digit.", oneOf: MCPVocabulary.numberStyles),
+                    "seconds": MCPSchema.number("How long it rolls (default 1.5).", minimum: 0.1, maximum: 20),
+                    "delay": MCPSchema.number("Seconds to wait before rolling.", minimum: 0, maximum: 60),
+                    "remove": MCPSchema.boolean("true turns it back into plain text.")
+                ], description: "Show a number rolling from one value to another instead of text (text is not needed); only the fields you pass change."),
                 "hidden": MCPSchema.boolean("Hide it without deleting it.")
             ])
         )

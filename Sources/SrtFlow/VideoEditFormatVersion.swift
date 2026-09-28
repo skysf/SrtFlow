@@ -334,6 +334,18 @@ extension TimelineState {
             || subtitleCompanion?.hiddenCueIDs.isEmpty == false
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v24-only 持久数据。
+    ///
+    /// **登记清单（新增 v24-only 字段必须同步补进来）：**
+    /// 1. `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（2026-09-28，电影遮幅、色块底；**按需写入**：
+    ///    描边的不落键）。
+    ///
+    /// 为什么要抬：它**直接决定成片**。只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，
+    /// 画面当场就不一样；随手编辑触发自动保存即永久丢失。
+    var requiresFormatVersion24: Bool {
+        shapes.contains(where: \.isFilled)
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨
