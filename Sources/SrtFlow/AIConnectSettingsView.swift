@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: - 设置里的「AI」一节
 //
-// 管什么：三个客户端各一行（连没连 + 连接 / 断开 / 复制一段话），外加给别的客户端的配置；
+// 管什么：三个客户端各一行（连没连 + 一个按钮：连上了是「断开」，没连上 / 每次都会问是「连接」，「连接」在这台机器上
+// 用不了时换成「复制一段话」—— 2026-09-28 用户：没连上的时候不该显示断开，精简下），外加给别的客户端的配置；
 // 用户同意过、AI 读起来不再问的地方（AIReadGrants），一条一行、可以删。
 // 不管什么：配置文件怎么改（AIClientSetup / AIClientConfigFiles）、什么时候问（AIWorkspace）。
 
@@ -58,25 +59,34 @@ private struct AIClientRow: View {
         LabeledContent {
             HStack(spacing: 6) {
                 statusLabel(status)
-                if let prompt = setup.setupPrompt(for: client) {
-                    Button("Copy Prompt") {
-                        setup.copy(prompt, confirmation: String(format: L10n("Copied. Paste it into %@."), L10n(client.title)))
-                    }
-                    .instantHelp("Copy a message you can paste into this app so it connects SrtFlow itself")
-                }
-                if status != .connected && status != .notInstalled {
-                    Button("Connect") { Task { await setup.connect(client) } }
-                        .instantHelp("Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking")
-                }
-                if status == .connected || status == .connectedAsking {
-                    Button("Disconnect") { Task { await setup.disconnect(client) } }
-                        .instantHelp("Remove SrtFlow from this app's MCP settings")
-                }
+                action(for: status)
             }
             .controlSize(.small)
             .disabled(setup.busy != nil)
         } label: {
             Text(LocalizedStringKey(client.title))
+        }
+    }
+
+    /// 一行只放一个按钮。
+    @ViewBuilder
+    private func action(for status: AIClientSetup.Status) -> some View {
+        switch status {
+        case .notInstalled:
+            EmptyView()
+        case .connected:
+            Button("Disconnect") { Task { await setup.disconnect(client) } }
+                .instantHelp("Remove SrtFlow from this app's MCP settings")
+        case .notConnected, .connectedAsking, .connectedElsewhere:
+            if setup.canConnect(client) {
+                Button("Connect") { Task { await setup.connect(client) } }
+                    .instantHelp("Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking")
+            } else if let prompt = setup.setupPrompt(for: client) {
+                Button("Copy Prompt") {
+                    setup.copy(prompt, confirmation: String(format: L10n("Copied. Paste it into %@."), L10n(client.title)))
+                }
+                .instantHelp("Copy a message you can paste into this app so it connects SrtFlow itself")
+            }
         }
     }
 

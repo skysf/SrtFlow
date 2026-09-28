@@ -186,6 +186,12 @@ final class AIClientSetup: ObservableObject {
         try next.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 
+    /// 「连接」在这台机器上能不能直接接上：Claude Code 要有它的命令行，另外两家直接改配置文件、总能接。
+    /// 接不上的那一行只给「复制一段话」（设置页一行只放一个按钮）。
+    func canConnect(_ client: Client) -> Bool {
+        client != .claudeCode || claudeCLI != nil
+    }
+
     /// Claude Code 的命令行装在哪（官方安装器、npm、Homebrew 几个常见位置）。
     private var claudeCLI: URL? {
         [home + "/.local/bin/claude", home + "/.claude/local/claude", "/opt/homebrew/bin/claude",
