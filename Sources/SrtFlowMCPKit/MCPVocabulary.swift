@@ -41,10 +41,11 @@ public enum MCPVocabulary {
     /// = `NumberRollStyle.allCases` 的原始值（数字滚动：整体数上去 / 每一位各自转的老虎机）。
     public static let numberStyles = ["count", "odometer"]
 
-    /// 配音的角色（配方卡里写的是角色，具体用哪个声音运行时按这台 Mac 挑；方案第 16、43 条）。
+    /// = `AIVoiceRole.all` 的名字：配音的角色（配方卡里写的是角色；装了 SrtFlow 自己的声音用对应的 Kokoro 音色，没装按这台 Mac
+    /// 的声音挑；方案第 16、43、49 条）。
     public static let voiceRoles = [
-        "zh_female_lively", "zh_female_warm", "zh_male_steady",
-        "en_female_lively", "en_female_warm", "en_male_steady"
+        "zh_female_lively", "zh_female_warm", "zh_male",
+        "en_female_lively", "en_female_warm", "en_male", "en_female_british", "en_male_british"
     ]
 
     /// 画面比例：`auto` + `CanvasRatio` 里固定比例的那几个（按界面上的写法）。

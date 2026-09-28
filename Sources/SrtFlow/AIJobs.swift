@@ -13,7 +13,7 @@ final class AIJobs {
     static let shared = AIJobs()
 
     enum Kind: String {
-        case export, subtitles, translation, compress, transcript, shots
+        case export, subtitles, translation, compress, transcript, shots, voices
         case burnIn = "burn_in"
     }
 

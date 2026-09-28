@@ -102,6 +102,8 @@ final class AIToolRouter {
         case .listen: return try await AIListenTool.listen(args, project)
         case .findAudio: return try await AIAudioLibraryTools.findAudio(args)
         case .addVoiceover:
+            // 只是下载 SrtFlow 自己的声音：回任务号，不改工程。
+            if let download = try await AIVoiceoverTool.startDownloadIfAsked(args) { return download }
             // 先合成（要 await），再把同步的提交包起来（同 edit_clip）。
             let plan = try await AIVoiceoverTool.plan(args, project)
             return try AIUndoGrouping.step(undo) { try AIVoiceoverTool.apply(plan, project) }

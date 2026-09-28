@@ -4,7 +4,7 @@ import SrtFlowCore
 
 // MARK: - 用这台 Mac 的声音读一句（macOS 配音，方案第 43 条）
 //
-// 管什么：`AVSpeechSynthesizer.write` 把一句话读成 PCM（不出声），存成 .m4a（AAC）；读的时候每个词报一个标记，
+// 管什么：`AVSpeechSynthesizer.write` 把一句话读成 PCM（不出声），存成 .m4a（AIAudioFileWriter，和本机模型配音同一份）；读的时候每个词报一个标记，
 // 换成带时间的词（AIVoiceWords），字幕按它对上，不用再转写。以及列出这台 Mac 装了哪些声音。
 // 不管什么：挑哪个声音（AIVoiceChoice）、文件放哪 / 放上时间线（AIVoiceoverTool）。
 //
@@ -60,8 +60,8 @@ final class AISpeechSynthesis: NSObject, AVSpeechSynthesizerDelegate {
     private var continuation: CheckedContinuation<Void, Error>?
 
     private func run(_ text: String, choice: AIVoiceChoice, speed: Double, to url: URL) async throws -> Output {
-        guard let voice = AVSpeechSynthesisVoice(identifier: choice.voice.identifier) else {
-            throw AIToolError("The voice \(choice.voice.name) is no longer installed on this Mac.")
+        guard case .system(let chosen) = choice.engine, let voice = AVSpeechSynthesisVoice(identifier: chosen.identifier) else {
+            throw AIToolError("The voice \(choice.name) is no longer installed on this Mac.")
         }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
@@ -84,10 +84,10 @@ final class AISpeechSynthesis: NSObject, AVSpeechSynthesizerDelegate {
             }
         }
         guard let format = buffers.first?.format, format.sampleRate > 0 else {
-            throw AIToolError("The voice \(choice.voice.name) produced no sound for this line.")
+            throw AIToolError("The voice \(choice.name) produced no sound for this line.")
         }
-        try write(to: url, format: format)
         let samples = monoSamples()
+        try AIAudioFileWriter.writeM4A(samples: samples, sampleRate: format.sampleRate, to: url)
         let words = AIVoiceWords.words(text: text, markers: markers, samples: samples, sampleRate: format.sampleRate)
         return Output(url: url, duration: Double(samples.count) / format.sampleRate, words: words)
     }
@@ -143,27 +143,6 @@ final class AISpeechSynthesis: NSObject, AVSpeechSynthesizerDelegate {
         guard let continuation else { return }
         self.continuation = nil
         if let error { continuation.resume(throwing: error) } else { continuation.resume() }
-    }
-
-    // MARK: 写文件
-
-    /// AAC 的 .m4a，采样率和声道照合成出来的（单声道 22.05 kHz 左右）。
-    private func write(to url: URL, format: AVAudioFormat) throws {
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatMPEG4AAC,
-            AVSampleRateKey: format.sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVEncoderBitRateKey: 64_000
-        ]
-        do {
-            let file = try AVAudioFile(
-                forWriting: url, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved
-            )
-            for buffer in buffers { try file.write(from: buffer) }
-        } catch {
-            try? FileManager.default.removeItem(at: url)
-            throw AIToolError("SrtFlow could not write the voiceover file \(url.lastPathComponent): \(error.localizedDescription)")
-        }
     }
 
     /// 第一个声道的全部采样（量静音用）。

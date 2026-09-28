@@ -952,6 +952,16 @@
 "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking" = "把 SrtFlow 加进这个 AI 应用的 MCP 设置，并让它用 SrtFlow 的工具时不再每次问你";
 "AI may also read these places without asking, because you allowed it once:" = "你同意过一次，AI 读下面这些地方的文件不再问：";
 "Forget" = "移除";
+"SrtFlow voices" = "SrtFlow 配音声音";
+"Natural voices for AI voiceovers, made on this Mac, in English, Chinese and 6 more languages. About 333 MB." = "给 AI 配旁白用的自然声音，在这台 Mac 上生成，支持中文、英文等 8 种语言。约 333 MB。";
+"Downloaded" = "已下载";
+"Download failed" = "下载失败";
+"Not downloaded" = "未下载";
+"Delete SrtFlow's voices from this Mac; AI voiceovers use the Mac's voices until you download them again" = "从这台 Mac 上删掉 SrtFlow 的声音；重新下载之前，AI 配旁白用 Mac 自带的声音";
+"Stop the download; downloading again continues where it stopped" = "停止下载；再点下载会从停下的地方接着下";
+"Try Again" = "重试";
+"Download" = "下载";
+"Download SrtFlow's voices (about 333 MB) so AI voiceovers sound natural" = "下载 SrtFlow 的声音（约 333 MB），AI 配的旁白听起来更自然";
 "Editing recipes" = "剪辑套路";
 "Open Folder" = "打开文件夹";
 "Show the folder with your own recipes in Finder" = "在访达里打开放你自己套路的文件夹";

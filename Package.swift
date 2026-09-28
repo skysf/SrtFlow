@@ -23,9 +23,13 @@ let package = Package(
         // MCP 的消息格式、工具清单、和 App 之间的本机通道。小程序和 App 两边都用它，
         // 所以工具清单只有这一份。只依赖 Foundation。
         .target(name: "SrtFlowMCPKit"),
+        // 本机配音用的 Kokoro-82M（CoreML）：注音、推理外壳，从 speech-swift（Apache 2.0）搬来改过，
+        // 署名见 Sources/SrtFlow/Resources/THIRD-PARTY-NOTICES.md（随 App 分发）。只依赖系统框架；模型本身不在包里，App 从我们的 R2 下载
+        //（docs/plans/2026-09-27-mcp.md 第 44、48、51 条）。
+        .target(name: "SrtFlowKokoro"),
         .executableTarget(
             name: "SrtFlow",
-            dependencies: ["SrtFlowCore", "SrtFlowMCPKit"],
+            dependencies: ["SrtFlowCore", "SrtFlowMCPKit", "SrtFlowKokoro"],
             resources: [.process("Resources")]
         ),
         .executableTarget(

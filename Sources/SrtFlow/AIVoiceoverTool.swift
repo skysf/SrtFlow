@@ -9,7 +9,9 @@ import SrtFlowMCPKit
 // 分两步（同 edit_clip）：`plan` 可以 await（合成、读文件），`apply` 同步提交、路由包在 `AIUndoGrouping.step` 里 ——
 // 放素材和加字幕在同一次 perform 里，一个工具 = 一步撤销。
 // 放上时间线走 add_clips 那一套（`AITimelineEdits.place`：撞上往上抬一轨；这一批都放进第一句新开的那条轨）。
-// 不管什么：挑声音（AIVoiceChoice）、怎么合成（AISpeechSynthesis）。以后本机开源模型、fal 配音也从这里分出去（第 42 条的三档）。
+// 声音分两档（第 42、48 条）：下载了 SrtFlow 自己的声音（本机的 Kokoro）就用它，没下载 / 它读不了的语言用这台 Mac 的；
+// `download_voices=true` 开始下载、回任务号（第 50 条：AI 也能直接下，下的时候告诉用户）。fal 配音以后从这里再分出去。
+// 不管什么：挑声音（AIVoiceChoice）、怎么合成（KokoroVoiceSpeech / AISpeechSynthesis）、下载（KokoroVoicePack）。
 
 @MainActor
 enum AIVoiceoverTool {
@@ -34,12 +36,38 @@ enum AIVoiceoverTool {
         var generation: Int
     }
 
+    /// `download_voices=true`：开始下载 SrtFlow 自己的声音（已经装好就直接说），回任务号；这一次不配音、不改工程。
+    static func startDownloadIfAsked(_ args: AIToolArguments) async throws -> AIToolResult? {
+        guard try args.bool("download_voices") == true else { return nil }
+        let pack = KokoroVoicePack.shared
+        if pack.isInstalled {
+            return .ok(["status": "installed", "next_step": "SrtFlow's voices are ready: call add_voiceover with your lines."])
+        }
+        let job = AIJobs.shared.start(.voices, progress: { pack.fraction }, cancel: { pack.cancel() })
+        Task { @MainActor in
+            do {
+                try await pack.install()
+                AIJobs.shared.finish(job, .done, message: "SrtFlow's voices are downloaded. Call add_voiceover with your lines.")
+            } catch {
+                let cancelled = error is CancellationError || (error as? URLError)?.code == .cancelled
+                AIJobs.shared.finish(job, cancelled ? .cancelled : .failed,
+                                     message: cancelled ? "The download was stopped." : error.localizedDescription)
+            }
+        }
+        return .ok([
+            "status": "downloading", "job_id": .string(job.id), "size": .string(KokoroVoicePack.approximateSize),
+            "next_step": .string("Tell the user SrtFlow is downloading its own voices (about \(KokoroVoicePack.approximateSize); "
+                + "progress also shows in Settings → AI). Wait with get_job, then call add_voiceover again without download_voices.")
+        ])
+    }
+
     static func plan(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> Plan {
         let lines = try parseLines(args)
         let speed = min(max(try args.double("speed") ?? 1, 0.5), 2)
         let language = AITextLanguage.dominant(in: lines.map(\.text)).map(AIVoiceChoice.baseLanguage) ?? "en"
+        let kokoroVoices = KokoroVoicePack.shared.isInstalled ? KokoroVoiceSpeech.voiceNames(in: KokoroVoicePack.directory) : nil
         let choice = try AIVoiceChoice.choose(try args.string("voice"), textLanguage: language,
-                                              from: AISpeechSynthesis.installedVoices())
+                                              kokoroVoices: kokoroVoices, installed: AISpeechSynthesis.installedVoices())
         let target = try args.string("track").map { try AITrackName.target($0, in: project.state) } ?? .newAudioBottom
         switch target {
         case .audio, .newAudioBottom: break
@@ -54,7 +82,13 @@ enum AIVoiceoverTool {
             let url = ExportFileName.unoccupied(in: folder, stem: stem, pathExtension: "m4a") {
                 FileManager.default.fileExists(atPath: $0.path)
             }
-            let output = try await AISpeechSynthesis.speak(line.text, choice: choice, speed: speed, to: url)
+            let output: AISpeechSynthesis.Output
+            switch choice.engine {
+            case .kokoro(let voice, let voiceLanguage):
+                output = try await KokoroVoiceSpeech.shared.speak(line.text, language: voiceLanguage, voice: voice, speed: speed, to: url)
+            case .system:
+                output = try await AISpeechSynthesis.speak(line.text, choice: choice, speed: speed, to: url)
+            }
             guard let media = await project.probeImports([url]).first else {
                 throw AIToolError("lines[\(index)]: SrtFlow could not read back the voiceover file \(url.lastPathComponent).")
             }
@@ -129,7 +163,7 @@ enum AIVoiceoverTool {
             ]
         }
         var voice: [String: JSONValue] = [
-            "name": .string(plan.choice.voice.name), "quality": .string(plan.choice.voice.qualityName)
+            "name": .string(plan.choice.name), "quality": .string(plan.choice.qualityName)
         ]
         if let note = plan.choice.note { voice["note"] = .string(note) }
         var result: [String: JSONValue] = ["added": .array(added), "voice": .object(voice),

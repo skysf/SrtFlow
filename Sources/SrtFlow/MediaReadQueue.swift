@@ -35,6 +35,9 @@ enum MediaReadQueue {
     /// AI 找镜头切换点（AIShotScan）：一个视频从头解到尾，长的课要几十秒（M1 上 1440p 约 17 倍速，几条并行也不更快 ——
     /// 硬件解码器只有一个）。单独一条，扫着的时候不占「看」要用的那两条；在后台扫，低一档。
     static let shots = make("SrtFlow.MediaRead.shots", qos: .utility, width: 1)
+    /// 本机配音（Kokoro）：CoreML 的一次推理同样卡住线程（一句 0.4 秒，第一次要等神经网络引擎编译约 10 秒）；
+    /// 模型不同时跑两次，加载也在这里，所以只有一条（KokoroVoiceSpeech）。
+    static let voice = make("SrtFlow.MediaRead.voice", qos: .userInitiated, width: 1)
 
     /// 在 `queue` 上把一段阻塞的读取跑完，结果交回来（等的这一方只是挂起，不占线程）。
     static func run<T: Sendable>(on queue: OperationQueue, _ work: @escaping @Sendable () -> T) async -> T {

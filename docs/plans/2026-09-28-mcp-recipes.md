@@ -75,7 +75,7 @@
 | 文字 | 片名：英文 `Didot` / `Bodoni 72` / `Optima` 大写、字距拉宽（`letter_spacing` 20–40）；中文 `Songti SC`（宋体）；字号 90–120；`animation_in: focus`（1–1.5 秒），`animation_out: fade`；不压在遮幅上。<br>地名、年份：小字 `Avenir Next` / `PingFang SC` 常规体 36–44，左下角，`fade`，4 秒。除此之外不加字 |
 | 字幕 | 默认关（没有对白）；有对白才开，白字小字、不要底框 |
 | 配乐 | 宏大、动情：`find_audio` 搜 epic / trailer / opening / orchestral / emotional。从片头就起，片名落在强拍上，结尾淡出 2–3 秒 |
-| 配音 | 一般不配；要旁白用 `zh_male_steady` / `en_male_steady`，语速 0.9×，句子短、句间留 1–2 秒 |
+| 配音 | 一般不配；要旁白用 `zh_male` / `en_male`，语速 0.9×，句子短、句间留 1–2 秒 |
 | 自检 | 遮幅上下对称、字不压在遮幅上；片名那一刻 `look`；音乐结尾有淡出；开头是黑场渐入 |
 
 ### 3. 科幻（`sci-fi`）
@@ -94,7 +94,7 @@
 | 文字 | 英文 `DIN Condensed` / `DIN Alternate`，HUD 标签用等宽的 `Menlo`；中文 `PingFang SC` 细体；全大写、字距拉宽（`letter_spacing` 10–30）；颜色青 `#00E5FF`、品红 `#FF2BD6` 或纯白。<br>角落放小的 HUD 标签（坐标、时间码、「REC」）：字号 28–36；再用 `set_shape` 的细线、方框做取景框（线宽 2–3），半透明的实心长方形（如 `#00E5FF33`）垫在标签后面当面板。<br>数字用数字滚动做倒计时、数据跳动。<br>结尾标题用 `strokeDraw` 要先有描边（`stroke_color`），不然用 `wipe`；停够 2 秒 |
 | 字幕 | 有旁白就开，白字细体 |
 | 配乐 | `find_audio` 搜 space / electronic / synth / dark / tense |
-| 配音 | `zh_male_steady` / `en_male_steady`（或 `*_female_warm`），语速 1.0×；想要「舰载电脑」的感觉给旁白挂 `sound_scene: radio` |
+| 配音 | `zh_male` / `en_male`（或 `*_female_warm`），语速 1.0×；想要「舰载电脑」的感觉给旁白挂 `sound_scene: radio` |
 | 自检 | HUD 字不压主体；闪白次数；结尾标题停够 2 秒 |
 
 ### 4. 纪录片（`documentary`）
@@ -113,7 +113,7 @@
 | 文字 | 地点和时间字卡：「南极半岛 · 1 月」，左下角，`Avenir Next` / `PingFang SC` 常规体 40–48，`fade`，4 秒。片名：`Songti SC` / `Baskerville` / `Optima`，居中，`fade` |
 | 字幕 | 有旁白、采访就开：白字 + 轻阴影，底部，不要底框 |
 | 配乐 | `find_audio` 搜 documentary / nature / calm / piano / hopeful / emotional；旁白时比人声低 15–18 dB；旁白的间隙让现场声（风、动物叫声）出来 |
-| 配音 | `zh_male_steady` / `en_male_steady` 或 `*_female_warm`，语速 0.95×；旁白写短句（中文 ≤ 20 字、英文 ≤ 15 个词），句间留 1–2 秒给画面。旁白按段放在对应画面上（说企鹅时画面是企鹅） |
+| 配音 | `zh_male` / `en_male` 或 `*_female_warm`，语速 0.95×；旁白写短句（中文 ≤ 20 字、英文 ≤ 15 个词），句间留 1–2 秒给画面。旁白按段放在对应画面上（说企鹅时画面是企鹅） |
 | 声音 | 保留有意义的现场声（`listen` 找响的地方、`look` 确认是什么） |
 | 自检 | 旁白和画面对得上；每段旁白之间有空；结尾署名 |
 
@@ -140,13 +140,17 @@
 
 套路里写的是**角色**，不是某个具体的声音；具体用哪个在运行时挑。
 
-| 角色 | 用在 | macOS（第 ② 刀） | 本机模型（第 ③ 刀，探针后定） |
+| 角色 | 用在 | SrtFlow 自己的声音（Kokoro，第 ③ 刀，用户听样音挑的） | 没下载时退到 macOS 的声音（第 ② 刀） |
 | --- | --- | --- | --- |
-| `zh_female_lively` 活泼女声 | 带货 | 中文女声里挑高级 > 增强 > 默认，音调略高（1.08） | 待定 |
-| `zh_female_warm` 温和女声 | vlog、纪录片 | 同上，另一个女声（只有一个就同一个） | 待定 |
-| `zh_male_steady` 沉稳男声 | 纪录片、电影开头、科幻 | 中文男声，音调略低（0.94）；**没装男声时退到女声并告诉用户去下载** | 待定 |
-| `en_female_lively` / `en_female_warm` / `en_male_steady` | 同上 | 英文同理 | 待定 |
+| `zh_female_lively` 活泼女声 | 带货 | `zf_xiaoyi` | 中文女声里挑高级 > 增强 > 默认，音调略高（1.08） |
+| `zh_female_warm` 温和女声 | vlog、纪录片 | `zf_xiaoxiao` | 同上，另一个女声（只有一个就同一个） |
+| `zh_male` 男声（男青年） | 纪录片、电影开头、科幻 | `zm_yunxi` | 中文男声；**没装男声时退到女声并告诉用户去下载** |
+| `en_female_lively` / `en_female_warm` | 同上 | `af_bella` / `af_heart` | 英文女声，同上 |
+| `en_male` | 同上 | `am_fenrir`（不用 `am_michael`） | 英文男声 |
+| `en_female_british` / `en_male_british` 英式 | 纪录片、电影开头 | `bf_emma` / `bm_george` | 英国的声音优先 |
 
+- 角色名 2026-09-28 改过（第 49 条）：`zh_male_steady` / `en_male_steady` → `zh_male` / `en_male`，加两个英式角色。
+- 54 个 Kokoro 音色都能按名字点（日、西、法、意、葡、印地各有自己的音色）。
 - 没装高级、增强音色时照样配出来（默认质量），结果里写明去「系统设置 → 辅助功能 → 朗读内容 → 系统声音 → 管理声音」下载哪一个。
 - 对话里点名能换：给角色名、系统音色的名字，或者（第 ③ 刀之后）一段要克隆的声音。
 - 语速写在卡上（带货 1.1×、电影开头 0.9× 这类），AI 调 `add_voiceover` 时传 `speed`；系统的 rate 和实际语速不是线性的，App 里按实测的表换。

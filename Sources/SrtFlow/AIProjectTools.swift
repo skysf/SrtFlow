@@ -38,6 +38,12 @@ enum AIProjectTools {
             "stopped_by_user": .bool(session.phase == .stopped),
             "view": .string(session.viewMode.rawValue)
         ]
+        // SrtFlow 自己的声音（本机的 Kokoro）下没下（方案第 50 条：让 AI 知道有这回事）。
+        switch KokoroVoicePack.shared.state {
+        case .installed: result["srtflow_voices"] = "downloaded"
+        case .downloading(let fraction): result["srtflow_voices"] = .string("downloading \(Int(fraction * 100))%")
+        case .notInstalled, .failed: result["srtflow_voices"] = .string("not downloaded (add_voiceover download_voices=true, \(AIVoiceRole.kokoroDownloadSize))")
+        }
         if #available(macOS 26.0, *) {
             result["subtitle_generation"] = .bool(SpeechTranscriptionService.isAvailable)
         } else {

@@ -26,32 +26,32 @@ private func choiceChecks() {
     let yushu = voice("Yu-shu", "zh-CN", .female, 2)
     let eddy = voice("Eddy", "zh-CN", .unspecified, 1, id: "com.apple.eloquence.zh-CN.Eddy")
     let chinese = [tingting, eddy, yushu, lili]
-    checkEqual((try? AIVoiceChoice.choose("zh_female_lively", textLanguage: "zh", from: chinese))?.voice.name, "Lili",
+    checkEqual((try? AIVoiceChoice.choose("zh_female_lively", textLanguage: "zh", kokoroVoices: nil, installed: chinese))?.name, "Lili",
                "the best quality voice for the lively role")
-    checkEqual((try? AIVoiceChoice.choose("zh_female_warm", textLanguage: "zh", from: chinese))?.voice.name, "Yu-shu",
+    checkEqual((try? AIVoiceChoice.choose("zh_female_warm", textLanguage: "zh", kokoroVoices: nil, installed: chinese))?.name, "Yu-shu",
                "the warm female role takes the second voice when there are two")
-    let premium = try? AIVoiceChoice.choose("zh_female_lively", textLanguage: "zh", from: chinese)
-    check(premium?.note == nil, "a Premium voice needs no note")
+    let premium = try? AIVoiceChoice.choose("zh_female_lively", textLanguage: "zh", kokoroVoices: nil, installed: chinese)
+    checkEqual(premium?.note, AIVoiceChoice.kokoroHint, "a Premium Mac voice gets no quality note, only the hint that SrtFlow's own voices are better")
     checkEqual(premium?.pitch, 1.08, "lively is pitched a little higher")
-    let male = try? AIVoiceChoice.choose("zh_male_steady", textLanguage: "zh", from: chinese)
-    checkEqual(male?.voice.name, "Lili", "no male voice: fall back to the best other one")
+    let male = try? AIVoiceChoice.choose("zh_male", textLanguage: "zh", kokoroVoices: nil, installed: chinese)
+    checkEqual(male?.name, "Lili", "no male voice: fall back to the best other one")
     check(male?.note?.contains("No male Chinese voice") == true, "and say so")
-    checkEqual(male?.pitch, 0.94, "steady is pitched a little lower")
-    let basic = try? AIVoiceChoice.choose(nil, textLanguage: "zh", from: [tingting, eddy])
-    checkEqual(basic?.voice.name, "Tingting", "the Eloquence voices are never picked")
+    checkEqual(male?.pitch, 1.0, "the male role keeps the voice's own pitch")
+    let basic = try? AIVoiceChoice.choose(nil, textLanguage: "zh", kokoroVoices: nil, installed: [tingting, eddy])
+    checkEqual(basic?.name, "Tingting", "the Eloquence voices are never picked")
     check(basic?.note?.contains("Manage Voices") == true, "a basic-quality voice comes with where to download a better one")
-    checkEqual((try? AIVoiceChoice.choose("tingting", textLanguage: "en", from: chinese))?.voice.name, "Tingting",
+    checkEqual((try? AIVoiceChoice.choose("tingting", textLanguage: "en", kokoroVoices: nil, installed: chinese))?.name, "Tingting",
                "an installed voice can be named, in any case")
-    checkThrows("an unknown voice name is refused") { _ = try AIVoiceChoice.choose("Nobody", textLanguage: "zh", from: chinese) }
+    checkThrows("an unknown voice name is refused") { _ = try AIVoiceChoice.choose("Nobody", textLanguage: "zh", kokoroVoices: nil, installed: chinese) }
     checkThrows("no English voice at all is refused") {
-        _ = try AIVoiceChoice.choose("en_female_warm", textLanguage: "en",
-                                     from: [voice("Eddy", "en-US", .unspecified, 1, id: "com.apple.eloquence.en-US.Eddy"),
+        _ = try AIVoiceChoice.choose("en_female_warm", textLanguage: "en", kokoroVoices: nil,
+                                     installed: [voice("Eddy", "en-US", .unspecified, 1, id: "com.apple.eloquence.en-US.Eddy"),
                                             voice("Fred", "en-US", .male, 1, id: "com.apple.speech.synthesis.voice.Fred")])
     }
     let english = [voice("Daniel", "en-GB", .male, 2), voice("Evan", "en-US", .male, 2), voice("Zoe", "en-US", .female, 3)]
-    checkEqual((try? AIVoiceChoice.choose("en_male_steady", textLanguage: "en", from: english))?.voice.name, "Evan",
+    checkEqual((try? AIVoiceChoice.choose("en_male", textLanguage: "en", kokoroVoices: nil, installed: english))?.name, "Evan",
                "same quality: American English first")
-    checkEqual((try? AIVoiceChoice.choose(nil, textLanguage: "ja", from: english + [voice("Kyoko", "ja-JP", .female, 2)]))?.voice.name,
+    checkEqual((try? AIVoiceChoice.choose(nil, textLanguage: "ja", kokoroVoices: nil, installed: english + [voice("Kyoko", "ja-JP", .female, 2)]))?.name,
                "Kyoko", "other languages get a voice of their own language")
     // 语速：rate 和实际倍数不是线性的（实测的表），1 倍就是系统的正常语速 0.5，越快 rate 越大，两头夹住。
     checkEqual(AIVoiceChoice.utteranceRate(forSpeed: 1), 0.5, "normal speed is the system's normal rate")
@@ -59,9 +59,7 @@ private func choiceChecks() {
     let speeds = stride(from: 0.5, through: 2.0, by: 0.05).map { AIVoiceChoice.utteranceRate(forSpeed: $0) }
     check(zip(speeds, speeds.dropFirst()).allSatisfy { $0 < $1 }, "faster always means a higher rate")
     checkEqual(AIVoiceChoice.utteranceRate(forSpeed: 9), 0.7, "rates stop at the fastest measured point")
-    for name in MCPVocabulary.voiceRoles {
-        check(AIVoiceChoice.Role(name) != nil, "\(name) is a role the app understands")
-    }
+    checkEqual(MCPVocabulary.voiceRoles, AIVoiceRole.all.map(\.name), "the helper's voice roles match AIVoiceRole")
 }
 
 private func wordChecks() {
@@ -87,6 +85,14 @@ private func wordChecks() {
         samples: [Float](repeating: 0.2, count: 400), sampleRate: 1000
     )
     checkEqual(chinese.map(\.text), ["好，", "这"], "a punctuation mark reported as a word joins the word before it")
+    // Kokoro 不把标点报成单位：夹在两个词中间的标点贴在前一个词后面，下一个词只带空格；有自己的结束格时词尾不越过它。
+    let between = AIVoiceWords.words(
+        text: "course, you", markers: [.init(location: 0, length: 6, frame: 0, endFrame: 200),
+                                       .init(location: 8, length: 3, frame: 300, endFrame: 380)],
+        samples: [Float](repeating: 0.2, count: 400), sampleRate: 1000
+    )
+    checkEqual(between.map(\.text), ["course,", " you"], "punctuation between two words joins the word before it")
+    checkEqual(between.first?.end, 0.2, "a word does not run past its own end (the next sentence's lead-in noise)")
 }
 
 private func placementChecks() {

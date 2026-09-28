@@ -952,6 +952,16 @@
 "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking" = "Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking";
 "AI may also read these places without asking, because you allowed it once:" = "AI may also read these places without asking, because you allowed it once:";
 "Forget" = "Forget";
+"SrtFlow voices" = "SrtFlow voices";
+"Natural voices for AI voiceovers, made on this Mac, in English, Chinese and 6 more languages. About 333 MB." = "Natural voices for AI voiceovers, made on this Mac, in English, Chinese and 6 more languages. About 333 MB.";
+"Downloaded" = "Downloaded";
+"Download failed" = "Download failed";
+"Not downloaded" = "Not downloaded";
+"Delete SrtFlow's voices from this Mac; AI voiceovers use the Mac's voices until you download them again" = "Delete SrtFlow's voices from this Mac; AI voiceovers use the Mac's voices until you download them again";
+"Stop the download; downloading again continues where it stopped" = "Stop the download; downloading again continues where it stopped";
+"Try Again" = "Try Again";
+"Download" = "Download";
+"Download SrtFlow's voices (about 333 MB) so AI voiceovers sound natural" = "Download SrtFlow's voices (about 333 MB) so AI voiceovers sound natural";
 "Editing recipes" = "Editing recipes";
 "Open Folder" = "Open Folder";
 "Show the folder with your own recipes in Finder" = "Show the folder with your own recipes in Finder";

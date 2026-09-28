@@ -31,6 +31,7 @@
 #      卡里提到的工具名、参数名、选项值都存在。
 #  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
 #  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）。
+#  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、切段、拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -254,6 +255,7 @@ echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
+BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowKokoro 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
 OUT="$(mktemp -d)/mcpcheck"
@@ -312,6 +314,10 @@ xcrun swiftc \
   Sources/SrtFlow/AIRecipeStore.swift \
   Sources/SrtFlow/AIRecipeTools.swift \
   Sources/SrtFlow/AIVoiceChoice.swift \
+  Sources/SrtFlow/AIVoiceRole.swift \
+  Sources/SrtFlow/KokoroVoicePieces.swift \
+  Sources/SrtFlow/KokoroVoiceAssembly.swift \
+  Sources/SrtFlow/KokoroVoiceManifest.swift \
   Sources/SrtFlow/AIVoiceWords.swift \
   Sources/SrtFlow/AIVoiceoverPlacement.swift \
   Sources/SrtFlow/AIVoiceoverSubtitles.swift \
@@ -382,6 +388,7 @@ xcrun swiftc \
   checks/MCP/TextPartChecks.swift \
   checks/MCP/RecipeChecks.swift \
   checks/MCP/VoiceChecks.swift \
+  checks/MCP/KokoroChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \
   checks/MCP/EncodeChecks.swift \
@@ -390,7 +397,8 @@ xcrun swiftc \
   checks/MCP/SpeechCutChecks.swift \
   checks/MCP/BeatCutChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
-  "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
+  "$BUILD_DIR"/SrtFlowMCPKit.build/*.o \
+  "$BUILD_DIR"/SrtFlowKokoro.build/*.o
 
 echo "==> 运行"
 SRTFLOW_MCP_HELPER="$BUILD_DIR/srtflow-mcp" "$OUT"
