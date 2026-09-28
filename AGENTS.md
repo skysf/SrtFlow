@@ -131,7 +131,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头）；**在视图 body 里读工程的属性、给 `VideoEditProject` 加属性**（工程是 `@Observable`） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不读工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**、**第十三节：body 读了什么就只被什么叫醒，大视图少读、不驱动界面的存储 `@ObservationIgnored`、读不可观察的东西要自己找叫醒的来源**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md)、[点一下选中一段整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
-| AI 接口（MCP）：给 AI 的工具清单与说明、`srtflow-mcp` 小程序、小程序与 App 的通道、AI 改时间线的规则、「看得见」（一轮开始时摆出剪辑页、每步定位）、这一轮 / 停止 / 撤销这一轮、需要用户点头的事、设置里的「连接 AI」、**AI 的手和眼**（`edit_clip` 的铺满 / 完整显示 / 裁切 / 位置大小、去黑边、对准主体、`look` 看、`listen` 听）、**AI 够得着的现有功能**（后台模式、读文稿、整理文件、访达选中、推子关键帧、形状、复制、定格、音乐库、压缩 / 烧录 / 转字幕） | [AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第四节 14–24 条逐个工具写着复用了哪条手动的路；读点名文件夹以外的文件都走 `AIWorkspace.confirmReading`；压缩 / 烧录排进现成的队列、条目自带设置、不替用户开跑；清单只有一份、两代协议都接、一个工具 = 一步撤销且每个改动工具包一层 `AIUndoGrouping.step`（别去关按事件自动开的组；要 await 的先 plan 再同步 apply）、不许弹模态框、只有动硬盘才问、阻塞收发只在自己开的线程上；第四节 11–13 条：铺满是一扇窗映满画布、先裁切再摆放，look 按预览的层序合成、每层调现成的那份，listen 读波形那一份、窗和均方桶对齐）、[预览自由变换](docs/architecture/preview-free-transform.md)（裁切和摆放的模型）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)（Vision 的 perform 在 `MediaReadQueue.analysis` 上跑）、[波形与深度缩放](docs/architecture/audio-waveform.md)（均方和峰值同一遍读）、[AI 的改动撤一步全空了](docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md)、[挂字幕落在 step 外面，之后撤一步全空](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（一次调用里所有登记都在同一个 step 里；异步落账各包一层）、[AI 翻译按旧的原文语言去翻](docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md)（要人动手就走 `waiting_for_user` + 提示条）、[MCP 方案](docs/plans/2026-09-27-mcp.md) |
+| AI 接口（MCP）：给 AI 的工具清单与说明、`srtflow-mcp` 小程序、小程序与 App 的通道、AI 改时间线的规则、「看得见」（一轮开始时摆出剪辑页、每步定位）、这一轮 / 停止 / 撤销这一轮、需要用户点头的事、设置里的「连接 AI」、**AI 的手和眼**（`edit_clip` 的铺满 / 完整显示 / 裁切 / 位置大小、去黑边、对准主体、`look` 看、`listen` 听）、**AI 够得着的现有功能**（后台模式、读文稿、整理文件、访达选中、推子关键帧、形状、复制、定格、音乐库、压缩 / 烧录 / 转字幕） | [AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第四节 14–24 条逐个工具写着复用了哪条手动的路；读点名文件夹以外的文件都走 `AIWorkspace.confirmReading`；压缩 / 烧录排进现成的队列、条目自带设置、不替用户开跑；清单只有一份、两代协议都接、一个工具 = 一步撤销且每个改动工具包一层 `AIUndoGrouping.step`（别去关按事件自动开的组；要 await 的先 plan 再同步 apply）、不许弹模态框、只有删文件才问（别处的文件问一次、记住文件夹；撞名加编号；「连接」顺带放行客户端那层；工具不按个数卡、说明总长度有上限）、阻塞收发只在自己开的线程上；第四节 11–13 条：铺满是一扇窗映满画布、先裁切再摆放，look 按预览的层序合成、每层调现成的那份，listen 读波形那一份、窗和均方桶对齐）、[预览自由变换](docs/architecture/preview-free-transform.md)（裁切和摆放的模型）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)（Vision 的 perform 在 `MediaReadQueue.analysis` 上跑）、[波形与深度缩放](docs/architecture/audio-waveform.md)（均方和峰值同一遍读）、[AI 的改动撤一步全空了](docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md)、[挂字幕落在 step 外面，之后撤一步全空](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（一次调用里所有登记都在同一个 step 里；异步落账各包一层）、[AI 翻译按旧的原文语言去翻](docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md)（要人动手就走 `waiting_for_user` + 提示条）、[MCP 方案](docs/plans/2026-09-27-mcp.md) |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
 ## 构建与检查入口
@@ -224,7 +224,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   以及 AI 的手和眼：铺满时窗的四角正好落在画布四角（各种比例 × 焦点）、去黑边、对准主体（真让 Vision 认一张图、框不许上下反）、
   look 的拼图和文字描述、listen 的电平 / 静音段 / 曲线，总说明里「不用外部工具改素材」那一句；现有功能铺满的纯值规则
   （剪辑的其余设置、轨道推子、关键帧、形状、复制一份、音乐库的署名句、压缩 / 烧录的参数与起名），以及压缩 / 烧录的条目
-  自带设置、不替用户开跑（扫描）：
+  自带设置、不替用户开跑（扫描）；什么时候问（只有删文件和读别处的文件会问、读过的文件夹记住、撞名加编号，扫描）、记住哪里、
+  「连接」时写进 Claude Code / Codex 的放行配置、工具清单总长度的上限：
   `scripts/check-mcp.sh`。
 - 时间线复制 / 剪切 / 粘贴：拿什么、换新身份（除了 id 每个字段照抄）、粘到哪（撞上往上抬、几组保住上下关系、
   声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段、分割后链接组一对还是一对：
@@ -305,9 +306,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   用户看着南极工程提的四件事（重叠、藏起来的还在生成、字幕不该有标点、长句拆开）、先查清的事实（重叠两个来源、翻译是一条一条送的）、
   调研（Premiere / Resolve / FCP / 剪映 / Descript 怎么选声音和处理同时说话；Netflix 英文与简体中文、BBC 的数字）、
   逐条拍的板（跟随素材「先不用」、双语顺序「不改」）和我定的实现细节。
-- [让 AI 调用 SrtFlow 剪视频：MCP 方案](docs/plans/2026-09-27-mcp.md) — 第一到第三块在 PR #81 实施中（真实状态看实施报告；工具已到预算 40 个）。2026-09-27 访谈拍的 28 条板 + 实测后补的 4 条（AI 改了没存过的工程自动存、默认位置不要「影片」没给文件夹放「下载」、第 31 条 AI 不靠外部工具——裁切 / 看 / 听做成 SrtFlow 自己的工具、第 32 条窗口一轮只摆一次）：
+- [让 AI 调用 SrtFlow 剪视频：MCP 方案](docs/plans/2026-09-27-mcp.md) — 第一到第三块在 PR #81 实施中（真实状态看实施报告）。2026-09-27 访谈拍的 28 条板 + 实测后补的 4 条（AI 改了没存过的工程自动存、默认位置不要「影片」没给文件夹放「下载」、第 31 条 AI 不靠外部工具——裁切 / 看 / 听做成 SrtFlow 自己的工具、第 32 条窗口一轮只摆一次），以及 2026-09-28 讨论工具上限时补的 4 条（第 33 条不按个数卡、守三条；第 34 条只有删文件才问、别处的文件问一次记住文件夹；第 35 条「连接」顺带放行客户端的权限；第 36 条 SkyStudio 的 MCP 以后另做、生成类工具提供方可换）：
   第一期 Claude + Codex（ChatGPT 聊天框要隧道、用 Codex 代替）、除录屏外全部功能、默认看得见（每步定位高亮）、
-  ⌘Z + 撤销这一轮、只有动硬盘才问、本机 Vision 识别画面、按文字剪 / 删静音 / 踩点、剪辑套路（MCP Prompts）、
+  ⌘Z + 撤销这一轮、只有动硬盘才问（后来收成只有删文件才问）、本机 Vision 识别画面、按文字剪 / 删静音 / 踩点、剪辑套路（MCP Prompts）、
   fal.ai 生成（每日上限）；架构（`srtflow-mcp` 只传话、干活的只有 App 本体、协议自己写不引 SDK）、六块分块与两个真实验收任务。
 - [AI 接口（MCP）第一块实施报告](docs/reports/2026-09-27-mcp-slice1-report.md) — 23 个工具做到了哪、CI 与端到端实测的证据、测试版怎么出（`scripts/build-beta-app.sh`）、过程中修掉的事（撤销分组、提示条位置、文字折断、翻译语言与下载引导、自动存盘与默认位置）、还差什么（第二块起的功能、Claude 桌面版 / Codex 要用户点「连接」）。
 - [AI 接口（MCP）第二块实施报告](docs/reports/2026-09-27-mcp-slice2-report.md) — 第二块起手「AI 的手和眼」（方案第 31 条）：`edit_clip` 的画面放法、去黑边、对准主体、`look`、`listen`、总说明里不用外部工具那一句，窗口一轮只摆一次（第 32 条）；然后现有功能铺满（后台模式、读文稿、整理文件、访达选中、剪辑的其余设置、推子关键帧、形状、复制、定格、音乐库、压缩烧录转换，工具 23 → 37 个）；每一刀的 CI、本机自检、测试版冒烟的证据，过程中撞上的事（三个老 bug），还差什么。
@@ -320,7 +321,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [写代码的规范](docs/architecture/coding-standards.md) — 模块化的六条（一个文件一件事、抽有名字的顶层类型、
   别开只有 extension 的文件、纯计算和副作用分开、同一规则只有一处实现、函数别太长），单文件目标 400 / 上限 600
   行与老文件只许降的基线、审查清单。
-- [AI 接口（MCP）](docs/architecture/ai-control-mcp.md) — 三段结构（客户端 → `srtflow-mcp` → App，活只在 App 里做）、工具清单只有一份且小程序给、选项词表抄一份就要对账、两代协议（老的 initialize / 新的 `_meta` + `server/discover`）、通道（按 bundle id 分 socket、一次调用一条连接、不抢别人的 socket、阻塞收发只在自己的线程上）、工具在 App 里的十三条规矩（一个工具 = 一步撤销、复用手动操作的规则、排队、看得见但不抢键盘且一轮只摆一次窗口、不许弹模态框、只有动硬盘才问、长任务回任务号、AI 看不见就替它量、短 id 与 V1/A1 轨道名、做出来的文件放哪、画面怎么放（铺满 = 窗映满画布）、look 看、listen 听）、总说明里「只用 SrtFlow 的工具」、这一轮 / 停止 / 撤销这一轮、「连接 AI」三个客户端各用什么办法、人工回归清单。
+- [AI 接口（MCP）](docs/architecture/ai-control-mcp.md) — 三段结构（客户端 → `srtflow-mcp` → App，活只在 App 里做）、工具清单只有一份且小程序给、不按个数卡守三条（不许两个长得像、只读和写文件不混、说明总长度有上限）、选项词表抄一份就要对账、两代协议（老的 initialize / 新的 `_meta` + `server/discover`）、通道（按 bundle id 分 socket、一次调用一条连接、不抢别人的 socket、阻塞收发只在自己的线程上）、工具在 App 里的十三条规矩（一个工具 = 一步撤销、复用手动操作的规则、排队、看得见但不抢键盘且一轮只摆一次窗口、不许弹模态框、只有删文件才问（读别处的文件问一次、记住文件夹；撞名加编号）、长任务回任务号、AI 看不见就替它量、短 id 与 V1/A1 轨道名、做出来的文件放哪、画面怎么放（铺满 = 窗映满画布）、look 看、listen 听）、总说明里「只用 SrtFlow 的工具」、这一轮 / 停止 / 撤销这一轮、「连接 AI」三个客户端各用什么办法（连上顺带放行工具）、人工回归清单。
 - [时间线缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案、**锚点**（捏合钉指针底下那一刻、工具栏钉播放头，滚动视图只从 `TimelineScrollGeometry` 拿、`keepAnchored` 同一拍挪 + 下一轮补挪）、**纵向缩放**（⌥ 捏合 / ⌥ + Ctrl + 滚轮 / ⌘↓ ⌘↑，视频和音频轨统一成一个高度、细行不变、按行认锚点）、人工回归清单。
 - [时间线上的复制 / 剪切 / 粘贴](docs/architecture/timeline-clipboard.md) — 能拷什么（标记、转场跟着段走）、入口（编辑菜单在响应链末端、右键菜单是函数不是视图）、系统剪贴板一套自己的类型且不写纯文本（滤镜那套并进来了）、落点鼠标优先否则播放头（右键菜单用右键按下的那一处）、换新身份走编码往返、各类落到哪（剪辑整组同轨、撞上往上抬、画面组上下关系不变；文字 / 滤镜往上找空的；字幕句按指着的轨）、粘完选中且一步撤销、剪切 = 拷贝 + ⌫、人工回归清单。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
