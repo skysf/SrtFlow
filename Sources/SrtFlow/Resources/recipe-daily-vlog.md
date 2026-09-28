@@ -33,8 +33,8 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and cafÃ
 
 - Music: light â€” find_audio "bright", "hopeful" or "guitar". The library has few upbeat tracks: if nothing fits, keep the
   original sound and tell the user they can give you a track of their own. Under talking, the music goes down.
-- Voice: usually none (the real sound is the charm of a vlog). For a voiceover, voice zh_female_warm or
-  en_female_warm at speed 1.05.
+- Voice: usually none (the real sound is the charm of a vlog). For a voiceover, add_voiceover with zh_female_warm or
+  en_female_warm at speed 1.05, subtitles true.
 
 ## Checklist before export
 

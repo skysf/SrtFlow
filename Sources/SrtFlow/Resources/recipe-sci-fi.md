@@ -37,8 +37,8 @@ use_for: Tech products, AI and future topics, space, cyberpunk cities, game prom
 ## Sound
 
 - Music: find_audio "space", "electronic", "synth", "dark" or "tense".
-- Voice: zh_male_steady or en_male_steady (or zh_female_warm / en_female_warm) at speed 1.0. For an on-board-computer
-  feel, give the voice the radio sound scene (edit_clip sound_scene kind radio).
+- Voice: add_voiceover with zh_male_steady or en_male_steady (or zh_female_warm / en_female_warm) at speed 1.0, subtitles
+  true. For an on-board-computer feel, give the voice clips the radio sound scene (edit_clip sound_scene kind radio).
 
 ## Checklist before export
 

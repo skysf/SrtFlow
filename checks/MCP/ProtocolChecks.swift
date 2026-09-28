@@ -125,6 +125,7 @@ func runProtocolChecks() {
     // 套路由 AI 自己挑（方案第 39 条）：剪整片之前先读 recipes、挑一套告诉用户；用户想留下一种风格时用 save_recipe。
     check(instructions.contains("recipes") && instructions.contains("save_recipe") && instructions.contains("which one you follow"),
           "instructions send the AI to the recipes before editing a whole video (block 5)")
+    check(instructions.contains("add_voiceover"), "instructions say narration is spoken with add_voiceover")
 
     // 2. 工具清单：和 MCPToolName 一一对应、顺序一致、每个都有说明和对象型的参数表。
     let tools = reply(messages, id: 2)?["result"]?["tools"]?.arrayValue ?? []

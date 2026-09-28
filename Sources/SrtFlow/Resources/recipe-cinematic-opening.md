@@ -38,7 +38,7 @@ use_for: The opening of a short film or travel film, a trailer feel, a portfolio
 
 - Music: epic and emotional — find_audio "epic", "trailer", "opening", "orchestral" or "emotional". It starts with the video,
   the title sits on a strong beat, and it fades out over 2–3 s at the end.
-- Voice: usually none. For a narration, voice zh_male_steady or en_male_steady at speed 0.9, short sentences with
+- Voice: usually none. For a narration, add_voiceover with zh_male_steady or en_male_steady at speed 0.9, short sentences with
   1–2 s between them.
 
 ## Checklist before export

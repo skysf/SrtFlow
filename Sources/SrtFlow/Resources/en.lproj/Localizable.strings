@@ -932,6 +932,7 @@
 "Hide this bar" = "Hide this bar";
 "Exports" = "Exports";
 "Projects" = "Projects";
+"Voiceovers" = "Voiceovers";
 "AI" = "AI";
 "Let AI apps such as Claude and Codex edit videos in SrtFlow. You watch every step in the editor, and Command-Z undoes any of it." = "Let AI apps such as Claude and Codex edit videos in SrtFlow. You watch every step in the editor, and Command-Z undoes any of it.";
 "This copy of SrtFlow has no AI helper inside, so AI apps cannot connect to it." = "This copy of SrtFlow has no AI helper inside, so AI apps cannot connect to it.";

@@ -30,6 +30,7 @@
 #  19. 剪辑套路（recipes / save_recipe）：配方卡的格式、合并与查找、存一套 / 删一套、工具的结果；五张内置卡都在，
 #      卡里提到的工具名、参数名、选项值都存在。
 #  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
+#  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -73,7 +74,7 @@ if [ "$(grep -cE 'return try AIUndoGrouping\.step\(undo\) \{ try AIClipTools\.ap
   echo "✗ ${ROUTER} 里 edit_clip 的提交没包在 AIUndoGrouping.step 里" >&2
   exit 1
 fi
-for tool in AISpeechCutTool AIBeatCutTool; do
+for tool in AISpeechCutTool AIBeatCutTool AIVoiceoverTool; do
   if [ "$(grep -cE "return try AIUndoGrouping\\.step\\(undo\\) \\{ try ${tool}\\.apply\\(plan, project\\) \\}" "${ROUTER}" || true)" -ne 1 ]; then
     echo "✗ ${ROUTER} 里 ${tool} 的提交没包在 AIUndoGrouping.step 里" >&2
     exit 1
@@ -118,7 +119,7 @@ if grep -nE '^ +perform\(rebuildsPreview: false\) \{ \$0\.remove\(clipID\) \}' S
   echo "✗ 静帧转换失败删占位块的 perform 没包在 AIUndoGrouping.step 里（异步落账）" >&2
   exit 1
 fi
-echo "   ✓ 11 个同步的改动工具 + edit_clip / cut_speech / cut_to_beat / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
+echo "   ✓ 11 个同步的改动工具 + edit_clip / cut_speech / cut_to_beat / add_voiceover / freeze_frame 的提交 + add_clips（连同挂字幕）都各是一步；生成字幕、翻译写回、"
 echo "     删占位块这些异步落账也各是一步；没人手动关撤销组"
 
 echo "==> 看得见：窗口只在一轮开始时摆到前面"
@@ -310,6 +311,10 @@ xcrun swiftc \
   Sources/SrtFlow/AIRecipe.swift \
   Sources/SrtFlow/AIRecipeStore.swift \
   Sources/SrtFlow/AIRecipeTools.swift \
+  Sources/SrtFlow/AIVoiceChoice.swift \
+  Sources/SrtFlow/AIVoiceWords.swift \
+  Sources/SrtFlow/AIVoiceoverPlacement.swift \
+  Sources/SrtFlow/AIVoiceoverSubtitles.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
   Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \
@@ -376,6 +381,7 @@ xcrun swiftc \
   checks/MCP/ShapeChecks.swift \
   checks/MCP/TextPartChecks.swift \
   checks/MCP/RecipeChecks.swift \
+  checks/MCP/VoiceChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \
   checks/MCP/EncodeChecks.swift \

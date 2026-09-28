@@ -41,7 +41,7 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Music: bright and light — find_audio "bright", "hopeful" or "electronic". The library has few upbeat tracks: if nothing
   fits, use no music and tell the user they can give you a track of their own.
 - Voice: when someone talks on camera, use their voice. Only a video of product shots without speech gets a voiceover:
-  voice zh_female_lively or en_female_lively at speed 1.1.
+  add_voiceover with zh_female_lively or en_female_lively at speed 1.1, subtitles true.
 
 ## When the product is a course
 

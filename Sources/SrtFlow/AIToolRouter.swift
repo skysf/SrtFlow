@@ -101,6 +101,10 @@ final class AIToolRouter {
         case .look: return try await AILookTool.look(args, project)
         case .listen: return try await AIListenTool.listen(args, project)
         case .findAudio: return try await AIAudioLibraryTools.findAudio(args)
+        case .addVoiceover:
+            // 先合成（要 await），再把同步的提交包起来（同 edit_clip）。
+            let plan = try await AIVoiceoverTool.plan(args, project)
+            return try AIUndoGrouping.step(undo) { try AIVoiceoverTool.apply(plan, project) }
         case .transcribe:
             guard #available(macOS 26.0, *) else { throw AIToolError("Transcribing speech needs macOS 26 or later on this Mac.") }
             return try await AITranscribeTool.transcribe(args, project)
@@ -160,7 +164,7 @@ final class AIToolRouter {
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
-            case .openProject, .newProject, .undo, .addClips, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
+            case .openProject, .newProject, .undo, .addClips, .addVoiceover, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
                  .duplicateItems, .freezeFrame, .cutSpeech, .cutToBeat,
                  .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
                  .editSubtitles:

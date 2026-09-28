@@ -29,6 +29,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case listen = "listen"
     case transcribe = "transcribe"
     case findAudio = "find_audio"
+    case addVoiceover = "add_voiceover"
     case addClips = "add_clips"
     case editClip = "edit_clip"
     case setKeyframes = "set_keyframes"
@@ -68,7 +69,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
             return MCPTimelineTools.definition(for: self)
         case .look, .listen:
             return MCPSenseTools.definition(for: self)
-        case .findAudio:
+        case .findAudio, .addVoiceover:
             return MCPMediaTools.definition(for: self)
         case .recipes, .saveRecipe:
             return MCPRecipeTools.definition(for: self)

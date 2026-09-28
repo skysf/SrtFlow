@@ -932,6 +932,7 @@
 "Hide this bar" = "收起这一条";
 "Exports" = "导出";
 "Projects" = "工程";
+"Voiceovers" = "配音";
 "AI" = "AI";
 "Let AI apps such as Claude and Codex edit videos in SrtFlow. You watch every step in the editor, and Command-Z undoes any of it." = "让 Claude、Codex 这类 AI 直接在 SrtFlow 里剪视频。每一步都能在剪辑页里看到，⌘Z 随时撤回。";
 "This copy of SrtFlow has no AI helper inside, so AI apps cannot connect to it." = "这份 SrtFlow 里没有 AI 小程序，AI 应用连不上它。";
