@@ -3,7 +3,7 @@ import Foundation
 
 // MARK: - edit_clip 里和画面有关的参数（纯值）
 //
-// 管什么：fit / focus / focus_x / focus_y / crop / remove_black_bars / x / y / scale 读成类型，互相冲突的组合
+// 管什么：fit / focus / focus_x / focus_y / follow / crop / remove_black_bars / x / y / scale 读成类型，互相冲突的组合
 // 当场挡掉（fit 和 x/y/scale 不能一起给、focus 只跟 fit=fill 走、手动裁切和去黑边二选一）。纯值，自检够得着
 // （scripts/check-mcp.sh）。
 // 不管什么：按这些参数算裁切和摆放（AIFrameFit）、去看画面（AIClipTools）。
@@ -25,6 +25,8 @@ struct AIFramingRequest {
     var x: Double?
     var y: Double?
     var scale: Double?
+    /// 铺满、对准主体时，主体走动大就用位置关键帧跟着走（默认开，第四块）；false = 一个固定的窗。
+    var follow = true
 
     var touchesPicture: Bool {
         fit != nil || crop != nil || removeBlackBars || x != nil || y != nil || scale != nil
@@ -61,6 +63,10 @@ struct AIFramingRequest {
         }
         if focusPoint != nil || namedFocus != nil, fit != .fill {
             throw AIToolError("focus, focus_x and focus_y only apply with fit=fill.")
+        }
+        if let wanted = try args.bool("follow") {
+            guard fit == .fill else { throw AIToolError("follow only applies with fit=fill.") }
+            follow = wanted
         }
         if let scale, !(0.05...6).contains(scale) { throw AIToolError("scale must be between 0.05 and 6.") }
     }

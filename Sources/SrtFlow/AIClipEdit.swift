@@ -64,7 +64,7 @@ enum AIClipEdit {
         if let hidden = change.hidden { updated.isHidden = hidden }
         if let fadeIn = change.fadeIn { updated.fadeInDuration = max(0, fadeIn) }
         if let fadeOut = change.fadeOut { updated.fadeOutDuration = max(0, fadeOut) }
-        if let framing = change.framing { try applyFraming(framing, to: &updated) }
+        if let framing = change.framing { try applyFraming(framing, to: &updated, frameRate: original.frameRate) }
 
         let destination = try destinationSlot(change.target, from: location.track, clip: clip)
         var state = original
@@ -127,11 +127,20 @@ enum AIClipEdit {
         clip.sourceDuration = newOut - newIn
     }
 
-    /// 裁切 + 摆放。位置 / 大小做了关键帧动画的段不改：静态摆放会被关键帧盖掉，AI 以为改了其实没变。
-    private static func applyFraming(_ framing: AIFrameFit.Framing, to clip: inout EditClip) throws {
+    /// 裁切 + 摆放。铺满（`replacesMotion`）换掉原有的位置 / 大小关键帧、跟拍的写上新的；别的放法遇到位置 / 大小
+    /// 做了关键帧动画的段不改：静态摆放会被关键帧盖掉，AI 以为改了其实没变。
+    private static func applyFraming(_ framing: AIFrameFit.Framing, to clip: inout EditClip, frameRate: ProjectFrameRate) throws {
         guard !clip.isAudioOnly else { throw AIToolError("An audio clip has no picture to crop or place.") }
-        if let animation = clip.animation,
-           !(animation.centerX.isEmpty && animation.centerY.isEmpty && animation.width.isEmpty && animation.height.isEmpty) {
+        if framing.replacesMotion {
+            if var animation = clip.animation {
+                animation.centerX = KeyframeTrack()
+                animation.centerY = KeyframeTrack()
+                animation.width = KeyframeTrack()
+                animation.height = KeyframeTrack()
+                clip.animation = animation.isEmpty ? nil : animation
+            }
+        } else if let animation = clip.animation,
+                  !(animation.centerX.isEmpty && animation.centerY.isEmpty && animation.width.isEmpty && animation.height.isEmpty) {
             throw AIToolError(
                 "This clip's position or size is animated with keyframes, so SrtFlow cannot place it from here. "
                 + "Ask the user to remove the Position and Scale keyframes in the inspector first."
@@ -139,6 +148,14 @@ enum AIClipEdit {
         }
         clip.crop = framing.crop
         clip.placement = framing.placement
+        guard !framing.follow.isEmpty else { return }
+        var animation = clip.animation ?? ClipAnimation()
+        let tolerance = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
+        for point in framing.follow {
+            animation.centerX.set(Double(point.center.x), atSourceTime: point.time, tolerance: tolerance)
+            animation.centerY.set(Double(point.center.y), atSourceTime: point.time, tolerance: tolerance)
+        }
+        clip.animation = animation
     }
 
     private static func destinationSlot(_ target: TrackDropTarget?, from current: TrackSlot, clip: EditClip) throws -> TrackSlot? {

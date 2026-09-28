@@ -307,6 +307,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \
   Sources/SrtFlow/AIFrameFit.swift \
+  Sources/SrtFlow/AIFollowSubject.swift \
+  Sources/SrtFlow/AIShotDetector.swift \
   Sources/SrtFlow/AIFramingRequest.swift \
   Sources/SrtFlow/AIClipDetails.swift \
   Sources/SrtFlow/AITrackSettings.swift \
@@ -352,9 +354,11 @@ xcrun swiftc \
   checks/MCP/LanguageChecks.swift \
   checks/MCP/FolderChecks.swift \
   checks/MCP/FramingChecks.swift \
+  checks/MCP/FollowChecks.swift \
   checks/MCP/BlackBarChecks.swift \
   checks/MCP/SubjectChecks.swift \
   checks/MCP/LookChecks.swift \
+  checks/MCP/ShotChecks.swift \
   checks/MCP/ListenChecks.swift \
   checks/MCP/TextDecodingChecks.swift \
   checks/MCP/DocumentChecks.swift \

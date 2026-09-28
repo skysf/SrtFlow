@@ -57,12 +57,14 @@ enum AIClipTools {
             }
             let crop = chosenCrop(request, usable: usable)
             var focus = request.focusPoint
+            var followed: AIFrameFit.Framing?
             if request.fit == .fill, focus == nil, request.focus == .subject,
-               let found = await subjectFocus(clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil)) {
+               let found = await subjectFocus(clip, canvas: canvas, active: AIFrameFit.region(of: crop ?? nil), follow: request.follow) {
                 focus = found.point
+                followed = found.followed
                 plan.findings["subject"] = found.json
             }
-            plan.change.framing = try framing(request, clip: clip, canvas: canvas, crop: crop, focus: focus)
+            plan.change.framing = try followed ?? framing(request, clip: clip, canvas: canvas, crop: crop, focus: focus)
         }
         return plan
     }
@@ -125,16 +127,26 @@ enum AIClipTools {
             ?? usable.map { AIFrameFit.crop(keeping: $0) }
     }
 
-    /// 铺满时对准的主体。不用裁（素材和画布同比例）就不去认；认不出来时写一句「照正中铺」、点是正中。
+    /// 铺满时对准的主体；主体走动大、`follow` 开着就跟着走（`followed`：带位置关键帧的放法，第四块）。
+    /// 不用裁（素材和画布同比例）就不去认；认不出来时写一句「照正中铺」、点是正中。
     private static func subjectFocus(
-        _ clip: EditClip, canvas: CGSize, active: CGRect
-    ) async -> (point: CGPoint, json: JSONValue)? {
+        _ clip: EditClip, canvas: CGSize, active: CGRect, follow: Bool
+    ) async -> (point: CGPoint, json: JSONValue, followed: AIFrameFit.Framing?)? {
         guard let display = clip.info?.displaySize else { return nil }
         let centre = CGPoint(x: active.midX, y: active.midY)
         let window = AIFrameFit.fillWindow(display: display, canvas: canvas, active: active, focus: centre)
         guard abs(window.width - active.width) > 0.001 || abs(window.height - active.height) > 0.001 else { return nil }
-        let subject = await AIPictureProbe.subject(of: clip, window: window.size)
-        return (subject?.point ?? centre, AIPictureProbe.json(subject, window: window.size))
+        let samples = await AIPictureProbe.subjectSamples(of: clip)
+        let subject = AISubjectFocus.combine(samples.map(\.findings), window: window.size)
+        var followed: AIFrameFit.Framing?
+        if follow, !clip.isStillImage {
+            let targets = AIFollowSubject.targets(samples, window: window.size)
+            if AIFollowSubject.needsFollow(targets, window: window.size) {
+                followed = AIFollowSubject.framing(AIFollowSubject.path(targets, window: window.size, active: active), window: window.size)
+            }
+        }
+        let json = AIPictureProbe.json(subject, window: window.size, followKeyframes: followed.map { $0.follow.count })
+        return (subject?.point ?? centre, json, followed)
     }
 
     /// 按 AI 说的算出裁切和摆放。`crop` 见 `chosenCrop`；`focus` 是铺满时窗对准的点（nil = 可用区域的正中）。

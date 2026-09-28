@@ -23,6 +23,10 @@ enum AIFrameFit {
     struct Framing: Equatable {
         var crop: ClipCrop?
         var placement: ClipPlacement?
+        /// 铺满：换掉这一段原有的位置 / 大小关键帧（铺满就是要定位置；不换的话关键帧盖过静态摆放，窗就不对了）。
+        var replacesMotion = false
+        /// 跟拍：摆放框中心在这几个源时刻的位置，写成位置关键帧（AIFollowSubject）；空 = 固定的窗。
+        var follow: [AIFollowSubject.Point] = []
     }
 
     /// 源画面上的整幅（归一化，左上原点）。
@@ -72,7 +76,7 @@ enum AIFrameFit {
         let placement = PlacementDefault.normalized(
             ClipPlacement(frame: frame, in: canvas), fallback: cropped.defaultPlacement(canvas: canvas), canvas: canvas
         )
-        return Framing(crop: crop, placement: placement)
+        return Framing(crop: crop, placement: placement, replacesMotion: true)
     }
 
     /// 铺满用的那扇窗（归一化）：和画布同比例、在 `active` 里尽量大，中心尽量对准 `focus`，出不了 `active`。
