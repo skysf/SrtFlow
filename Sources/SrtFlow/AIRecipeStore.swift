@@ -1,15 +1,15 @@
 import Foundation
 
-// MARK: - 剪辑套路：从哪读、往哪写
+// MARK: - 剪辑风格：从哪读、往哪写
 //
-// 管什么：内置的五张从 App 资源里读（recipe-*.md，外加所有套路共用的那段规矩 recipes-shared-rules.md）；用户的存在
+// 管什么：内置的五张从 App 资源里读（recipe-*.md，外加所有剪辑风格共用的那段规矩 recipes-shared-rules.md）；用户的存在
 // `~/Library/Application Support/SrtFlow/Recipes/`，一套一个 .md（方案第 41 条：测试版和正式版共用，同音乐库缓存）。
 // 存一套（`save`）：同名 = 改这一套，旧的那份先挪走（默认进废纸篓，找得回来）再写新的；和内置的同名 = 用户改过的
 // 那一版（同一个 id）。删一套也是进废纸篓。设置 → AI 里的列表订阅 `AIRecipeLibrary`。
 // 不管什么：卡的格式和合并规则（AIRecipe / AIRecipeCatalog）、给 AI 的工具（AIRecipeTools）。
 
 struct AIRecipeStore: Sendable {
-    /// 用户的套路放在这里。
+    /// 用户的剪辑风格放在这里。
     let directory: URL
     /// 旧版本怎么挪走：App 里进废纸篓；自检换成挪进一个临时文件夹，不去碰真的废纸篓。
     var retire: @Sendable (URL) throws -> URL? = { url in
@@ -27,7 +27,7 @@ struct AIRecipeStore: Sendable {
 
     // MARK: 读
 
-    /// 用户的套路（文件夹里每个 .md；读不了、正文空的跳过）。
+    /// 用户的剪辑风格（文件夹里每个 .md；读不了、正文空的跳过）。
     func userRecipes() -> [AIRecipe] {
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
         return files.filter { $0.pathExtension.lowercased() == "md" }
@@ -66,7 +66,7 @@ struct AIRecipeStore: Sendable {
         var previousVersion: URL?
     }
 
-    /// 存一套。`catalog` 是存之前的全部套路：名字撞上用户的就改那一套、撞上内置的就成了用户改过的那一版。
+    /// 存一套。`catalog` 是存之前的全部剪辑风格：名字撞上用户的就改那一套、撞上内置的就成了用户改过的那一版。
     func save(name: String, useFor: String, body: String, catalog: AIRecipeCatalog) throws -> SaveResult {
         let trimmedBody = body.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedBody.isEmpty else { throw AIToolError("text is empty: write the whole recipe.") }
@@ -117,7 +117,7 @@ enum AIBuiltInRecipes {
         return []
     }
 
-    /// 所有套路共用的那段规矩（读一套全文时接在后面）。
+    /// 所有剪辑风格共用的那段规矩（读一套全文时接在后面）。
     static func sharedRules(from directories: [URL] = resourceDirectories) -> String {
         for directory in directories {
             let url = directory.appendingPathComponent("recipes-shared-rules.md")

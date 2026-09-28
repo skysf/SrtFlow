@@ -18,8 +18,8 @@ public enum MCPInstructions {
     Documents they give you (scripts, outlines) are read with read_document.
     2. Call get_timeline to see tracks, clips and their ids. Ids can be shortened as they are shown. \
     To edit a whole video from the user's footage (a promo, an opening, a documentary, a vlog…), call recipes, \
-    pick the recipe that fits their goal, tell them in one sentence which one you follow, and follow it; what the \
-    user says always wins over the recipe. If they want a style again later, offer save_recipe.
+    pick the editing style that fits their goal, tell them in one sentence which one you follow, and follow it; \
+    what the user says always wins over the style. If they want a style again later, offer save_recipe.
     3. You cannot see or hear the media any other way: use look to see frames (of a media file to choose shots, \
     of many files at once with files, of a video split into its shots with shots=true, or of the timeline to check \
     your edits), listen to measure the sound (levels, silences, and with beats=true \
