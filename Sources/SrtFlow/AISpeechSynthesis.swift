@@ -4,7 +4,7 @@ import SrtFlowCore
 
 // MARK: - 用这台 Mac 的声音读一句（macOS 配音，方案第 43 条）
 //
-// 管什么：`AVSpeechSynthesizer.write` 把一句话读成 PCM（不出声），存成 .m4a（AIAudioFileWriter，和本机模型配音同一份）；读的时候每个词报一个标记，
+// 管什么：`AVSpeechSynthesizer.write` 把一句话读成 PCM（不出声），过一道音量存成 .m4a（AIAudioFileWriter，和本机模型配音同一份）；读的时候每个词报一个标记，
 // 换成带时间的词（AIVoiceWords），字幕按它对上，不用再转写。以及列出这台 Mac 装了哪些声音。
 // 不管什么：挑哪个声音（AIVoiceChoice）、文件放哪 / 放上时间线（AIVoiceoverTool）。
 //
@@ -86,8 +86,7 @@ final class AISpeechSynthesis: NSObject, AVSpeechSynthesizerDelegate {
         guard let format = buffers.first?.format, format.sampleRate > 0 else {
             throw AIToolError("The voice \(choice.name) produced no sound for this line.")
         }
-        let samples = monoSamples()
-        try AIAudioFileWriter.writeM4A(samples: samples, sampleRate: format.sampleRate, to: url)
+        let samples = try AIAudioFileWriter.writeVoiceover(monoSamples(), sampleRate: format.sampleRate, to: url)
         let words = AIVoiceWords.words(text: text, markers: markers, samples: samples, sampleRate: format.sampleRate)
         return Output(url: url, duration: Double(samples.count) / format.sampleRate, words: words)
     }

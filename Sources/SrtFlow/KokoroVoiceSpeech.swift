@@ -5,7 +5,7 @@ import SrtFlowKokoro
 //
 // 管什么：模型只在 `MediaReadQueue.voice` 这一条队列上加载、推理（CoreML 的推理卡线程，不进协作线程池；模型不同时跑两次）；
 // 一句旁白先按句切（KokoroVoicePieces），token 超了或者声音超 5 秒就再切，一段段读完按字的时刻裁好拼起来
-// （KokoroVoiceAssembly），词的时间走和 macOS 配音同一条路（AIVoiceWords），存成 .m4a（AIAudioFileWriter）。
+// （KokoroVoiceAssembly），过一道音量存成 .m4a（AIAudioFileWriter），词的时间走和 macOS 配音同一条路（AIVoiceWords）。
 // 闲置两分钟卸掉模型（它常驻 300 多 MB）。
 // 不管什么：模型下没下、在哪（KokoroVoicePack）、挑哪个音色（AIVoiceChoice）。
 
@@ -41,9 +41,9 @@ final class KokoroVoiceSpeech {
             } }
         }
         scheduleUnload()
-        let (samples, markers) = try rendered.get()
+        let (raw, markers) = try rendered.get()
         let rate = Double(KokoroEngine.sampleRate)
-        try AIAudioFileWriter.writeM4A(samples: samples, sampleRate: rate, to: url)
+        let samples = try AIAudioFileWriter.writeVoiceover(raw, sampleRate: rate, to: url)
         let words = AIVoiceWords.words(text: text, markers: markers, samples: samples, sampleRate: rate)
         return AISpeechSynthesis.Output(url: url, duration: Double(samples.count) / rate, words: words)
     }

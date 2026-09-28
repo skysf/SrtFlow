@@ -30,7 +30,8 @@
 #  19. 剪辑风格（recipes / save_recipe）：配方卡的格式、合并与查找、存一套 / 删一套、工具的结果；五张内置卡都在，
 #      卡里提到的工具名、参数名、选项值都存在。
 #  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
-#  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）。
+#  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）；
+#      配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、说话部分同一个响度），两种声音都只经一处写文件（扫描）。
 #  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、切段、拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
 #
 # 用法：
@@ -251,6 +252,18 @@ for wiring in "Sources/SrtFlow/AIExportTools.swift:1" "Sources/SrtFlow/AIProject
 done
 echo "   ✓ 只有删文件和读别处的文件会问；读过的文件夹记住；导出、新建、另存撞名都加编号"
 
+echo "==> 配音只经一处写文件（先过一道音量）"
+# Kokoro 的 am_fenrir 峰值会超过满幅，没过音量就写进文件，一声声爆音（docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md）。
+# 两种声音都只许经 AIAudioFileWriter.writeVoiceover 落盘、词的时间按它返回的那份算；写的那一步在自检二进制里真写真读。
+for engine in Sources/SrtFlow/KokoroVoiceSpeech.swift Sources/SrtFlow/AISpeechSynthesis.swift; do
+  if [ "$(grep -c 'let samples = try AIAudioFileWriter.writeVoiceover(' "${engine}" || true)" -ne 1 ] \
+     || [ "$(grep -c 'AVAudioFile(forWriting' "${engine}" || true)" -ne 0 ]; then
+    echo "✗ ${engine} 没经 AIAudioFileWriter.writeVoiceover 写配音（或自己开了文件写）：没过音量的声音会削波" >&2
+    exit 1
+  fi
+done
+echo "   ✓ Kokoro 和 macOS 的声音都经 writeVoiceover 写文件"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -319,6 +332,8 @@ xcrun swiftc \
   Sources/SrtFlow/KokoroVoiceAssembly.swift \
   Sources/SrtFlow/KokoroVoiceManifest.swift \
   Sources/SrtFlow/AIVoiceWords.swift \
+  Sources/SrtFlow/AIVoiceLevel.swift \
+  Sources/SrtFlow/AIAudioFileWriter.swift \
   Sources/SrtFlow/AIVoiceoverPlacement.swift \
   Sources/SrtFlow/AIVoiceoverSubtitles.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
@@ -388,6 +403,7 @@ xcrun swiftc \
   checks/MCP/TextPartChecks.swift \
   checks/MCP/RecipeChecks.swift \
   checks/MCP/VoiceChecks.swift \
+  checks/MCP/VoiceLevelChecks.swift \
   checks/MCP/KokoroChecks.swift \
   checks/MCP/DuplicateChecks.swift \
   checks/MCP/MusicLibraryChecks.swift \
