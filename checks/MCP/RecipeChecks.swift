@@ -116,6 +116,15 @@ private func builtInChecks() {
         let unknown = identifiers(in: text).filter { !known.contains($0) }
         check(unknown.isEmpty, "\(name) mentions names SrtFlow's tools do not have: \(unknown.sorted())")
     }
+    // generate_media 只有填了 fal Key 才在工具清单里，卡却一直读得到：提到它的地方必须是条件句（2026-09-29 用户拍板）。
+    check(shared.contains("If generate_media is among your tools"), "the shared rules teach generate_media as a conditional")
+    check(shared.contains("waiting_for_user") && shared.contains("estimated_cost_usd") && shared.contains("480p"),
+          "the shared rules cover the banner question, the estimate and 480p drafts")
+    for recipe in builtIn where recipe.body.contains("generate_media") {
+        check(recipe.body.contains("only if generate_media is among your tools"),
+              "\(recipe.id) mentions generate_media only under the condition that it exists")
+    }
+    check(builtIn.allSatisfy { $0.body.contains("generate_media") }, "every card says what generate_media may add for its style")
 }
 
 /// 工具名、所有参数名（整份工具清单里的 properties）、选项词表里的值，外加 AI 能在结果里读到的几个字段名。
@@ -138,6 +147,9 @@ private func knownNames() -> Set<String> {
         + MCPVocabulary.numberStyles + MCPVocabulary.voiceRoles + MCPVocabulary.textPositions + MCPVocabulary.subtitlePositions)
     names.insert("music_credits")  // get_timeline 的结果里的字段
     names.insert("lines_with_word_times")  // get_subtitles 的结果里的字段
+    // generate_media（只有填了 fal Key 才在清单里，但 listJSON 是配好时的全份）的词表和结果字段：卡里提到它们时要对得上。
+    names.formUnion(MCPVocabulary.generationKinds + MCPVocabulary.videoResolutions + MCPVocabulary.generationAspects)
+    names.formUnion(["estimated_cost_usd", "cost_usd", "waiting_for_user", "job_id"])
     return names
 }
 

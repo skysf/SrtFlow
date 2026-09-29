@@ -20,6 +20,9 @@ enum AITimelineSummary {
         var playhead: Double
         var selection: [UUID]
         var renderSize: CGSize
+        /// 开着的工程文件名（没存过是 nil）。几个 AI 会话连着同一个 App 时，谁刚换了工程一眼能看出来
+        /// （2026-09-29 婚礼工程 BUG-05：打开 B、看到的却是 C）。
+        var project: String? = nil
     }
 
     static func make(_ state: TimelineState, _ context: Context) -> JSONValue {
@@ -44,6 +47,7 @@ enum AITimelineSummary {
             "filters": .array(state.filters.map { filter($0, context) }),
             "subtitles": subtitles(state)
         ]
+        result["project"] = .string(context.project ?? "unsaved")
         if abs(state.masterVolume - 1) > 0.0001 { result["master_volume_db"] = AITrackSettings.decibels(state.masterVolume) }
         if !state.shapes.isEmpty { result["shapes"] = .array(state.shapes.map { AIShapeChange.summary($0, ids: context.ids) }) }
         if !context.selection.isEmpty {

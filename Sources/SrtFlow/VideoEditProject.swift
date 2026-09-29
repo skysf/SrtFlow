@@ -106,9 +106,9 @@ final class VideoEditProject {
         documentGeneration &+= 1
         for task in importTasks { task.cancel() }
         importTasks.removeAll()
-        // 字幕生成/翻译也绑工程：切走就取消，别让旧任务白跑完整个素材、
-        // 还占着串行槽挡住新工程的生成。取消对空闲任务是无害的 no-op。
-        if #available(macOS 26.0, *) { TranscriptionTask.shared.cancel() }
+        // 字幕生成/翻译也绑工程：切走就取消，别让旧任务白跑完整个素材、还占着串行槽挡住新工程的生成。
+        // AI 的 transcribe 只转文件、不绑工程，不取消（cancelIfBoundToProject 自己判）；对空闲任务是无害的 no-op。
+        if #available(macOS 26.0, *) { TranscriptionTask.shared.cancelIfBoundToProject() }
         if #available(macOS 15.0, *) { TranslationJobCoordinator.shared.cancel() }
     }
 

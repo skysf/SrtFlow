@@ -67,6 +67,14 @@ private func checkKeyframes() {
     try? AIKeyframes.apply(AIKeyframes.Request(position: []), to: &cleared, canvas: canvas, frameRate: .fps30)
     check(cleared.animation == nil, "nothing left: the clip has no animation at all")
 
+    // 关键帧锚在源时间上：换了素材窗口它们就落到段外面，edit_clip 的结果要说出来（2026-09-29 婚礼工程 BUG-03）。
+    check(AIKeyframes.outsideWarning(animated, frameRate: .fps30) == nil, "keys inside the clip: no warning")
+    var moved = animated
+    moved.sourceStart = 37.9
+    let warning = AIKeyframes.outsideWarning(moved, frameRate: .fps30)
+    check(warning?.contains("outside this clip") == true && warning?.contains("set_keyframes") == true,
+          "keys left behind by a new source window are reported with what to do: \(warning ?? "nil")")
+
     checkThrows("a keyframe outside the clip is refused") {
         var copy = clip
         try AIKeyframes.apply(AIKeyframes.Request(rotation: [(time: 30, value: 10)]), to: &copy, canvas: canvas, frameRate: .fps30)

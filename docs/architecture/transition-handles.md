@@ -73,6 +73,15 @@
    段的位置铺的。它自己展开（三个预览入口传进来的是用户那一份），展开只做一次
    （[案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)）。
 
+## 接缝的零头（2026-09-29）
+
+主轨上两段之间**不到 `TimelineState.mainGapTolerance`（0.01 秒）的空隙不算空隙**，两条管线读同一个常量：
+成片的分节不给它补黑场（一直如此），预览把后一段接在前一段真正的末尾上（`VideoEditCompositionBuilder` 主轨循环里的
+`previousMainEnd`）。不这么做的话，前一段收在 19.9598、后一段从 19.96 起，各自截断落在相邻两格，A/B 两条合成轨之间
+空出一格，24 fps 的一帧正好落在里面 —— 接缝上一帧黑，而成片没有。AI 按 `get_timeline` 报出来的三位小数放段、
+变速之后的零头都会留下这种缝；`seamTolerance`（0.02）管的是「这条缝能不能放转场」，是另一个判据。
+案例：[叠化 + 关键帧之后预览全黑](../bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md)。
+
 ## 已知未对齐
 
 余料够、但只从一边借（例如只有出场段有尾料）时，渲染出来的转场窗口整个落在接缝
@@ -89,7 +98,8 @@
 | 成片里定格那一截真的有画面（白→黑、黑→白两组抽帧），总长不变 | `scripts/check-video-fade.sh` 4b-5 |
 | 预览里同一场景、同一时刻、同一个数 | `scripts/check-preview-composition.sh` 定格那一组 |
 | 拖转场卡片的落点（零余料能落、太短不能落、按正在拖的那张卡算） | `scripts/check-timeline-snap.sh` §28 / §30 |
-| 两条管线都在入口展开、定格字段只有展开函数写、两条管线都消费定格 | `checks/transition-handles-wiring.sh` |
+| 两条管线都在入口展开、定格字段只有展开函数写、两条管线都消费定格、接缝的零头两边读同一个常量 | `checks/transition-handles-wiring.sh` |
+| 接缝差 0.2 毫秒时那一格不黑、画面比配乐早收 0.3 毫秒时指令表照样铺满 | `scripts/check-preview-composition.sh` 的 `SliceTicks.swift` |
 
 ### 人工回归清单（发版前实机）
 
