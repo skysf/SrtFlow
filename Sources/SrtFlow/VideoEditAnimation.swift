@@ -72,6 +72,32 @@ struct KeyframeTrack: Hashable, Sendable {
     init(keys: [Keyframe] = []) {
         self.keys = keys.sorted { $0.time < $1.time }
     }
+
+    /// 只留 [from, to] 里的帧，范围外的帧收成两头插值出来的帧：动画在这段里播出来一样，但没有落在范围外的帧
+    /// （给 AI 的接口：报出来的、存下来的都不出段外，见 docs/architecture/keyframe-animation.md「AI 接口」）。
+    func clipped(from: Double, to: Double, tolerance: Double) -> KeyframeTrack {
+        guard let first = keys.first, let last = keys.last, from <= to else { return self }
+        var inside = keys.filter { $0.time >= from - tolerance && $0.time <= to + tolerance }
+        if first.time < from - tolerance, inside.first.map({ abs($0.time - from) >= tolerance }) ?? true,
+           let value = value(atSourceTime: from) {
+            inside.insert(Keyframe(time: from, value: value), at: 0)
+        }
+        if last.time > to + tolerance, inside.last.map({ abs($0.time - to) >= tolerance }) ?? true,
+           let value = value(atSourceTime: to) {
+            inside.append(Keyframe(time: to, value: value))
+        }
+        return KeyframeTrack(keys: inside)
+    }
+
+    /// 时刻从 `old` 等比挪到 `new`（换素材窗口时保住动画的形状：edit_clip 的 keyframes=stretch）。
+    func stretched(from old: ClosedRange<Double>, to new: ClosedRange<Double>) -> KeyframeTrack {
+        let oldSpan = old.upperBound - old.lowerBound
+        let newSpan = new.upperBound - new.lowerBound
+        guard oldSpan > 0.0001 else { return KeyframeTrack(keys: keys.map { Keyframe(time: new.lowerBound, value: $0.value) }) }
+        return KeyframeTrack(keys: keys.map { key in
+            Keyframe(time: new.lowerBound + (key.time - old.lowerBound) / oldSpan * newSpan, value: key.value)
+        })
+    }
 }
 
 /// 一段剪辑的全部动画轨。Position 行写 centerX+centerY，Scale 行写
@@ -87,6 +113,30 @@ struct ClipAnimation: Hashable, Sendable {
     var isEmpty: Bool {
         centerX.isEmpty && centerY.isEmpty && width.isEmpty
             && height.isEmpty && rotation.isEmpty && opacity.isEmpty
+    }
+
+    /// 六条轨一起裁到 [from, to] 里（`KeyframeTrack.clipped`）。
+    func clipped(from: Double, to: Double, tolerance: Double) -> ClipAnimation {
+        var copy = self
+        copy.centerX = centerX.clipped(from: from, to: to, tolerance: tolerance)
+        copy.centerY = centerY.clipped(from: from, to: to, tolerance: tolerance)
+        copy.width = width.clipped(from: from, to: to, tolerance: tolerance)
+        copy.height = height.clipped(from: from, to: to, tolerance: tolerance)
+        copy.rotation = rotation.clipped(from: from, to: to, tolerance: tolerance)
+        copy.opacity = opacity.clipped(from: from, to: to, tolerance: tolerance)
+        return copy
+    }
+
+    /// 六条轨一起从 `old` 等比挪到 `new`（`KeyframeTrack.stretched`）。
+    func stretched(from old: ClosedRange<Double>, to new: ClosedRange<Double>) -> ClipAnimation {
+        var copy = self
+        copy.centerX = centerX.stretched(from: old, to: new)
+        copy.centerY = centerY.stretched(from: old, to: new)
+        copy.width = width.stretched(from: old, to: new)
+        copy.height = height.stretched(from: old, to: new)
+        copy.rotation = rotation.stretched(from: old, to: new)
+        copy.opacity = opacity.stretched(from: old, to: new)
+        return copy
     }
 
     /// 所有轨的关键帧时刻去重升序（时间线块上画菱形、‹ › 跳帧用）。
@@ -106,6 +156,19 @@ struct ClipAnimation: Hashable, Sendable {
 // MARK: - EditClip 的动画取值
 
 extension EditClip {
+    /// 这段用到的素材范围（源秒），关键帧的时间轴。
+    var sourceRange: ClosedRange<Double> { sourceStart...max(sourceStart, sourceStart + sourceDuration) }
+
+    /// 关键帧收进这段用到的范围里（AI 的接口：报出来的、存下来的都不出段外）。空了就是没动画。
+    func clippingAnimation(frameRate: ProjectFrameRate) -> ClipAnimation? {
+        guard let animation, !animation.isEmpty else { return nil }
+        let clipped = animation.clipped(
+            from: sourceRange.lowerBound, to: sourceRange.upperBound,
+            tolerance: KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: speed)
+        )
+        return clipped.isEmpty ? nil : clipped
+    }
+
     /// 时间线时刻 → 源时刻（关键帧的时间轴）。
     func sourceTime(atTimeline time: Double) -> Double {
         sourceStart + (time - timelineStart) * speed

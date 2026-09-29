@@ -90,7 +90,7 @@ public enum MCPSubtitleExportTools {
         "position": MCPSchema.string("Where the subtitles sit.", oneOf: MCPVocabulary.subtitlePositions),
         "margin": MCPSchema.number("Distance from that edge, as a fraction of the frame height (default 0.056).", minimum: 0, maximum: 0.45),
         "size": MCPSchema.number("Font size in pixels on a frame 1080 pixels tall; a 9:16 frame is 1920 tall, so it draws 1.78x larger there (default 56; bold captions 56-64 on 16:9, 42-48 on 9:16).", minimum: 20, maximum: 140),
-        "max_width": MCPSchema.number("Widest a line may be, as a fraction of the frame width; longer lines wrap (default 0.92 on 16:9, 0.74 on 9:16). Project subtitles only.", minimum: 0.3, maximum: 1),
+        "max_width": MCPSchema.number("Widest line as a fraction of the frame width (default 0.92 on 16:9, 0.74 on 9:16); longer lines wrap. Project subtitles only.", minimum: 0.3, maximum: 1),
         "font": MCPSchema.string("Font family installed on this Mac that can burn Chinese or English, e.g. Hiragino Sans GB, Heiti SC, Helvetica Neue."),
         "bold": MCPSchema.boolean("Bold text."),
         "color": MCPSchema.string("Text colour, #RRGGBB."),
@@ -120,8 +120,7 @@ public enum MCPSubtitleExportTools {
             .editSubtitles, title: "Edit subtitles",
             description: """
             Change subtitle lines as one undoable step: edit text or times by id, add new lines, delete lines, or merge \
-            lines (merge keeps their word times; retyping two lines as one loses the times of the words that moved). \
-            Creates the subtitle track if the project has none. style sets how this project's subtitles look (the \
+            lines (merge keeps the word times; retyping loses them). Creates the subtitle track if the project has none. style sets how this project's subtitles look (the \
             user's Burn In Subtitles page keeps its own; own_style in the result turns true once the project has its own \
             look, while the word highlight always belongs to the project). Set it before generate_subtitles or add_voiceover \
             subtitles=true: lines are cut to fit that size. highlight only lights lines SrtFlow made from speech or \
@@ -133,7 +132,7 @@ public enum MCPSubtitleExportTools {
                 "delete": MCPSchema.array(of: MCPSchema.string("Line id."), "Lines to delete."),
                 "merge": MCPSchema.array(
                     of: MCPSchema.array(of: MCPSchema.string("Line id."), "Two or more lines on one track, in order."),
-                    "Groups of lines to join into one line each (text joined with a space, times united, word times kept)."
+                    "Groups of lines to join into one (text, times and word times combined)."
                 ),
                 "style": subtitleStyle
             ])

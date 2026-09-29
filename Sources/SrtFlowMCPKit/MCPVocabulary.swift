@@ -92,6 +92,9 @@ public enum MCPVocabulary {
     /// convert_subtitles 能转成的格式（`SubtitleFormat` 的扩展名）。
     public static let subtitleFormats = ["srt", "vtt", "ass", "ssa", "txt"]
 
+    /// edit_clip 改素材窗口时关键帧怎么办（`AIKeyframePolicy`）。
+    public static let keyframePolicies = ["keep_frames", "stretch", "clear"]
+
     public static var filterPresetIDs: [String] { filterPresets.map(\.id) }
 
     /// 滤镜说明里那一串「名字: 样子」。

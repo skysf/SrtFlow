@@ -212,6 +212,7 @@ private func vocabularyChecks() {
     checkEqual(MCPVocabulary.clipAnimations, ClipPresetKind.allCases.map(\.rawValue), "clip animations match ClipPresetKind")
     checkEqual(MCPVocabulary.soundScenes, ["none"] + SoundSceneKind.allCases.map(\.rawValue), "sound scenes match SoundSceneKind")
     checkEqual(MCPVocabulary.markerColors, MarkerColor.allCases.map(\.rawValue), "marker colours match MarkerColor")
+    checkEqual(MCPVocabulary.keyframePolicies, AIKeyframePolicy.allCases.map(\.rawValue), "keyframe policies match AIKeyframePolicy")
     checkEqual(MCPVocabulary.frameRateLimits, FrameRateLimit.allCases.map { $0.value.map { "\(Int($0))" } ?? "original" },
                "encode frame rates match FrameRateLimit")
     checkEqual(MCPVocabulary.subtitleFormats.sorted(), SubtitleFormat.allCases.map(\.rawValue).sorted(),

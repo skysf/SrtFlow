@@ -42,6 +42,7 @@ enum AIClipTools {
         change.fadeIn = try args.double("fade_in")
         change.fadeOut = try args.double("fade_out")
         change.ripple = try args.bool("ripple") ?? false
+        change.keyframes = try args.choice("keyframes", from: MCPVocabulary.keyframePolicies).flatMap(AIKeyframePolicy.init(rawValue:))
         let canvas = VideoEditCompositionBuilder.renderSize(for: state)
         var plan = Plan(id: id, change: change, canvas: canvas)
         let details = try AIClipDetails(args)
@@ -104,13 +105,16 @@ enum AIClipTools {
             ids: AIShortIDs(state: fresh), workspace: AIWorkspace.shared.current, playhead: project.clock.time,
             selection: [], renderSize: VideoEditCompositionBuilder.renderSize(for: fresh)
         )
-        var summary = AITimelineSummary.clip(clip, next: nil, context).objectValue ?? [:]
+        var summary = AITimelineSummary.clip(clip, next: nil, context, frameRate: fresh.frameRate).objectValue ?? [:]
         summary["track"] = .string(AITrackName.name(of: location.track))
         if !clip.isAudioOnly, plan.change.framing != nil {
             summary["picture"] = AITimelineSummary.picture(clip, canvas: context.renderSize, always: true)
         }
         for (key, value) in plan.findings { summary[key] = value }
-        if let warning = AIKeyframes.outsideWarning(clip, frameRate: fresh.frameRate) { summary["warning"] = .string(warning) }
+        if let old = state.clip(with: plan.id),
+           let note = AIKeyframes.editNote(policy: plan.change.keyframes ?? .keepFrames, old: old, new: clip, frameRate: fresh.frameRate) {
+            summary["keyframes_note"] = .string(note)
+        }
         if !changed { summary["unchanged"] = true }
         return .ok(.object(summary), changed: changed)
     }

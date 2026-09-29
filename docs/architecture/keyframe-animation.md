@@ -31,6 +31,17 @@
 - 删掉某行最后一帧时，把此刻的插值**固化回静态字段** —— 画面不跳。
 - 时间线块底边画菱形（全轨并集），只展示不交互（拖动改帧是下期）。
 
+## AI 接口（2026-09-29，用户拍板：按机器的习惯设计）
+
+存储模型不变（关键帧锚在素材帧上），接口按三条规矩来（[案例](../bugfixes/2026-09-29-keyframes-outside-clip-after-ai-edits.md)）：
+
+- **没有隐藏状态**：`get_timeline` 报的关键帧永远在片段现在的范围里 —— `AIKeyframes.summary` 报的是这段范围里实际播的
+  （`EditClip.clippingAnimation`：范围外的帧收成两头插值出来的帧，`KeyframeTrack.clipped`）；AI 传的时间夹进片段；
+  `split_clip` 两半各只留自己范围里的帧、切点补帧（画面不变）。真人在检查器里裁的段照旧留整条轨，只是报给 AI 时收进范围。
+- **意图用参数说**：`edit_clip keyframes` = `keep_frames`（默认：留在原画面上、窗口外的帧收成两头的值）/ `stretch`
+  （`KeyframeTrack.stretched`，按新窗口等比重排）/ `clear`；结果里 `keyframes_note` 说明发生了什么。速度变了范围不变，三种都原样。
+- **让 AI 少算**：`set_keyframes relative=true`，时间是片段的比例（0 = 第一帧、1 = 最后一帧）。
+
 ## 预览切片（CompositionBuilder）
 
 指令切片边界在原有转场折点之外追加：每个关键帧的时间线时刻；旋转相邻帧
