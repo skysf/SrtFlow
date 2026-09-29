@@ -61,7 +61,7 @@ enum TextDrawing {
         context.setLineCap(.round)
         context.setStrokeColor(cgColor(stroke.color))
         context.setTextDrawingMode(.stroke)
-        glyphs(layout, animation: animation, into: context)
+        glyphs(layout, animation: animation, pass: .stroke, into: context)
         context.restoreGState()
     }
 
@@ -80,7 +80,7 @@ enum TextDrawing {
             context.setAlpha(extraAlpha)
             context.setFillColor(cgColor(color))
             context.setTextDrawingMode(.fill)
-            glyphs(layout, animation: animation, into: context)
+            glyphs(layout, animation: animation, pass: .fill, into: context)
             context.restoreGState()
 
         case .gradient(let from, let to, let angleDegrees):
@@ -115,7 +115,7 @@ enum TextDrawing {
                         context.setAlpha(alpha * extraAlpha)
                         context.setTextDrawingMode(.clip)
                         draw([glyph], offsetY: glyphOffsetY(glyph, perGlyph: perGlyph),
-                             font: layout.font, into: context)
+                             layout: layout, pass: .clip, into: context)
                         paint(gradient, ink: ink, angleDegrees: angleDegrees, into: context)
                         context.restoreGState()
                     }
@@ -126,7 +126,7 @@ enum TextDrawing {
             context.saveGState()
             context.setAlpha(extraAlpha)
             context.setTextDrawingMode(.clip)
-            glyphs(layout, animation: animation, into: context)
+            glyphs(layout, animation: animation, pass: .clip, into: context)
             paint(gradient, ink: ink, angleDegrees: angleDegrees, into: context)
             context.restoreGState()
         }
@@ -134,10 +134,14 @@ enum TextDrawing {
 
     // MARK: - 字形
 
+    /// 这一道在画什么：描边（`.stroke`）、填充（`.fill`）、渐变填充的裁剪（`.clip`）。彩色字形（emoji）没有轮廓：
+    /// 描边那一道跳过，裁剪那一道改成直接实画（渐变刷不进它，emoji 本来就是彩色的）。
+    enum Pass { case stroke, fill, clip }
+
     /// 画字形。没有逐字调制时整行批量喂位置（Core Text 的快路径）；
     /// 有调制时一个字形一次，各带各的不透明度和位移。
     private static func glyphs(
-        _ layout: TextLayout, animation: TextAnimationState, into context: CGContext
+        _ layout: TextLayout, animation: TextAnimationState, pass: Pass, into context: CGContext
     ) {
         // 老虎机优先：数字带自己要按位裁剪，逐字错峰那套（每个字形一个
         // 不透明度）在它上面没有意义 —— 一位数字同时露着两个字形。
@@ -148,7 +152,7 @@ enum TextDrawing {
         }
         guard let perGlyph = animation.perGlyph else {
             for line in layout.lines where !line.glyphs.isEmpty {
-                draw(line.glyphs, offsetY: 0, font: layout.font, into: context)
+                draw(line.glyphs, offsetY: 0, layout: layout, pass: pass, into: context)
             }
             return
         }
@@ -159,7 +163,7 @@ enum TextDrawing {
                 context.saveGState()
                 context.setAlpha(alpha)
                 draw([glyph], offsetY: glyphOffsetY(glyph, perGlyph: perGlyph),
-                     font: layout.font, into: context)
+                     layout: layout, pass: pass, into: context)
                 context.restoreGState()
             }
         }
@@ -183,13 +187,31 @@ enum TextDrawing {
         return -(1 - progress) * perGlyph.riseY
     }
 
+    /// 每个字形用排版时给它的那个字体画（`fontIndex`）：连续同一字体的一批一次喂给 Core Text。
+    /// 拿主字体画回退字体的字形号就是乱码（VideoEditTextLayoutFonts.swift）。
     private static func draw(
-        _ items: [TextLayout.Glyph], offsetY: Double, font: CTFont, into context: CGContext
+        _ items: [TextLayout.Glyph], offsetY: Double, layout: TextLayout, pass: Pass, into context: CGContext
     ) {
-        guard !items.isEmpty else { return }
-        var glyphs = items.map(\.glyph)
-        var positions = items.map { CGPoint(x: $0.position.x, y: $0.position.y + offsetY) }
-        CTFontDrawGlyphs(font, &glyphs, &positions, glyphs.count, context)
+        var start = 0
+        while start < items.count {
+            let fontIndex = items[start].fontIndex
+            var end = start
+            while end < items.count, items[end].fontIndex == fontIndex { end += 1 }
+            let batch = items[start..<end]
+            start = end
+            let isColor = layout.fonts.isColor(fontIndex)
+            if isColor, pass == .stroke { continue }
+            var glyphs = batch.map(\.glyph)
+            var positions = batch.map { CGPoint(x: $0.position.x, y: $0.position.y + offsetY) }
+            if isColor, pass == .clip {
+                // 彩色字形收不成裁剪区（没有轮廓），也刷不上渐变：直接实画它，画完把模式换回裁剪。
+                context.setTextDrawingMode(.fill)
+                CTFontDrawGlyphs(layout.fonts[fontIndex], &glyphs, &positions, glyphs.count, context)
+                context.setTextDrawingMode(.clip)
+                continue
+            }
+            CTFontDrawGlyphs(layout.fonts[fontIndex], &glyphs, &positions, glyphs.count, context)
+        }
     }
 
     // MARK: - 零件
