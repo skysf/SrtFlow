@@ -152,9 +152,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`（含逐词高亮：词对到去完标点的字上、此刻亮哪个、跟着编辑走、按词切段、ASS 标签，`SubtitleWordChecks`）。
 - 生成的字幕长什么样（去标点、断句、一行多长、显示时间、几段素材同时有字只留一条，用例是用户工程里真实转写出来的句子）：
   `SrtFlowCoreChecks` 的 `SubtitlePunctuationChecks` / `SubtitleSegmentationChecks` / `SubtitleSourceOverlapChecks`；
-  藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift` + 扫描守卫）。
+  藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift`）+ 接线扫描 `checks/project-file-wiring.sh`。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
-  `scripts/check-project-file.sh`。
+  `scripts/check-project-file.sh`；这批合同**有没有被生产代码调用**的接线扫描（隐藏清单、调色 / 盖一块 / 形状 / 文字读 `rendered*`、
+  字幕生成的可听快照等）单独成 `checks/project-file-wiring.sh`：秒级、不编译、进第 1 组，**搬代码 / 改名之后先在本地跑它**
+  （原来接在上一个脚本末尾的编译后面，本地跑不到，[PR #84 首跑 CI](docs/bugfixes/2026-09-29-pr84-first-ci-run-wiring-guard-in-moved-code.md) 才红）。
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
   不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许，
   以及卸片之后晚到的时间回调不许把播放头写回旧位置（真播放器、ffmpeg 现做的带声音素材）：
@@ -496,6 +498,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-29 扫画面里的字：字幕带把幻灯片底部居中的标签也框了进去](docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md) — 字幕带的框按所有「下面、正中、会变」的行取，课程录屏里随页换的幻灯片标签也算进去，框从 0.77 起、叫人裁 0.24。拿六节课真跑、逐帧打出来：字幕底边都在同一条线上、每帧都不同，标签位置各异、一页停几帧同一句。改成按底边分堆、不同的字最多那一堆才是字幕（`subtitleLines`），六节课裁 0.11–0.14，和 AI 一段段看完定的对得上。**统计量要挑能把两种东西分开的特征；用真素材打出逐帧数据再定规则。**
 - [2026-09-29 没下载苹方的 Mac 上，拉丁字体的样式烧中文字幕是方框](docs/bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md) — 字幕大小的新自检第一次上 CI 就红：苹方完整版是按需下载的，CI 的机器没下载，CoreText 回退到系统私有的那份（预览照样是中文），libass 用不了、画成方框。回退到的字体文件在私有框架里时，预览和烧录一起换成每台 Mac 都有的冬青黑体（`SubtitleFallbackFont`），烧录在那几个字前面写 `\fn` 点名、和逐词高亮一起写（`SubtitleASSText`，`\r` 之后照样点名）；下载了苹方的 Mac 上什么都不变。**CoreText 找得到不等于 libass 找得到；认「私有」看文件在哪，不看族名。**
 - [2026-09-29 text_scan 的裁切量被幻灯片标题拉大，裁线切进 PDF 页里的一行字](docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md) — 第二轮复查（0.17.5）里测试员照提示裁完，L27 底边留着半行字、L16 幻灯片自己的小字少了半行。L27：某一帧幻灯片的标题恰好贴在字幕上面，被当成两行字幕的上一行，框的上沿被拉到 0.768，这节课字幕框只有十个、10% 分位几乎就是最小值，提示从 0.13 变成 0.14，裁线切进 PDF 页里的一行字；L16 是字幕压在幻灯片自己的字上，裁一条带必然一起裁，改数字没用。上一行改成要每句都换（至少两帧、两句不同）才认，提示补一句「裁的是整条带、裁完抽几帧看」；真素材六节课只有 L27 变（0.14 → 0.13），测试员那一帧半行字变成整行。**分开字幕行和幻灯片字的特征，同样分得开字幕的第二行；样本只有十来个时分位数就是最小值；会破坏内容的补救办法要在提示里说出来。**
+- [2026-09-29 搬走调色代码之后，一条接线守卫还在旧文件里找](docs/bugfixes/2026-09-29-pr84-first-ci-run-wiring-guard-in-moved-code.md) — PR #84 首跑 CI 第 4 组红：给盖一块腾地方把导出的调色搬进 `VideoEditGradeExport.swift`，`check-project-file.sh` 尾部那条「导出的调色读 renderedFilters」还指着旧文件；本机全绿，因为接线守卫接在 25 秒编译的后面、本地只跑秒级扫描守卫时跑不到 —— **和 09-25 的 PR #71 是同一个坑，写进案例的教训没被照做**。把接线守卫拆成秒级的 `checks/project-file-wiring.sh`（进第 1 组）、补了盖一块的三条。**同一个教训撞第二次，就把它变成机制；搬代码也算改接线。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
