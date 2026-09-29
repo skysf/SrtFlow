@@ -152,6 +152,17 @@ enum AITimelineTools {
         }
         let credits = AIMusicCredits.lines(Array(library.values))
         if !credits.isEmpty { result["credits"] = .array(credits.map { .string($0) }) }
+        // 声音比画面长（音乐库的一首不按工程裁短，方案第 23 条）：片长跟着拖长、后面是黑的，说一声（2026-09-29 验收：放上一首
+        // 130 秒的曲子，片长变成 130 秒，AI 过了几步才发现）。
+        let pictureEnd = state.allClips.filter { !$0.isAudioOnly }.map(\.timelineEnd).max() ?? 0
+        let soundEnd = plans.filter(\.isAudio).compactMap { state.clip(with: $0.clip.id)?.timelineEnd }.max() ?? 0
+        if pictureEnd > 0, soundEnd > pictureEnd + 0.5 {
+            result["note"] = .string(String(
+                format: "The sound runs to %.1f s, past the end of the picture at %.1f s, so the video goes on over a black screen: "
+                    + "trim it with edit_clip (end) and fade it out (fade_out), unless you mean to add more picture.",
+                soundEnd, pictureEnd
+            ))
+        }
         return .ok(.object(result), changed: true)
     }
 

@@ -176,7 +176,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 几帧拼成一张（`AIContactSheet`：试每种列数挑最接近 4:3 的、最后一行至少半满、竖画面整张不高过宽的 1.25 倍，
      每格左上角标时刻），JPEG，跟在文字后面作为 MCP 的 `image` 内容回去（`AIToolResult.images`）。一次只回一张：
      几张分开的图每张单算 token。
-   - 每帧的文字（`AIFrameDescription`）：Vision 的标签（前 6 个、把握 ≥ 0.3）、人脸框（大的在前）、人数、主体、
+   - 每帧的文字（`AIFrameDescription`）：Vision 的标签（前 6 个、把握 ≥ 0.3；**只是粗猜**，AI 生成的、少见的画面常认错 ——
+     2026-09-29 验收里潜水员认成水母、冰面航拍认成地图，工具说明叫 AI 以画面为准）、人脸框（大的在前）、人数、主体、
      画面上的字（accurate + 自动判语言，**连同它的框**，最多 6 块）、平均亮度、黑边。看不了图的模型传 `image=false` 只拿文字。
    - 只读：不改工程、不挪播放头、不摆窗口；排队（刚发的改动先做完再看）。
 13. **听（listen，方案第 31 条）**：AI 听不见，就把声音量给它。数据是画波形那一份（`WaveformStore`，一个文件读
@@ -244,6 +245,7 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 23. **音乐库（find_audio、add_clips 的 library_id）**：搜的是音频库那一页同一个函数（`AudioLibraryManifest.filter`：标题、
    艺人、中英文标签，几个词是「与」）；放上时间线和从音频库拖进来一样 —— 下载进缓存、带 `remoteKey`（清了缓存、换了机器
    也找得回来）、时长按清单、**不按工程总长裁短**，落点走 add_clips 那一套（同一个 `AITimelineEdits.place`）。
+   声音比画面长时 add_clips 的结果里带一句（到哪、画面到哪、用 edit_clip 裁短淡出），不然 AI 过几步才发现片尾全黑（2026-09-29 验收：130 秒的曲子把片长拖到 130 秒）。
    署名和署名页同一个口径：句子原样用清单给的 `license.text`，CC0 以外都要署（纯值的 `AIMusicCredits`）；add_clips 的结果、
    get_timeline 的 `music_credits` 都带着，总说明要求 AI 做完告诉用户。get_timeline 里音乐库的段写 `library_id`、不写缓存里的
    路径。清单读失败过就再读一次（`loadIfNeeded` 失败后不会自己重试）；断网用上次的清单并说明。**音效库还没做**：工具说明

@@ -56,7 +56,8 @@ public enum MCPSenseTools {
             over clip_id (default: the playhead). With file: frames of a media file, times in seconds of the file; \
             without times, count frames (default 6) spread over the file or between source_in and source_out. Use it \
             to choose shots before adding them and to check your edits. Several frames come as one picture, each \
-            labelled with its time. Every frame also gets a short description from macOS Vision: what it shows, \
+            labelled with its time. Every frame also gets a short description from macOS Vision: what it shows (rough \
+            guesses that are often wrong for unusual footage: trust the picture), \
             faces [x, y, w, h], people, the main subject, words on screen with their boxes, brightness 0–1 and black \
             bars; on the \
             timeline also which clips, texts and subtitles are on screen. If you cannot see images, pass image=false \
