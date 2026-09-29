@@ -171,7 +171,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
   以及动画的「模型给多少、成片就是多少」、预览上的可点范围、老虎机首帧 / 末帧就是起止值：
   `scripts/check-text-render.sh`。
-- 预览上的字幕和烧出来的一样大（预览那个视图离屏渲一张、照导出那条路真烧一帧比字的外框：几种字体、中文回退、默认样式的粗体、逐词高亮放大）：`scripts/check-subtitle-burn-size.sh`。
+- 预览上的字幕和烧出来的一样大（预览那个视图离屏渲一张、照导出那条路真烧一帧比字的外框：几种字体、字体里没有的字按回退的那一款（韩文，每台 Mac 都有；苹方要下载、CI 上没有）、默认样式的粗体、逐词高亮放大）：`scripts/check-subtitle-burn-size.sh`。
 - `.contentShape` 不许写在 `.offset` / `.rotationEffect` / `.scaleEffect` 之后（几何效果只挪画面、
   不挪布局框，可点范围会留在原位）：`checks/hit-shape-before-offset.sh`。
 - `PreferenceKey.reduce` 不许写成 `value = nextValue()`（兄弟节点的默认值会把量出来的尺寸盖成零）：

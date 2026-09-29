@@ -4,7 +4,7 @@
 # 同一个字号，烧录用的 libass 把它当行高（字体 OS/2 的 usWinAscent + usWinDescent 撑满字号），预览用的 CoreText 把它当
 # em，以前预览一直比成片大 15%–40%（Helvetica 85%、中文回退到苹方 71%）。现在预览按每段字实际用到的字体缩
 # （SubtitleFontScale）。这里拿预览那个视图离屏渲一张，再照导出那条路（BurnInWorkspace + 同一个 subtitles 滤镜）真烧一帧，
-# 量字的高和宽：几种字体、中文回退、逐词高亮放大。
+# 量字的高和宽：几种字体、字体里没有的字按回退的那一款（韩文：苹方是按需下载的，CI 上没有）、默认样式的粗体、逐词高亮放大。
 # 案例：docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md
 #
 # 用法：

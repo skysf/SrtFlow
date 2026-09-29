@@ -54,14 +54,28 @@
 
 - **新自检** `scripts/check-subtitle-burn-size.sh`（第 3 组）：`BurnInSubtitleOverlay` 离屏渲一张，同样的字照导出那条路
   （`BurnInWorkspace` + 同一个 `subtitles=filename=…:fontsdir=…` 滤镜）用 vendor/ffmpeg 真烧一帧，量字的外框。九种：
-  100 号不加粗（Helvetica 英文、Helvetica 里的中文、Avenir Next、黑体、Hiragino 中英混排、逐词高亮放大 1.2 倍）和
-  默认样式（粗体 56 号底部居中：Helvetica 英文、中文回退、Hiragino W6）。修好后字高差 ≤ 1 px、字宽差 ≤ 2 px。
+  100 号不加粗（Helvetica 英文、Avenir Next 里的韩文（回退到 Apple SD Gothic Neo）、Avenir Next、黑体、Hiragino 中英混排、
+  逐词高亮放大 1.2 倍）和默认样式（粗体 56 号底部居中：Helvetica 英文、Avenir Next 粗体里的韩文、Hiragino W6）。修好后字高差
+  ≤ 1 px、字宽差 ≤ 2 px。用户撞上的那一种（Helvetica 里的中文回退到苹方）在本机量过：预览 273 × 66、成片 274 × 66（修之前预览
+  385 × 93）。
+- **CI 第一次跑红了**：自检最初测的就是 Helvetica 里的中文，CI 的机器上成片是 210 × 61 —— 四个方框。苹方完整版是按需下载的字体资源
+  （`/System/Library/AssetsV2/…/PingFang.ttc`），CI 的机器没下载；CoreText 回退到系统私有的那份（`…/Reserved/PingFangUI.ttc`，
+  族名是「.PingFang SC」），预览照样是中文，libass 却找不到能用的字体、画成方框。字号的比较在那儿没有意义，回退改用韩文测
+  （Apple SD Gothic Neo 每台 Mac 都在 `/System/Library/Fonts`，比例 0.833 和 Avenir Next 的 0.732 差一成多：回退的那一截
+  用错比例、不缩都会红）。
 - **反向验证**：比例一律当 1（修之前）→ 19 项红 16 项（黑体两边都是 1.0，照样绿，对的），比如 Helvetica 里的中文预览 93 px 高、
-  成片 66 px；只按常规那一款量、不管粗体 → Hiragino 粗体那一项红（预览 236 px 宽、成片 222 px）。恢复后全过。
+  成片 66 px；只按常规那一款量、不管粗体 → Hiragino 粗体那一项红（预览 236 px 宽、成片 222 px）；回退的那一截按样式字体的比例缩 →
+  两种韩文红（预览 310 px 宽、成片 353 px）。恢复后全过。
 - 第一版只量了常规字体，100 号的六种全过；换成默认样式（粗体）一跑，Hiragino 差 6% —— 所以默认样式单独占了三种。
 - 位置：默认样式（底部居中）预览和成片的字中心差 1–2 px；100 号正中时 Helvetica 英文预览高 8–10 px（libass 按 win 量度摆
   行框、SwiftUI 按 hhea），没改，写进了架构文档的已知差异。
 - 实机：[字幕轨可见性与布局](../architecture/subtitle-track-visibility-and-layout.md) 人工清单里「导出后字号与预览一致」那一条。
+
+## 已知不足
+
+- **没下载苹方的 Mac 上，拉丁字体的样式烧中文字幕会是方框**（CI 的机器就是这样），而预览照样显示中文。用户自己的机器有苹方，没撞上；
+  要修得让烧录在这种情况下也有字（比如给 libass 一个公共的中文字体、预览跟着用同一个），是另一件事，记在
+  [字幕轨可见性与布局](../architecture/subtitle-track-visibility-and-layout.md)「画面上的布局」第 2 条。
 
 ## 教训 / 防回归
 
@@ -70,5 +84,6 @@
 - **「自动化够不着」要先试一下再写**：离屏渲一张视图、真烧一帧，几秒钟就能比大小；这句话 2026-08-09 写进架构文档，之后没人再想过加这个检查。
 - **画字的不一定是样式里点名的那个字体**：中文回退、粗体选真粗体 —— 量「实际画它的那一款」。
 - **样本要带上默认值**：默认样式是粗体，第一版的样本全是常规体，照样全绿。
+- **自检用的字体要每台机器都有**：苹方是按需下载的，本机有、CI 没有，同一个用例一边绿一边红；挑用例前先看字体文件在哪。
 - 长期约束写在 [字幕轨可见性与布局](../architecture/subtitle-track-visibility-and-layout.md)「画面上的布局」第 2 条：预览画字幕只走
   `BurnInSubtitleOverlay`，字号按 libass 的口径（`SubtitleFontScale`）。

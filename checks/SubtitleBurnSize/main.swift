@@ -90,15 +90,19 @@ let ffmpeg = ProcessInfo.processInfo.environment["SRTFLOW_FFMPEG"] ?? "vendor/ff
 check(FileManager.default.isExecutableFile(atPath: ffmpeg), "ffmpeg is at \(ffmpeg)")
 
 let yellow = SubtitleWordHighlight(color: .white, scale: 1.2)
+// 字体里没有的字按回退到的那一款缩（Avenir Next 里没有韩文，回退到 Apple SD Gothic Neo：0.833 对 0.732，用错比例差一成多）。
+// 回退用韩文、不用中文：拉丁字体里的中文回退到苹方，而苹方是按需下载的字体资源，CI 的机器上没有，libass 用不了系统私有的那份
+// （族名带点，找不到）会画成方框 —— 那是另一个问题（见 docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md 的已知不足），
+// 不是字号。Apple SD Gothic Neo 每台 Mac 都在 /System/Library/Fonts 里。中文由自带中文的黑体、冬青黑体来测。
 let cases: [(text: String, style: BurnInStyle, highlights: [SubtitleTextRange], highlight: SubtitleWordHighlight?)] = [
     ("HHHH", large("Helvetica"), [], nil),                        // libass 0.851
-    ("南极冰山", large("Helvetica"), [], nil),                      // Helvetica 里没有中文：回退到苹方，0.714
+    ("안녕하세요", large("Avenir Next"), [], nil),                  // Avenir Next 里没有韩文：回退到 Apple SD Gothic Neo，0.833
     ("HHHH", large("Avenir Next"), [], nil),                      // 0.732
     ("南极冰山", large("Heiti SC"), [], nil),                       // 1.0（黑体两边一样）
     ("Hello 南极", large("Hiragino Sans GB"), [], nil),            // 0.861
     ("big news", large("Helvetica"), [SubtitleTextRange(location: 4, length: 4)], yellow),   // 逐词高亮放大 1.2 倍也一样
     ("Hello world", preset("Helvetica"), [], nil),                // Helvetica-Bold 0.839
-    ("南极的冰山", preset("Helvetica"), [], nil),                    // 苹方中粗 0.714
+    ("안녕하세요", preset("Avenir Next"), [], nil),                  // 粗体的回退：AppleSDGothicNeo-Bold 0.833
     ("Hello 南极", preset("Hiragino Sans GB"), [], nil)            // W6 0.806（W3 是 0.861）
 ]
 for item in cases {
