@@ -88,9 +88,11 @@
    （中文回退、粗体选到的那一款）乘 `SubtitleFontScale` 的比例；任何按字号估字宽的地方（`SubtitleLineFit`）也乘这个比例。
    改的是预览、不是成片：以前的成片、烧录页停着时真烧的那一帧、别的播放器打开 .ass 看到的都是 libass 的大小。
    已知差异：正中摆放、大字号时 Helvetica 英文预览高几个像素（行框一个按 win 量度摆、一个按 hhea）；默认的底部居中差 1–2 px。
-   **已知不足：没下载苹方的 Mac 上，拉丁字体的样式烧中文字幕是方框**：苹方完整版是按需下载的字体资源（AssetsV2），没下载时 CoreText
-   回退到系统私有的那份（族名「.PingFang SC」），预览照样是中文，libass 却用不了、画成方框（2026-09-29 CI 的机器上撞见）。要修得给
-   libass 一个公共的中文字体、预览跟着用同一个，还没做。自检的回退用例因此用韩文（Apple SD Gothic Neo 每台 Mac 都有）。
+   **回退到系统私有字体时两边一起换成内置字体**（2026-09-29，[没下载苹方时中文烧成方框](../bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md)）：
+   苹方完整版是按需下载的字体资源，没下载的 Mac 上 CoreText 回退到系统私有的那份，预览照样是中文，libass 却用不了、画成方框。
+   所以回退到的字体文件在 `/PrivateFrameworks/` 里（认文件、不认族名）时，`SubtitleFallbackFont` 换成每台 Mac 都有的
+   冬青黑体 / 黑体 / Apple SD Gothic Neo：预览用它画，烧录在那几个字前面写 `\fn` 点名它（`SubtitleASSText`，和逐词高亮一起写，
+   `\r` 之后照样点名）。回退到公开字体（下载了苹方）时不换、ASS 和以前逐字一样。导出字幕文件不点名。
    **两条轨各有一份布局**（2026-09-26）：`subtitleLayout` 是原文的，`translationLayout` 是译文的。
    **译文的为 nil = 叠在原文下面**，和原文排成一块（原文在上、译文在下，用原文的布局）——
    一句换行变高另一句自然让开，老工程（只有 `subtitleLayout`、双语一块）不用迁移、成片一模一样。

@@ -41,7 +41,11 @@ enum BurnInWorkspace {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let paths = FFmpegCommand.BurnIn()
-        let ass = style.assDocument(blocks: blocks, aspectRatio: aspectRatio, title: title)
+        // 这台 Mac 上 libass 找不到回退字体的字（没下载苹方时的中文）点名一个每台 Mac 都有的，预览用同一个（SubtitleFallbackFont）。
+        let ass = style.assDocument(
+            blocks: blocks, aspectRatio: aspectRatio, title: title,
+            fontOverrides: { SubtitleFontScale.burnOverrides($0, style: style) }
+        )
         try Data(ass.utf8).write(to: directory.appendingPathComponent(paths.assFileName))
 
         let fontsDirectory = directory.appendingPathComponent(paths.fontsDirName, isDirectory: true)

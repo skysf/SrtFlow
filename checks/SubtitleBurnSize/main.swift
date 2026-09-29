@@ -90,21 +90,35 @@ let ffmpeg = ProcessInfo.processInfo.environment["SRTFLOW_FFMPEG"] ?? "vendor/ff
 check(FileManager.default.isExecutableFile(atPath: ffmpeg), "ffmpeg is at \(ffmpeg)")
 
 let yellow = SubtitleWordHighlight(color: .white, scale: 1.2)
-// 字体里没有的字按回退到的那一款缩（Avenir Next 里没有韩文，回退到 Apple SD Gothic Neo：0.833 对 0.732，用错比例差一成多）。
-// 回退用韩文、不用中文：拉丁字体里的中文回退到苹方，而苹方是按需下载的字体资源，CI 的机器上没有，libass 用不了系统私有的那份
-// （族名带点，找不到）会画成方框 —— 那是另一个问题（见 docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md 的已知不足），
-// 不是字号。Apple SD Gothic Neo 每台 Mac 都在 /System/Library/Fonts 里。中文由自带中文的黑体、冬青黑体来测。
+// 字体里没有的字按回退到的那一款缩。Helvetica 里的中文回退到苹方 —— 苹方是按需下载的字体资源：本机下载了，预览和烧录都是苹方；
+// CI 的机器没下载，CoreText 回退到系统私有的那份、libass 用不了，两边都换成冬青黑体（SubtitleFallbackFont，
+// docs/bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md）。所以同一个用例本机走苹方、CI 走冬青黑体，两条路都得对。
+// 韩文回退到 Apple SD Gothic Neo（每台 Mac 都有，0.833 对 Avenir Next 的 0.732：回退的那一截用错比例、不缩都会红）。
 let cases: [(text: String, style: BurnInStyle, highlights: [SubtitleTextRange], highlight: SubtitleWordHighlight?)] = [
     ("HHHH", large("Helvetica"), [], nil),                        // libass 0.851
+    ("南极冰山", large("Helvetica"), [], nil),                      // 回退：苹方 0.714，或者冬青黑体 0.861
     ("안녕하세요", large("Avenir Next"), [], nil),                  // Avenir Next 里没有韩文：回退到 Apple SD Gothic Neo，0.833
     ("HHHH", large("Avenir Next"), [], nil),                      // 0.732
     ("南极冰山", large("Heiti SC"), [], nil),                       // 1.0（黑体两边一样）
     ("Hello 南极", large("Hiragino Sans GB"), [], nil),            // 0.861
     ("big news", large("Helvetica"), [SubtitleTextRange(location: 4, length: 4)], yellow),   // 逐词高亮放大 1.2 倍也一样
     ("Hello world", preset("Helvetica"), [], nil),                // Helvetica-Bold 0.839
+    ("南极的冰山", preset("Helvetica"), [], nil),                    // 粗体的回退：苹方中粗，或者冬青黑体 W6
     ("안녕하세요", preset("Avenir Next"), [], nil),                  // 粗体的回退：AppleSDGothicNeo-Bold 0.833
     ("Hello 南极", preset("Hiragino Sans GB"), [], nil)            // W6 0.806（W3 是 0.861）
 ]
+
+// 换字体的规矩本身（每台 Mac 上都一样）：按名字要到的苹方是系统私有的那份（libass 用不了），中文换冬青黑体、韩文换 Apple SD Gothic Neo。
+check(SubtitleFallbackFont.isPrivate(CTFontCreateWithName("PingFang SC" as CFString, 12, nil)),
+      "the PingFang you get by name is the private system copy, which libass cannot use")
+check(SubtitleFallbackFont.builtInFont(covering: Array("南极冰山的企鹅".utf16))?.family == "Hiragino Sans GB",
+      "Chinese falls back to Hiragino Sans GB when the natural fallback is private")
+check(SubtitleFallbackFont.builtInFont(covering: Array("안녕하세요".utf16))?.family == "Apple SD Gothic Neo",
+      "Korean falls back to Apple SD Gothic Neo")
+let chineseFallback = CTFontCreateForString(CTFontCreateWithName("Helvetica" as CFString, 12, nil), "南" as CFString, CFRange(location: 0, length: 1))
+print("this Mac: Chinese in Helvetica falls back to \(CTFontCopyPostScriptName(chineseFallback))"
+    + (SubtitleFallbackFont.isPrivate(chineseFallback) ? " (private: preview and burn use a built-in font instead)" : " (public: used as it is)"))
+
 for item in cases {
     let label = "\(item.text) [\(item.style.fontName)\(item.style.bold ? " bold" : "") \(Int(item.style.fontSize))]"
     let preview = MainActor.assumeIsolated { previewBox(item.text, style: item.style, highlights: item.highlights, highlight: item.highlight) }
@@ -113,8 +127,10 @@ for item in cases {
         check(false, "\(label): could not measure (preview \(String(describing: preview)), burn \(String(describing: burned)))")
         continue
     }
+    let fonts = SubtitleFontScale.runs(item.text, style: item.style)
+        .map { $0.fontName + ($0.burnFamily.map { " → \\fn\($0)" } ?? "") }.joined(separator: ", ")
     print("\(label): preview \(Int(preview.width))×\(Int(preview.height)) at (\(Int(preview.midX)), \(Int(preview.midY))), "
-        + "burned \(Int(burned.width))×\(Int(burned.height)) at (\(Int(burned.midX)), \(Int(burned.midY)))")
+        + "burned \(Int(burned.width))×\(Int(burned.height)) at (\(Int(burned.midX)), \(Int(burned.midY))) [\(fonts)]")
     check(abs(preview.height - burned.height) <= 3, "\(label): preview text is \(Int(preview.height)) px tall, burned \(Int(burned.height)) px")
     check(abs(preview.width - burned.width) <= max(4, burned.width * 0.03),
           "\(label): preview text is \(Int(preview.width)) px wide, burned \(Int(burned.width)) px")

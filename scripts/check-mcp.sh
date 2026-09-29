@@ -363,6 +363,7 @@ xcrun swiftc \
   Sources/SrtFlow/SubtitleGen/SubtitleLineFit.swift \
   Sources/SrtFlow/SubtitleFrameGeometry.swift \
   Sources/SrtFlow/SubtitleFontScale.swift \
+  Sources/SrtFlow/SubtitleFallbackFont.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
   Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \

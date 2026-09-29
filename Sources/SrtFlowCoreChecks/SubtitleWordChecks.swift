@@ -10,6 +10,7 @@ func runSubtitleWordChecks() {
     checkWordsFollowEdits()
     checkHighlightedSlicing()
     checkHighlightASS()
+    checkFontOverrideASS()
 }
 
 private func window(_ range: ClosedRange<Double>, at timelineStart: Double = 0) -> SubtitleClipWindow {
@@ -167,4 +168,35 @@ private func checkHighlightASS() {
     )
     checkEqual(unlit, BurnInStyle.default.assDocument(cues: SubtitleTimeSlicing.slices([[cue]]), aspectRatio: 16.0 / 9),
                "ASS：没打开高亮，产物和以前逐字一样")
+}
+
+/// 点名字体（2026-09-29：没下载苹方的 Mac 上 libass 找不到中文的回退字体，App 点名一个每台 Mac 都有的，SubtitleASSText）：
+/// 没有要点名的字体时和以前逐字一样；有的时候每换一种样子先 `\r` 再加字体和高亮 —— 高亮的词在点名的那几个字里面时，
+/// 词后面的 `\r` 不许把字体清掉。
+private func checkFontOverrideASS() {
+    let highlight = SubtitleWordHighlight(color: .yellow, scale: 1.1)
+    let news = [SubtitleTextRange(location: 4, length: 4)]
+    checkEqual(SubtitleASSText.text("big news", highlight: highlight, lit: news, fonts: []), highlight.assText("big news", ranges: news),
+               "ASS 字体：没有要点名的，高亮照旧")
+    checkEqual(SubtitleASSText.text("a\nb", highlight: nil, lit: news, fonts: []), "a\\Nb", "ASS 字体：什么都没有就是原来的字")
+    let hiragino = "Hiragino Sans GB"
+    func font(_ location: Int, _ length: Int) -> SubtitleFontOverride {
+        SubtitleFontOverride(range: SubtitleTextRange(location: location, length: length), family: hiragino)
+    }
+    checkEqual(SubtitleASSText.text("Hi 南极", highlight: nil, lit: [], fonts: [font(3, 2)]), "Hi {\\r\\fnHiragino Sans GB}南极",
+               "ASS 字体：只在那几个字前面点名")
+    checkEqual(SubtitleASSText.text("big 南极 news", highlight: highlight, lit: [SubtitleTextRange(location: 4, length: 2)], fonts: [font(4, 2)]),
+               "big {\\r\\fnHiragino Sans GB\\1c&H1AD9FF&\\1a&H00&\\fscx110\\fscy110}南极{\\r} news",
+               "ASS 字体：点名和高亮写在同一个标签里，之后回到样式")
+    checkEqual(SubtitleASSText.text("南极冰山", highlight: highlight, lit: [SubtitleTextRange(location: 2, length: 2)], fonts: [font(0, 4)]),
+               "{\\r\\fnHiragino Sans GB}南极{\\r\\fnHiragino Sans GB\\1c&H1AD9FF&\\1a&H00&\\fscx110\\fscy110}冰山",
+               "ASS 字体：亮的词在点名的字里面，换样子时字体照样点名（不被 \\r 清掉）")
+    let cue = SubtitleCue(start: 0, end: 2, text: "Hi 南极")
+    let block = [SubtitleRenderBlock(cues: [cue], layout: nil)]
+    let named = BurnInStyle.default.assDocument(blocks: block, aspectRatio: 16.0 / 9, fontOverrides: { text in
+        text == "Hi 南极" ? [font(3, 2)] : []
+    })
+    check(named.contains(",Hi {\\r\\fnHiragino Sans GB}南极"), "ASS 字体：烧录给了点名，事件里就有")
+    checkEqual(BurnInStyle.default.assDocument(blocks: block, aspectRatio: 16.0 / 9),
+               BurnInStyle.default.assDocument(cues: [cue], aspectRatio: 16.0 / 9), "ASS 字体：不给点名，产物和以前逐字一样")
 }

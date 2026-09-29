@@ -94,6 +94,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/BurnInWorkspace.swift \
+  Sources/SrtFlow/SubtitleFontScale.swift \
+  Sources/SrtFlow/SubtitleFallbackFont.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/Filters/main.swift \

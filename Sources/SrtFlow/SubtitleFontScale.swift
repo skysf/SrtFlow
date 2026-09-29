@@ -13,6 +13,8 @@ import SrtFlowCore
 // 找到那个字体、按它的比例 —— libass 回退到的是同一个字体（按比例量出来一致）。
 // 「实际用到的字体」连粗细算在内：粗体画的是家族里真的粗体（Hiragino Sans GB 的 W6 是 0.806、W3 是 0.861；Helvetica-Bold
 // 0.839），libass 选的也是它，所以比例按粗体那一款量 —— 接口只收整份样式，漏不掉粗体。
+// 回退到的是系统私有的字体（没下载苹方的 Mac）时换成每台 Mac 都有的那几个（SubtitleFallbackFont），烧录那边点名同一个
+// （`burnOverrides`）。
 // 不管什么：怎么画（BurnInSubtitleOverlay）、一行放多少（SubtitleLineFit 用 `lineScale`）。
 
 enum SubtitleFontScale {
@@ -24,6 +26,8 @@ enum SubtitleFontScale {
         var fontName: String
         /// em 是字号的多少（libass 画出来的大小 / CoreText 同字号的大小）。
         var scale: Double
+        /// 烧录要在这一截点名的字体族名：只有回退到系统私有字体、换成了内置字体的那几截有（SubtitleFallbackFont）。
+        var burnFamily: String?
     }
 
     /// 这个字体（按粗体 / 斜体选到的那一款）的 em 是字号的多少：UPM / (usWinAscent + usWinDescent)；读不到表就当 1。
@@ -50,19 +54,35 @@ enum SubtitleFontScale {
             let covered = CTFontGetGlyphsForCharacters(base, Array(units[index..<(index + length)]), &glyphs, length)
             var name = style.fontName
             var ratio = baseScale
+            var burnFamily: String?
             if !covered {
                 let fallback = CTFontCreateForString(base, text as CFString, CFRange(location: index, length: length))
                 name = CTFontCopyPostScriptName(fallback) as String
+                if SubtitleFallbackFont.isPrivate(fallback),
+                   let builtIn = SubtitleFallbackFont.builtInFont(covering: Array(units[index..<(index + length)])) {
+                    name = builtIn.postScriptName
+                    burnFamily = builtIn.family
+                }
                 ratio = scale(ofFont: name, bold: style.bold, italic: style.italic)
             }
-            if let last = runs.last, last.fontName == name, last.range.location + last.range.length == index {
+            if let last = runs.last, last.fontName == name, last.burnFamily == burnFamily,
+               last.range.location + last.range.length == index {
                 runs[runs.count - 1].range.length += length
             } else {
-                runs.append(Run(range: NSRange(location: index, length: length), fontName: name, scale: ratio))
+                runs.append(Run(range: NSRange(location: index, length: length), fontName: name, scale: ratio, burnFamily: burnFamily))
             }
             index += length
         }
         return runs
+    }
+
+    /// 烧录要点名字体的那几截（SrtFlowCore 的 SubtitleASSText 在它们前后写 `\fn`）：和预览用同一份 `runs`。
+    static func burnOverrides(_ text: String, style: BurnInStyle) -> [SubtitleFontOverride] {
+        runs(text, style: style).compactMap { run in
+            run.burnFamily.map {
+                SubtitleFontOverride(range: SubtitleTextRange(location: run.range.location, length: run.range.length), family: $0)
+            }
+        }
     }
 
     /// 算一行放得下多少时用的比例：样式里的字体和它的中文回退里画得**大**的那个（保守，放得下就一定放得下）。

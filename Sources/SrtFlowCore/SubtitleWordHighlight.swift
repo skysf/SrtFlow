@@ -39,14 +39,17 @@ public struct SubtitleWordHighlight: Codable, Hashable, Sendable {
     }
 
     /// `{\1c&HBBGGRR&\1a&HAA&\fscx110\fscy110}`：ASS 的颜色字节序是 BGR，alpha 是反的（00 不透明）。
-    var openingTag: String {
+    var openingTag: String { "{" + overrideTags + "}" }
+
+    /// 花括号里面那几个标签（和点名字体写在同一个 `{…}` 里时用，SubtitleASSText）。
+    var overrideTags: String {
         let alpha = Int(((1 - color.opacity) * 255).rounded())
         let red = Int((color.red * 255).rounded())
         let green = Int((color.green * 255).rounded())
         let blue = Int((color.blue * 255).rounded())
-        var tag = String(format: "{\\1c&H%02X%02X%02X&\\1a&H%02X&", blue, green, red, alpha)
+        var tag = String(format: "\\1c&H%02X%02X%02X&\\1a&H%02X&", blue, green, red, alpha)
         let percent = Int((scale * 100).rounded())
         if percent != 100 { tag += "\\fscx\(percent)\\fscy\(percent)" }
-        return tag + "}"
+        return tag
     }
 }
