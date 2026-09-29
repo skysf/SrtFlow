@@ -143,6 +143,9 @@ for item in cases {
 runPositionChecks(ffmpeg: ffmpeg)
 runShadowChecks(ffmpeg: ffmpeg)
 
+// 字幕字体清单的 cmap 体检（CmapSanityChecks.swift）—— 要在判红之前跑，不然它红了也退 0。
+runCmapSanityChecks()
+
 if failures > 0 {
     print("✗ \(failures) of \(checks) checks failed")
     exit(1)

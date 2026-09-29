@@ -9,6 +9,9 @@ import AVFoundation
 //    而上一段明明插到了 4020 —— 从 4019 补空白，就切下了上一段的最后一格。
 // 2. **合成完把每条合成轨裁到时间线总长**。视频合成的指令只铺到总长，哪条轨多出一格，合成就被判无效，
 //    预览整个黑屏（标题这类叠层照样画在上面）。
+// 3. **视频合成的指令表按格子铺、首尾相接**（CompositionSlices）：切片边界各自截断可能落在相邻两格，按秒去重
+//    会让指令表空出一格，同样判无效 → 黑屏（2026-09-29 用户婚礼工程，
+//    docs/bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md）。
 //
 // 2026-09-27 实测：音效轨上被切下的那一格一路挤到全片最后，音轨比画面长 1/600 秒 → 黑屏；正式版一样
 // （docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md）。
@@ -19,13 +22,21 @@ import AVFoundation
 // 不管什么：摆放、渐变、转场这些几何（builder 自己）；声音的音量斜坡（AudioMixBuilder）。
 
 enum CompositionTime {
+    /// 合成的格子：1/600 秒。插段、切片表（CompositionSlices）都按它换算。
+    static let timescale: CMTimeScale = 600
+
+    /// 秒换格子：**截断**，别改成四舍五入（文件头）。负数按 0。
+    static func tick(_ seconds: Double) -> CMTime {
+        CMTime(seconds: max(0, seconds), preferredTimescale: timescale)
+    }
+
     /// 合成轨现在的末尾：看它真有的片段，不看算出来的游标。
     static func end(of track: AVMutableCompositionTrack) -> CMTime {
         track.segments.last?.timeMapping.target.end ?? .zero
     }
 
     /// 一格：前后两段首尾相接、各自截断出来差这么多，算零头，不算空档（和以前「差不到 0.5 毫秒不补」同一个意思）。
-    static let oneTick = CMTime(value: 1, timescale: 600)
+    static let oneTick = CMTime(value: 1, timescale: timescale)
 
     /// 下一段接在哪：不早于合成轨现在的末尾（早了会把前面的内容往后挤）；只比末尾晚一格也接在末尾上，
     /// 首尾相接的两段之间不留一格的空段。

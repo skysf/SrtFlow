@@ -52,6 +52,9 @@ require "生成字幕那一次要记成绑工程的" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift 'boundToProject = true'
 require "只转文件那一次要记成不绑工程的" \
   Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift 'boundToProject = false'
+# 字幕字体清单（2026-09-29，婚礼工程 BUG-04）：cmap 坏了的字体（圆体）FreeType 会挑错字形，扫描时要过体检，坏的不进清单。
+require "字幕字体清单扫描要过 cmap 体检（整个文件的每个面都过，libass 用不了的字体不进清单）" \
+  Sources/SrtFlow/FontCatalog.swift 'descriptors\.allSatisfy\(\{ FontCmapSanity\.isSafeForFreeType\('
 
 # 标记（2026-08-09）：纯值合同在上面断言过了，这里钉住它在生产里的接线。
 require "state 的 didSet 要摘掉失效的标记选择" \

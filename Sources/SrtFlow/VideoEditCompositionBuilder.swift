@@ -121,6 +121,8 @@ enum VideoEditCompositionBuilder {
         var audioPlan = AudioMixPlan()
         // 主轨 clip 序号 → placed 序号（接缝后处理用；被跳过的段不在里面）。
         var placedIndexByMainIndex: [Int: Int] = [:]
+        // 上一段进了合成的主轨段收在哪（时间线秒）：接缝的零头要接在它真正的末尾上。
+        var previousMainEnd = 0.0
 
         for (index, clip) in state.mainClips.enumerated() {
             // 整轨隐藏 → 主轨完全不进合成（预览是黑场）；单独隐藏的段（V）同理
@@ -133,12 +135,14 @@ enum VideoEditCompositionBuilder {
             let sourceAsset = asset(for: clip.sourceURL)
             guard let sourceVideo = try? await sourceAsset.loadTracks(withMediaType: .video).first else { continue }
 
+            // 不到 `mainGapTolerance` 的缝不是空隙（成片的分节同一口径）：接在前一段真正的末尾上。前一段收在
+            // 19.9598、这一段从 19.96 起，各自截断落在相邻两格，A/B 两条轨之间就空出一格 —— 接缝上一帧黑。
+            let gap = clip.timelineStart - previousMainEnd
+            let startsAt = gap > 0 && gap < TimelineState.mainGapTolerance ? previousMainEnd : clip.timelineStart
             guard await insert(
-                source: sourceVideo,
-                clip: clip,
-                into: videoTrack,
-                cursor: &videoCursors[slot]
+                source: sourceVideo, clip: clip, into: videoTrack, cursor: &videoCursors[slot], at: startsAt
             ) else { continue }
+            previousMainEnd = clip.timelineEnd
 
             let naturalSize = (try? await sourceVideo.load(.naturalSize)) ?? renderSize
             let preferred = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
@@ -164,7 +168,7 @@ enum VideoEditCompositionBuilder {
             if clip.hasAudio, !clip.isMuted,
                let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
                let target = await audioTracks.slot(for: .main(slot: slot), source: sourceAudio),
-               await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor) {
+               await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor, at: startsAt) {
                 audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: true)
             }
         }
@@ -435,9 +439,7 @@ enum VideoEditCompositionBuilder {
 
     // MARK: - 小工具
 
-    private static func time(_ seconds: Double) -> CMTime {  // 截断；别改成四舍五入，见 CompositionTime 文件头
-        CMTime(seconds: max(0, seconds), preferredTimescale: 600)
-    }
+    private static func time(_ seconds: Double) -> CMTime { CompositionTime.tick(seconds) }  // 截断，别改成四舍五入
 
     static func renderSize(for state: TimelineState) -> CGSize {
         // 选了固定比例就用标准尺寸；auto 跟随第一段素材。
@@ -461,13 +463,15 @@ enum VideoEditCompositionBuilder {
     /// **首尾定格**（`renderHoldHead` / `renderHoldTail`，只有渲染副本里转场余料
     /// 不够的主轨段才有）：画面把首帧 / 尾帧插进来再拉长成定格，声音那一截留空。
     /// 导出那边是 `tpad` 复制首尾帧 + 补静音，同一笔账（VideoEditExportGraph）。
+    /// `at`：落点（时间线秒），不传就是段自己的起点；主轨接缝的零头会传前一段的末尾。
     private static func insert(
         source: AVAssetTrack,
         clip: EditClip,
         into track: AVMutableCompositionTrack,
-        cursor: inout Double
+        cursor: inout Double,
+        at: Double? = nil
     ) async -> Bool {
-        let at = clip.timelineStart
+        let at = at ?? clip.timelineStart
         let holdHead = clip.renderHoldHead
         let holdTail = clip.renderHoldTail
 
@@ -485,7 +489,7 @@ enum VideoEditCompositionBuilder {
         var position = at
         if holdHead > 0.0005 {
             if isVideo {
-                await insertHold(
+                await CompositionHold.insert(
                     source: source, frameAt: start, duration: holdHead, into: track, at: position
                 )
             } else {
@@ -514,41 +518,14 @@ enum VideoEditCompositionBuilder {
             // 尾帧定格一直铺到这段的结尾：素材被收口短了一截时，差的那点也由
             // 定格补上，免得定格前面夹一条黑缝。声音不用插 —— 下一段插进来之前
             // 游标之后的空档会补空段，就是静音。
-            let frame = await frameDuration(of: source)
-            await insertHold(
+            let frame = await CompositionHold.frameDuration(of: source)
+            await CompositionHold.insert(
                 source: source, frameAt: max(start, start + sourceDuration - frame),
                 duration: at + clip.timelineDuration - position, into: track, at: position
             )
         }
         cursor = at + clip.timelineDuration
         return true
-    }
-
-    /// 定格：把素材 `sourceTime` 处的**那一帧**插到 `at`，拉长成 `duration` 秒。
-    /// 插不进去（素材读不出那一帧）就留一段空 —— 那一截露出下面的黑底，不至于
-    /// 让后面的段整体错位。
-    private static func insertHold(
-        source: AVAssetTrack, frameAt sourceTime: Double, duration: Double,
-        into track: AVMutableCompositionTrack, at: Double
-    ) async {
-        guard duration > 0.0005 else { return }
-        let frame = time(await frameDuration(of: source))
-        let target = time(duration)
-        let start = CompositionTime.appendPoint(time(at), on: track)
-        do {
-            try track.insertTimeRange(CMTimeRange(start: time(sourceTime), duration: frame), of: source, at: start)
-            track.scaleTimeRange(CMTimeRange(start: start, duration: frame), toDuration: target)
-        } catch {
-            CompositionTime.pad(track, to: start + target)
-        }
-    }
-
-    /// 源轨一帧有多长（秒）。读不出来按 1/30。
-    private static func frameDuration(of source: AVAssetTrack) async -> Double {
-        if let min = try? await source.load(.minFrameDuration), min.isValid, min.seconds > 0 {
-            return min.seconds
-        }
-        return 1.0 / 30
     }
 
     /// 素材画面摆进输出画布的完整变换：源自带旋转摆正 → 裁切区挪到原点 →
@@ -769,17 +746,16 @@ enum VideoEditCompositionBuilder {
                 boundaries.insert(boundary)
             }
         }
-        let times = boundaries.filter { $0 >= 0 && $0 <= totalDuration }.sorted()
-
+        // 边界先落到格子上、按格子去重，指令表按构造首尾相接（CompositionSlices）：两个边界各自截断落在
+        // 相邻两格、中间那片按秒算「太短不切」，指令表就空出一格 → 整个视频合成判无效 → 预览黑屏。
         var instructions: [AVMutableVideoCompositionInstruction] = []
-        for index in 0..<(max(1, times.count) - 1) {
-            let sliceStart = times[index]
-            let sliceEnd = times[index + 1]
-            guard sliceEnd - sliceStart > 0.0005 else { continue }
+        for slice in CompositionSlices.make(boundaries: boundaries, totalDuration: totalDuration) {
+            let sliceStart = slice.start
+            let sliceEnd = slice.end
             let middle = (sliceStart + sliceEnd) / 2
 
             let instruction = AVMutableVideoCompositionInstruction()
-            instruction.timeRange = CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+            instruction.timeRange = slice.range
             instruction.backgroundColor = CGColor(red: 0, green: 0, blue: 0, alpha: 1)
 
             // 可见的段：层级高的排前面（layerInstructions 第一个在最上面）。
@@ -800,27 +776,21 @@ enum VideoEditCompositionBuilder {
                 let fromTransform = composedTransform(item, at: sliceStart, renderSize: renderSize)
                 let toTransform = composedTransform(item, at: sliceEnd, renderSize: renderSize)
                 if fromTransform == toTransform {
-                    layer.setTransform(fromTransform, at: time(sliceStart))
+                    layer.setTransform(fromTransform, at: slice.range.start)
                 } else {
-                    layer.setTransformRamp(
-                        fromStart: fromTransform,
-                        toEnd: toTransform,
-                        timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
-                    )
+                    layer.setTransformRamp(fromStart: fromTransform, toEnd: toTransform, timeRange: slice.range)
                 }
                 if let fromCrop = cropRectangle(item, at: sliceStart, renderSize: renderSize),
                    let toCrop = cropRectangle(item, at: sliceEnd, renderSize: renderSize) {
                     if fromCrop.equalTo(toCrop) {
-                        layer.setCropRectangle(fromCrop, at: time(sliceStart))
+                        layer.setCropRectangle(fromCrop, at: slice.range.start)
                     } else {
                         layer.setCropRectangleRamp(
-                            fromStartCropRectangle: fromCrop,
-                            toEndCropRectangle: toCrop,
-                            timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
+                            fromStartCropRectangle: fromCrop, toEndCropRectangle: toCrop, timeRange: slice.range
                         )
                     }
                 }
-                applyOpacity(layer, item: item, sliceStart: sliceStart, sliceEnd: sliceEnd, renderSize: renderSize)
+                applyOpacity(layer, item: item, slice: slice, renderSize: renderSize)
                 layers.append(layer)
             }
             instruction.layerInstructions = layers
@@ -885,8 +855,7 @@ enum VideoEditCompositionBuilder {
     private static func applyOpacity(
         _ layer: AVMutableVideoCompositionLayerInstruction,
         item: PlacedClip,
-        sliceStart: Double,
-        sliceEnd: Double,
+        slice: CompositionSlice,
         renderSize: CGSize
     ) {
         // 切片边界包含了所有折点（淡变起止/半程、关键帧、加密点），所以片内
@@ -905,15 +874,12 @@ enum VideoEditCompositionBuilder {
             }
             return value
         }
-        let from = opacity(at: sliceStart)
-        let to = opacity(at: sliceEnd)
+        let from = opacity(at: slice.start)
+        let to = opacity(at: slice.end)
         if abs(from - to) < 0.0005 {
-            layer.setOpacity(from, at: time(sliceStart))
+            layer.setOpacity(from, at: slice.range.start)
         } else {
-            layer.setOpacityRamp(
-                fromStartOpacity: from, toEndOpacity: to,
-                timeRange: CMTimeRange(start: time(sliceStart), end: time(sliceEnd))
-            )
+            layer.setOpacityRamp(fromStartOpacity: from, toEndOpacity: to, timeRange: slice.range)
         }
     }
 

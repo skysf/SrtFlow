@@ -54,6 +54,10 @@
 位置/缩放动画的矩阵插值本身精确（平移/缩放分量独立线性），不用加密。
 `coversCanvasOpaquely` 对动画段保守返回 false（叠化走近似路径）。
 
+边界攒齐之后**先落到 1/600 秒的格子上、按格子去重**再铺指令（`CompositionSlices`，2026-09-29）：
+关键帧、转场的半程、段的起止挨得再近也不许让指令表空出一格 —— 空一格整个视频合成判无效、预览全黑
+（[案例](../bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md)）。求值仍用边界本身的秒。
+
 ## 导出：AVFoundation 预渲染（VideoEditPrerender.swift）
 
 ffmpeg 做不了干净的逐帧缩放（流尺寸中途不能变）和透明度插值，所以动画段

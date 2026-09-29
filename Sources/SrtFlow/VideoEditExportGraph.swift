@@ -224,7 +224,7 @@ enum VideoEditExportGraph {
         var cursor = 0.0
         let ordered = mainVisible.sorted { $0.timelineStart < $1.timelineStart }
         for (index, clip) in ordered.enumerated() {
-            if clip.timelineStart > cursor + 0.01 {
+            if clip.timelineStart > cursor + TimelineState.mainGapTolerance {  // 不到它的缝不是空隙（预览同一口径）
                 segments.append(MainSegment(clip: nil, duration: clip.timelineStart - cursor))
             }
             var segment = MainSegment(clip: clip, duration: clip.timelineDuration)

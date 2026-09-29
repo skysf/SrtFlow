@@ -161,7 +161,7 @@ private func subtitleEditChecks() {
         "add": [["start": 6, "end": 7, "text": "three"]],
         "delete": [.string(ids.short(second.id))]
     ]), ids: ids, in: state)
-    let created = edits?.apply(to: &state) ?? []
+    let created = edits?.apply(to: &state).created ?? []
     let cues = state.subtitleCues(of: .original)
     checkEqual(cues.map(\.text), ["uno", "three"], "text changed, line added, line deleted")
     checkEqual(cues.first?.end, 2.5, "time changed")
@@ -169,6 +169,33 @@ private func subtitleEditChecks() {
     checkThrows("end before start is refused before anything changes") {
         _ = try AISubtitleEdits.parse(args(["add": [["start": 5, "end": 4, "text": "x"]]]), ids: ids, in: state)
     }
+    subtitleMergeChecks()
+}
+
+/// merge：并成一句、逐词时间拼起来（2026-09-29 婚礼工程 BUG-06：改字并句会丢掉挪进来的词的时间）。
+private func subtitleMergeChecks() {
+    var state = TimelineState()
+    var first = SubtitleCue(id: UUID(), start: 3.0, end: 4.58, text: "I found a love")
+    first.words = [SubtitleCueWord(location: 0, length: 1, start: 0, end: 0.3), SubtitleCueWord(location: 2, length: 5, start: 0.3, end: 0.9),
+                   SubtitleCueWord(location: 8, length: 1, start: 0.9, end: 1.0), SubtitleCueWord(location: 10, length: 4, start: 1.0, end: 1.58)]
+    var second = SubtitleCue(id: UUID(), start: 6.16, end: 8.54, text: "for me")
+    second.words = [SubtitleCueWord(location: 0, length: 3, start: 0, end: 0.38), SubtitleCueWord(location: 4, length: 2, start: 0.38, end: 1.88)]
+    var document = SubtitleDocumentModel(format: .srt)
+    document.cues = [first, second]
+    state.subtitle = document
+    let ids = AIShortIDs(state: state)
+    checkThrows("merge needs two or more ids") { _ = try AISubtitleEdits.parse(args(["merge": [[.string(ids.short(first.id))]]]), ids: ids, in: state) }
+    let edits = try? AISubtitleEdits.parse(args(["merge": [[.string(ids.short(first.id)), .string(ids.short(second.id))]]]), ids: ids, in: state)
+    let merged = edits?.apply(to: &state).merged ?? []
+    let cues = state.subtitleCues(of: .original)
+    checkEqual(cues.count, 1, "two lines became one")
+    checkEqual(cues.first?.text, "I found a love for me", "text joined with a space")
+    checkEqual(merged, [first.id], "the kept line is the earlier one and is returned")
+    checkEqual(cues.first?.words?.count, 6, "every word keeps its time")
+    let me = cues.first?.words?.last
+    checkEqual(me?.location, 19, "\"me\" sits at its place in the joined text")
+    check(abs((me?.start ?? 0) - (6.16 - 3.0 + 0.38)) < 1e-9, "\"me\" keeps its moment relative to the new start (got \(me?.start ?? -1))")
+    checkEqual(cues.first?.end, 8.54, "times united")
 }
 
 private func vocabularyChecks() {

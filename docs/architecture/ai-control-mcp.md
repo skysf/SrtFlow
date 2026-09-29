@@ -289,7 +289,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    不到中位数的 3 倍就当没有节拍（长音的相位和分帧错开会造出假拍子）；可信度低于 `clearConfidence`（0.3）照给但说一句，
    cut_to_beat 不踩。读采样在 `AIBeats`：11025 Hz 单声道、读的循环是单独的同步函数、在 `MediaReadQueue.analysis` 上跑，
    按「路径 + 大小 + 修改时间 + 区间」记在内存里；时间从读出来的第一帧算（读取器的起点会对齐到包边界）。片段的拍换成时间线秒、
-   速度乘播放速度；文件是文件里的秒；一次最多分析 15 分钟。
+   速度乘播放速度；文件是文件里的秒；一次最多分析 15 分钟。**分析的区间是整首歌**（`BeatAnalysisWindow`，2026-09-29）：
+   请求落在文件开头 15 分钟里就分析整段，listen 和 cut_to_beat 各按自己的区间挑拍 —— 各分析各的那一段时，6/8 拍的歌一边
+   63.5 BPM 一边 95.3，切点比重拍晚 0.3 秒（[案例](../bugfixes/2026-09-29-beat-analysis-window-differs-between-listen-and-cut-to-beat.md)）。
 
 27. **按文字剪、删停顿和口头禅（cut_speech，第 3 块的智能剪）**：只对 V1 上的口播片段。要剪掉的几截（`AISpeechCuts`，纯值）：
    AI 点名删的 / 只留的（时间从 transcribe 来）、比 `remove_pauses` 长的停顿缩到 `pause_left`（停顿是画波形那一份数据按窗量，
@@ -428,6 +430,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 已知不足：第一个字偶尔比时长晚 0.1–0.2 秒出声（字幕略早一点）；多音字只能读对一部分（「银行」「音乐」还是错的）；中文数字按
      基数读（2026 读「二千零二十六」，不是年份的读法）。
 36. **字幕长什么样（`edit_subtitles` / `burn_subtitles` 的 `style`，方案第 38、54 条；第 5 块第 ④ 刀）**：
+    2026-09-29 补的三样（[案例](../bugfixes/2026-09-29-subtitle-merge-loses-word-times.md)）：`edit_subtitles` 的 `merge`
+    走界面「合并」那份合同（`SubtitleTrackEditing.mergeCues`，逐词时间拼起来），别让 AI 拿「改字 + 删句」拼；`get_subtitles`
+    每行报 `timed_words`；`style.max_width`（一行最宽占画面宽的几成）按这个工程的画幅换成左右边距（`AISubtitleStyleChange.horizontalMargin`，
+    画布宽同 `assDocument` 的 PlayResX），只对工程字幕，`burn_subtitles` 不收。
    - 参数只有一份 schema（`MCPSubtitleExportTools.subtitleStyle`，两个工具共用）：位置（bottom / middle / top，九宫格居中的那一列，
      词表 `MCPVocabulary.subtitlePositions` 和 App 对账）、离边多远（画面高的比例）、字号（1080 高的画面上的像素）、字体、粗细、
      颜色、描边或底条（二选一）、阴影、逐词高亮的颜色和放大倍数、reset。读法和落法只有 `AISubtitleStyleChange`（纯值）一处：先全验过，
@@ -481,7 +487,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      会跳角的每处一块；顶层再有一句 `cover_hint`。看的是文件（没有片段）时没有 `cover`（没有画布可换）。
    - **盖完靠 `look`（时间线）核对**：`AIFrameComposer` 合成时把盖一块盖上（`CoverCompositing`，和预览同一份 `CoverFilters`），AI 看得到自己盖没盖住。
    - 已知不足：位置不跟着片段走（片段挪 / 缩放之后要重盖）；只按此刻的摆放换算、不看关键帧动画。
-39. **生成素材（`generate_media`，fal.ai，方案第 6 块、第 57 条）**：合同全在 [fal.ai 生成](fal-generation.md)，这里只记它怎么接进 MCP 这一层：
+39. **生成素材（`generate_media`，fal.ai，方案第 6 块、第 57 条）**：合同全在 [fal.ai 生成](fal-generation.md)，这里只记它怎么接进 MCP 这一层。
+    风格卡里提它**只写条件句**（2026-09-29 用户拍板：「如果你的工具里有 generate_media……」）—— 工具只在填了 Key 时在清单里，卡却一直读得到；
+    共用规矩第 11 条和每张卡的「Generated media」一节说了有它时能补什么、不能替什么（`RecipeChecks` 钉着：提到就得在条件句下、
+    词表和结果字段名都得对得上）：
    - **只在用户配了 fal 的 Key 时才出现在清单里**（方案第 36 条）：`MCPToolName.provider`；App 在 Key 添加 / 删除时和每次启动时写一个只有提供方名字的
      `mcp-providers.json`（和 socket 同目录），小程序每回一次清单 / 握手都重读它；握过手的老一代客户端收 `notifications/tools/list_changed`，
      新一代靠清单一分钟的缓存时间。没配时总说明里也不提它。全清单的说明总长度量的是每个提供方都配好时的样子。

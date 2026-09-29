@@ -13,8 +13,8 @@ import SrtFlowMCPKit
 @MainActor
 enum AIBeats {
     static let sampleRate = 11_025.0
-    /// 一次最多分析多长（秒）：15 分钟的单声道 11025 Hz 约 40MB。
-    static let maxSeconds = 900.0
+    /// 一次最多分析多长（秒），见 BeatAnalysisWindow。
+    static let maxSeconds = BeatAnalysisWindow.maxSeconds
 
     private struct Key: Hashable {
         var path: String
@@ -28,17 +28,19 @@ enum AIBeats {
     private static var cache: [Key: AudioBeatTracker.Analysis?] = [:]
 
     /// 源 [from, to) 秒的鼓点，时间是源秒。听不出清楚的节拍是 nil；文件读不了抛错。
+    /// 真正分析的是整首歌（`BeatAnalysisWindow`），listen 和 cut_to_beat 看同一份；调用方再按自己的区间挑拍。
     static func analysis(of url: URL, from: Double, to: Double) async throws -> AudioBeatTracker.Analysis? {
-        let end = min(to, from + maxSeconds)
+        let asset = AVURLAsset(url: url)
+        let fileDuration = (try? await asset.load(.duration))?.seconds ?? to
+        let window = BeatAnalysisWindow.resolve(from: from, to: to, fileDuration: fileDuration)
         let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
         let key = Key(
             path: url.standardizedFileURL.path,
             size: (attributes?[.size] as? NSNumber)?.int64Value ?? -1,
             modified: (attributes?[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0,
-            from: from, to: end
+            from: window.from, to: window.to
         )
         if let hit = cache[key] { return hit }
-        let asset = AVURLAsset(url: url)
         guard let found = try? await asset.loadTracks(withMediaType: .audio).first else {
             throw AIToolError("\(url.lastPathComponent) has no sound to find beats in.")
         }
@@ -46,7 +48,7 @@ enum AIBeats {
         nonisolated(unsafe) let track = found
         let rate = sampleRate
         let read = await MediaReadQueue.run(on: MediaReadQueue.analysis) { () -> Reading? in
-            guard let pcm = readMono(asset: asset, track: track, from: from, to: end, sampleRate: rate) else { return nil }
+            guard let pcm = readMono(asset: asset, track: track, from: window.from, to: window.to, sampleRate: rate) else { return nil }
             return Reading(analysis: AudioBeatTracker.analyze(pcm.samples, sampleRate: rate).map { shifted($0, by: pcm.start) })
         }
         guard let read else { throw AIToolError("SrtFlow could not read the sound of \(url.lastPathComponent).") }

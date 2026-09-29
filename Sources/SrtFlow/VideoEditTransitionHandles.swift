@@ -70,6 +70,12 @@ extension TimelineState {
     /// 迟早一处认这是接缝、另一处不认。
     static let seamTolerance = 0.02
 
+    /// 主轨上两段之间**不到这么多秒**的空隙不算空隙，两条管线同一口径：成片的分节不补黑场（导出图），
+    /// 预览把后一段接在前一段真正的末尾上（合成器）。AI 按报出来的三位小数放段、变速之后的零头都会留下
+    /// 这种缝（19.9598 对 19.96）；各自截断落在相邻两格上，A/B 两条轨之间就空出一格 = 接缝上一帧黑
+    /// （docs/bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md）。
+    static let mainGapTolerance = 0.01
+
     /// 第 index 段和下一段之间这条缝的容量。
     ///
     /// `kind` 不传就按这条缝**当前**设的那种算。容量**与种类有关** —— 压黑不

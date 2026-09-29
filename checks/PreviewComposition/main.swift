@@ -52,38 +52,6 @@ try! FileManager.default.createDirectory(at: root, withIntermediateDirectories: 
 
 // 写测试素材的函数（纯色 / 两色视频、带声音的 WAV）在 Fixtures.swift。
 
-// MARK: - 场景搭建
-
-/// 两段 4s，任意转场 1s（重叠 3.0–4.0），可对第一段做改动。
-func seamState(
-    _ url1: URL, _ url2: URL, kind: ClipTransition,
-    mutateFirst: (inout EditClip) -> Void = { _ in }
-) -> TimelineState {
-    let info = MediaInfo(
-        duration: 4,
-        displaySize: CGSize(width: 64, height: 36),
-        frameRate: 10,
-        videoCodec: "h264",
-        audioCodec: nil,
-        hasAudio: false,
-        audioCanCopyToMP4: false,
-        fileBytes: 1
-    )
-    var first = EditClip(sourceURL: url1, sourceDuration: 4, timelineStart: 0, info: info)
-    first.transitionAfter = kind
-    first.transitionDuration = 1
-    mutateFirst(&first)
-    let second = EditClip(sourceURL: url2, sourceDuration: 4, timelineStart: 3, info: info)
-    var state = TimelineState()
-    state.mainClips = [first, second]
-    return state
-}
-
-/// 两段 4s 纯白，叠化 1s（重叠 3.0–4.0），可对第一段做改动。
-func whiteDissolveState(_ url1: URL, _ url2: URL, mutateFirst: (inout EditClip) -> Void) -> TimelineState {
-    seamState(url1, url2, kind: .crossFade, mutateFirst: mutateFirst)
-}
-
 // MARK: - 用例
 
 let semaphore = DispatchSemaphore(value: 0)
@@ -96,6 +64,8 @@ Task {
         try await checkAssetCache(white: white1, root: root)
         // 0b. 往合成轨上接素材只从真正的末尾接、合成完裁到总长（AppendOnly.swift，2026-09-27 黑屏案例）。
         try await checkAppendOnly(root: root)
+        // 0c. 切片表按格子铺、首尾相接（SliceTicks.swift，2026-09-29 黑屏案例：边界各自截断落在相邻两格）。
+        try await checkSliceTicks(root: root)
 
         // 1. 无任何变换：精确「垫底」路径，中点必须还是全亮（dissolve 不变暗）。
         if let built = await VideoEditCompositionBuilder.build(
