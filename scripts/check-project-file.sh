@@ -68,6 +68,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \

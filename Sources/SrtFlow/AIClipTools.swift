@@ -214,6 +214,16 @@ enum AIClipTools {
                 "note": "The clip was cut at that time and the still inserted; later clips on the same track moved right by its length."
             ]
             if usedNearestFrame { result["warning"] = "The clip has no frame exactly at that time; the nearest one was used." }
+            // 静帧后面还剩一截短的原片（不到一帧的已经拿掉了，FreezeSliver）：多半是想收在这一帧上、定格早了几帧（2026-09-29 验收）。
+            if let original = state.clip(with: clipID), let tail = project.state.allClips.first(where: {
+                $0.id != id && $0.sourceURL == original.sourceURL && abs($0.timelineStart - clip.timelineEnd) < 0.001
+            }), tail.timelineDuration < 1 {
+                result["tail_id"] = .string(fresh.short(tail.id))
+                result["tail_note"] = .string(String(
+                    format: "%.2f s of the clip (with its sound) still plays after the still. To end on the still, delete tail_id with delete_items.",
+                    tail.timelineDuration
+                ))
+            }
             return .ok(.object(result), changed: true)
         }
     }

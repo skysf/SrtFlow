@@ -119,7 +119,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表、预览合成里声音怎么排到合成音轨上 | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节第 7 条：一条合成音轨只装一种源格式；第 8 条：tap 给的时间可以比 0 早）、[播放中按 Return 崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
 | Inspector 数值框、拖调、Transform 写入、检查器里的滑杆行（`labelledSlider` / `InspectorSliderRow`，右边的数值框能打字）、「Shows for」 | [Inspector 数值框合同](docs/architecture/inspector-scrub-number-field.md)（滑杆行的数值框：打字提交要立刻 `endLiveEdit`） |
 | 往检查器里加任何一行（标题 + 控件、下拉、滑杆行） | [检查器的排版](docs/architecture/inspector-layout.md)（固定窄栏，一行不许比它宽；菜单 Picker 不许 `.fixedSize()`）、[声音场景那一行把检查器撑宽](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) |
-| 定格、静帧、图片转视频 | [定格长期约束](docs/architecture/freeze-frame.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
+| 定格、静帧、图片转视频、**在最后一帧里定格（不到一帧的右半）** | [定格长期约束](docs/architecture/freeze-frame.md)（第 4 节：不到一帧的右半拿掉）、[静帧后面剩一截](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）**、**生成 / 翻译结束时回写工程** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[回写要自己成一步撤销](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（包在 `AIUndoGrouping.step` 里）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)、[自动检测拿音效当探针](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md)（探针长的先、先听有没有人声） |
 | 生成出来的字幕长什么样：**去标点**、**断句**（逗号拆小句、太短的并、放不下的怎么切、中文按词边界）、**一行多长**（字数 + 画面宽度）、**显示时间**（最短、2 帧间隔、接上、说完多停）、**几段素材同时有字只留一条**、面板上「只用选中的片段」、机器翻译落字去标点 | [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md)（先断句后去标点、时间在整条轨上排；**停顿被识别器并进相邻的词，先估开口**；切法是动态规划不是贪心；中文按整句判语言；去重叠只比不同素材）、[停顿被算进相邻的词](docs/bugfixes/2026-09-26-pause-stretches-next-word.md)、[方案与调研](docs/plans/2026-09-26-subtitle-generation-style.md)（别的剪辑软件怎么做、Netflix / BBC 的数字、用户逐条拍的板） |
@@ -194,7 +194,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 生产导出帧率与分辨率（真跑导出：数帧、读成片尺寸 —— 只降不升、按短边、像素是方的）：
   `scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
-- 定格时间线变换：`scripts/check-freeze-frame.sh`。
+- 定格时间线变换（含在最后一帧里定格时不到一帧的右半不留）：`scripts/check-freeze-frame.sh`。
 - 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
 - 检查器里的菜单 Picker 不许锁死宽度（锁了会把整列撑宽、右边被裁）：`checks/inspector-fits-width.sh`。
 - 字幕编辑期间全局快捷键让路（⌫ 不删正在编辑的 cue）：
@@ -488,6 +488,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-29 新建工程之后播放头停在上一个工程的 36.3 秒](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md) — 切工程先卸片、播放头归零，可播放器换掉条目之后时间回调还会晚到一拍、报旧条目的时间，`PlayerClock` 照收，AI 不给时间的配音 / 文字就放到了 36.3 秒；打开工程时重建读到这个晚到的值，新工程从上一个的位置（或片尾）开始。没挂条目就丢掉回调；顺带让新建工程也重排预览（和打开一样，作废上一个工程还在路上的重建）。老自检不挂真条目、卸片后马上断言，异步的那一拍到不了；新的一项第一版素材没音轨，停着那种照样绿。**平台回调是异步的，同步设好的状态会被「关于上一个条目」的回调盖掉；测异步要让主循环转起来、素材要像真的。**
 - [2026-09-29 风格卡给竖屏写的字号大了 1.78 倍](docs/bugfixes/2026-09-29-recipe-sizes-too-big-on-vertical.md) — `font_size` 和字幕 `size` 都是「1080 高的画面上多少像素」，9:16 的画面 1920 高，卡里照别的软件的习惯给竖屏写了大字 110–140、字幕 64–72，AI 照做的大字折成三行顶出画面、字幕一行一两个词；工具说明的「64-80 for short-video captions」同样。按生产的排版量出来改成大字 44–52、字幕 42–48，共用规矩写明换算，卡里每个字号写明画幅，自检用 `set_text` 的排版和 `SubtitleLineFit` 真排一遍上限。**写给 AI 的数字也是代码：写之前在 SrtFlow 里真排一下；单位跟着画面的哪条边走要写明。**
 - [2026-09-29 转写认不出语言时，AI 被叫去「面板里选」](docs/bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md) — 自动检测没认出语言抛的是一个只带文字的错，文字是给面板写的，transcribe / generate_subtitles 原样交给 get_job。改成单独的 `LanguageUndetectedError`（面板文字不变），两个 AI 任务的失败都经 `AIHarvestFailure` 换成「带上 language 再调」，扫描钉着。**给界面写的报错不能原样交给 AI；要按种类换说法，错误就得有类型。**
+- [2026-09-29 在最后一帧上定格，静帧后面还剩一截原片](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md) — 定格 = 切开、插静帧、右边后挪；想停在最后一帧上，切点只能落在最后一帧里，右半不到一帧、没有自己的画面，只在静帧后面闪一下、咔一声（手动定格一样）。`FreezeSliver` 判断、`insertFreeze` 拿掉它且后面少挪这一截；够一帧的照旧留，AI 的结果里带 `tail_id`。**切出来不到一帧的那一截不是内容，切的操作要自己收拾；够一帧的要指出来，别让人去找。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

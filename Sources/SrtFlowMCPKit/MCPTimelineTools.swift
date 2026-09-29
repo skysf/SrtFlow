@@ -86,7 +86,9 @@ public enum MCPTimelineTools {
                 Hold the picture at a moment: the clip is cut there and a still of that exact frame is inserted for \
                 duration seconds (default 2); later clips on the same track move right by that much (other tracks, \
                 texts and subtitles stay). Without clip_id it freezes the V1 clip at that time. Not for audio, images, \
-                hidden clips, or a moment inside a transition on V1. The still is saved as a PNG next to the project.
+                hidden clips, or a moment inside a transition on V1. The still is saved as a PNG next to the project. \
+                To end on a clip's last frame, give a time inside that frame: a leftover shorter than one frame is dropped, \
+                a longer one keeps playing after the still (tail_id in the result).
                 """,
                 input: MCPSchema.object([
                     "time": MCPSchema.number("Timeline time of the frame to hold.", minimum: 0),
