@@ -989,3 +989,7 @@
 "This project has its own subtitle style." = "This project has its own subtitle style.";
 "Use Burn In style" = "Use Burn In style";
 "Use the subtitle style from the Burn In Subtitles page again" = "Use the subtitle style from the Burn In Subtitles page again";
+
+/* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
+"Mosaic" = "Mosaic";
+"Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it.";
