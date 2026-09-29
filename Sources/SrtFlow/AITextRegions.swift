@@ -56,6 +56,8 @@ enum AITextRegions {
     static let heavyCoverage = 0.4
     /// 两块字的中心相差不到它就算同一个地方。
     static let samePlace = 0.05
+    /// 两行字的底边相差不到它（画面高的比例）就算字幕的同一个位置。
+    static let sameBaseline = 0.02
     /// 同一个字大多（八成）出现在同一处才算「固定在那儿」，不然算会动。
     static let settled = 0.8
 
@@ -88,13 +90,44 @@ enum AITextRegions {
         // 字一直在变才是字幕；总是同一行字的是固定的标题（归到固定的字）。
         let lines = Set(lit.map { normalized($0.texts.map(\.string).joined(separator: " ")) })
         guard coverage >= bandCoverage, Double(lines.count) / Double(lit.count) >= bandChanges else { return nil }
-        let boxes = lit.flatMap { $0.texts.map(\.box) }
+        let boxes = subtitleLines(lit.map(\.texts))
         let top = percentile(boxes.map(\.minY), 0.1)
         let bottom = percentile(boxes.map(\.maxY), 0.9)
         let left = percentile(boxes.map(\.minX), 0.1)
         let right = percentile(boxes.map(\.maxX), 0.9)
         return Band(box: CGRect(x: left, y: top, width: right - left, height: bottom - top),
                     coverage: coverage, from: first.time, to: last.time)
+    }
+
+    /// 字幕带的框只量字幕那几行（2026-09-29 验收实剪：课程录屏里居中的幻灯片字把框从 0.90 撑到 0.77，照「裁 0.24」
+    /// 会切掉幻灯片自己的标签，docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md）。烧进去的字幕底边在同一条线上、
+    /// 字一直在换；幻灯片自己的字随页换位置、一页停几帧就是同一句。所以按底边分堆，**不同的字最多**的那一堆是字幕（一样多取靠下的），
+    /// 再带上同一帧里紧贴在它上面、一样大的字（两行的字幕）。
+    static func subtitleLines(_ frames: [[AIVision.Text]]) -> [CGRect] {
+        let lines = frames.enumerated().flatMap { index, texts in texts.map { (frame: index, text: $0) } }
+        var row: [(frame: Int, text: AIVision.Text)] = []
+        var best = (distinct: 0, bottom: -1.0)
+        for candidate in lines {
+            let same = lines.filter { abs($0.text.box.maxY - candidate.text.box.maxY) <= sameBaseline }
+            let distinct = Set(same.map { normalized($0.text.string) }).count
+            let bottom = Double(candidate.text.box.maxY)
+            if distinct > best.distinct || (distinct == best.distinct && bottom > best.bottom) {
+                row = same
+                best = (distinct, bottom)
+            }
+        }
+        var boxes = row.map(\.text.box)
+        for line in row {
+            let box = line.text.box
+            // 紧贴在上面：空隙不到行高的四分之一（也不深压进来）、字高差两成以内、左右有重叠。
+            boxes += frames[line.frame].map(\.box).filter { above in
+                let gap = box.minY - above.maxY
+                return above.maxY < box.maxY - sameBaseline && abs(gap) <= box.height * 0.25
+                    && above.height >= box.height * 0.8 && above.height <= box.height * 1.25
+                    && above.maxX > box.minX && above.minX < box.maxX
+            }
+        }
+        return boxes
     }
 
     // MARK: 固定的字

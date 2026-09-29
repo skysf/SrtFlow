@@ -62,6 +62,23 @@ private func textRegionChecks() {
     let titles = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("SLIDE TITLE \($0)", 0.1, 0.08, 0.8, 0.08)]) }
     checkEqual(AITextRegions.report(titles).band, nil, "text scan: centred slide titles at the top are not a subtitle band")
 
+    // 课程录屏（2026-09-29 验收实剪，L28 的样子）：字幕在 0.90–0.965、一半的帧有、每句都不同；幻灯片居中的标签在 0.77，
+    // 一页停三帧、每帧都有。框只量字幕那一行 —— 以前按所有居中的字取，框从 0.77 起，叫人裁 0.24，会切掉幻灯片自己的标签。
+    let course = (0..<12).map { index -> AITextRegions.Frame in
+        var texts = [text("LABEL \(index / 3)", 0.4, 0.77, 0.2, 0.04)]
+        if index % 2 == 0 { texts.append(text("字幕第\(index)句", 0.35, 0.9, 0.3, 0.065)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    let courseBand = AITextRegions.report(course).band
+    check(abs((courseBand?.box.minY ?? 0) - 0.9) < 0.005, "text scan: slide labels that change page by page do not stretch the subtitle band (top \(courseBand?.box.minY ?? -1))")
+    check(AITextRegions.json(AITextRegions.report(course))["subtitle_band"]?["hint"]?.stringValue?.contains("crop bottom 0.11") == true,
+          "text scan: the crop only takes the subtitles off")
+    // 两行的字幕：紧贴着的上一行一样大，也算进框里。
+    let twoLines = (0..<6).map { index in AITextRegions.Frame(time: Double(index), texts: [
+        text("upper \(index)", 0.3, 0.84, 0.4, 0.05), text("lower \(index)", 0.3, 0.895, 0.4, 0.05)
+    ]) }
+    check(abs((AITextRegions.report(twoLines).band?.box.minY ?? 0) - 0.84) < 0.005, "text scan: a two-line subtitle's upper line is in the band")
+
     // 同一行字一直不变：不是字幕（是固定的标题）。
     let fixedTitle = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("Chapter One", 0.3, 0.85, 0.4, 0.06)]) }
     checkEqual(AITextRegions.report(fixedTitle).band, nil, "text scan: a line that never changes is not a subtitle band")
