@@ -334,7 +334,7 @@ public enum MCPTimelineTools {
             """,
             input: MCPSchema.object([
                 "text_id": MCPSchema.string("Change this text instead of adding one."),
-                "text": MCPSchema.string("The words; \\n starts a new line."),
+                "text": MCPSchema.string("The words; a newline (or the two characters \\n) starts a new line."),
                 "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
                 "duration": MCPSchema.number("Seconds on screen (default 3).", minimum: 0.2),
                 "position": MCPSchema.string("Named spot.", oneOf: MCPVocabulary.textPositions),

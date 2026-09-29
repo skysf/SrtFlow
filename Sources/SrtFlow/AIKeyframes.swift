@@ -115,6 +115,20 @@ enum AIKeyframes {
         clip.animation = animation.isEmpty ? nil : animation
     }
 
+    /// 关键帧锚在源时间上（docs/architecture/keyframe-animation.md）：改入点 / 出点、换素材窗口之后它们可能落到段外面
+    /// （时间线上是负数、或超过段尾）。AI 看不见时间线，只能靠这一句知道要重设（2026-09-29 婚礼工程 BUG-03）。
+    static func outsideWarning(_ clip: EditClip, frameRate: ProjectFrameRate) -> String? {
+        guard let animation = clip.animation, !animation.isEmpty else { return nil }
+        let tolerance = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
+        let range = (clip.sourceStart - tolerance)...(clip.sourceStart + clip.sourceDuration + tolerance)
+        let outside = animation.allKeyTimes(tolerance: tolerance).filter { !range.contains($0) }
+        guard !outside.isEmpty else { return nil }
+        let shown = outside.prefix(3).map { String(format: "%.2f", clip.timelineTime(atSource: $0)) }.joined(separator: ", ")
+        return "\(outside.count) keyframe(s) now sit outside this clip (at \(shown) s on the timeline). Keyframes stay "
+            + "attached to the source picture, so trimming or moving the source window leaves them behind; call "
+            + "set_keyframes on this clip to place them again."
+    }
+
     /// 写给 AI 看：每一行的点（时间线秒）。没有关键帧是 nil。
     static func summary(_ clip: EditClip, canvas: CGSize) -> JSONValue? {
         guard let animation = clip.animation, !animation.isEmpty else { return nil }

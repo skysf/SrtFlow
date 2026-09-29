@@ -18,7 +18,8 @@ enum AITimelineTools {
             workspace: AIWorkspace.shared.current,
             playhead: project.clock.time,
             selection: selection,
-            renderSize: VideoEditCompositionBuilder.renderSize(for: state)
+            renderSize: VideoEditCompositionBuilder.renderSize(for: state),
+            project: project.documentURL?.lastPathComponent
         )
         var summary = AITimelineSummary.make(state, context)
         let credits = AIAudioLibraryTools.projectCredits(state)
@@ -287,20 +288,8 @@ enum AITimelineTools {
 
     static func delete(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
         let state = project.state
-        let ids = AIShortIDs(state: state)
         guard let raw = try args.stringArray("ids"), !raw.isEmpty else { throw AIToolError("ids is required.") }
-        var deletion = AITimelineEdits.Deletion()
-        for text in raw {
-            let id = try ids.resolve(text)
-            switch AIItemKind.of(id, in: state) {
-            case .clip: deletion.clips.insert(id)
-            case .text: deletion.texts.insert(id)
-            case .filter: deletion.filters.insert(id)
-            case .shape: deletion.shapes.insert(id)
-            case .subtitle: deletion.cues.insert(id)
-            case nil: throw AIToolError("Nothing in the project has id \(text).")
-            }
-        }
+        let deletion = try AITimelineEdits.deletion(of: raw, in: state)
         var next = state
         AITimelineEdits.delete(deletion, ripple: try args.bool("ripple") ?? false, linkage: project.linkageEnabled, in: &next)
         project.perform(rebuildsPreview: !deletion.clips.isEmpty) { $0 = next }

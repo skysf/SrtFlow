@@ -110,6 +110,7 @@ enum AIClipTools {
             summary["picture"] = AITimelineSummary.picture(clip, canvas: context.renderSize, always: true)
         }
         for (key, value) in plan.findings { summary[key] = value }
+        if let warning = AIKeyframes.outsideWarning(clip, frameRate: fresh.frameRate) { summary["warning"] = .string(warning) }
         if !changed { summary["unchanged"] = true }
         return .ok(.object(summary), changed: changed)
     }

@@ -48,6 +48,16 @@ final class TranscriptionTask: ObservableObject {
         }
     }
 
+    /// 正在跑的这一次绑不绑工程：生成字幕（`start(project:)`）绑，AI 的 transcribe（`transcribeOnly`）只转文件。
+    private(set) var boundToProject = false
+
+    /// 切工程时调：只取消绑着工程的那一次。AI 的 transcribe 不碰工程，让它跑完 —— 以前这里无差别 `cancel()`，
+    /// `new_project` 一声不吭地把正在跑的 transcript 取消了（2026-09-29 婚礼工程）。
+    func cancelIfBoundToProject() {
+        guard boundToProject else { return }
+        cancel()
+    }
+
     private let service = SpeechTranscriptionService()
     /// 上一次失败时抛的那个错（`stage` 里只剩文字）：AI 的 generate_subtitles 靠它认出「没认出语言」，换成它能照做的话。
     private(set) var failure: Error?
@@ -81,6 +91,7 @@ final class TranscriptionTask: ObservableObject {
         onlyClipIDs: Set<UUID>? = nil
     ) {
         guard !isRunning else { return }
+        boundToProject = true
         let token = ExportCancellationToken()
         self.token = token
         failure = nil
@@ -211,6 +222,7 @@ final class TranscriptionTask: ObservableObject {
         }
         let token = ExportCancellationToken()
         self.token = token
+        boundToProject = false
         // 第一个 await 之前就占住槽（isRunning 看的是阶段）。
         stage = .preparingModels
         progress = 0
