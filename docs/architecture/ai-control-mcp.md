@@ -494,6 +494,15 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
     `AIAudioFileWriter.writeVoiceover` 落盘**（第 34 条那条扫描加了它）。`clone_from` / `clone_start` / `clone_seconds`：用素材里一段人声克隆，只有 fal 能做、
     用不了就报错不退档。词时间读不出来就没有（结果里说，改用 `generate_subtitles`）。
 
+41. **婚礼工程那一轮之后补的五条小规矩（2026-09-29，[案例](../bugfixes/2026-09-29-mcp-tool-followups-from-wedding-session.md)）**：
+    ① 说明里写的记号客户端会照字面传：`set_text` 的 `text` 把字面的 `\n` 也当换行（`AITextChange.unescapingNewlines`）。
+    ② 切工程只取消绑工程的转写：`TranscriptionTask.cancelIfBoundToProject()`（生成字幕绑、AI 的 `transcribe` 只转文件不绑），
+    `new_project` / `open_project` 不许顺手把文件级的 transcript 取消了；用户按「停止」照旧全取消。③ `look` 建完合成先
+    `isValid`，无效就报错说「这是 SrtFlow 的 bug，不是素材黑」，不许把黑底交给 Vision 描述。④ 整批的工具（`delete_items`）
+    先把 id 全认一遍，认不出的一起列出来、说明一个都没做（`AITimelineEdits.deletion(of:in:)`）。⑤ `get_timeline` 顶层带
+    `project`（工程文件名 / `unsaved`）：几个 AI 会话连着同一个 App 时，谁刚换了工程一眼能看出来。另外 `edit_clip` 之后关键帧
+    落到源窗口外面（关键帧锚在源时间上，改入点就留在原来的画面上）要在结果里 `warning`（`AIKeyframes.outsideWarning`）。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
@@ -596,6 +605,10 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
 - [ ] 导出到已有同名文件：自动加编号（「标题 2.mp4」），不问、没动原来那个。
 - [ ] 自己在未命名的工程里剪几刀、不存，再让 AI 新建工程：不问，原来那个被存进 `SrtFlow/工程`（AI 说得出存在哪），
       SrtFlow 里**没有**弹任何对话框。
+- [ ] 把一个工程改到预览合成无效（本地临时把 `CompositionSlices` 的去重改回按秒、开用户的最小复现工程）再让 AI `look`：
+      收到「preview composition is invalid … a SrtFlow bug」的报错，不是一张黑图配「夜空」的描述。
+- [ ] 让 AI `transcribe` 一个文件，任务在跑时让它 `new_project`：`get_job` 照样跑到 done；让它 `generate_subtitles` 时
+      `new_project`：那个任务是 cancelled（绑工程的才取消）。
 - [ ] 让 AI 看 / 听 / 放点名文件夹以外的一个文件：第一次在对话里问；同意之后同一个文件夹里别的文件不再问；
       设置 → AI 里列着那个文件夹，点「移除」之后再读又会问；退出重开 SrtFlow 仍然记得。
 - [ ] 设置里连接 Claude Code / Codex，新开一个会话：用 SrtFlow 的工具不再弹「允许吗」；让 AI 删一个文件时 SrtFlow
