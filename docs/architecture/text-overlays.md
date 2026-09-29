@@ -73,6 +73,16 @@
 
 渐变填充用 `setTextDrawingMode(.clip)` 把裁剪区收成字的形状，再往里刷渐变。
 
+## 缺字回退：排版给了谁的字形号，就用谁画（2026-09-29）
+
+主字体里没有的字（emoji、拉丁字体下的汉字）Core Text 排版时按级联表换一个字体来排，run 上带着那个字体，字形号是
+**那个字体**的。`TextLayout.fonts`（`TextLayoutFonts`）记着主字体和回退到的字体，每个字形记 `fontIndex`；`TextDrawing`
+连续同一字体的字形一批用它自己的字体画。拿主字体画别的字体的字形号就是乱码
+（[案例](../bugfixes/2026-09-29-text-fallback-glyphs-drawn-with-main-font.md)）。
+
+彩色字形（Apple Color Emoji，`traitColorGlyphs`）没有轮廓：描边那一道跳过它、渐变填充的裁剪那一道直接实画它。数字元件的
+等宽格子、包围盒照旧按主字体算（`layout.font` = `fonts.main`）。回归：`checks/TextRender/FontFallback.swift`。
+
 ## 坐标系（最容易写错的地方）
 
 排版和渲染全程 **y 轴向上**（Core Graphics 原生），不像 `ShapePNGRenderer`
@@ -84,9 +94,11 @@
 
 ## 文字的字体表和字幕**不是同一份**
 
-字幕的 `FontCatalog` 只收「文件可读 + CoreText 能解析」的字体，因为烧字幕要把
+字幕的 `FontCatalog` 只收「文件可读 + CoreText 能解析 + cmap 经得起 FreeType 挑」的字体，因为烧字幕要把
 字体文件软链进任务目录喂给 libass；macOS 的苹方等系统中文字体放在普通进程读
-不了的目录里，libass 打不开会悄悄换字体。
+不了的目录里，libass 打不开会悄悄换字体。第三条是 2026-09-29 补的（`FontCmapSanity`）：圆体的 (3,10) format 12
+子表长度和分组数对不上、映射错位，Core Text 不用它、FreeType 优先用它，烧出来英文全是别的字形
+（[案例](../bugfixes/2026-09-29-yuanti-cmap-breaks-libass-latin.md)）；这种字体不进字幕清单，画面文字照样能用它。
 
 文字没有这个约束 —— 渲染全程走 Core Text，字体由系统字体服务提供。用字幕那份
 表的话，苹方这种最常用的中文字体会从列表里消失，而它明明画得出来。所以另有

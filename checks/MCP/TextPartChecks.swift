@@ -50,4 +50,10 @@ func runTextPartChecks() {
     apply(["number": ["remove": true]])
     check(current().number == nil, "remove turns it back into text")
     checkEqual(current().text, "10,000+", "the end value stays on screen as text instead of disappearing")
+
+    // 字面的反斜杠 + n（客户端把说明里的 \n 原样当两个字符传来）也是换行；真换行照旧（2026-09-29 婚礼工程 BUG-09）。
+    apply(["text": "一桌好酒席\\n见证好姻缘"])
+    checkEqual(current().text, "一桌好酒席\n见证好姻缘", "a literal backslash-n becomes a line break")
+    apply(["text": "line one\nline two"])
+    checkEqual(current().text, "line one\nline two", "a real newline is kept as it is")
 }

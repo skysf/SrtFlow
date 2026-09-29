@@ -41,6 +41,14 @@ use_for: The opening of a short film or travel film, a trailer feel, a portfolio
 - Voice: usually none. For a narration, add_voiceover with zh_male or en_male at speed 0.9, short sentences with
   1–2 s between them.
 
+## Generated media (only if generate_media is among your tools)
+
+- A missing wide establishing shot: generate_media kind text_to_video, or kind image_to_video from a photo the user gave;
+  draft at 480p first.
+- Music when the library has nothing big enough: kind music ("orchestral, rising, cinematic, no vocals"). A riser or an
+  impact (kind sound_effect) under the moment the title lands.
+- Generated video has its own sound: keep it under the music.
+
 ## Checklist before export
 
 - The letterbox bars are the same height top and bottom, and no text sits on them.

@@ -7,6 +7,7 @@ import Foundation
 // 编法见 scripts/check-mcp.sh。
 
 func runBeatChecks() {
+    checkAnalysisWindow()
     checkClickTrack(bpm: 120, first: 0.3)
     checkClickTrack(bpm: 90, first: 0.55)
     checkGroove(bpm: 128, swing: 0)
@@ -15,6 +16,18 @@ func runBeatChecks() {
 }
 
 private let rate = 11_025.0
+
+/// listen 和 cut_to_beat 要看同一份分析：请求落在文件开头 15 分钟里就分析整段（2026-09-29 婚礼工程 BUG-07：0–90 秒和
+/// 0–32 秒各分析各的，同一首歌一边 63.5 BPM 一边 95.3）。
+private func checkAnalysisWindow() {
+    let listen = BeatAnalysisWindow.resolve(from: 0, to: 90, fileDuration: 263.4)
+    let cut = BeatAnalysisWindow.resolve(from: 0, to: 32.21, fileDuration: 263.4)
+    check(listen == cut && listen == (0, 263.4), "listen (0–90 s) and cut_to_beat (0–32 s) analyse the whole song: \(listen) vs \(cut)")
+    check(BeatAnalysisWindow.resolve(from: 120, to: 150, fileDuration: 263.4) == (0, 263.4), "a clip from the middle of the song still uses the whole-song analysis")
+    check(BeatAnalysisWindow.resolve(from: 0, to: 32, fileDuration: 1200) == (0, 900), "a long file is analysed up to the 15-minute cap")
+    check(BeatAnalysisWindow.resolve(from: 950, to: 1000, fileDuration: 1200) == (950, 1000), "a request past the cap keeps its own window")
+    check(BeatAnalysisWindow.resolve(from: 1000, to: 3000, fileDuration: 3000) == (1000, 1900), "and is itself capped at 15 minutes")
+}
 
 /// 20 秒：从 `first` 起每拍一个脉冲，第 0、4、8… 拍是重拍。
 private func clicks(bpm: Double, first: Double, seconds: Double = 20) -> (samples: [Float], beats: [Double]) {

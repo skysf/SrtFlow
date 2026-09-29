@@ -89,6 +89,37 @@ enum AITimelineEdits {
         var cues: Set<UUID> = []
     }
 
+    /// 一批 id 认成要删的几类。**整批一起认**：有一个认不出就把认不出的都列出来、并说明一个都没删 ——
+    /// 一个工具 = 一步撤销，删一半不删一半没法当一步退；只报第一个错的话 AI 以为前面的删掉了
+    /// （2026-09-29 婚礼工程 ISSUE-21）。
+    static func deletion(of raw: [String], in state: TimelineState) throws -> Deletion {
+        let ids = AIShortIDs(state: state)
+        var deletion = Deletion()
+        var problems: [String] = []
+        for text in raw {
+            do {
+                let id = try ids.resolve(text)
+                switch AIItemKind.of(id, in: state) {
+                case .clip: deletion.clips.insert(id)
+                case .text: deletion.texts.insert(id)
+                case .filter: deletion.filters.insert(id)
+                case .shape: deletion.shapes.insert(id)
+                case .subtitle: deletion.cues.insert(id)
+                case nil: problems.append("Nothing in the project has id \"\(text)\".")
+                }
+            } catch let error as AIToolError {
+                problems.append(error.message)
+            }
+        }
+        guard problems.isEmpty else {
+            throw AIToolError(
+                problems.joined(separator: " ") + " Nothing was deleted (the batch is all-or-nothing): "
+                    + "call get_timeline (or get_subtitles) for the current ids and call delete_items again."
+            )
+        }
+        return deletion
+    }
+
     /// 一次删完（和 ⌫ 同一口径：链接开着时带上链接伙伴）。`ripple`：删掉的 V1 片段留下的空，
     /// 由后面的 V1 片段往前补上 —— 只补被删那一段的长度，原来就有的空隙照样留着。
     static func delete(_ deletion: Deletion, ripple: Bool, linkage: Bool, in state: inout TimelineState) {
