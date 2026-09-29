@@ -62,6 +62,12 @@ enum AITextRegions {
     static let minWrappedTexts = 2
     /// 同一个字大多（八成）出现在同一处才算「固定在那儿」，不然算会动。
     static let settled = 0.8
+    /// 框的底边到了这儿（画面高的比例）就是贴着画面底边；一行字幕至少这么高（1080 高的画面上约 43 像素）。
+    static let bottomEdge = 0.99
+    static let shortestLine = 0.04
+    /// 字幕那一堆至少有这么多句不同的话，也至少是最多那一堆的 1/rowShare。
+    static let minSubtitleTexts = 3
+    static let rowShare = 3
 
     static func report(_ frames: [Frame]) -> Report {
         guard !frames.isEmpty else { return Report() }
@@ -77,9 +83,18 @@ enum AITextRegions {
 
     // MARK: 字幕带
 
-    /// 像一行字幕：正中（中心离正中不超过画面宽的 12%）、够宽、不太高，在画面最下面那一截（中心在 78% 以下）。
+    /// 像一行字幕：正中（中心离正中不超过画面宽的 12%）、够宽、不太高，在画面最下面那一截（中心在 78% 以下），
+    /// 而且不是贴着画面底边被切掉的字。「不太高」这一条是有意的：一行字幕的框被花背景量大（L27 的 0.860–1.001，字形只在 0.90–0.965）
+    /// 时不算字幕行，算进去会多裁 0.04；六节课 292 帧有字幕的画面里没有一处真的两行合并成一个框。
     static func captionLike(_ box: CGRect) -> Bool {
-        box.width >= 0.06 && box.height <= 0.12 && abs(box.midX - 0.5) <= 0.12 && box.midY >= 0.78
+        box.width >= 0.06 && box.height <= 0.12 && abs(box.midX - 0.5) <= 0.12 && box.midY >= 0.78 && !cutOffAtBottom(box)
+    }
+
+    /// 贴着画面底边、只露出上面一道的字：幻灯片 / 网页 / PDF 往下滚出画面的那一行（录屏里到处都是）。框的底边就是画面边缘
+    /// （实测 0.997）、高度只有一行的一小半（0.011–0.028）；烧进去的字幕离底边总留着空（六节课底边 0.95–0.98），一行至少 0.04 高。
+    /// 让它们进字幕那一堆，每帧滚到不同的一行、字一直在变，「不同的字最多」就偏袒它们，把框的底边抬到 0.997，字幕离得远时干脆一个人赢。
+    static func cutOffAtBottom(_ box: CGRect) -> Bool {
+        box.maxY >= bottomEdge && box.height < shortestLine
     }
 
     private static func band(_ frames: [Frame]) -> Band? {
@@ -93,6 +108,7 @@ enum AITextRegions {
         let lines = Set(lit.map { normalized($0.texts.map(\.string).joined(separator: " ")) })
         guard coverage >= bandCoverage, Double(lines.count) / Double(lit.count) >= bandChanges else { return nil }
         let boxes = subtitleLines(lit.map(\.texts))
+        guard !boxes.isEmpty else { return nil }
         let top = percentile(boxes.map(\.minY), 0.1)
         let bottom = percentile(boxes.map(\.maxY), 0.9)
         let left = percentile(boxes.map(\.minX), 0.1)
@@ -103,22 +119,25 @@ enum AITextRegions {
 
     /// 字幕带的框只量字幕那几行（2026-09-29 验收实剪：课程录屏里居中的幻灯片字把框从 0.90 撑到 0.77，照「裁 0.24」
     /// 会切掉幻灯片自己的标签，docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md）。烧进去的字幕底边在同一条线上、
-    /// 字一直在换；幻灯片自己的字随页换位置、一页停几帧就是同一句。所以按底边分堆，**不同的字最多**的那一堆是字幕（一样多取靠下的），
-    /// 再带上同一帧里紧贴在它上面、一样大的字（两行的字幕）—— 这一行也要像字幕一样每句都换（至少两帧、两句不同）才认：幻灯片自己的
+    /// 字一直在换；幻灯片自己的字随页换位置、一页停几帧就是同一句。所以按底边分堆，**字幕是够多的那几堆里最下面的一堆**：
+    /// 「够多」= 至少 3 句不同的话、也至少是最多那一堆的三分之一。不是「不同的字最多」—— 字幕稀疏、幻灯片的字多时（L27 的生产抽样，
+    /// 24 帧里 4 帧有字幕、幻灯片 0.80–0.84 一段里有 7 句不同的字）最多的是幻灯片，框从 0.76 起、叫人裁 0.25；字幕总排在画面最下面，
+    /// 它下面再有的东西不是被切掉的字（`cutOffAtBottom` 先滤掉）就是台标、页脚，撑不起三句。选定后按这一堆底边的中位数重新收一遍。
+    /// 再带上同一帧里紧贴在字幕上面、一样大的字（两行的字幕）—— 这一行也要像字幕一样每句都换（至少两帧、两句不同）才认：幻灯片自己的
     /// 标题恰好贴在字幕上面的一帧不是第二行（2026-09-29 复查，docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md）。
+    /// 没有一堆够格就是没有字幕（空）。
     static func subtitleLines(_ frames: [[AIVision.Text]]) -> [CGRect] {
         let lines = frames.enumerated().flatMap { index, texts in texts.map { (frame: index, text: $0) } }
-        var row: [(frame: Int, text: AIVision.Text)] = []
-        var best = (distinct: 0, bottom: -1.0)
-        for candidate in lines {
+        let piles = lines.map { candidate -> (bottom: Double, distinct: Int) in
             let same = lines.filter { abs($0.text.box.maxY - candidate.text.box.maxY) <= sameBaseline }
-            let distinct = Set(same.map { normalized($0.text.string) }).count
-            let bottom = Double(candidate.text.box.maxY)
-            if distinct > best.distinct || (distinct == best.distinct && bottom > best.bottom) {
-                row = same
-                best = (distinct, bottom)
-            }
+            return (Double(candidate.text.box.maxY), Set(same.map { normalized($0.text.string) }).count)
         }
+        let most = piles.map(\.distinct).max() ?? 0
+        let needed = max(minSubtitleTexts, (most + rowShare - 1) / rowShare)
+        guard let lowest = piles.filter({ $0.distinct >= needed }).max(by: { ($0.bottom, $0.distinct) < ($1.bottom, $1.distinct) }) else { return [] }
+        // 最下面那个候选只看得到它上面 0.02 以内的字，等于收了半堆：以这一堆底边的中位数为中心再收一遍。
+        let center = median(lines.map { Double($0.text.box.maxY) }.filter { abs($0 - lowest.bottom) <= sameBaseline })
+        let row = lines.filter { abs(Double($0.text.box.maxY) - center) <= sameBaseline }
         var boxes = row.map(\.text.box)
         var uppers: [Int: [AIVision.Text]] = [:]
         for line in row {
