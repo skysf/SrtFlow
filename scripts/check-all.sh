@@ -160,6 +160,8 @@ run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-scr
 shard 5
 run_check "audio-library（清单解析的宽容边界 + 双语搜索）" scripts/check-audio-library.sh
 run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
+# 盖一块（模糊 / 马赛克）真导出抽帧：只改那一块、高斯剖面、格子从左上角起算、只在那一段、形状压在上面、不算总长。
+run_check "cover-export（盖一块：真导出抽帧）" scripts/check-cover-export.sh
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh

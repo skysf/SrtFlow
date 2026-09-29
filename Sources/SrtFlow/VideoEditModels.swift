@@ -563,7 +563,7 @@ struct TimelineState: Hashable, Sendable {
         var end = mainClips.map(\.timelineEnd).max() ?? 0
         for lane in overlayTracks { end = max(end, lane.clips.map(\.timelineEnd).max() ?? 0) }
         for lane in audioTracks { end = max(end, lane.clips.map(\.timelineEnd).max() ?? 0) }
-        for shape in shapes { end = max(end, shape.timelineEnd) }
+        for shape in shapes where !shape.kind.isCover { end = max(end, shape.timelineEnd) }  // 盖一块不算总长（同滤镜段）
         for text in textOverlays { end = max(end, text.timelineEnd) }
         // **滤镜段不算**（产品口径，2026-09-21 拍板）：形状和文字自己就是画面，
         // 拖到末尾之后理应把成片拉长；滤镜只是调色，染一段空白没有意义，

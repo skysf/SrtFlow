@@ -1203,7 +1203,7 @@ final class VideoEditProject {
         switch kind {
         case .line:
             shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0)
-        case .rectangle:
+        case .rectangle, .blur, .mosaic:
             shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0.22)
         case .square:
             shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.2, height: 0.2)

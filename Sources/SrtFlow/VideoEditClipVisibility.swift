@@ -67,8 +67,12 @@ extension TimelineState {
     /// 进预览和成片的文字，按叠放序（行号小的先贴）。藏起来的不算 —— 预览叠层和导出都读这一份。
     var renderedTextOverlays: [TextOverlay] { textOverlaysInStackingOrder.filter { !$0.isHidden } }
 
-    /// 进预览和成片的形状。藏起来的不算 —— 预览叠层和导出都读这一份。
-    var renderedShapes: [ShapeAnnotation] { shapes.filter { !$0.isHidden } }
+    /// 进预览和成片的形状（画出来的）。藏起来的不算，盖一块（模糊 / 马赛克）也不算 —— 它不画东西，走 `renderedCovers`。
+    /// 预览叠层和导出都读这一份。
+    var renderedShapes: [ShapeAnnotation] { shapes.filter { !$0.isHidden && !$0.kind.isCover } }
+
+    /// 进预览和成片的盖一块（模糊 / 马赛克），按数组顺序（先加的先盖）。藏起来的不算 —— 预览的第二层播放器和导出的滤镜都读这一份。
+    var renderedCovers: [ShapeAnnotation] { shapes.filter { !$0.isHidden && $0.kind.isCover } }
 
     /// 进预览和成片的滤镜段，按生效顺序（`orderedFilters`）。藏起来的不算 —— 预览的 CI 链
     /// （`activeFilters(at:)`）和导出的 lut3d 链都读这一份。

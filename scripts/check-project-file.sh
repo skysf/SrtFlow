@@ -99,6 +99,7 @@ xcrun swiftc \
   checks/ProjectFile/SubtitleTracks.swift \
   checks/ProjectFile/SubtitleSources.swift \
   checks/ProjectFile/FilledShapes.swift \
+  checks/ProjectFile/CoverShapes.swift \
   checks/ProjectFile/SubtitleLook.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

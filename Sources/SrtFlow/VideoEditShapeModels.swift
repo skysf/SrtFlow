@@ -3,15 +3,29 @@ import SrtFlowCore
 
 // MARK: - 形状标注的模型
 //
-// 管什么：画在画面上的形状（线条 / 长方形 / 正方形）的数据、宽容解码与存盘。
-// 不管什么：形状怎么画（预览 `ShapeOverlayCanvas`、导出 `ShapePNGRenderer`）、时间线上的形状块。
+// 管什么：画在画面上的形状（线条 / 长方形 / 正方形）和「盖一块」（模糊 / 马赛克）的数据、宽容解码与存盘。
+// 不管什么：形状怎么画（预览 `ShapeOverlayCanvas`、导出 `ShapePNGRenderer`）、盖一块怎么盖（预览 `CoverPreviewLayer`、
+// 导出 `VideoEditCoverExport`）、时间线上的形状块。
 // 从 VideoEditModels.swift 拆出来（那个文件在行数基线里只许降，见 docs/architecture/coding-standards.md）。
 
-/// 画在画面上的形状：线条、长方形、正方形。
+/// 画在画面上的形状：线条、长方形、正方形；以及盖一块（模糊、马赛克）。
 enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
     case line
     case rectangle
     case square
+    /// 盖一块（2026-09-30，MCP 方案第 56 条）：**不画东西**，把它下面的画面（主轨 + 上层轨合成之后、调色之后）模糊或打马赛克，
+    /// 遮水印、遮烧进去的旧字幕。长方形的几何，和形状共用时间线上的块、选中框、拖动、V 隐藏、复制粘贴；
+    /// 但**不算总长**（同滤镜段：一块盖在空白上没有意义）、不进 `renderedShapes`（那是「画出来的」）。
+    case blur
+    case mosaic
+
+    /// 是不是盖一块。预览、导出、总长、时间线上的块各问它，不各判一份。
+    var isCover: Bool { self == .blur || self == .mosaic }
+
+    /// 盖一块的力度：模糊的半径（高斯的标准差）/ 马赛克每一格的边长，按 1080p 基准的像素数。
+    /// 默认值：一行 40 像素高的字，模糊半径 28 时糊到认不出、马赛克格子 22 时只剩两格高。
+    static let coverAmountRange = 2.0...80.0
+    var defaultCoverAmount: Double { self == .mosaic ? 22 : 28 }
 
     var id: String { rawValue }
 
@@ -20,6 +34,8 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .line: return "Line"
         case .rectangle: return "Rectangle"
         case .square: return "Square"
+        case .blur: return "Blur"
+        case .mosaic: return "Mosaic"
         }
     }
 
@@ -28,6 +44,8 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .line: return "line.diagonal"
         case .rectangle: return "rectangle"
         case .square: return "square"
+        case .blur: return "drop"
+        case .mosaic: return "square.grid.3x3"
         }
     }
 }
@@ -58,6 +76,8 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     /// 实心：长方形、正方形整块涂满颜色，不画描边（电影遮幅、色块底、面板；2026-09-28 MCP 第 5 块补的零件）。
     /// 线条没有这个概念，恒为 false。v24 字段，按需写键。
     var isFilled = false
+    /// 盖一块的力度（模糊的半径 / 马赛克每格的边长，1080p 基准像素）。只对 blur / mosaic 有意义，别的种类不写。v26 字段。
+    var coverAmount = 28.0
 
     /// 这一个真的画成实心（线条永远是线）。预览和导出都问它，不各判一份。
     var drawsFilled: Bool { isFilled && kind != .line }
@@ -73,7 +93,8 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
         centerY: Double = 0.5,
         width: Double = 0.3,
         height: Double = 0.2,
-        rotationDegrees: Double = 0
+        rotationDegrees: Double = 0,
+        coverAmount: Double? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -86,6 +107,7 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
         self.width = width
         self.height = kind == .square ? width : height
         self.rotationDegrees = rotationDegrees
+        self.coverAmount = coverAmount ?? kind.defaultCoverAmount
     }
 
     var timelineEnd: Double { timelineStart + duration }
@@ -103,7 +125,7 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
         case .square:
             w = width * canvas.width
             h = w
-        case .rectangle:
+        case .rectangle, .blur, .mosaic:
             w = width * canvas.width
             h = height * canvas.height
         case .line:
@@ -128,7 +150,7 @@ extension ShapeKind: LenientCodableEnum {
 extension ShapeAnnotation: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, timelineStart, duration, color, lineWidth
-        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled
+        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount
     }
 
     init(from decoder: Decoder) throws {
@@ -150,6 +172,8 @@ extension ShapeAnnotation: Codable {
         isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
         // 缺键 = 描边：v23 及更早只有描边。
         isFilled = try c.decodeIfPresent(Bool.self, forKey: .isFilled) ?? false
+        // 缺键 = 这个种类的默认力度（v25 及更早没有盖一块）。
+        coverAmount = try c.decodeIfPresent(Double.self, forKey: .coverAmount) ?? kind.defaultCoverAmount
     }
 
     func encode(to encoder: Encoder) throws {
@@ -169,5 +193,7 @@ extension ShapeAnnotation: Codable {
         if isHidden { try c.encode(isHidden, forKey: .isHidden) }
         // 同上：只有实心的才落键，两处（这里和 requiresFormatVersion24）同源。
         if isFilled { try c.encode(isFilled, forKey: .isFilled) }
+        // 同上：只有盖一块才落键，两处（这里和 requiresFormatVersion26）同源。
+        if kind.isCover { try c.encode(coverAmount, forKey: .coverAmount) }
     }
 }
