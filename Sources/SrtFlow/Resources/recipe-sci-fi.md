@@ -40,6 +40,11 @@ use_for: Tech products, AI and future topics, space, cyberpunk cities, game prom
 - Voice: add_voiceover with zh_male or en_male (or zh_female_warm / en_female_warm) at speed 1.0, subtitles
   true. For an on-board-computer feel, give the voice clips the radio sound scene (edit_clip sound_scene kind radio).
 
+## Generated media (only if generate_media is among your tools)
+
+- Space, city or cockpit shots the footage lacks: generate_media kind text_to_video (cold colours, slow push), 480p first.
+- UI beeps, a boot-up hum, whooshes: kind sound_effect. Music: kind music ("dark synth, tense, pulsing").
+
 ## Checklist before export
 
 - HUD text does not cover the subject.

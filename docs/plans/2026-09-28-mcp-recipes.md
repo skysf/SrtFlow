@@ -38,6 +38,13 @@
 10. **字号按画面高度算**：`set_text` 的 `font_size` 和字幕的字号都是「1080 高的画面上多少像素」，9:16 的画面 1920 高，
     同一个数字画出来（相对画面宽度）是 16:9 的 1.78 倍。卡里的字号写明了是哪种画幅的；只写一个数的是 16:9 的，放到 9:16
     上除以 1.8。（2026-09-29 验收实剪：照原来写的 9:16「110–140」做的大字折成三行、顶出画面，字幕 68 一行只放得下一两个词）
+11. **生成素材只写成条件句**（2026-09-29，方案第 57、58 条）：`generate_media` 只有用户填了 fal.ai 的 Key 才在工具清单里，
+    而卡是一直读得到的，所以卡里一律写「如果你的工具里有 `generate_media`……」。有它时：只补素材里没有的（缺的空镜、音效、
+    音乐库里没有合适的配乐），用户已有的素材不用它替；做之前先把估价（结果里的 `estimated_cost_usd`）告诉用户，视频尤其；
+    超了每日额度或价格不明时 App 顶部的提示条会问用户、任务显示 `waiting_for_user`，要告诉用户去那里点；生成的视频
+    **自带声音**，配乐 / 配音时把它压低或静音（`edit_clip volume_db` / `muted`）；视频先用最便宜的 `resolution 480p` 出草稿，
+    留下的镜头再用 `1080p` 重做；生成内容的使用条款看各家服务商，SrtFlow 没替用户核对，署名句（`music_credits`）只管音乐库
+    的音乐；不把生成的画面说成用户拍的。
 
 ## 三、五张卡
 
@@ -58,6 +65,7 @@
 | 字幕 | 开，大字粗体，逐词高亮：生成之前 `edit_subtitles style` 字号 16:9 上 56–64、9:16 上 42–48（一行三四个词）、`bold`、高亮 `#FFD400`、放大 1.1；9:16 再加 `position bottom`、`margin 0.22`（在平台按钮之上） |
 | 配乐 | 轻快、明亮：`find_audio` 搜 bright / hopeful / electronic。**音乐库现在缺轻快的**：找不到合适的就不放，告诉用户可以给一首自己的 |
 | 配音 | 有口播用原声。纯产品画面才配旁白：`zh_female_lively` / `en_female_lively`，语速 1.1× |
+| 生成素材 | 如果你的工具里有 `generate_media`：转场音效（whoosh、pop 出字、快门声）用 `kind sound_effect`；音乐库里没有轻快的就先用 `kind music`（「upbeat, bright, electronic, no vocals」）再问用户要一首；不生成产品画面 |
 | 自检 | 前 3 秒 `look`：有大字、有主体；每 3 秒画面有变化；人声清楚、音乐不盖人声；时长在范围内；最后一帧有号召、停够 1.5 秒 |
 
 **卖的是课**（课程推广，第 27 条）：
@@ -85,6 +93,7 @@
 | 字幕 | 默认关（没有对白）；有对白才开，白字小字、不要底框（字号 44–48、不高亮） |
 | 配乐 | 宏大、动情：`find_audio` 搜 epic / trailer / opening / orchestral / emotional。从片头就起，片名落在强拍上，结尾淡出 2–3 秒 |
 | 配音 | 一般不配；要旁白用 `zh_male` / `en_male`，语速 0.9×，句子短、句间留 1–2 秒 |
+| 生成素材 | 如果你的工具里有 `generate_media`：缺远景空镜可以做（`kind text_to_video`，或用户给的照片 `kind image_to_video`），先 480p 出草稿；音乐库里没有够宏大的就 `kind music`（「orchestral, rising, cinematic, no vocals」）；片名落下那一刻可以垫一个 riser / impact 的 `kind sound_effect`；生成的视频自带声音，压在音乐下面 |
 | 自检 | 遮幅上下对称、字不压在遮幅上；片名那一刻 `look`；音乐结尾有淡出；开头是黑场渐入 |
 
 ### 3. 科幻（`sci-fi`）
@@ -104,6 +113,7 @@
 | 字幕 | 有旁白就开，白字细体、不高亮 |
 | 配乐 | `find_audio` 搜 space / electronic / synth / dark / tense |
 | 配音 | `zh_male` / `en_male`（或 `*_female_warm`），语速 1.0×；想要「舰载电脑」的感觉给旁白挂 `sound_scene: radio` |
+| 生成素材 | 如果你的工具里有 `generate_media`：素材里没有的太空、城市、机舱镜头用 `kind text_to_video`（冷色、慢推）；UI 提示音、开机嗡鸣、whoosh 用 `kind sound_effect`；配乐 `kind music`（「dark synth, tense, pulsing」）；每条视频先 480p 看效果 |
 | 自检 | HUD 字不压主体；闪白次数；结尾标题停够 2 秒 |
 
 ### 4. 纪录片（`documentary`）
@@ -124,6 +134,7 @@
 | 配乐 | `find_audio` 搜 documentary / nature / calm / piano / hopeful / emotional；旁白时比人声低 15–18 dB；旁白的间隙让现场声（风、动物叫声）出来 |
 | 配音 | `zh_male` / `en_male` 或 `*_female_warm`，语速 0.95×；旁白写短句（中文 ≤ 20 字、英文 ≤ 15 个词），句间留 1–2 秒给画面。旁白按段放在对应画面上（说企鹅时画面是企鹅） |
 | 声音 | 保留有意义的现场声（`listen` 找响的地方、`look` 确认是什么） |
+| 生成素材 | 如果你的工具里有 `generate_media`：只补**声音** —— 素材现场声不能用时垫一层环境声（风、海、人群，`kind sound_effect`），音乐库没有合适的用 `kind music`；**不生成**地点、动物的画面，纪录片放的是真拍到的 |
 | 自检 | 旁白和画面对得上；每段旁白之间有空；结尾署名 |
 
 ### 5. 日常 vlog（`daily-vlog`）
@@ -143,6 +154,7 @@
 | 字幕 | 开，大字，逐词高亮但不放大：`edit_subtitles style` 字号 9:16 上 42–48（16:9 上 52–60）、高亮 `#FFD400`、放大 1；9:16 再加 `position bottom`、`margin 0.22` |
 | 配乐 | 轻快：`find_audio` 搜 bright / hopeful / guitar；**音乐库现在缺轻快的**，找不到就用原声、告诉用户可以给一首自己的。说话的地方音乐压低 |
 | 配音 | 一般不配（原声就是 vlog 的味道）；要配用 `zh_female_warm` / `en_female_warm`，语速 1.05× |
+| 生成素材 | 如果你的工具里有 `generate_media`：只补音效（出字的 pop、换场的 whoosh，`kind sound_effect`）和音乐库里找不到的轻快配乐（`kind music`）；不生成画面 |
 | 自检 | 钩子在前 2 秒；字和字幕都在安全区里；结尾有互动的一句 |
 
 ## 四、配音音色（第 16、43 条）

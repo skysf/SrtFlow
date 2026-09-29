@@ -481,7 +481,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      会跳角的每处一块；顶层再有一句 `cover_hint`。看的是文件（没有片段）时没有 `cover`（没有画布可换）。
    - **盖完靠 `look`（时间线）核对**：`AIFrameComposer` 合成时把盖一块盖上（`CoverCompositing`，和预览同一份 `CoverFilters`），AI 看得到自己盖没盖住。
    - 已知不足：位置不跟着片段走（片段挪 / 缩放之后要重盖）；只按此刻的摆放换算、不看关键帧动画。
-39. **生成素材（`generate_media`，fal.ai，方案第 6 块、第 57 条）**：合同全在 [fal.ai 生成](fal-generation.md)，这里只记它怎么接进 MCP 这一层：
+39. **生成素材（`generate_media`，fal.ai，方案第 6 块、第 57 条）**：合同全在 [fal.ai 生成](fal-generation.md)，这里只记它怎么接进 MCP 这一层。
+    风格卡里提它**只写条件句**（2026-09-29 用户拍板：「如果你的工具里有 generate_media……」）—— 工具只在填了 Key 时在清单里，卡却一直读得到；
+    共用规矩第 11 条和每张卡的「Generated media」一节说了有它时能补什么、不能替什么（`RecipeChecks` 钉着：提到就得在条件句下、
+    词表和结果字段名都得对得上）：
    - **只在用户配了 fal 的 Key 时才出现在清单里**（方案第 36 条）：`MCPToolName.provider`；App 在 Key 添加 / 删除时和每次启动时写一个只有提供方名字的
      `mcp-providers.json`（和 socket 同目录），小程序每回一次清单 / 握手都重读它；握过手的老一代客户端收 `notifications/tools/list_changed`，
      新一代靠清单一分钟的缓存时间。没配时总说明里也不提它。全清单的说明总长度量的是每个提供方都配好时的样子。

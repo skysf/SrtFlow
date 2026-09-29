@@ -40,6 +40,12 @@ use_for: Travel, nature, culture, expeditions, interview stories, stories about 
   (Chinese ≤ 20 characters, English ≤ 15 words) with 1–2 s between them for the pictures. Put each line over the matching
   picture (say "penguins" while penguins are on screen).
 
+## Generated media (only if generate_media is among your tools)
+
+- Sound only: an ambience bed (wind, sea, a crowd) with kind sound_effect when the footage's own sound is unusable; kind
+  music when the library has nothing that fits. Never generate pictures of a place or an animal — a documentary shows what
+  was there.
+
 ## Checklist before export
 
 - Narration and pictures match.
