@@ -376,6 +376,34 @@ scripts/gui-smoke/mcp-client/client.py <scratchpad>/calls.json <scratchpad>/out
    不打开那两页，让 AI `look` 看字幕颜色、`compress_videos` 看结果里的 `settings`。**测完 `defaults delete` 删掉写进去的键**
    （先 `defaults read` 记下原来有没有）—— 那是用户的测试版设置。
 
+## 四之八、fal.ai 生成的端到端冒烟（真 App + 真小程序 + 本机的假 fal，2026-09-29）
+
+fal 那一块自动检查够不着的是 App 里那一层（任务、提示条上的问题、钥匙串、设置、清单跟着 Key 走）。`scripts/gui-smoke/fal/` 用**本机的假 fal**
+（`fakefal.py`：照队列接口回话、记下每个请求、按端点回图 / 视频 / 音频和词时间）把它们真走一遍，**不需要真 Key、不花钱**：
+
+```bash
+swift build --arch arm64
+scripts/gui-smoke/fal/run.sh              # 组装独立的测试 App（com.srtflow.SrtFlow.falsmoke）、起假 fal、后台启动
+python3 scripts/gui-smoke/fal/generate.py # 场景一：五种生成、放上时间线、配旁白（词时间 → 字幕）、克隆、账、Key 头
+scripts/gui-smoke/fal/run.sh 0.30         # 每日上限 0.30 重起
+python3 scripts/gui-smoke/fal/approval.py # 场景二：超额度 / 价格不明的问题、允许 / 先不要 / 停止、cancel_job
+scripts/gui-smoke/fal/run.sh stop         # 收尾：退 App、杀假 fal、删钥匙串项 / 设置 / 小文件
+```
+
+1. **Key 不要用 `security add-generic-password -T` 预置**：别的签名建的项，这个 App 读要弹 macOS 的授权框（`-T` 认的是路径，ad-hoc 签名对不上），
+   没人点它就卡在框上、任务永远 running，框还会弹到用户屏幕上（2026-09-29 试过一次）。改用环境变量 `SRTFLOW_SMOKE_FAL_KEY`：App 自己启动时存一份，
+   自己建的项自己读不弹框；它**只在队列地址指到本机**（`SRTFLOW_FAL_QUEUE_BASE=http://127.0.0.1:…`，只认回环地址）时才生效。
+2. **先 `open_folder` 一个临时文件夹**：不然成品放到 `~/Downloads/SrtFlow/生成`，测试文件就落进了用户的下载文件夹。两个场景都这么做。
+3. **问花钱时测试 App 会跳到最前面**（`AITranslationReadiness.bringSrtFlowForward`，和翻译下载引导同一个），人在用机器时先说一声。
+   点按钮用辅助功能（`ax.sh`：`AXPress`，不走鼠标事件，不会像第四之六第 12 条那样卡在 NSControl 的跟踪循环里）。SwiftUI 的按钮自己没有名字可找，
+   提示条上的三个按钮和设置里 fal 一节的控件都挂了 `accessibilityIdentifier`（`ai-banner-allow` / `-decline` / `-stop`、`fal-key-field` / `-save-key` / `-remove-key` / `-limit-field`）。
+4. 按停止之后**下一次调用会被拒绝**（`AISession.refusalAfterStop`，安静 10 秒才放行），场景里的 `get_job` 因此要等 11 秒再读。
+5. System Events 有时读不到这个 App 的窗口（`count of windows` 是 0，而 `CGWindowListCopyWindowInfo` 里明明有）：读窗口内容 / 点设置里的控件因此不稳，
+   设置窗口的 fal 一节要滚下去才看得见，这一版没有自动化，**靠人工回归清单**（见 [fal.ai 生成](../architecture/fal-generation.md) 第十一节）。
+6. 验证了什么：`tools/list` 因 Key 而有 / 没有 `generate_media`（启动时写小文件）、`get_status.generation`、图 / 文生视频 / 图生视频 / 音乐 / 音效的请求体
+   和放上时间线、参数错误回给 AI 的话、fal 配旁白（音色 / 词时间 → 字幕）、克隆、账、Key 头、提示条上的问题和三个按钮、`cancel_job` 收回问题并让 fal 也取消、
+   按停止。
+
 ## 五、要真实窗口、但已经自动化了的检查
 
 有些检查**不需要人来操作**，只是需要一个图形会话（会建真实的 `NSWindow` /
