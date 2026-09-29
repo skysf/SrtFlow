@@ -58,6 +58,8 @@ enum AITextRegions {
     static let samePlace = 0.05
     /// 两行字的底边相差不到它（画面高的比例）就算字幕的同一个位置。
     static let sameBaseline = 0.02
+    /// 字幕上面那一行（折行的第二行）至少有这么多句不同的话才认；只有一帧、或者一页停几帧都是同一句的，是幻灯片自己的字。
+    static let minWrappedTexts = 2
     /// 同一个字大多（八成）出现在同一处才算「固定在那儿」，不然算会动。
     static let settled = 0.8
 
@@ -102,7 +104,8 @@ enum AITextRegions {
     /// 字幕带的框只量字幕那几行（2026-09-29 验收实剪：课程录屏里居中的幻灯片字把框从 0.90 撑到 0.77，照「裁 0.24」
     /// 会切掉幻灯片自己的标签，docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md）。烧进去的字幕底边在同一条线上、
     /// 字一直在换；幻灯片自己的字随页换位置、一页停几帧就是同一句。所以按底边分堆，**不同的字最多**的那一堆是字幕（一样多取靠下的），
-    /// 再带上同一帧里紧贴在它上面、一样大的字（两行的字幕）。
+    /// 再带上同一帧里紧贴在它上面、一样大的字（两行的字幕）—— 这一行也要像字幕一样每句都换（至少两帧、两句不同）才认：幻灯片自己的
+    /// 标题恰好贴在字幕上面的一帧不是第二行（2026-09-29 复查，docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md）。
     static func subtitleLines(_ frames: [[AIVision.Text]]) -> [CGRect] {
         let lines = frames.enumerated().flatMap { index, texts in texts.map { (frame: index, text: $0) } }
         var row: [(frame: Int, text: AIVision.Text)] = []
@@ -117,16 +120,19 @@ enum AITextRegions {
             }
         }
         var boxes = row.map(\.text.box)
+        var uppers: [Int: [AIVision.Text]] = [:]
         for line in row {
             let box = line.text.box
             // 紧贴在上面：空隙不到行高的四分之一（也不深压进来）、字高差两成以内、左右有重叠。
-            boxes += frames[line.frame].map(\.box).filter { above in
-                let gap = box.minY - above.maxY
-                return above.maxY < box.maxY - sameBaseline && abs(gap) <= box.height * 0.25
-                    && above.height >= box.height * 0.8 && above.height <= box.height * 1.25
-                    && above.maxX > box.minX && above.minX < box.maxX
+            uppers[line.frame, default: []] += frames[line.frame].filter { above in
+                let gap = box.minY - above.box.maxY
+                return above.box.maxY < box.maxY - sameBaseline && abs(gap) <= box.height * 0.25
+                    && above.box.height >= box.height * 0.8 && above.box.height <= box.height * 1.25
+                    && above.box.maxX > box.minX && above.box.minX < box.maxX
             }
         }
+        let changing = Set(uppers.values.map { texts in texts.map { normalized($0.string) }.joined(separator: " ") }.filter { !$0.isEmpty })
+        if changing.count >= minWrappedTexts { boxes += uppers.values.flatMap { $0.map(\.box) } }
         return boxes
     }
 
@@ -226,7 +232,8 @@ enum AITextRegions {
                 "from": AIFormat.seconds(timeline(band.from)),
                 "to": AIFormat.seconds(timeline(band.to)),
                 "hint": .string("Subtitles burned into the picture. Put new subtitles elsewhere (edit_subtitles style), or cut "
-                    + "them off with edit_clip crop bottom \(String(format: "%.2f", cut)).")
+                    + "them off with edit_clip crop bottom \(String(format: "%.2f", cut)). The crop takes off everything in that "
+                    + "strip, also a slide's own text near the bottom edge: look at a few frames after cropping.")
             ]
         }
         if !report.fixed.isEmpty {

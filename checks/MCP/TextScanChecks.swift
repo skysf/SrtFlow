@@ -79,6 +79,37 @@ private func textRegionChecks() {
     ]) }
     check(abs((AITextRegions.report(twoLines).band?.box.minY ?? 0) - 0.84) < 0.005, "text scan: a two-line subtitle's upper line is in the band")
 
+    // 幻灯片自己的字恰好贴在字幕上面（2026-09-29 复查，L27 的样子）：字幕在 0.886，只有一帧里幻灯片的标题在 0.768–0.874、
+    // 贴着字幕。以前把它当「两行字幕的上一行」算进框里，框从 0.768 起，10% 分位被拉到 0.86，叫人裁 0.15，裁线切进了 PDF 页里的
+    // 一行字。上一行要像字幕一样每句都换：至少两帧、两句不同的话才认。框只认字幕那一行：从 0.886 起，裁 0.12。
+    let lone = (0..<8).map { index -> AITextRegions.Frame in
+        var texts = [text("字幕第\(index)句", 0.3, 0.886, 0.4, 0.092)]
+        if index == 3 { texts.append(text("Gemini - The 3 Models", 0.46, 0.768, 0.14, 0.106)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    let loneBand = AITextRegions.report(lone).band
+    check(abs((loneBand?.box.minY ?? 0) - 0.886) < 0.005, "text scan: a slide's text right above the subtitle in one frame is not a second line (top \(loneBand?.box.minY ?? -1))")
+    check(AITextRegions.json(AITextRegions.report(lone))["subtitle_band"]?["hint"]?.stringValue?.contains("crop bottom 0.12") == true,
+          "text scan: so the crop is the subtitle's, not stretched by it")
+    // 同一句幻灯片的字停了两帧（不到三成的帧，还不算固定的字）、都贴在字幕上面：还是同一句，不是每句都换的第二行。
+    let repeated = (0..<8).map { index -> AITextRegions.Frame in
+        var texts = [text("字幕第\(index)句", 0.3, 0.886, 0.4, 0.092)]
+        if index == 2 || index == 3 { texts.append(text("Gemini - The 3 Models", 0.46, 0.768, 0.14, 0.106)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    check(abs((AITextRegions.report(repeated).band?.box.minY ?? 0) - 0.886) < 0.005, "text scan: the same slide text above the subtitle in two frames is not a second line either")
+    // 真的会折行的字幕：上一行每句不同，隔几句折一次也认。
+    let wrapping = (0..<10).map { index -> AITextRegions.Frame in
+        var texts = [text("lower \(index)", 0.3, 0.895, 0.4, 0.05)]
+        if index % 3 == 0 { texts.append(text("upper \(index)", 0.3, 0.84, 0.4, 0.05)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    check(abs((AITextRegions.report(wrapping).band?.box.minY ?? 0) - 0.84) < 0.02, "text scan: a subtitle that wraps now and then still has its upper line in the band")
+
+    // 提示要说清楚：裁的是一整条，条里别的字（幻灯片自己贴底边的小字）也一起没了。
+    check(AITextRegions.json(AITextRegions.report(course))["subtitle_band"]?["hint"]?.stringValue?.contains("everything in that strip") == true,
+          "text scan: the hint says the crop takes off whatever else is in the strip")
+
     // 同一行字一直不变：不是字幕（是固定的标题）。
     let fixedTitle = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("Chapter One", 0.3, 0.85, 0.4, 0.06)]) }
     checkEqual(AITextRegions.report(fixedTitle).band, nil, "text scan: a line that never changes is not a subtitle band")
