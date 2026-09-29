@@ -289,7 +289,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    不到中位数的 3 倍就当没有节拍（长音的相位和分帧错开会造出假拍子）；可信度低于 `clearConfidence`（0.3）照给但说一句，
    cut_to_beat 不踩。读采样在 `AIBeats`：11025 Hz 单声道、读的循环是单独的同步函数、在 `MediaReadQueue.analysis` 上跑，
    按「路径 + 大小 + 修改时间 + 区间」记在内存里；时间从读出来的第一帧算（读取器的起点会对齐到包边界）。片段的拍换成时间线秒、
-   速度乘播放速度；文件是文件里的秒；一次最多分析 15 分钟。
+   速度乘播放速度；文件是文件里的秒；一次最多分析 15 分钟。**分析的区间是整首歌**（`BeatAnalysisWindow`，2026-09-29）：
+   请求落在文件开头 15 分钟里就分析整段，listen 和 cut_to_beat 各按自己的区间挑拍 —— 各分析各的那一段时，6/8 拍的歌一边
+   63.5 BPM 一边 95.3，切点比重拍晚 0.3 秒（[案例](../bugfixes/2026-09-29-beat-analysis-window-differs-between-listen-and-cut-to-beat.md)）。
 
 27. **按文字剪、删停顿和口头禅（cut_speech，第 3 块的智能剪）**：只对 V1 上的口播片段。要剪掉的几截（`AISpeechCuts`，纯值）：
    AI 点名删的 / 只留的（时间从 transcribe 来）、比 `remove_pauses` 长的停顿缩到 `pause_left`（停顿是画波形那一份数据按窗量，

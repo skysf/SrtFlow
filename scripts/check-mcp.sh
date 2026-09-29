@@ -392,6 +392,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIHarvestFailure.swift \
   Sources/SrtFlow/SubtitleGen/LanguageUndetectedError.swift \
   Sources/SrtFlow/AudioBeatTracker.swift \
+  Sources/SrtFlow/AIBeatAnalysisWindow.swift \
   Sources/SrtFlow/AISpeechCuts.swift \
   Sources/SrtFlow/AIBeatCuts.swift \
   Sources/SrtFlow/VideoEditClipboardPayload.swift \
