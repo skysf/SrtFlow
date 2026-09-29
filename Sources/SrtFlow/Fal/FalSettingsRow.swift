@@ -62,6 +62,7 @@ struct FalSettingsRow: View {
             HStack(spacing: 6) {
                 Text("Key saved in the keychain").foregroundStyle(.green)
                 Button("Remove Key") { store.removeKey() }
+                    .accessibilityIdentifier("fal-remove-key")
                     .instantHelp("Remove the fal.ai key from the macOS keychain; AI apps then lose the fal.ai tools")
             }
         } else {
@@ -69,8 +70,10 @@ struct FalSettingsRow: View {
                 SecureField("fal.ai API key", text: $keyText)
                     .textFieldStyle(.roundedBorder)
                     .frame(minWidth: 140)
+                    .accessibilityIdentifier("fal-key-field")
                     .onSubmit(saveKey)
                 Button("Save Key", action: saveKey)
+                    .accessibilityIdentifier("fal-save-key")
                     .disabled(FalKeyStore.normalized(keyText) == nil)
                     .instantHelp("Store the key in the macOS keychain (fal.ai/dashboard/keys)")
             }
@@ -92,6 +95,7 @@ struct FalSettingsRow: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 64)
                     .multilineTextAlignment(.trailing)
+                    .accessibilityIdentifier("fal-limit-field")
                     .onSubmit(commitLimit)
                 Text(verbatim: "·").foregroundStyle(.tertiary)
                 Text("Spent today \(FalMoney.text(store.spentToday()))")

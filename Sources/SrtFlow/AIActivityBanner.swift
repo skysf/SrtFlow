@@ -14,10 +14,14 @@ struct AIActivityBanner: View {
         let _ = PerfCounters.body(Self.self)
         if let question = session.question {
             // 要用户点头的问题不管这一轮是什么状态都摆出来：AI 在等结果时这一轮可能早已「结束」，条不能因此收起来。
+            // accessibilityIdentifier：冒烟用辅助功能点按钮（SwiftUI 的按钮没有名字可找；docs/testing/gui-smoke-testing.md 四之八）。
             bar(icon: "questionmark.circle", message: question.text) {
                 Button(question.declineTitle) { session.answer(false) }
+                    .accessibilityIdentifier("ai-banner-decline")
                 Button(question.allowTitle) { session.answer(true) }
+                    .accessibilityIdentifier("ai-banner-allow")
                 Button("Stop") { session.stop() }
+                    .accessibilityIdentifier("ai-banner-stop")
                     .instantHelp("Stop the AI and cancel its exports and subtitle jobs")
             }
         } else {

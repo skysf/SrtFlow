@@ -91,13 +91,15 @@ final class FalGenerationRun {
 
         // 2. Key。
         let hinted = FalPromptFlag()
-        let keyResult = await FalKeyCache.shared.key(willAsk: {
-            await MainActor.run {
-                hinted.value = true
-                AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
-                AITranslationReadiness.bringSrtFlowForward()
-            }
+        let keyResult = await FalKeyCache.shared.key(willAsk: { [weak self] in
+            hinted.value = true
+            // AI 看 get_job 只见 running：得让它知道是 macOS 的授权框在等用户（不然它会对着一个「没动静」的任务干等）。
+            self?.waiting = "macOS is asking the user, in a system dialog, whether SrtFlow may use the fal.ai key. Tell the user to click "
+                + "Always Allow (a Mac login password may be needed; a new version of SrtFlow is asked once), then keep waiting with get_job."
+            AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
+            AITranslationReadiness.bringSrtFlowForward()
         })
+        waiting = nil
         if hinted.value { AISession.shared.setHint(nil) }
         guard case .key(let key) = keyResult else {
             refund(store)
@@ -162,7 +164,8 @@ final class FalGenerationRun {
         if let width = media.width, let height = media.height { detail["width"] = .number(Double(width)); detail["height"] = .number(Double(height)) }
         if let duration = media.duration { detail["duration"] = AIFormat.seconds(duration) }
         if request.kind == .textToVideo || request.kind == .imageToVideo {
-            detail["note"] = "MiniMax H3 Max clips come with their own sound (room tone, foley, music): add_clips puts it on an audio track too."
+            detail["note"] = "MiniMax H3 Max clips carry their own sound (room tone, foley, music); it plays with the clip. "
+                + "Lower or mute the clip's volume (edit_clip) when you add your own music or narration."
         }
         finish(.done, "Made \(file.lastPathComponent).", detail: .object(detail))
     }

@@ -72,6 +72,12 @@ final class FalSettingsStore: ObservableObject {
         settings = defaults.data(forKey: Self.settingsKey).flatMap { try? JSONDecoder().decode(FalSettings.self, from: $0) } ?? FalSettings()
         ledger = defaults.data(forKey: Self.ledgerKey).flatMap { try? JSONDecoder().decode(FalSpendLedger.self, from: $0) } ?? FalSpendLedger()
         hasKey = FalKeyStore.hasKey(service: keyService)
+        // 冒烟用（不设完全不生效）：队列地址指到本机的假 fal（FalClient.configuredBase 只认回环地址）时，环境变量里的这把 Key 启动时存进钥匙串 ——
+        // 别的签名（`security` 命令）建的项，这个 App 读要弹授权框，冒烟没人点；让 App 自己建这一项就不弹。
+        if let smokeKey = ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_FAL_KEY"],
+           ["127.0.0.1", "localhost"].contains(FalClient.configuredBase().host ?? "") {
+            _ = saveKey(smokeKey)
+        }
     }
 
     /// 和小程序约定的那个小文件（自检 / 冒烟用 `SRTFLOW_MCP_PROVIDERS` 换地方，同小程序那一头）。

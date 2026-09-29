@@ -35,11 +35,9 @@ enum AIFalVoice {
         }
         let hinted = FalPromptFlag()
         let result = await FalKeyCache.shared.key(willAsk: {
-            await MainActor.run {
-                hinted.value = true
-                AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
-                AITranslationReadiness.bringSrtFlowForward()
-            }
+            hinted.value = true
+            AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
+            AITranslationReadiness.bringSrtFlowForward()
         })
         if hinted.value { AISession.shared.setHint(nil) }
         guard case .key(let key) = result else {

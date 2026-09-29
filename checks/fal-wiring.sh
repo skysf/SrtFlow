@@ -112,7 +112,7 @@ grep -q 'FalSettingsStore.shared.refreshKeyStatus()' "${APP}" || fail "${APP}：
 
 # 8. 路由与任务。
 [ "$(count '\.generateMedia' "${ROUTER}")" -eq 2 ] || fail "${ROUTER}：generate_media 应出现两处（分派、策略：不排撤销分组、不算这一轮的改动）"
-if grep -n 'generateMedia' "${ROUTER}" | grep -q 'AIUndoGrouping'; then
+if grep -q 'AIUndoGrouping' <<<"$(grep -n 'generateMedia' "${ROUTER}" || true)"; then
   fail "${ROUTER}：generate_media 不改工程，不该包进 AIUndoGrouping（放上时间线是 add_clips 的事）"
 fi
 grep -q 'waitingForUser: { \[weak self\] in self?.waiting }' "${RUN}" || fail "${RUN}：任务没把「在等用户」交给 AIJobs（AI 会对着 running 干等）"

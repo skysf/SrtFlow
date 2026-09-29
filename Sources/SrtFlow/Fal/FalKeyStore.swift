@@ -120,8 +120,8 @@ actor FalKeyCache {
 
     private var cached: String?
 
-    /// 取 Key。要弹授权框时先调 `willAsk`（让横幅先说一句这是什么），弹框在后台线程上等，不占主线程。
-    func key(willAsk: @Sendable () async -> Void = {}) async -> FalKeyStore.ReadResult {
+    /// 取 Key。要弹授权框时先在主线程上调 `willAsk`（让提示条先说一句这是什么），弹框在后台线程上等，不占主线程。
+    func key(willAsk: @escaping @MainActor @Sendable () -> Void = {}) async -> FalKeyStore.ReadResult {
         if let cached { return .key(cached) }
         var result = FalKeyStore.read(.silent)
         if result == .needsPermission {
