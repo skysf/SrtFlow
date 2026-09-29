@@ -110,6 +110,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待、**老虎机位数不同的两头（`NumberOdometer`）** | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序；老虎机不存在的那一位滚成空白收掉，居中和右对齐右边不动）、[老虎机停在「090」](docs/bugfixes/2026-09-25-odometer-leading-zero.md)、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
+| **盖一块（模糊 / 马赛克，`ShapeKind.blur` / `.mosaic`）**、预览的第二层播放器（`CoverPreviewLayer`）、导出里的 `gblur` / `pixelize`（`VideoEditCoverExport`）、`set_shape` 的 blur / mosaic、`look text_scan` 给的 `cover`（`AICoverBox`）、遮水印 / 遮旧字幕 | [盖一块](docs/architecture/cover-blur-mosaic.md)（形状的一种、时间线上的一段、**不跟着片段走**；落点在调色之后、形状之前；三条管线按构造一致：裁出这一块、在这块里做效果、边缘外延、贴回去；预览的蒙版和滤镜别挂同一层；`CIPixellate` 的格子要设成从左上角起算；框取偶数往外收；力度按画面高换算）、[滤镜](docs/architecture/filters.md)（预览不走自定义合成器、图层滤镜的地基）、[预览自由变换](docs/architecture/preview-free-transform.md)（源画面框换画布框的变换顺序）、[AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第 38 条）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（没有盖一块时第二层不建、性能计数不变） |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
@@ -179,6 +180,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 滤镜调色：LUT 数学（强度那条等式）、层号规则，以及**预览与成片逐像素比对**
   （配方 ↔ CoreImage ↔ 真跑 ffmpeg）：`scripts/check-filters.sh`。
 - 滤镜挂到播放器上这段接线（拍窗口数像素）：`scripts/check-filter-preview-attach.sh`。
+- 盖一块（模糊 / 马赛克）在成片里真的盖了（真跑生产导出再抽帧：只改那一块、块外和基线一致、外接框就是那块、高斯剖面贴着理想的阶跃响应、马赛克格子边长对且从左上角起算、只在那一段时间里盖、形状压在它上面不被糊、调色在它前面、藏起来的不导出、不算总长）：`scripts/check-cover-export.sh`（`check-all.sh` 第 5 组）。
+- 预览上的盖一块真的盖上了（生产的 `CoverHostView` 放进真窗口、拍屏数像素：块里糊成混色块外还是硬的、改动的行正好是块的上下沿、调色带上了、马赛克格线从块的左上角起算、两块同时盖、撤掉之后回到参照）：`scripts/check-cover-preview-attach.sh`。**要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditCoverPreview.swift` / `VideoEditCoverFilters.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），以及电平表（离线读挂了
@@ -364,6 +367,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [用户文本文件的编码](docs/architecture/text-file-encoding.md) — 字幕、讲稿这类用户给的文本文件，编码识别只有 SrtFlowCore 的 `TextDecoding` 一处：BOM → 严格 UTF-8 → 像 UTF-16 才 UTF-16 → GBK；为什么 UTF-16 不能无条件排在 GBK 前面。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）、数字的等待、**老虎机位数不同的两头**（不存在的那一位滚成空白收掉、居中和右对齐右边不动、正在收的那一位原地滚走）、**时间线上的行**（行号进模型、行序 = 叠放序、新字开新行、换行往上找空行、老工程迁移）。
 - [滤镜](docs/architecture/filters.md) — 时间轴上的调色段、层号进模型（LUT 不可交换）、强度=表的线性插值、预览挂图层滤镜的实测地基（backgroundFilters 会污染整个窗口）、两条管线的四条对齐约束。
+- [盖一块：模糊 / 马赛克](docs/architecture/cover-blur-mosaic.md) — 形状的一种、时间线上的一段（`ShapeKind.blur` / `.mosaic`，不画东西、不算总长、不进 `renderedShapes`、格式 v26）、**不跟着片段走**（为什么：预览没有片段级的钩子、「从旧段构造新段」漏字段的教训）；盖谁：合成 + 调色之后、形状之前；三条管线按构造一致（预览第二层播放器 + 区域容器 + 边缘外延、导出 `split → crop → gblur / pixelize → overlay`、AI 的「看」CoreImage）；八条硬约束（层序、蒙版与滤镜别同层、边缘外延、格子从左上角起算、框取偶数、高斯半径是标准差、力度按画面高、没有盖一块时不建第二层）；AI（`set_shape` 的 blur / mosaic + `strength`、`text_scan` 给的 `cover`）；实测地基、已知不足、回归与人工清单。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
 - [检查器的排版](docs/architecture/inspector-layout.md) — 固定的窄栏（约 220pt）：一行的最小宽度不许超过它，否则整列被撑宽、右边被裁；菜单 Picker 不许锁宽度；长名字的下拉标题单独一行。
