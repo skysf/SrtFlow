@@ -1,7 +1,7 @@
 import Foundation
 import SrtFlowCore
 
-// 第 38 组：盖一块（模糊 / 马赛克，2026-09-30，MCP 方案第 56 条）。
+// 第 38 组：盖一块（模糊 / 马赛克，2026-09-29，MCP 方案第 56 条）。
 // `ShapeKind.blur / .mosaic` 和 `ShapeAnnotation.coverAmount` 是 v26 数据：按需写键（只有盖一块落 coverAmount）、缺键读作这个种类的默认力度、
 // 判据和写键同源；不认识的种类宽容回落成长方形（旧版就是这么读它的，所以要抬版本）。盖一块不进 `renderedShapes`、不算总长、
 // 藏起来的不进 `renderedCovers`。编法见 scripts/check-project-file.sh。

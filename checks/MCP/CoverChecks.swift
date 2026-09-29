@@ -2,7 +2,7 @@ import CoreGraphics
 import Foundation
 import SrtFlowMCPKit
 
-// 盖一块（模糊 / 马赛克，2026-09-30，方案第 56 条）的 AI 这一侧：
+// 盖一块（模糊 / 马赛克，2026-09-29，方案第 56 条）的 AI 这一侧：
 // - set_shape 认 blur / mosaic（默认大小同长方形、strength 夹在 2…80、不画东西所以没有颜色 / 线宽 / 实心 / 旋转；写回给 AI 的样子）；
 //   工具目录里的种类词表和 App 里的 `ShapeKind` 逐项对账（小程序不链接 App 的代码，词表是抄的）；
 // - look text_scan 对时间线上的一段，把源画面上的框换成画布上的框（裁切 → 翻转 → 缩放进摆放框 → 绕框中心旋转）、

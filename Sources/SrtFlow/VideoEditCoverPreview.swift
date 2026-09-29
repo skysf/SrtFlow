@@ -9,7 +9,7 @@ import SwiftUI
 // 只露那一块、加模糊 / 马赛克的图层滤镜。
 // 为什么不进合成：同调色（docs/architecture/filters.md）—— 预览不走自写的 `AVVideoCompositing`，那会把现有的摆放 / 裁切 / 关键帧
 // 全部推倒重写，轻量化优先；这里的做法和调色一样只靠图层。
-// 2026-09-30 窗口探针实测的地基（docs/architecture/cover-blur-mosaic.md）：
+// 2026-09-29 窗口探针实测的地基（docs/architecture/cover-blur-mosaic.md）：
 // 1. 同一个 AVPlayer 上挂第二个 AVPlayerLayer，两层同步显示，不多解码；
 // 2. `CALayer.filters` 对 AVPlayerLayer 生效（CIGaussianBlur / CIPixellate），半径 / 格子的单位是点；
 // 3. **蒙版和滤镜别挂在同一层再靠 mask 裁**（实测蒙版边上会和透明混出灰框）：外层只有这一块那么大、`masksToBounds`，里面的播放器层平移对齐，

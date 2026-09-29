@@ -472,7 +472,7 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      就对准字合起来的中间；`focus=text` 只看字、不跟拍。字合起来比窗宽时结果里报宽出去多少（`text_cut`）并建议 fit=fit。
    - 每帧的描述里的字带框（第 12 条），AI 挪字幕、按字取景、找水印都用得上。
 
-38. **盖一块：`set_shape kind=blur|mosaic` 与 `look text_scan` 给的 `cover`（方案第 56 条，2026-09-30）**：模糊 / 马赛克是形状的一种（不新开工具、不开一个长得像的工具），
+38. **盖一块：`set_shape kind=blur|mosaic` 与 `look text_scan` 给的 `cover`（方案第 56 条，2026-09-29）**：模糊 / 马赛克是形状的一种（不新开工具、不开一个长得像的工具），
     合同和取舍在 [盖一块](cover-blur-mosaic.md)：
    - `set_shape` 加两个种类和 `strength`（2…80，1080 高画面上的像素；模糊的半径 / 马赛克每格的边长），不画东西所以没有颜色 / 线宽 / 实心 / 旋转，写回给 AI 的带 `strength` 不带 `color`；
      工具说明只加了约 330 字（总长约 66.8k / 72k）。走 `AIUndoGrouping.step` 的老路（`set_shape` 早就包着），一步撤销。

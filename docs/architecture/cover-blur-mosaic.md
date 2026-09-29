@@ -1,6 +1,6 @@
 # 盖一块：模糊 / 马赛克（形状的一种）
 
-> 2026-09-30 引入（MCP 方案第 56 条：遮水印、遮烧进去的旧字幕）。改 `ShapeKind.blur` / `.mosaic`、`VideoEditCoverExport`、
+> 2026-09-29 引入（MCP 方案第 56 条：遮水印、遮烧进去的旧字幕）。改 `ShapeKind.blur` / `.mosaic`、`VideoEditCoverExport`、
 > `CoverPreviewLayer`、`CoverFilters`、`AICoverBox` 之前必读。相关：[滤镜](filters.md)（落点在调色之后、预览不走自定义合成器）、
 > [画面文字](text-overlays.md)（层序）、[段的显隐](clip-visibility.md)（`renderedCovers`）、[AI 接口（MCP）](ai-control-mcp.md)。
 
@@ -54,7 +54,7 @@
 8. **没有盖一块时预览不建第二层**（`PreviewPlayerSurface` 里 `if !covers.isEmpty`，性能计数和没这个功能时一样）；有的时候它跟着 `PreviewPlayerSurface`
    已经有的那个时钟订阅更新，不新增订阅者。
 
-## 实测的地基（2026-09-30 窗口探针）
+## 实测的地基（2026-09-29 窗口探针）
 
 - 同一个 AVPlayer 上挂第二个 `AVPlayerLayer`，`videoGravity` 和播放器视图一样（`resizeAspect`）时两层画面重合、同步，不多解码。
 - `CALayer.filters` 对 `AVPlayerLayer` 生效；`CIGaussianBlur` 的半径、`CIPixellate` 的格子边长，单位是**点**（视网膜屏 2 倍缩放后是 2 倍像素）。

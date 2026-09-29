@@ -4,7 +4,7 @@ import Foundation
 //
 // 管什么：把时间轴上的滤镜段（`renderedFilters`）翻成导出滤镜图里的 `format=gbrp` + 一串 `lut3d`，落点、顺序和三条对齐约束。
 // 不管什么：LUT 的数学和 .cube 的写法（`FilterLUT`）、预览侧怎么挂（`FilterStack`）、别的滤镜图步骤（`VideoEditExportGraph`）。
-// 2026-09-30 从 VideoEditExportGraph.swift 原样搬出来（那个文件在行数基线里只许降，接「盖一块」要腾地方）。
+// 2026-09-29 从 VideoEditExportGraph.swift 原样搬出来（那个文件在行数基线里只许降，接「盖一块」要腾地方）。
 
 enum VideoEditGradeExport {
 

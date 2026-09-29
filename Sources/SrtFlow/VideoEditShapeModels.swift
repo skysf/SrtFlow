@@ -13,7 +13,7 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
     case line
     case rectangle
     case square
-    /// 盖一块（2026-09-30，MCP 方案第 56 条）：**不画东西**，把它下面的画面（主轨 + 上层轨合成之后、调色之后）模糊或打马赛克，
+    /// 盖一块（2026-09-29，MCP 方案第 56 条）：**不画东西**，把它下面的画面（主轨 + 上层轨合成之后、调色之后）模糊或打马赛克，
     /// 遮水印、遮烧进去的旧字幕。长方形的几何，和形状共用时间线上的块、选中框、拖动、V 隐藏、复制粘贴；
     /// 但**不算总长**（同滤镜段：一块盖在空白上没有意义）、不进 `renderedShapes`（那是「画出来的」）。
     case blur
