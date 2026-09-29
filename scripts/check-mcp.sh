@@ -28,7 +28,8 @@
 #  17. set_shape：新加要种类、默认大小、夹紧、正方形高等于宽、只有线能转。
 #  18. duplicate_items：走 ⌘C / ⌘V 的纯函数，落点、往上抬、链接伙伴、新身份。
 #  19. 剪辑风格（recipes / save_recipe）：配方卡的格式、合并与查找、存一套 / 删一套、工具的结果；五张内置卡都在，
-#      卡里提到的工具名、参数名、选项值都存在。
+#      卡里提到的工具名、参数名、选项值都存在；卡里的字号写明画幅，9:16 的上限用 set_text 的排版和 SubtitleLineFit
+#      真排得下（2026-09-29，docs/bugfixes/2026-09-29-recipe-sizes-too-big-on-vertical.md）。
 #  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
 #  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）；
 #      配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、说话部分同一个响度），两种声音都只经一处写文件（扫描）。
@@ -346,6 +347,9 @@ xcrun swiftc \
   Sources/SrtFlow/AIAudioFileWriter.swift \
   Sources/SrtFlow/AIVoiceoverPlacement.swift \
   Sources/SrtFlow/AIVoiceoverSubtitles.swift \
+  Sources/SrtFlow/SubtitleGen/SubtitleLineFit.swift \
+  Sources/SrtFlow/SubtitleFrameGeometry.swift \
+  Sources/SrtFlow/SubtitleFontScale.swift \
   Sources/SrtFlow/AITimelineEdits.swift \
   Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/AIClipEdit.swift \
@@ -414,6 +418,7 @@ xcrun swiftc \
   checks/MCP/ShapeChecks.swift \
   checks/MCP/TextPartChecks.swift \
   checks/MCP/RecipeChecks.swift \
+  checks/MCP/RecipeSizeChecks.swift \
   checks/MCP/VoiceChecks.swift \
   checks/MCP/VoiceLevelChecks.swift \
   checks/MCP/SubtitleStyleChecks.swift \

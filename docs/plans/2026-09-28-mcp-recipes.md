@@ -35,6 +35,9 @@
 9. **字幕的样子**：生成字幕、配音字幕**之前**先用 `edit_subtitles style` 设好（一行放多少按设的字号切）；只改这个工程，
    不动用户在烧录页记住的那套（方案第 54 条）。逐词高亮只亮 SrtFlow 自己从语音、配音做出来的句子（`get_subtitles` 会报
    `lines_with_word_times`）。
+10. **字号按画面高度算**：`set_text` 的 `font_size` 和字幕的字号都是「1080 高的画面上多少像素」，9:16 的画面 1920 高，
+    同一个数字画出来（相对画面宽度）是 16:9 的 1.78 倍。卡里的字号写明了是哪种画幅的；只写一个数的是 16:9 的，放到 9:16
+    上除以 1.8。（2026-09-29 验收实剪：照原来写的 9:16「110–140」做的大字折成三行、顶出画面，字幕 68 一行只放得下一两个词）
 
 ## 三、五张卡
 
@@ -51,8 +54,8 @@
 | 转场 | 硬切为主；换段落偶尔 `pushLeft` / `pushUp`（0.3 秒以内）；揭晓成品可以 `whiteFade` 闪一下（0.15 秒） |
 | 画面动画 | 关键产品镜头 `entrance: pop` 或 `zoom`（0.3 秒）；静止的产品图用 `set_keyframes` 慢慢放大（大小 1 → 1.08） |
 | 滤镜 | 产品、室内、干净：`coldWhite`；生活场景：`warmSun`。强度 0.5–0.7，整条片子一个 |
-| 文字 | 关键词大字：中文 `PingFang SC` 粗体，英文 `Avenir Next` 粗体（或 `Futura`）；9:16 字号 110–140；白字 + 深色描边，或纯色底框（`background_color`）；`animation_in: pop` 或 `cascade`；放在上三分之一（字幕在下）。数字用数字滚动（0 → 目标值，1 秒） |
-| 字幕 | 开，大字粗体，逐词高亮：生成之前 `edit_subtitles style` 字号 64–72、`bold`、高亮 `#FFD400`、放大 1.1；9:16 再加 `position bottom`、`margin 0.22`（在平台按钮之上） |
+| 文字 | 关键词大字：中文 `PingFang SC` 粗体，英文 `Avenir Next` 粗体（或 `Futura`）；字号 9:16 上 44–52（英文大写一行最多 14 个、中文最多 8 个），16:9 上 90–110；白字 + 深色描边，或纯色底框（`background_color`）；`animation_in: pop` 或 `cascade`；放在上三分之一（字幕在下）。数字用数字滚动（0 → 目标值，1 秒） |
+| 字幕 | 开，大字粗体，逐词高亮：生成之前 `edit_subtitles style` 字号 16:9 上 56–64、9:16 上 42–48（一行三四个词）、`bold`、高亮 `#FFD400`、放大 1.1；9:16 再加 `position bottom`、`margin 0.22`（在平台按钮之上） |
 | 配乐 | 轻快、明亮：`find_audio` 搜 bright / hopeful / electronic。**音乐库现在缺轻快的**：找不到合适的就不放，告诉用户可以给一首自己的 |
 | 配音 | 有口播用原声。纯产品画面才配旁白：`zh_female_lively` / `en_female_lively`，语速 1.1× |
 | 自检 | 前 3 秒 `look`：有大字、有主体；每 3 秒画面有变化；人声清楚、音乐不盖人声；时长在范围内；最后一帧有号召、停够 1.5 秒 |
@@ -97,7 +100,7 @@
 | 转场 | 硬切为主；`whiteFade`（0.1–0.15 秒）当闪光；`pushLeft` / `pushUp` / `wipeLeft`（0.25 秒以内）。**闪白每 10 秒不超过 3 次**（光敏） |
 | 画面动画 | `entrance: zoom` 或 `wipe`（0.3 秒）点缀 |
 | 滤镜 | 赛博朋克 `neon`；冷硬工业 `coldIron`；太空、实验室 `mistBlue` 或 `coldWhite` |
-| 文字 | 英文 `DIN Condensed` / `DIN Alternate`，HUD 标签用等宽的 `Menlo`；中文 `PingFang SC` 细体；全大写、字距拉宽（`letter_spacing` 10–30）；颜色青 `#00E5FF`、品红 `#FF2BD6` 或纯白。<br>角落放小的 HUD 标签（坐标、时间码、「REC」）：字号 28–36；再用 `set_shape` 的细线、方框做取景框（线宽 2–3），半透明的实心长方形（如 `#00E5FF33`）垫在标签后面当面板。<br>数字用数字滚动做倒计时、数据跳动。<br>结尾标题用 `strokeDraw` 要先有描边（`stroke_color`），不然用 `wipe`；停够 2 秒 |
+| 文字 | 英文 `DIN Condensed` / `DIN Alternate`，HUD 标签用等宽的 `Menlo`；中文 `PingFang SC` 细体；全大写、字距拉宽（`letter_spacing` 10–30）；颜色青 `#00E5FF`、品红 `#FF2BD6` 或纯白。<br>角落放小的 HUD 标签（坐标、时间码、「REC」）：字号 16:9 上 28–36、9:16 上 16–20；再用 `set_shape` 的细线、方框做取景框（线宽 2–3），半透明的实心长方形（如 `#00E5FF33`）垫在标签后面当面板。<br>数字用数字滚动做倒计时、数据跳动。<br>结尾标题用 `strokeDraw` 要先有描边（`stroke_color`），不然用 `wipe`；停够 2 秒 |
 | 字幕 | 有旁白就开，白字细体、不高亮 |
 | 配乐 | `find_audio` 搜 space / electronic / synth / dark / tense |
 | 配音 | `zh_male` / `en_male`（或 `*_female_warm`），语速 1.0×；想要「舰载电脑」的感觉给旁白挂 `sound_scene: radio` |
@@ -136,8 +139,8 @@
 | 转场 | 硬切为主；换场景偶尔 `pushLeft` / `pushUp` |
 | 画面动画 | `entrance: pop` / `zoom` 点缀，别每段都用 |
 | 滤镜 | 暖 `warmSun`，胶片感 `fadedFilm`；强度 0.4–0.6 |
-| 文字 | 手写 / 圆体：中文 `Yuanti SC`（圆体）、`Hannotate SC`（手札体）、`HanziPen SC`（翩翩体）—— **这三个要在「字体册」里下载**，没装就用 `PingFang SC`（`set_text` 会提醒没装）；英文 `Marker Felt` / `Noteworthy` / `Chalkboard SE`。字号 70–100，`pop` / `rise`，白字 + 阴影或黄字 |
-| 字幕 | 开，大字，逐词高亮但不放大：`edit_subtitles style` 字号 60–66、高亮 `#FFD400`、放大 1；9:16 再加 `position bottom`、`margin 0.22` |
+| 文字 | 手写 / 圆体：中文 `Yuanti SC`（圆体）、`Hannotate SC`（手札体）、`HanziPen SC`（翩翩体）—— **这三个要在「字体册」里下载**，没装就用 `PingFang SC`（`set_text` 会提醒没装）；英文 `Marker Felt` / `Noteworthy` / `Chalkboard SE`。字号 9:16 上 44–52（16:9 上 80–100），`pop` / `rise`，白字 + 阴影或黄字 |
+| 字幕 | 开，大字，逐词高亮但不放大：`edit_subtitles style` 字号 9:16 上 42–48（16:9 上 52–60）、高亮 `#FFD400`、放大 1；9:16 再加 `position bottom`、`margin 0.22` |
 | 配乐 | 轻快：`find_audio` 搜 bright / hopeful / guitar；**音乐库现在缺轻快的**，找不到就用原声、告诉用户可以给一首自己的。说话的地方音乐压低 |
 | 配音 | 一般不配（原声就是 vlog 的味道）；要配用 `zh_female_warm` / `en_female_warm`，语速 1.05× |
 | 自检 | 钩子在前 2 秒；字和字幕都在安全区里；结尾有互动的一句 |

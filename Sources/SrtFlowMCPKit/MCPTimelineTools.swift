@@ -337,7 +337,7 @@ public enum MCPTimelineTools {
                 "y": MCPSchema.number("Vertical centre, 0–1.", minimum: 0, maximum: 1),
                 "box_width": MCPSchema.number("Wrap width as a fraction of the frame width (default 0.8).", minimum: 0.05, maximum: 1),
                 "font": MCPSchema.string("Font family name, e.g. PingFang SC, Helvetica Neue, Avenir Next."),
-                "font_size": MCPSchema.number("Pixels on a 1080-high frame (default 96).", minimum: 12, maximum: 400),
+                "font_size": MCPSchema.number("Pixels on a 1080-high frame; a 9:16 frame is 1920 high, so it draws 1.78x larger there: 44-52 fits 14 capitals on a line (default 96).", minimum: 12, maximum: 400),
                 "bold": MCPSchema.boolean("Bold."),
                 "italic": MCPSchema.boolean("Italic."),
                 "color": MCPSchema.string("Text colour."),

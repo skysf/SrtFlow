@@ -28,7 +28,7 @@ use_for: Tech products, AI and future topics, space, cyberpunk cities, game prom
 
 - English DIN Condensed or DIN Alternate; HUD labels in the monospaced Menlo; Chinese PingFang SC light. Capitals, wide
   letter_spacing (10–30). Colours cyan #00E5FF, magenta #FF2BD6 or pure white.
-- Small HUD labels in the corners (coordinates, a timecode, "REC"), font_size 28–36; thin lines and outlined rectangles from
+- Small HUD labels in the corners (coordinates, a timecode, "REC"), font_size 28–36 on 16:9, 16–20 on 9:16; thin lines and outlined rectangles from
   set_shape (line_width 2–3) as a viewfinder; a translucent filled rectangle (e.g. #00E5FF33) as a panel behind a label.
 - Numbers roll (set_text number) for countdowns and data.
 - Title: strokeDraw needs an outline (stroke_color), or use wipe. Hold it at least 2 s.

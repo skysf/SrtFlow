@@ -89,7 +89,7 @@ public enum MCPSubtitleExportTools {
     static let subtitleStyle = MCPSchema.object([
         "position": MCPSchema.string("Where the subtitles sit.", oneOf: MCPVocabulary.subtitlePositions),
         "margin": MCPSchema.number("Distance from that edge, as a fraction of the frame height (default 0.056).", minimum: 0, maximum: 0.45),
-        "size": MCPSchema.number("Font size in pixels on a frame 1080 pixels tall (default 56; 64-80 for bold short-video captions).", minimum: 20, maximum: 140),
+        "size": MCPSchema.number("Font size in pixels on a frame 1080 pixels tall; a 9:16 frame is 1920 tall, so it draws 1.78x larger there (default 56; bold captions 56-64 on 16:9, 42-48 on 9:16).", minimum: 20, maximum: 140),
         "font": MCPSchema.string("Font family installed on this Mac that can burn Chinese or English, e.g. Hiragino Sans GB, Heiti SC, Helvetica Neue."),
         "bold": MCPSchema.boolean("Bold text."),
         "color": MCPSchema.string("Text colour, #RRGGBB."),

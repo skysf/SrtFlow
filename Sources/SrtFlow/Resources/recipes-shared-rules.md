@@ -18,3 +18,6 @@
 9. Subtitles: set how they look with edit_subtitles style before generate_subtitles or add_voiceover subtitles=true (lines are
    cut to fit that size). It changes only this project, never the user's Burn In Subtitles page. Word highlight only lights
    lines SrtFlow made from speech or a voiceover (get_subtitles tells lines_with_word_times).
+10. Sizes count against the frame's height: set_text font_size and the subtitle style size are pixels on a frame 1080
+    high, and a 9:16 frame is 1920 high, so the same number draws 1.78× larger across its width. A recipe names the shape
+    its sizes are for; a single number is for 16:9 — on 9:16 divide it by 1.8.

@@ -7,6 +7,7 @@ import SrtFlowMCPKit
 // 选项值都真的存在**（工具改了名、卡没跟着改，AI 照着卡调就会报错）。编法见 scripts/check-mcp.sh。
 
 func runRecipeChecks() {
+    runRecipeSizeChecks()
     formatChecks()
     catalogChecks()
     storeChecks()

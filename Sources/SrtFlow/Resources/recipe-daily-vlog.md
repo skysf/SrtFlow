@@ -26,9 +26,9 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and caf�
 
 - Handwritten or rounded fonts: Chinese Yuanti SC, Hannotate SC or HanziPen SC — these three must be downloaded in Font Book;
   when set_text says the font is not installed, use PingFang SC. English Marker Felt, Noteworthy or Chalkboard SE.
-- font_size 70–100, pop or rise, white with a shadow, or yellow.
-- Subtitles: on, big, the spoken word highlighted without growing: edit_subtitles style size 60–66, highlight #FFD400,
-  highlight_scale 1; on 9:16 also position bottom, margin 0.22.
+- font_size 44–52 on 9:16 (80–100 on 16:9), pop or rise, white with a shadow, or yellow.
+- Subtitles: on, big, the spoken word highlighted without growing: edit_subtitles style size 42–48 on 9:16 (52–60 on 16:9),
+  highlight #FFD400, highlight_scale 1; on 9:16 also position bottom, margin 0.22.
 
 ## Sound
 
