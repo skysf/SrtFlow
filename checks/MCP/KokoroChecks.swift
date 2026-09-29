@@ -10,6 +10,7 @@ import SrtFlowMCPKit
 func runKokoroChecks() {
     kokoroChoiceChecks()
     pieceChecks()
+    paddingChecks()
     assemblyChecks()
     manifestChecks()
     unitChecks()
@@ -48,22 +49,52 @@ private func kokoroChoiceChecks() {
 
 private func pieceChecks() {
     let text = "学完这门课，你十分钟就能剪出短视频！已经有一万名学员。"
-    let sentences = KokoroVoicePieces.sentences(text)
-    checkEqual(sentences.map { slice(text, $0.range) }, ["学完这门课，你十分钟就能剪出短视频！", "已经有一万名学员。"],
-               "a line is cut after each sentence, the punctuation stays with its sentence")
-    checkEqual(sentences.map(\.pauseAfter), [KokoroVoicePieces.sentencePause, 0], "a pause after a sentence, none at the end")
-    let clauses = KokoroVoicePieces.split(sentences[0], in: text)
-    checkEqual(clauses?.map { slice(text, $0.range) }, ["学完这门课，", "你十分钟就能剪出短视频！"], "too long: cut at the comma")
+    let whole = KokoroVoicePieces.whole(text)
+    checkEqual(whole.map { slice(text, $0.range) }, [text], "a line that fits is read whole (short sentences alone blow up)")
+    checkEqual(whole.map(\.pauseAfter), [0], "no pause after the last piece")
+    let halves = KokoroVoicePieces.split(whole[0], in: text)
+    checkEqual(halves?.map { slice(text, $0.range) }, ["学完这门课，你十分钟就能剪出短视频！", "已经有一万名学员。"],
+               "too long: cut at the sentence end nearest the middle, punctuation stays with its sentence")
+    checkEqual(halves?.map(\.pauseAfter), [KokoroVoicePieces.sentencePause, 0], "a sentence pause between the halves")
+    let clauses = KokoroVoicePieces.split(halves![0], in: text)
+    checkEqual(clauses?.map { slice(text, $0.range) }, ["学完这门课，", "你十分钟就能剪出短视频！"], "no sentence end inside: cut at the comma")
     checkEqual(clauses?.map(\.pauseAfter), [KokoroVoicePieces.clausePause, KokoroVoicePieces.sentencePause],
-               "the second half keeps the sentence's pause")
+               "the second half keeps the piece's own pause")
+    let numbered = "One. Two. Keep your prompts short. Three. Build character sheets before you shoot."
+    let middle = KokoroVoicePieces.split(KokoroVoicePieces.whole(numbered)[0], in: numbered)
+    checkEqual(middle?.map { slice(numbered, $0.range) }, ["One. Two. Keep your prompts short.", "Three. Build character sheets before you shoot."],
+               "several sentence ends: the one nearest the middle, so neither half is a lone word")
     let plain = "一二三四五六"
-    let halves = KokoroVoicePieces.split(.init(range: 0..<6, pauseAfter: 0), in: plain)
-    checkEqual(halves?.map { slice(plain, $0.range) }, ["一二三", "四五六"], "no comma: cut in the middle between two characters")
+    let split = KokoroVoicePieces.split(.init(range: 0..<6, pauseAfter: 0), in: plain)
+    checkEqual(split?.map { slice(plain, $0.range) }, ["一二三", "四五六"], "no punctuation: cut in the middle between two characters")
     check(KokoroVoicePieces.split(.init(range: 0..<1, pauseAfter: 0), in: "一") == nil, "one character cannot be cut")
-    let english = "  Hello there.  Don't miss it!  "
-    checkEqual(KokoroVoicePieces.sentences(english).map { slice(english, $0.range) }, ["Hello there.", "Don't miss it!"],
-               "spaces around sentences are dropped")
-    checkEqual(KokoroVoicePieces.sentences("好。。。").count, 1, "punctuation on its own is not a piece")
+    let english = "  Hello there.  "
+    checkEqual(KokoroVoicePieces.whole(english).map { slice(english, $0.range) }, ["Hello there."], "spaces around the line are dropped")
+    checkEqual(KokoroVoicePieces.whole("。。。").count, 0, "punctuation on its own is nothing to read")
+    checkEqual(KokoroVoicePieces.split(KokoroVoicePieces.whole("好。。。")[0], in: "好。。。"), nil,
+               "a cut that leaves only punctuation on one side is no cut")
+}
+
+/// 太短的一段后面垫一句再读（KokoroVoicePadding）：垫法的顺序、算不算炸、切口不越过垫的那句。
+private func paddingChecks() {
+    let short = KokoroVoicePadding.attempts(ownTokens: 6, language: "en")
+    check(short.count == 2 && short.allSatisfy { $0 != nil }, "a short piece is always padded, first one tail then the other")
+    let long = KokoroVoicePadding.attempts(ownTokens: 90, language: "en")
+    check(long.count == 3 && long[0] == nil, "a long piece is read as it is first, padded only if it blows up")
+    check(everyKokoroLanguageHasTails(), "every language Kokoro reads has two tails")
+    check(KokoroVoicePadding.exploded([0.2, -3.0, 0.1][...]), "over twice full scale is blown up")
+    check(KokoroVoicePadding.exploded([0.2, .nan][...]), "not-a-number is blown up")
+    check(!KokoroVoicePadding.exploded([0.9, -1.2, 0.3][...]), "ordinary speech peaks are not")
+    // 垫了一句：后一个字说完之后声音接着不停（垫的那句），切口不许越过它开口的地方。
+    var voiced = [Float](repeating: 0, count: 400)
+    for index in 30..<400 { voiced[index] = 0.3 }
+    let padded = KokoroVoiceAssembly.speechEnd(voiced, nominal: 120, rate: 1000, limit: 150)
+    checkEqual(padded, 150, "the cut stops where the padding starts to speak")
+    checkEqual(KokoroVoiceAssembly.speechEnd(voiced, nominal: 120, rate: 1000), 320, "without padding it searches the full 0.2 s")
+}
+
+private func everyKokoroLanguageHasTails() -> Bool {
+    AIVoiceRole.kokoroLanguages.allSatisfy { (KokoroVoicePadding.tails[$0] ?? []).count == 2 }
 }
 
 private func assemblyChecks() {

@@ -2,8 +2,9 @@ import AVFoundation
 import Foundation
 
 // 配音的音量（AIVoiceLevel + AIAudioFileWriter.writeVoiceover）：峰值超过满幅的一句写进文件之后不许削波（2026-09-28 用户的
-// en_male 旁白「One.」「Two.」「Three.」一声声爆音，docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md）；说话部分拉到同一个
-// 响度、停顿不算、静音原样、底噪不放大成噪音。写文件那一步真写一个 .m4a 再读回来量。编法见 scripts/check-mcp.sh。
+// en_male 旁白「One.」「Two.」「Three.」一声声爆音，docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md）；**开头炸了满幅 90 倍的
+// 一下，后面说的话照样在该有的响度**（2026-09-29 第一版修法被那一下压了 37 dB，docs/bugfixes/2026-09-29-kokoro-short-pieces-explode.md）；
+// 说话部分拉到同一个响度、停顿不算、静音原样、底噪不放大成噪音。写文件那一步真写一个 .m4a 再读回来量。编法见 scripts/check-mcp.sh。
 
 func runVoiceLevelChecks() {
     levelMathChecks()
@@ -50,10 +51,24 @@ private func dB(_ value: Float) -> Float { 20 * log10(value) }
 /// 像 am_fenrir 那几句：说话部分本来就在 −18 dBFS 上下，开头一下冲到 1.15（峰值比说话响 19 dB）。
 private let hotLine = line(level: 0.17, burst: 1.15)
 
+/// 像 2026-09-29 那句「Two. Keep your prompts…」：开头 0.45 秒炸到满幅的 90 倍（+39 dB），后面是正常的说话。
+private let blownUpLine = (0..<Int(rate * 0.45)).map { 90 * Float(sin(2 * Double.pi * 220 * Double($0) / rate)) } + line(level: 0.14)
+
+/// 从第 `from` 秒起的说话部分有多响（dB）。
+private func speechDB(_ samples: [Float], from: Double) -> Float {
+    dB(activeRMS(Array(samples.dropFirst(Int(rate * from)))))
+}
+
 private func levelMathChecks() {
     let hot = AIVoiceLevel.normalized(hotLine, sampleRate: rate)
     check(abs(peak(hot) - AIVoiceLevel.peakCeiling) < 1e-4,
-          "a line whose peak is over full scale is turned down until the peak sits at −1 dBFS (got \(peak(hot)))")
+          "a line whose peak is over full scale is limited to exactly −1 dBFS there (got \(peak(hot)))")
+    check(abs(speechDB(hot, from: 0.02) - dB(AIVoiceLevel.targetRMS)) < 1,
+          "and the speech around it keeps its level (only the peak is pulled down, got \(speechDB(hot, from: 0.02)) dB)")
+    let blown = AIVoiceLevel.normalized(blownUpLine, sampleRate: rate)
+    check(abs(speechDB(blown, from: 0.5) - dB(AIVoiceLevel.targetRMS)) < 1,
+          "a burst at 90 × full scale does not push the rest of the line down (speech at \(speechDB(blown, from: 0.5)) dB)")
+    check(peak(blown) <= AIVoiceLevel.peakCeiling + 1e-5, "and the burst itself is limited to −1 dBFS (got \(peak(blown)))")
     let spiky = line(level: 0.05, burst: 0.5)
     let raised = AIVoiceLevel.normalized(spiky, sampleRate: rate)
     check(peak(raised) > peak(spiky) && peak(raised) <= AIVoiceLevel.peakCeiling + 1e-5,

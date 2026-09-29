@@ -21,6 +21,8 @@ enum KokoroVoiceAssembly {
         /// 单位的位置相对这一段。
         var units: [KokoroUnit]
         var pauseAfter: Double
+        /// 后面垫了一句（KokoroVoicePadding）时，垫的那句从第几个采样开口：往后找安静不许越过它。没垫是 nil。
+        var speechLimit: Int? = nil
     }
 
     /// 第一个字前面留多少（秒）：模型的声音和时长之间差一两格（2026-09-28 实测大多差一格，25 毫秒）。
@@ -45,7 +47,7 @@ enum KokoroVoiceAssembly {
             for frames in piece.frames { cumulative.append(cumulative[cumulative.count - 1] + frames) }
             func sample(atToken index: Int) -> Int { cumulative[min(index, cumulative.count - 1)] * samplesPerFrame }
             let from = max(0, sample(atToken: first.tokenRange.lowerBound) - Int(leadIn * rate))
-            let to = speechEnd(piece.samples, nominal: sample(atToken: last.tokenRange.upperBound), rate: rate)
+            let to = speechEnd(piece.samples, nominal: sample(atToken: last.tokenRange.upperBound), rate: rate, limit: piece.speechLimit)
             guard to > from else { continue }
             var cut = Array(piece.samples[from..<to])
             fade(&cut, fadeIn: Int(fadeIn * rate), fadeOut: Int(fadeOut * rate))
@@ -66,10 +68,11 @@ enum KokoroVoiceAssembly {
     }
 
     /// 最后一个字（按时长）结束前 40 毫秒起，往后找第一段 40 毫秒的安静，切在它里面 10 毫秒；找不到就切在 `tailSearch` 处。
-    static func speechEnd(_ samples: [Float], nominal: Int, rate: Double) -> Int {
+    /// `limit`：垫的那句开口处，切口不越过它（不然会带上垫的那句的头一个音）。
+    static func speechEnd(_ samples: [Float], nominal: Int, rate: Double, limit hardLimit: Int? = nil) -> Int {
         let window = Int(0.04 * rate)
         let step = Int(0.01 * rate)
-        let limit = min(samples.count, nominal + Int(tailSearch * rate))
+        let limit = min(samples.count, nominal + Int(tailSearch * rate), max(nominal, hardLimit ?? .max))
         var position = max(0, nominal - window)
         while position + window <= limit {
             var sum: Float = 0

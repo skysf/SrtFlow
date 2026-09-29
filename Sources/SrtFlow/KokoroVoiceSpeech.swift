@@ -4,7 +4,8 @@ import SrtFlowKokoro
 // MARK: - 用本机的 Kokoro 读一句旁白
 //
 // 管什么：模型只在 `MediaReadQueue.voice` 这一条队列上加载、推理（CoreML 的推理卡线程，不进协作线程池；模型不同时跑两次）；
-// 一句旁白先按句切（KokoroVoicePieces），token 超了或者声音超 5 秒就再切，一段段读完按字的时刻裁好拼起来
+// 一句旁白放得下就整句读（KokoroVoicePieces），token 超了或者声音超 5 秒就切成两半，每一段怎么读在 KokoroPieceReader
+// （太短的垫一句、炸了换一句），一段段读完按字的时刻裁好拼起来
 // （KokoroVoiceAssembly），过一道音量存成 .m4a（AIAudioFileWriter），词的时间走和 macOS 配音同一条路（AIVoiceWords）。
 // 闲置两分钟卸掉模型（它常驻 300 多 MB）。
 // 不管什么：模型下没下、在哪（KokoroVoicePack）、挑哪个音色（AIVoiceChoice）。
@@ -64,36 +65,32 @@ final class KokoroVoiceSpeech {
         }
     }
 
-    /// 在模型那条队列上：切段、读、读不下再切、拼起来。
+    /// 在模型那条队列上：整句读（放得下的话）、读不下再切成两半、拼起来。每一段怎么读（太短的垫一句、炸了换一句）
+    /// 在 KokoroPieceReader。
     nonisolated private static func render(_ text: String, language: String, voice: String, speed: Double,
                                            engine: KokoroEngine) throws -> ([Float], [AIVoiceWords.Marker]) {
-        let utf16 = Array(text.utf16)
-        var pending = KokoroVoicePieces.sentences(text)
+        var pending = KokoroVoicePieces.whole(text)
         var spoken: [KokoroVoiceAssembly.SpokenPiece] = []
         var rounds = 0
         while !pending.isEmpty {
             rounds += 1
             guard rounds < 1_000 else { throw AIToolError("This line could not be split into parts SrtFlow's voice can read.") }
             let piece = pending.removeFirst()
-            let pieceText = String(decoding: utf16[piece.range], as: UTF16.self)
-            var tokens = KokoroUnits.tokens(for: pieceText, language: language, phonemizer: engine.phonemizer)
-            guard !tokens.units.isEmpty else { continue }
-            if tokens.ids.count > KokoroEngine.maxTokens {
+            switch try KokoroPieceReader.read(piece, of: text, language: language, voice: voice, speed: Float(speed), engine: engine) {
+            case .spoken(let read):
+                spoken.append(read)
+            case .empty:
+                continue
+            case .tooLong:
                 if let parts = KokoroVoicePieces.split(piece, in: text) {
                     pending.insert(contentsOf: parts, at: 0)
-                    continue
+                } else if case .spoken(let read) = try KokoroPieceReader.read(
+                    piece, of: text, language: language, voice: voice, speed: Float(speed), engine: engine, force: true
+                ) {
+                    // 一个词就超了（极少见）：截断着读，截掉的那几个字不出字幕。
+                    spoken.append(read)
                 }
-                // 一个词就超了（极少见）：截断，截掉的那几个字不出字幕。
-                tokens.ids = Array(tokens.ids.prefix(KokoroEngine.maxTokens - 1)) + [engine.phonemizer.eosId]
-                tokens.units = tokens.units.filter { $0.tokenRange.upperBound < tokens.ids.count }
             }
-            let output = try engine.synthesize(tokens: tokens.ids, voice: voice, speed: Float(speed))
-            if output.truncated, let parts = KokoroVoicePieces.split(piece, in: text) {
-                pending.insert(contentsOf: parts, at: 0)
-                continue
-            }
-            spoken.append(.init(range: piece.range, samples: output.samples, frames: output.frames,
-                                units: tokens.units, pauseAfter: piece.pauseAfter))
         }
         let assembled = KokoroVoiceAssembly.assemble(spoken, sampleRate: KokoroEngine.sampleRate,
                                                      samplesPerFrame: KokoroEngine.samplesPerFrame)
