@@ -430,6 +430,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 已知不足：第一个字偶尔比时长晚 0.1–0.2 秒出声（字幕略早一点）；多音字只能读对一部分（「银行」「音乐」还是错的）；中文数字按
      基数读（2026 读「二千零二十六」，不是年份的读法）。
 36. **字幕长什么样（`edit_subtitles` / `burn_subtitles` 的 `style`，方案第 38、54 条；第 5 块第 ④ 刀）**：
+    2026-09-29 补的三样（[案例](../bugfixes/2026-09-29-subtitle-merge-loses-word-times.md)）：`edit_subtitles` 的 `merge`
+    走界面「合并」那份合同（`SubtitleTrackEditing.mergeCues`，逐词时间拼起来），别让 AI 拿「改字 + 删句」拼；`get_subtitles`
+    每行报 `timed_words`；`style.max_width`（一行最宽占画面宽的几成）按这个工程的画幅换成左右边距（`AISubtitleStyleChange.horizontalMargin`，
+    画布宽同 `assDocument` 的 PlayResX），只对工程字幕，`burn_subtitles` 不收。
    - 参数只有一份 schema（`MCPSubtitleExportTools.subtitleStyle`，两个工具共用）：位置（bottom / middle / top，九宫格居中的那一列，
      词表 `MCPVocabulary.subtitlePositions` 和 App 对账）、离边多远（画面高的比例）、字号（1080 高的画面上的像素）、字体、粗细、
      颜色、描边或底条（二选一）、阴影、逐词高亮的颜色和放大倍数、reset。读法和落法只有 `AISubtitleStyleChange`（纯值）一处：先全验过，
