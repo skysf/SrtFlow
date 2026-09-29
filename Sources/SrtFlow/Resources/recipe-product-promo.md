@@ -58,6 +58,12 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Footage with "WaterMark" in its name may be used unless the user says otherwise. No prices, no invented student counts or
   ratings.
 
+## Generated media (only if generate_media is among your tools)
+
+- Transition sounds (whoosh on a push, a pop when a keyword appears, a shutter): generate_media kind sound_effect.
+- When find_audio has nothing bright, generate_media kind music ("upbeat, bright, electronic, no vocals") before asking the
+  user for a track. Never generate pictures of the product.
+
 ## Checklist before export
 
 - The first 3 s (look): big text and the subject are there.

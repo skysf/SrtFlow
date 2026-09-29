@@ -70,6 +70,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/CompositionTime.swift \
+  Sources/SrtFlow/CompositionSlices.swift \
+  Sources/SrtFlow/CompositionHold.swift \
   Sources/SrtFlow/VideoEditMediaAssetCache.swift \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
@@ -84,6 +86,8 @@ xcrun swiftc \
   checks/PreviewComposition/AssetCache.swift \
   checks/PreviewComposition/Fixtures.swift \
   checks/PreviewComposition/AppendOnly.swift \
+  checks/PreviewComposition/SliceTicks.swift \
+  checks/PreviewComposition/Scenes.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
