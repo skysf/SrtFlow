@@ -164,8 +164,8 @@ final class FalGenerationRun {
         if let width = media.width, let height = media.height { detail["width"] = .number(Double(width)); detail["height"] = .number(Double(height)) }
         if let duration = media.duration { detail["duration"] = AIFormat.seconds(duration) }
         if request.kind == .textToVideo || request.kind == .imageToVideo {
-            detail["note"] = "MiniMax H3 Max clips carry their own sound (room tone, foley, music); it plays with the clip. "
-                + "Lower or mute the clip's volume (edit_clip) when you add your own music or narration."
+            detail["note"] = .string("MiniMax H3 Max clips carry their own sound (room tone, foley, music); it plays with the clip. "
+                + "Lower or mute the clip's volume (edit_clip) when you add your own music or narration.")
         }
         finish(.done, "Made \(file.lastPathComponent).", detail: .object(detail))
     }
