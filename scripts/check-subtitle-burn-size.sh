@@ -49,6 +49,9 @@ xcrun swiftc \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/MediaFormatting.swift \
   Sources/SrtFlow/AppLanguage.swift \
+  Sources/SrtFlow/FontCatalog.swift \
+  Sources/SrtFlow/FontCmapSanity.swift \
+  checks/SubtitleBurnSize/CmapSanityChecks.swift \
   checks/SubtitleBurnSize/ShadowChecks.swift \
   checks/SubtitleBurnSize/PositionChecks.swift \
   checks/SubtitleBurnSize/main.swift \

@@ -13,8 +13,8 @@ struct SubtitleFont: Identifiable, Hashable, Sendable {
 /// 这一步不能省。macOS 的苹方等系统中文字体放在
 /// `/System/Library/PrivateFrameworks/FontServices.framework/Resources/Reserved/`
 /// 里，普通进程读不了，libass 打开会失败，然后 fontconfig 悄悄换成另一个字体 ——
-/// 用户以为选了苹方，烧出来却是别的字。所以这里只收「文件可读 + CoreText 能解析」
-/// 的字体，再把字体文件软链进任务目录、用 `fontsdir` 指过去，保证选什么就是什么。
+/// 用户以为选了苹方，烧出来却是别的字。所以这里只收「文件可读 + CoreText 能解析 + cmap 经得起 FreeType
+/// 挑（`FontCmapSanity`）」的字体，再把字体文件软链进任务目录、用 `fontsdir` 指过去，保证选什么就是什么。
 enum FontCatalog {
 
     /// 用这几个字判断字体有没有中文字形。
@@ -40,6 +40,9 @@ enum FontCatalog {
                 guard FileManager.default.isReadableFile(atPath: path) else { continue }
                 let url = URL(fileURLWithPath: path)
                 guard let descriptors = CTFontManagerCreateFontDescriptorsFromURL(url as CFURL) as? [CTFontDescriptor] else { continue }
+                // cmap 坏了的字体（圆体）FreeType 会挑错字形：Core Text 画得对、libass 烧出来是别的字。整个文件一起看 ——
+                // libass 装的是整个 .ttc，一个面坏了、按粗细挑到它就错（圆体的 Light 好、Regular / Bold 坏）。
+                guard descriptors.allSatisfy({ FontCmapSanity.isSafeForFreeType(CTFontCreateWithFontDescriptor($0, 24, nil)) }) else { continue }
 
                 for descriptor in descriptors {
                     guard let family = CTFontDescriptorCopyAttribute(descriptor, kCTFontFamilyNameAttribute) as? String,

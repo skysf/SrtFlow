@@ -94,7 +94,7 @@ struct AITextChange {
     var hidden: Bool?
 
     init(_ args: AIToolArguments) throws {
-        text = try args.string("text")
+        text = try args.string("text").map(Self.unescapingNewlines)
         start = try args.double("start")
         duration = try args.double("duration")
         if let position = try args.choice("position", from: MCPVocabulary.textPositions) {
@@ -135,6 +135,12 @@ struct AITextChange {
 
     private static func animation(_ args: AIToolArguments, _ key: String) throws -> TextAnimationKind? {
         try args.choice(key, from: MCPVocabulary.textAnimations).flatMap(TextAnimationKind.init(rawValue:))
+    }
+
+    /// 字面的反斜杠 + n 也当换行：工具说明里写着 `\n`，客户端常常把它原样当两个字符传过来，画面上就真的
+    /// 显示一个反斜杠和一个 n（2026-09-29 婚礼工程）。屏幕上的字不会真要一个反斜杠加 n。
+    static func unescapingNewlines(_ text: String) -> String {
+        text.replacingOccurrences(of: "\\n", with: "\n")
     }
 
     /// 落到一段文字上。夹紧由调用方经 `updateTextOverlay` 统一收（新建的也走那一处）。

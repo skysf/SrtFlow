@@ -84,6 +84,25 @@ private func placeChecks() {
 }
 
 private func deleteSplitTransitionChecks() {
+    // 整批 id 先全认一遍：认不出的一起列出来、说明一个都没删（2026-09-29 婚礼工程 ISSUE-21）。
+    do {
+        var state = TimelineState()
+        let keep = videoClip(0, 4)
+        state.mainClips = [keep, videoClip(4, 4)]
+        let ids = AIShortIDs(state: state)
+        do {
+            _ = try AITimelineEdits.deletion(of: [ids.short(keep.id), "deadbeef", "feedface"], in: state)
+            check(false, "unknown ids in a batch must be refused")
+        } catch let error as AIToolError {
+            check(error.message.contains("deadbeef") && error.message.contains("feedface"), "every unknown id is named: \(error.message)")
+            check(error.message.contains("Nothing was deleted"), "the message says the batch was not applied: \(error.message)")
+        } catch {
+            check(false, "unexpected error \(error)")
+        }
+        let good = try? AITimelineEdits.deletion(of: [ids.short(keep.id)], in: state)
+        checkEqual(good?.clips, [keep.id], "a batch of known ids resolves to the deletion")
+    }
+
     // ripple：删掉中间那段，后面的补上它的长度；原来就有的空隙留着。
     var state = TimelineState()
     let a = videoClip(0, 4), b = videoClip(5, 4), c = videoClip(10, 5)
@@ -216,4 +235,9 @@ private func summaryChecks() {
     checkEqual(summary["filters"]?.arrayValue?.first?["preset"]?.stringValue, "warmSun", "filters are listed")
     checkEqual(summary["selected"]?.arrayValue?.first?.stringValue, ids.short(first.id), "the selection is listed")
     checkEqual(summary["canvas"]?["width"]?.intValue, 1920, "canvas width")
+    checkEqual(summary["project"]?.stringValue, "unsaved", "an unsaved project says so")
+    var named = context
+    named.project = "婚礼_B版.srtflowproj"
+    checkEqual(AITimelineSummary.make(state, named)["project"]?.stringValue, "婚礼_B版.srtflowproj",
+               "get_timeline names the open project file (several AI sessions on one App)")
 }

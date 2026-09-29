@@ -30,6 +30,9 @@ struct TextLayout: Equatable {
         var position: CGPoint
         /// 这个字形对应原始字符串里的下标。逐字动画按它排序错峰（第二刀用）。
         var characterIndex: Int
+        /// 字形号是 `fonts` 里第几个字体的：主字体是 0，主字体里没有的字 Core Text 回退到的字体排在后面。
+        /// 画的时候必须用同一个字体（VideoEditTextLayoutFonts.swift）。
+        var fontIndex = 0
     }
 
     /// 一行。`glyphs` 已按视觉顺序排好。
@@ -53,8 +56,10 @@ struct TextLayout: Equatable {
     /// 版面框尺寸（像素）。宽是用户设的折行宽度，高是排出来的。
     var size: CGSize
     var lines: [Line]
-    /// 排版用的字体。渲染和包围盒都要它，避免第二次构造时参数写歪。
-    var font: CTFont
+    /// 排版用到的字体：主字体 + 回退出来的字体。渲染按每个字形的 `fontIndex` 取，别都用主字体画。
+    var fonts: TextLayoutFonts
+    /// 主字体。数字元件、包围盒都按它算，避免第二次构造时参数写歪。
+    var font: CTFont { fonts.main }
 
     var isEmpty: Bool { lines.allSatisfy { $0.glyphs.isEmpty } }
 
@@ -149,8 +154,9 @@ enum TextTypesetter {
         let boxWidth = max(1, overlay.boxWidth * canvas.width)
         let content = text ?? overlay.text
 
+        var fonts = TextLayoutFonts(main: font)
         guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return TextLayout(size: CGSize(width: boxWidth, height: 0), lines: [], font: font)
+            return TextLayout(size: CGSize(width: boxWidth, height: 0), lines: [], fonts: fonts)
         }
 
         let metrics = overlay.number != nil ? digitMetrics(font) : nil
@@ -190,7 +196,7 @@ enum TextTypesetter {
             let width = CTLineGetTypographicBounds(ctLine, &ascent, &descent, &leading)
             var glyphs: [TextLayout.Glyph] = []
             for run in (CTLineGetGlyphRuns(ctLine) as? [CTRun] ?? []) {
-                glyphs.append(contentsOf: extractGlyphs(run, lineOrigin: origin))
+                glyphs.append(contentsOf: extractGlyphs(run, lineOrigin: origin, fonts: &fonts))
             }
             lines.append(TextLayout.Line(
                 glyphs: glyphs,
@@ -208,7 +214,7 @@ enum TextTypesetter {
         if !collapsed.isEmpty {
             placeCollapsing(&lines, collapsed: collapsed, alignment: style.alignment)
         }
-        return TextLayout(size: CGSize(width: boxWidth, height: height), lines: lines, font: font)
+        return TextLayout(size: CGSize(width: boxWidth, height: height), lines: lines, fonts: fonts)
     }
 
     /// 老虎机里有字符正收起来（或从 0 宽展开）时，这一行怎么摆。两件事：
@@ -269,10 +275,16 @@ enum TextTypesetter {
     ///
     /// 位置要**加上行原点**：`CTRunGetPositions` 给的是相对这一行基线原点的
     /// 偏移，对齐产生的水平位移全在行原点里。
-    private static func extractGlyphs(_ run: CTRun, lineOrigin: CGPoint) -> [TextLayout.Glyph] {
+    private static func extractGlyphs(
+        _ run: CTRun, lineOrigin: CGPoint, fonts: inout TextLayoutFonts
+    ) -> [TextLayout.Glyph] {
         let count = CTRunGetGlyphCount(run)
         guard count > 0 else { return [] }
         let range = CFRange(location: 0, length: count)
+        // 这个 run 用的是哪个字体：主字体里没有的字，Core Text 换了字体来排，字形号是那个字体的。
+        let attributes = CTRunGetAttributes(run) as NSDictionary
+        let runFont = attributes[kCTFontAttributeName as String] as! CTFont
+        let fontIndex = fonts.index(of: runFont)
 
         var glyphs = [CGGlyph](repeating: 0, count: count)
         var positions = [CGPoint](repeating: .zero, count: count)
@@ -288,7 +300,8 @@ enum TextTypesetter {
                     x: lineOrigin.x + positions[index].x,
                     y: lineOrigin.y + positions[index].y
                 ),
-                characterIndex: indices[index]
+                characterIndex: indices[index],
+                fontIndex: fontIndex
             )
         }
     }
