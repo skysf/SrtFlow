@@ -94,9 +94,11 @@
 
 ## 文字的字体表和字幕**不是同一份**
 
-字幕的 `FontCatalog` 只收「文件可读 + CoreText 能解析」的字体，因为烧字幕要把
+字幕的 `FontCatalog` 只收「文件可读 + CoreText 能解析 + cmap 经得起 FreeType 挑」的字体，因为烧字幕要把
 字体文件软链进任务目录喂给 libass；macOS 的苹方等系统中文字体放在普通进程读
-不了的目录里，libass 打不开会悄悄换字体。
+不了的目录里，libass 打不开会悄悄换字体。第三条是 2026-09-29 补的（`FontCmapSanity`）：圆体的 (3,10) format 12
+子表长度和分组数对不上、映射错位，Core Text 不用它、FreeType 优先用它，烧出来英文全是别的字形
+（[案例](../bugfixes/2026-09-29-yuanti-cmap-breaks-libass-latin.md)）；这种字体不进字幕清单，画面文字照样能用它。
 
 文字没有这个约束 —— 渲染全程走 Core Text，字体由系统字体服务提供。用字幕那份
 表的话，苹方这种最常用的中文字体会从列表里消失，而它明明画得出来。所以另有
