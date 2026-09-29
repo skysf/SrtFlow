@@ -144,6 +144,7 @@ run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.s
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
+run_check "subtitle-burn-size（预览上的字幕和烧出来的一样大）" scripts/check-subtitle-burn-size.sh
 run_check "audio-fade（渐入渐出 / 音量曲线 / 推子的真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
 
 # ---- 第 4 组 ----

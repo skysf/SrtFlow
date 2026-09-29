@@ -5,7 +5,7 @@ import SrtFlowCore
 // 生成出来的每一条都不会被折成两行。
 //
 // 管什么：可用宽度只从 `SubtitleFrameGeometry` 取（预览拖框、就地编辑用的同一份换算，不算第二遍），
-// 除以原文轨的字号（全局样式 × 工程布局的倍率），再给描边、字距留一点余量。
+// 除以原文轨真画出来的字宽（字号 × 工程布局的倍率 × libass 的字号比例），再给描边、字距留一点余量。
 // 不管什么：一行按什么数字数、上限多少（SrtFlowCore 的 `SubtitleLineMeasure` / `SubtitleSegmentationConfig`）。
 // 生成之后再改字号 / 边距，已生成的字幕不重排 —— 放不下时由渲染自动折行。
 
@@ -31,7 +31,8 @@ enum SubtitleLineFit {
         let reference = Double(BurnInStyle.referenceHeight)
         let box = CGSize(width: reference * renderSize.width / renderSize.height, height: reference)
         let geometry = SubtitleFrameGeometry(boxSize: box, style: style, layout: layout, blockHeight: 0)
-        let fontSize = style.fontSize * (layout?.fontScale ?? 1)
+        // 烧出来的字的 em 是字号乘这个比例（libass 把字号当行高，SubtitleFontScale）：按样式的字体和它的中文回退里大的那个算。
+        let fontSize = style.fontSize * (layout?.fontScale ?? 1) * SubtitleFontScale.lineScale(style: style)
         guard fontSize > 0 else { return .infinity }
         return Double(geometry.frameRect.width) / fontSize * safety
     }

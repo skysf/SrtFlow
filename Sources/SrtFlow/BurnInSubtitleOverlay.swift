@@ -13,6 +13,9 @@ import SrtFlowCore
 /// 逐词高亮（2026-09-28，方案第 38 条）：`highlights` 里的词按 `highlight` 换色、放大 —— 和烧录的 ASS
 /// （`SubtitleWordHighlight.assText`）同一份位置、颜色和倍数。描边那八份副本也要放大那个词（不然描边错位），
 /// 只是不换色。
+///
+/// 字的大小按 libass 的口径（2026-09-29，SubtitleFontScale）：同一个字号，libass 画出来的字只有 CoreText 的 71%–100%
+/// （看字体），以前预览一直比成片大。
 struct BurnInSubtitleOverlay: View {
     let text: String
     let style: BurnInStyle
@@ -113,28 +116,33 @@ struct BurnInSubtitleOverlay: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    /// 字本身：没有高亮时就是一段；有时拼成几段，正在说的词放大（描边的副本也放大）、`coloringHighlight` 时换色。
+    /// 字本身：按每一段实际用到的字体缩到烧录（libass）画出来的大小（SubtitleFontScale：同一个字号，libass 把它当行高、
+    /// 这里把它当 em，不缩的话预览比成片大 15%–40%）；正在说的词放大（描边的副本也放大）、`coloringHighlight` 时换色。
     private func styledText(coloringHighlight: Bool) -> Text {
-        guard let highlight, !highlights.isEmpty else { return Text(text).font(font()) }
         let whole = text as NSString
+        let runs = SubtitleFontScale.runs(text, style: style)
+        let lit = highlight == nil ? [] : highlights
+            .filter { $0.length > 0 && $0.location >= 0 && $0.location + $0.length <= whole.length }
+            .map { NSRange(location: $0.location, length: $0.length) }
+        // 切点：每一段字体的边界 + 每个亮着的词的边界。
+        var cuts: Set<Int> = [0, whole.length]
+        for range in runs.map(\.range) + lit { cuts.formUnion([range.location, range.location + range.length]) }
+        let sorted = cuts.filter { $0 >= 0 && $0 <= whole.length }.sorted()
         var result = Text(verbatim: "")
-        var cursor = 0
-        for range in highlights.sorted(by: { $0.location < $1.location })
-        where range.length > 0 && range.location >= cursor && range.location + range.length <= whole.length {
-            result = result + Text(whole.substring(with: NSRange(location: cursor, length: range.location - cursor))).font(font())
-            var word = Text(whole.substring(with: NSRange(location: range.location, length: range.length)))
-                .font(font(enlargedBy: highlight.scale))
-            if coloringHighlight { word = word.foregroundStyle(highlight.color.swiftUIColor) }
-            result = result + word
-            cursor = range.location + range.length
+        for (start, end) in zip(sorted, sorted.dropFirst()) where end > start {
+            let run = runs.first { NSLocationInRange(start, $0.range) }
+            let isLit = lit.contains { NSLocationInRange(start, $0) }
+            var piece = Text(whole.substring(with: NSRange(location: start, length: end - start))).font(font(
+                named: run?.fontName ?? style.fontName, scaledBy: (run?.scale ?? 1) * (isLit ? highlight?.scale ?? 1 : 1)
+            ))
+            if isLit, coloringHighlight, let highlight { piece = piece.foregroundStyle(highlight.color.swiftUIColor) }
+            result = result + piece
         }
-        return result + Text(whole.substring(from: cursor)).font(font())
+        return result
     }
 
-    private func font(enlargedBy factor: Double = 1) -> Font {
-        var result = Font.custom(
-            style.fontName, size: style.fontSize * (layout?.fontScale ?? 1) * scale * factor
-        )
+    private func font(named name: String, scaledBy factor: Double) -> Font {
+        var result = Font.custom(name, size: style.fontSize * (layout?.fontScale ?? 1) * scale * factor)
         if style.bold { result = result.weight(.bold) }
         if style.italic { result = result.italic() }
         return result

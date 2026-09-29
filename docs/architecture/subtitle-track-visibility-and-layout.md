@@ -6,7 +6,7 @@
 那条，拍过的板见 [方案](../plans/2026-09-26-hide-guides-independent-subtitles.md)）。改
 `VideoEditSubtitleDocuments` / `SubtitleTrackEditing` / `SubtitleRetranslation` / `SubtitleFrameCanvas` /
 `BurnInSubtitleOverlay` / `SubtitleLayout` / `EditSelection` / 分段默认值、`SubtitleCueWords` / `SubtitleWordHighlight` /
-`subtitleStyle(appWide:)`（工程自己的样式、逐词高亮）前必读。
+`subtitleStyle(appWide:)`（工程自己的样式、逐词高亮）、`SubtitleFontScale`（预览的字号按 libass 的口径）前必读。
 语言流（自动检测/翻译预检）的姊妹合同见
 [subtitle-language-flow.md](subtitle-language-flow.md)。
 
@@ -81,7 +81,13 @@
 2. **一份数值、两个渲染面**：预览 `BurnInSubtitleOverlay.layout` 与烧录
    `BurnInStyle.assStyle(layout:)` 消费同一份布局（经 `subtitleScreenBlocks`）。
    合同由 SrtFlowCoreChecks（ASS 映射）+ checks/ProjectFile（持久化）钉住；
-   两边像素级观感的一致性自动化够不着，见下面的人肉清单。
+   **字的大小**由 `scripts/check-subtitle-burn-size.sh` 钉住（预览视图离屏渲一张、照导出那条路真烧一帧，比字的外框）。
+   **字号按 libass 的口径**（2026-09-29，[成片比预览小](../bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md)）：
+   libass 把字号当行高（OS/2 的 usWinAscent + usWinDescent 撑满字号），CoreText 把字号当 em，同一个字号成片只有预览的
+   71%（苹方）–100%（黑体）。所以预览上的字幕**只许**用 `BurnInSubtitleOverlay` 画，它按每一截实际画它的字体
+   （中文回退、粗体选到的那一款）乘 `SubtitleFontScale` 的比例；任何按字号估字宽的地方（`SubtitleLineFit`）也乘这个比例。
+   改的是预览、不是成片：以前的成片、烧录页停着时真烧的那一帧、别的播放器打开 .ass 看到的都是 libass 的大小。
+   已知差异：正中摆放、大字号时 Helvetica 英文预览高几个像素（行框一个按 win 量度摆、一个按 hhea）；默认的底部居中差 1–2 px。
    **两条轨各有一份布局**（2026-09-26）：`subtitleLayout` 是原文的，`translationLayout` 是译文的。
    **译文的为 nil = 叠在原文下面**，和原文排成一块（原文在上、译文在下，用原文的布局）——
    一句换行变高另一句自然让开，老工程（只有 `subtitleLayout`、双语一块）不用迁移、成片一模一样。
@@ -259,7 +265,8 @@
 - [ ] 点轨道上的 cue：播放头跳进该条、cue 高亮、预览出现拖框。
 - [ ] 拖框体：字幕整体移动；拖左右边：换行位置变（两行可收成一行）；
       拖角：字号等比变；松手一步撤销可回退。
-- [ ] 调整后导出：烧录位置/宽度/字号与预览一致（同一段画面对比截图）。
+- [ ] 调整后导出：烧录位置/宽度/字号与预览一致（同一段画面对比截图）。字的大小自检钉着（`check-subtitle-burn-size`），
+      这一条看的是拖过框之后的位置和换行，以及中文、粗体、逐词高亮亮起来时的样子。
 - [ ] 自动检测 + 生成：新字幕全部单行。
 - [ ] **点选互斥两向**：选中形状 → 点轨道上的 cue，形状框必须消失；
       选中 cue → 点形状，字幕拖框必须消失。任何时刻预览上只有一套框。
