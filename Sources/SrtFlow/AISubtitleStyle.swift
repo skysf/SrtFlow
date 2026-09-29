@@ -4,7 +4,7 @@ import SrtFlowMCPKit
 
 // MARK: - 字幕长什么样：edit_subtitles / burn_subtitles 的 style（纯值）
 //
-// 管什么：AI 给的 style 读成类型、先全验过（位置、离边多远、字号、字体、粗细、颜色、描边或底条、逐词高亮），再落下去：
+// 管什么：AI 给的 style 读成类型、先全验过（位置、离边多远、字号、字体、粗细、颜色、描边或底条、阴影、逐词高亮），再落下去：
 // - edit_subtitles：落到**这个工程自己的**样式上（方案第 54 条：不动用户在烧录页记住的那套），从此刻用的那套
 //   （`subtitleStyle(appWide:)`）改起。给了位置 / 离边距离就收掉拖框的布局（它锚定在底部中心，会盖住这里给的位置），
 //   只给字号就把布局的字号倍率归一（倍率会乘在字号上）。逐词高亮落到工程的 `subtitleHighlight`。
@@ -27,6 +27,8 @@ struct AISubtitleStyleChange: Equatable {
     var outlineWidth: Double?
     /// 底条的颜色；`.some(nil)` = 不要底条（回到描边）。
     var box: SubtitleColor??
+    /// 阴影的颜色（只跟描边一起画，底条模式没有阴影）；`.some(nil)` = 不要阴影。
+    var shadow: SubtitleColor??
     /// 逐词高亮的颜色；`.some(nil)` = 关掉。
     var highlight: SubtitleColor??
     var highlightScale: Double?
@@ -38,6 +40,9 @@ struct AISubtitleStyleChange: Equatable {
 
     /// 离边最多是画面高的多少。
     static let marginRange = 0.0...0.45
+
+    /// `shadow: true` 的颜色：烧录页「白字阴影」那套。
+    static let defaultShadow = SubtitleColor(red: 0, green: 0, blue: 0, opacity: 0.75)
 
     /// `style` 没给是 nil；给了但不是对象、或者哪一项不对就报错（一样都不改）。字体名这里不认，见 `resolvingFont`。
     init?(_ args: AIToolArguments) throws {
@@ -75,6 +80,15 @@ struct AISubtitleStyleChange: Equatable {
         if case .some(.some) = outline, case .some(.some) = box {
             throw AIToolError("Give style.outline or style.box, not both: the bar behind the text replaces the outline.")
         }
+        // set_text 的 shadow 是开关，AI 顺手写成 true / false 也认：true = 烧录页「白字阴影」那套的颜色。
+        if case .bool(let on)? = fields.raw["shadow"] {
+            shadow = .some(on ? Self.defaultShadow : nil)
+        } else if let text = try fields.string("shadow") {
+            shadow = .some(try AIColor.parse(text))
+        }
+        if case .some(.some) = shadow, case .some(.some) = box {
+            throw AIToolError("Give style.shadow or style.box, not both: a shadow goes with an outline, the bar has none.")
+        }
         if let text = try fields.string("highlight") { highlight = .some(try AIColor.parse(text)) }
         if let scale = try fields.double("highlight_scale") {
             guard SubtitleWordHighlight.scaleRange.contains(scale) else { throw AIToolError("style.highlight_scale must be 1 to 1.3.") }
@@ -87,7 +101,7 @@ struct AISubtitleStyleChange: Equatable {
     /// 改了字幕本身的样子（不只是高亮、不只是 reset）。
     var changesLook: Bool {
         position != nil || margin != nil || size != nil || font != nil || bold != nil || color != nil
-            || outline != nil || outlineWidth != nil || box != nil
+            || outline != nil || outlineWidth != nil || box != nil || shadow != nil
     }
 
     var changesHighlight: Bool { highlight != nil || highlightScale != nil }
@@ -137,6 +151,20 @@ struct AISubtitleStyleChange: Equatable {
             }
         }
         if let outlineWidth { style.outlineWidth = outlineWidth }
+        if case .some(let shadowColor) = shadow {
+            if let shadowColor {
+                // 阴影只跟描边一起画（预览、烧录都是）：底条模式先回到描边。偏移沿用烧录页「白字阴影」那套的 3。
+                if style.borderStyle == .box {
+                    style.borderStyle = .outline
+                    style.outlineColor = .black
+                    style.outlineWidth = 3
+                }
+                style.shadowColor = shadowColor
+                if style.shadowOffset == 0 { style.shadowOffset = 3 }
+            } else {
+                style.shadowOffset = 0
+            }
+        }
         return style
     }
 
@@ -187,6 +215,7 @@ struct AISubtitleStyleChange: Equatable {
         } else {
             object["outline"] = .string(style.outlineWidth > 0 ? AIColor.hex(style.outlineColor) : "none")
             object["outline_width"] = .number(style.outlineWidth)
+            object["shadow"] = .string(style.shadowOffset > 0 ? AIColor.hex(style.shadowColor) : "none")
         }
         if let highlight = state.subtitleHighlight { object["highlight_scale"] = .number(highlight.scale) }
         return .object(object)

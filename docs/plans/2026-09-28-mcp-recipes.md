@@ -120,7 +120,7 @@
 | 画面动画 | 不用入场动画；照片、静止镜头用 `set_keyframes` 慢推（大小 1 → 1.05） |
 | 滤镜 | 写实 `flatGrey` 或不加；寒冷场景 `mistBlue` / `coldWhite`；暖光 `warmSun`；强度 0.3–0.5，轻用 |
 | 文字 | 地点和时间字卡：「南极半岛 · 1 月」，左下角，`Avenir Next` / `PingFang SC` 常规体 40–48，`fade`，4 秒。片名：`Songti SC` / `Baskerville` / `Optima`，居中，`fade` |
-| 字幕 | 有旁白、采访就开：白字 + 轻阴影，底部，不要底框、不高亮（`highlight none`） |
+| 字幕 | 有旁白、采访就开：白字 + 轻阴影（`shadow #00000099`），底部，不要底框、不高亮（`highlight none`） |
 | 配乐 | `find_audio` 搜 documentary / nature / calm / piano / hopeful / emotional；旁白时比人声低 15–18 dB；旁白的间隙让现场声（风、动物叫声）出来 |
 | 配音 | `zh_male` / `en_male` 或 `*_female_warm`，语速 0.95×；旁白写短句（中文 ≤ 20 字、英文 ≤ 15 个词），句间留 1–2 秒给画面。旁白按段放在对应画面上（说企鹅时画面是企鹅） |
 | 声音 | 保留有意义的现场声（`listen` 找响的地方、`look` 确认是什么） |

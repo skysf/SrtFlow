@@ -28,7 +28,8 @@ use_for: Travel, nature, culture, expeditions, interview stories, stories about 
 
 - Place and time cards: "Antarctic Peninsula · January", bottom left, Avenir Next or PingFang SC regular 40–48, fade, 4 s.
 - Title: Songti SC, Baskerville or Optima, centred, fade.
-- Subtitles: on when there is narration or an interview; white with a light shadow, at the bottom, no box, no word highlight (style highlight none).
+- Subtitles: on when there is narration or an interview; white with a light shadow (style shadow #00000099), at the bottom,
+  no box, no word highlight (style highlight none).
 
 ## Sound
 

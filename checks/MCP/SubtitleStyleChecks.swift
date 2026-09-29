@@ -31,6 +31,7 @@ private func styleParsing() {
     checkThrows("style：认不出的位置报错") { _ = try change(["position": "left"]) }
     checkThrows("style：字号超出 20–140 报错") { _ = try change(["size": 200]) }
     checkThrows("style：描边和底条都给颜色报错（底条代替描边）") { _ = try change(["outline": "#000000", "box": "#00000099"]) }
+    checkThrows("style：阴影和底条都给报错（阴影跟描边走）") { _ = try change(["shadow": "#000000B3", "box": "#00000099"]) }
     checkThrows("style：字色不能是 none") { _ = try change(["color": "none"]) }
     checkThrows("style：放大超过 1.3 报错") { _ = try change(["highlight_scale": 2]) }
     checkThrows("style：style 不是对象报错") { _ = try AISubtitleStyleChange(AIToolArguments(.object(["style": "big"]))) }
@@ -83,6 +84,20 @@ private func styleForBurnBatch() {
     checkEqual(backToOutline?.borderStyle, .outline, "烧录一批：给了描边就回到描边")
     checkEqual(backToOutline?.outlineWidth, 3, "烧录一批：从底条回到描边时粗细回到 3（不沿用内边距）")
     checkEqual((try? change(["outline": "none"]))?.applied(to: base).outlineWidth, 0, "烧录一批：outline none = 不描边")
+    // 阴影（2026-09-29 验收：纪录片的卡写着「白字加浅阴影」，AI 却没有这个参数）。
+    let shadowed = (try? change(["shadow": "#000000B3"]))?.applied(to: base)
+    checkEqual(shadowed?.shadowColor, SubtitleColor(red: 0, green: 0, blue: 0, opacity: 0xB3 / 255.0), "阴影：颜色带透明度")
+    checkEqual(shadowed?.shadowOffset, 3, "阴影：打开时偏移 3（烧录页「白字阴影」那套）")
+    checkEqual(shadowed.flatMap { (try? change(["shadow": "none"]))?.applied(to: $0).shadowOffset }, 0, "阴影：none 关掉")
+    checkEqual((try? change(["shadow": true]))?.shadow, .some(AISubtitleStyleChange.defaultShadow), "阴影：写成 true 也认（set_text 的 shadow 是开关）")
+    checkEqual((try? change(["shadow": false]))?.shadow, .some(nil), "阴影：false = 不要阴影")
+    let unboxed = boxed.flatMap { (try? change(["shadow": "#000000B3"]))?.applied(to: $0) }
+    check(unboxed?.borderStyle == .outline && unboxed?.outlineWidth == 3 && unboxed?.shadowOffset == 3,
+          "阴影：底条模式里给阴影就回到描边（底条没有阴影，预览和烧录都不画）")
+    check((try? change(["shadow": "#000000B3"]))?.changesLook == true, "阴影：算改了样子（工程从此用自己的样式）")
+    var state = TimelineState()
+    try? change(["shadow": "#00000099"])?.apply(to: &state, appWide: base)
+    checkEqual(AISubtitleStyleChange.describe(state, appWide: base)["shadow"]?.stringValue, "#00000099", "阴影：回给 AI 看得见")
     checkEqual(base, BurnInStyle.default, "烧录一批：烧录页那套不动（值拷贝）")
     check((try? change(["highlight": "#FFFF00"]))?.changesHighlight == true, "烧录一批：高亮看得出来（工具据此拒绝：字幕文件没有词的时间）")
 }

@@ -96,6 +96,7 @@ public enum MCPSubtitleExportTools {
         "outline": MCPSchema.string("Outline colour #RRGGBB, or none."),
         "outline_width": MCPSchema.number("Outline thickness (the padding of the box when there is one).", minimum: 0, maximum: 12),
         "box": MCPSchema.string("A bar behind the text instead of an outline: #RRGGBBAA (e.g. #00000099), or none."),
+        "shadow": MCPSchema.string("A drop shadow under the text (with an outline, not a box): #RRGGBBAA (e.g. #000000B3 for a light one), or none."),
         "highlight": MCPSchema.string("Word-by-word highlight: the word being spoken turns this colour (#RRGGBB), or none. Project subtitles only."),
         "highlight_scale": MCPSchema.number("How much the spoken word grows (1-1.3, default 1.1; 1 for long lines).", minimum: 1, maximum: 1.3),
         "reset": MCPSchema.boolean("Go back to the style from SrtFlow's Burn In Subtitles page first.")
@@ -119,7 +120,8 @@ public enum MCPSubtitleExportTools {
             description: """
             Change subtitle lines as one undoable step: edit text or times by id, add new lines, delete lines. \
             Creates the subtitle track if the project has none. style sets how this project's subtitles look (the \
-            user's Burn In Subtitles page keeps its own). Set it before generate_subtitles or add_voiceover \
+            user's Burn In Subtitles page keeps its own; own_style in the result turns true once the project has its own \
+            look, while the word highlight always belongs to the project). Set it before generate_subtitles or add_voiceover \
             subtitles=true: lines are cut to fit that size. highlight only lights lines SrtFlow made from speech or \
             a voiceover (get_subtitles tells how many know their word times).
             """,
