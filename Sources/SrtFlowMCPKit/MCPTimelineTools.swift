@@ -28,12 +28,15 @@ public enum MCPTimelineTools {
                 Animate a video or image clip over time: position (x/y = centre on the frame, 0–1), scale (1 = the \
                 whole picture just fits the frame, as in edit_clip), rotation (degrees) and opacity (0–1). Each list \
                 replaces that property's keyframes; [] removes them (the clip keeps its static values). Times are \
-                timeline seconds inside the clip; values move in straight lines between keyframes. Example: a slow \
-                zoom is scale [{time: start, value: 1}, {time: end, value: 1.15}]. Keyframed position or scale also \
-                blocks edit_clip's fit/x/y/scale until removed.
+                timeline seconds inside the clip, or with relative=true fractions of the clip (0 = first frame, 1 = \
+                last); values move in straight lines between keyframes. Example: a slow zoom over the whole clip is \
+                relative=true, scale [{time: 0, value: 1}, {time: 1, value: 1.15}]. Keyframes stay on their source \
+                frames when the clip is trimmed or its speed changes (edit_clip's keyframes option says otherwise). \
+                Keyframed position or scale also blocks edit_clip's fit/x/y/scale until removed.
                 """,
                 input: MCPSchema.object([
                     "clip_id": MCPSchema.string("Clip id from get_timeline."),
+                    "relative": MCPSchema.boolean("Times are fractions of the clip (0 = its first frame, 1 = its last) instead of timeline seconds."),
                     "position": MCPSchema.array(of: MCPSchema.object([
                         "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
                         "x": MCPSchema.number("Centre across (0–1 on the frame; beyond, down to -2 or up to 3, for a picture bigger than the frame).", minimum: -2, maximum: 3),
@@ -318,7 +321,8 @@ public enum MCPTimelineTools {
                     "note": MCPSchema.string("Note shown on the marker."),
                     "color": MCPSchema.string("Colour.", oneOf: MCPVocabulary.markerColors)
                 ], required: ["time"]), "This clip's markers (replaces all of them)."),
-                "ripple": MCPSchema.boolean("On V1: move the later V1 clips by the same amount the clip's end moves.")
+                "ripple": MCPSchema.boolean("On V1: move the later V1 clips by the same amount the clip's end moves."),
+                "keyframes": MCPSchema.string("With source_in / source_out: keep_frames (default; the motion stays on the same source frames, keyframes outside the new window collapse to its edges), stretch (the motion is re-timed to fill the new window), clear.", oneOf: MCPVocabulary.keyframePolicies)
             ], required: ["clip_id"])
         )
     }

@@ -168,7 +168,13 @@ enum AITimelineEdits {
         }
         var targets = Set(seed)
         if linkage { for id in seed { targets.formUnion(state.linkedClipIDs(of: id)) } }
-        return LinkRegrouping.split(targets, at: time, in: &state)
+        let created = LinkRegrouping.split(targets, at: time, in: &state)
+        // 两半各只留自己范围里的关键帧、切点补一个插值出来的帧（画面不变）：AI 读到的、存下的都不出段外。
+        let frameRate = state.frameRate
+        for id in targets.union(created) {
+            state.update(id) { $0.animation = $0.clippingAnimation(frameRate: frameRate) }
+        }
+        return created
     }
 
     // MARK: 转场

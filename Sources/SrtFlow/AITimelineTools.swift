@@ -235,7 +235,7 @@ enum AITimelineTools {
         project.perform { $0 = next }
         AIEditorPresenter.reveal(.init(clips: [id], time: clip.timelineStart), project: project)
         var result: [String: JSONValue] = ["id": .string(ids.short(id))]
-        result["keyframes"] = AIKeyframes.summary(clip, canvas: canvas) ?? "none"
+        result["keyframes"] = AIKeyframes.summary(clip, canvas: canvas, frameRate: project.state.frameRate) ?? "none"
         return .ok(.object(result), changed: true)
     }
 
@@ -283,7 +283,17 @@ enum AITimelineTools {
         project.perform { $0 = next }
         let fresh = AIShortIDs(state: project.state)
         AIEditorPresenter.reveal(.init(clips: Set(created), time: time), project: project)
-        return .ok(["new_clips": .array(created.map { .string(fresh.short($0)) }), "time": AIFormat.seconds(time)], changed: true)
+        var result: [String: JSONValue] = ["new_clips": .array(created.map { .string(fresh.short($0)) }), "time": AIFormat.seconds(time)]
+        // 切开的两半各自的关键帧（时间线秒），AI 不用再 get_timeline 去猜。
+        let canvas = VideoEditCompositionBuilder.renderSize(for: project.state)
+        var keyframes: [String: JSONValue] = [:]
+        for id in Set(targets + created) {
+            if let clip = project.state.clip(with: id), let summary = AIKeyframes.summary(clip, canvas: canvas, frameRate: project.state.frameRate) {
+                keyframes[fresh.short(id)] = summary
+            }
+        }
+        if !keyframes.isEmpty { result["keyframes"] = .object(keyframes) }
+        return .ok(.object(result), changed: true)
     }
 
     static func delete(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {

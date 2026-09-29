@@ -29,6 +29,17 @@ struct AIClipChange {
     /// 旋转、不透明度、翻转、入场出场、音量曲线、声音场景、标记（AIClipDetails）。
     var details: AIClipDetails?
     var ripple = false
+    /// 改素材窗口 / 速度时关键帧怎么办（默认留在原来的画面上，范围外的收成两头的值）。
+    var keyframes: AIKeyframePolicy?
+}
+
+/// edit_clip 的 keyframes：机器不拖拽，意图用参数说（docs/architecture/keyframe-animation.md「AI 接口」）。
+enum AIKeyframePolicy: String, CaseIterable {
+    /// 动画留在原来的素材帧上（剪辑软件的惯例）；落到新窗口外面的帧收成两头的值，不留看不见的帧。
+    case keepFrames = "keep_frames"
+    /// 动画按新窗口等比重排：AI 换了素材窗口但还想要「整段慢推」时用。
+    case stretch
+    case clear
 }
 
 enum AIClipEdit {
@@ -50,6 +61,7 @@ enum AIClipEdit {
         var updated = clip
         try applySourceWindow(change, to: &updated, stillDuration: stillDuration)
         if let speed = change.speed { updated.speed = min(max(speed, 0.1), 8) }
+        applyKeyframePolicy(change.keyframes ?? .keepFrames, from: clip, to: &updated, frameRate: original.frameRate)
         if let start = change.start { updated.timelineStart = max(0, start) }
         if let db = change.volumeDB {
             let target = AudioGain.clampedDecibels(db)
@@ -94,6 +106,21 @@ enum AIClipEdit {
             throw Conflict(other: other, track: slot)
         }
         return state
+    }
+
+    /// 关键帧跟着素材窗口怎么走。速度变了范围不变，三种都是原样。
+    private static func applyKeyframePolicy(
+        _ policy: AIKeyframePolicy, from old: EditClip, to updated: inout EditClip, frameRate: ProjectFrameRate
+    ) {
+        guard let animation = updated.animation, !animation.isEmpty else { return }
+        switch policy {
+        case .clear:
+            updated.animation = nil
+        case .stretch:
+            updated.animation = animation.stretched(from: old.sourceRange, to: updated.sourceRange)
+        case .keepFrames:
+            updated.animation = updated.clippingAnimation(frameRate: frameRate)
+        }
     }
 
     /// 入点 / 出点。图片只看长度（素材是一段循环的静帧，最长 `stillDuration`）。

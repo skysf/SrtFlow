@@ -222,7 +222,7 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
 18. **轨道（set_track）**：推子走 `TimelineState.setTrackVolume`（夹紧只在那一处，轨道头的推子也是它），总推子照
    `setMasterVolume` 夹紧；藏整条轨给的是绝对值（界面上是按眼睛切换）。只认现有的轨，不开新轨。只动推子的改动由
    `perform` 自己走只换混音的快路径。`get_timeline` 的每条轨带 `volume_db`（非 0 dB 时）、顶层带 `master_volume_db`。
-19. **关键帧（set_keyframes）**：规则在 `AIKeyframes`（纯值）。每样给一串（时间线秒, 值）整行换掉，存成源时间、半帧容差
+19. **关键帧（set_keyframes）**：规则在 `AIKeyframes`（纯值）。每样给一串（时间线秒, 值；或 `relative=true` 时片段的比例）整行换掉，存成源时间、半帧容差
    （和检查器打关键帧同一把尺）；位置 = 画面中心（0…1），大小相对默认布局（1 = 完整放进画布，存成宽、高两行，
    和 `edit_clip` 的 scale 同一把尺）。空列表去掉那一行、**静态值原样留着**（检查器「清除」会复位静态值，AI 不替它复位）；
    一行都不剩时 `animation` 回到 nil。位置 / 大小做了关键帧的段，`edit_clip` 的画面放法照旧拒绝（第 11 条）。
@@ -500,8 +500,12 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
     `new_project` / `open_project` 不许顺手把文件级的 transcript 取消了；用户按「停止」照旧全取消。③ `look` 建完合成先
     `isValid`，无效就报错说「这是 SrtFlow 的 bug，不是素材黑」，不许把黑底交给 Vision 描述。④ 整批的工具（`delete_items`）
     先把 id 全认一遍，认不出的一起列出来、说明一个都没做（`AITimelineEdits.deletion(of:in:)`）。⑤ `get_timeline` 顶层带
-    `project`（工程文件名 / `unsaved`）：几个 AI 会话连着同一个 App 时，谁刚换了工程一眼能看出来。另外 `edit_clip` 之后关键帧
-    落到源窗口外面（关键帧锚在源时间上，改入点就留在原来的画面上）要在结果里 `warning`（`AIKeyframes.outsideWarning`）。
+    `project`（工程文件名 / `unsaved`）：几个 AI 会话连着同一个 App 时，谁刚换了工程一眼能看出来。
+42. **为机器设计接口的三条（2026-09-29 用户拍板：现在主要是 AI 在剪，不照搬给真人的惯例；[案例](../bugfixes/2026-09-29-keyframes-outside-clip-after-ai-edits.md)）**：
+    ① **没有隐藏状态** —— 报出来的就是存下来的，AI 看不见的东西不许影响下一步（关键帧永远在片段范围里、分割后两半各留自己的）；
+    ② **坐标只用它用的那一套** —— 时间线秒，或片段的比例（`set_keyframes relative=true`），不让它自己换算素材时间；
+    ③ **每个改动的结果把连带发生的事说清楚**，意图用参数说而不是靠拖拽的惯例（`edit_clip keyframes` = keep_frames / stretch / clear，
+    结果里 `keyframes_note`；`split_clip` 的结果给两半各自的关键帧）。以后每个工具都照这三条审。
 
 ## 五、这一轮、停止、撤销这一轮
 

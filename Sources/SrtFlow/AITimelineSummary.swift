@@ -63,7 +63,7 @@ enum AITimelineSummary {
             "track": .string(AITrackName.name(of: slot)),
             "kind": .string(slot.isAudio ? "audio" : "video"),
             "clips": .array(clips.enumerated().map { index, clip in
-                self.clip(clip, next: slot.isMain && index + 1 < clips.count ? clips[index + 1] : nil, context)
+                self.clip(clip, next: slot.isMain && index + 1 < clips.count ? clips[index + 1] : nil, context, frameRate: state.frameRate)
             })
         ]
         if hidden { object["hidden"] = true }
@@ -71,7 +71,7 @@ enum AITimelineSummary {
         return .object(object)
     }
 
-    static func clip(_ clip: EditClip, next: EditClip?, _ context: Context) -> JSONValue {
+    static func clip(_ clip: EditClip, next: EditClip?, _ context: Context, frameRate: ProjectFrameRate) -> JSONValue {
         var object: [String: JSONValue] = [
             "id": .string(context.ids.short(clip.id)),
             "name": .string(clip.name),
@@ -107,7 +107,7 @@ enum AITimelineSummary {
             object["picture"] = picture
         }
         for (key, value) in AIClipDetails.summary(clip) { object[key] = value }
-        if let keyframes = AIKeyframes.summary(clip, canvas: context.renderSize) { object["keyframes"] = keyframes }
+        if let keyframes = AIKeyframes.summary(clip, canvas: context.renderSize, frameRate: frameRate) { object["keyframes"] = keyframes }
         return .object(object)
     }
 

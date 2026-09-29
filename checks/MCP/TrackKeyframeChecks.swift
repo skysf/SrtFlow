@@ -56,7 +56,7 @@ private func checkKeyframes() {
     checkEqual(animated.animation?.width.keys.map(\.time), [4, 10], "scale keys in source time (speed 2)")
     check(abs((animated.animation?.width.keys.last?.value ?? 0) - base.width * 1.2) < 1e-9, "scale 1.2 is 1.2 × the default width")
     check(abs((animated.animation?.height.keys.last?.value ?? 0) - base.height * 1.2) < 1e-9, "and 1.2 × the default height")
-    let summary = AIKeyframes.summary(animated, canvas: canvas)
+    let summary = AIKeyframes.summary(animated, canvas: canvas, frameRate: .fps30)
     checkEqual(summary?["scale"]?.arrayValue?.last?.arrayValue?.map(\.doubleValue), [13, 1.2], "read back: timeline time and the same scale")
     checkEqual(summary?["position"]?.arrayValue?.first?.arrayValue?.map(\.doubleValue), [11, 0.4, 0.5], "position reads back")
 
@@ -67,13 +67,37 @@ private func checkKeyframes() {
     try? AIKeyframes.apply(AIKeyframes.Request(position: []), to: &cleared, canvas: canvas, frameRate: .fps30)
     check(cleared.animation == nil, "nothing left: the clip has no animation at all")
 
-    // 关键帧锚在源时间上：换了素材窗口它们就落到段外面，edit_clip 的结果要说出来（2026-09-29 婚礼工程 BUG-03）。
-    check(AIKeyframes.outsideWarning(animated, frameRate: .fps30) == nil, "keys inside the clip: no warning")
+    // 给 AI 的合同（2026-09-29 婚礼工程 BUG-03）：报出来的帧永远在片段范围里，传进来的时间夹进片段，比例时间不用自己算。
+    var stale = animated   // 人手裁过的段：帧留在原来的画面上，范围外的收成两头的值
+    stale.sourceStart = 7
+    stale.sourceDuration = 2   // 源 7–9，帧在 4 和 10 → 报出来的是 7（插值）和 9（插值），时刻是段首段尾
+    let staleSummary = AIKeyframes.summary(stale, canvas: canvas, frameRate: .fps30)
+    checkEqual(staleSummary?["scale"]?.arrayValue?.map { $0.arrayValue?.first?.doubleValue ?? -1 }, [stale.timelineStart, stale.timelineEnd],
+               "keys outside the clip are reported as edge values at the clip's own start and end (timeline seconds)")
+    check(abs((staleSummary?["scale"]?.arrayValue?.first?.arrayValue?.last?.doubleValue ?? 0) - 1.1) < 0.01,
+          "the edge value is the interpolation at that frame (1.1 at source 7)")
+    var edge = clip
+    try? AIKeyframes.apply(AIKeyframes.Request(scale: [(time: clip.timelineEnd + 0.0009, value: 1.2)]), to: &edge, canvas: canvas, frameRate: .fps30)
+    checkEqual(edge.animation?.width.keys.first?.time, clip.sourceRange.upperBound, "a rounded time a hair past the end is clamped to the last source frame")
+    var relative = clip
+    var fractions = AIKeyframes.Request(scale: [(time: 0, value: 1), (time: 1, value: 1.08)])
+    fractions.relative = true
+    try? AIKeyframes.apply(fractions, to: &relative, canvas: canvas, frameRate: .fps30)
+    checkEqual(relative.animation?.width.keys.map(\.time), [clip.sourceRange.lowerBound, clip.sourceRange.upperBound],
+               "relative=true: 0 and 1 are the clip's first and last source frames")
+    checkThrows("relative times outside 0–1 are refused") {
+        var copy = clip
+        var bad = AIKeyframes.Request(scale: [(time: 1.5, value: 1)])
+        bad.relative = true
+        try AIKeyframes.apply(bad, to: &copy, canvas: canvas, frameRate: .fps30)
+    }
     var moved = animated
     moved.sourceStart = 37.9
-    let warning = AIKeyframes.outsideWarning(moved, frameRate: .fps30)
-    check(warning?.contains("outside this clip") == true && warning?.contains("set_keyframes") == true,
-          "keys left behind by a new source window are reported with what to do: \(warning ?? "nil")")
+    let note = AIKeyframes.editNote(policy: .keepFrames, old: animated, new: moved, frameRate: .fps30)
+    check(note?.contains("outside the new source window") == true && note?.contains("stretch") == true, "keep_frames says what happened: \(note ?? "nil")")
+    checkEqual(AIKeyframes.editNote(policy: .stretch, old: animated, new: moved, frameRate: .fps30), "Keyframes re-timed to fill the new source window (keyframes=stretch).", "stretch note")
+    checkEqual(AIKeyframes.editNote(policy: .clear, old: animated, new: moved, frameRate: .fps30), "Keyframes removed (keyframes=clear).", "clear note")
+    check(AIKeyframes.editNote(policy: .keepFrames, old: animated, new: animated, frameRate: .fps30) == nil, "nothing moved: no note")
 
     checkThrows("a keyframe outside the clip is refused") {
         var copy = clip

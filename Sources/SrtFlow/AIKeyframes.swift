@@ -27,12 +27,15 @@ enum AIKeyframes {
         var scale: [(time: Double, value: Double)]?
         var rotation: [(time: Double, value: Double)]?
         var opacity: [(time: Double, value: Double)]?
+        /// 时间是这一段的比例（0 = 第一帧、1 = 最后一帧），不是时间线秒：AI 不用自己拿四舍五入的秒去算段尾。
+        var relative = false
 
         var isEmpty: Bool { position == nil && scale == nil && rotation == nil && opacity == nil }
     }
 
     static func parse(_ args: AIToolArguments) throws -> Request {
         var request = Request()
+        request.relative = try args.bool("relative") ?? false
         request.position = try points("position", args).map { list in
             try list.enumerated().map { index, point in
                 (try point.requiredDouble("time"), try required(point, "x", "position[\(index)]"), try required(point, "y", "position[\(index)]"))
@@ -73,11 +76,17 @@ enum AIKeyframes {
         let tolerance = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
         var animation = clip.animation ?? ClipAnimation()
         let current = clip
-        func source(_ time: Double) throws -> Double {
+        func source(_ given: Double) throws -> Double {
+            var time = given
+            if request.relative {
+                guard (-0.001...1.001).contains(given) else { throw AIToolError("With relative=true, keyframe times are fractions of the clip from 0 to 1; got \(given).") }
+                time = current.timelineStart + min(max(given, 0), 1) * current.timelineDuration
+            }
             guard time >= current.timelineStart - 0.001, time <= current.timelineEnd + 0.001 else {
                 throw AIToolError("Keyframe time \(time) s is outside the clip (\(String(format: "%.2f", current.timelineStart))–\(String(format: "%.2f", current.timelineEnd)) s).")
             }
-            return current.sourceTime(atTimeline: time)
+            // 段尾的四舍五入零头夹回段内：存下来的帧永远在这段用到的范围里。
+            return min(max(current.sourceTime(atTimeline: time), current.sourceRange.lowerBound), current.sourceRange.upperBound)
         }
         if let position = request.position {
             animation.centerX = KeyframeTrack()
@@ -115,23 +124,29 @@ enum AIKeyframes {
         clip.animation = animation.isEmpty ? nil : animation
     }
 
-    /// 关键帧锚在源时间上（docs/architecture/keyframe-animation.md）：改入点 / 出点、换素材窗口之后它们可能落到段外面
-    /// （时间线上是负数、或超过段尾）。AI 看不见时间线，只能靠这一句知道要重设（2026-09-29 婚礼工程 BUG-03）。
-    static func outsideWarning(_ clip: EditClip, frameRate: ProjectFrameRate) -> String? {
-        guard let animation = clip.animation, !animation.isEmpty else { return nil }
-        let tolerance = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
-        let range = (clip.sourceStart - tolerance)...(clip.sourceStart + clip.sourceDuration + tolerance)
-        let outside = animation.allKeyTimes(tolerance: tolerance).filter { !range.contains($0) }
-        guard !outside.isEmpty else { return nil }
-        let shown = outside.prefix(3).map { String(format: "%.2f", clip.timelineTime(atSource: $0)) }.joined(separator: ", ")
-        return "\(outside.count) keyframe(s) now sit outside this clip (at \(shown) s on the timeline). Keyframes stay "
-            + "attached to the source picture, so trimming or moving the source window leaves them behind; call "
-            + "set_keyframes on this clip to place them again."
+    /// edit_clip 改了素材窗口 / 速度之后，关键帧怎么了（写进结果，AI 看不见时间线只能靠这一句）。
+    static func editNote(policy: AIKeyframePolicy, old: EditClip, new: EditClip, frameRate: ProjectFrameRate) -> String? {
+        guard let animation = old.animation, !animation.isEmpty else { return nil }
+        let windowChanged = abs(old.sourceStart - new.sourceStart) > 0.0005 || abs(old.sourceDuration - new.sourceDuration) > 0.0005
+        switch policy {
+        case .clear:
+            return "Keyframes removed (keyframes=clear)."
+        case .stretch:
+            return windowChanged ? "Keyframes re-timed to fill the new source window (keyframes=stretch)." : nil
+        case .keepFrames:
+            let tolerance = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: old.speed)
+            let range = (new.sourceRange.lowerBound - tolerance)...(new.sourceRange.upperBound + tolerance)
+            let outside = animation.allKeyTimes(tolerance: tolerance).filter { !range.contains($0) }.count
+            guard outside > 0 else { return nil }
+            return "\(outside) keyframe(s) sat outside the new source window (keyframes stay on their source frames) and now only "
+                + "hold their edge values; keyframes=stretch keeps the motion, or call set_keyframes again."
+        }
     }
 
-    /// 写给 AI 看：每一行的点（时间线秒）。没有关键帧是 nil。
-    static func summary(_ clip: EditClip, canvas: CGSize) -> JSONValue? {
-        guard let animation = clip.animation, !animation.isEmpty else { return nil }
+    /// 写给 AI 看：每一行的点（时间线秒）。报的是**这段范围里实际播的**：范围外的帧收成两头的值（人手裁过的段
+    /// 可能还留着范围外的帧，AI 不该看见负数的时刻）。没有关键帧是 nil。
+    static func summary(_ clip: EditClip, canvas: CGSize, frameRate: ProjectFrameRate) -> JSONValue? {
+        guard let animation = clip.clippingAnimation(frameRate: frameRate), !animation.isEmpty else { return nil }
         func time(_ source: Double) -> JSONValue { AIFormat.seconds(clip.timelineTime(atSource: source)) }
         func round(_ value: Double) -> JSONValue { .number((value * 1000).rounded() / 1000) }
         var object: [String: JSONValue] = [:]

@@ -152,6 +152,41 @@ private func clipEditChecks() {
     checkEqual(trimmed?.clip(with: a.id)?.sourceStart, 2, "source_in lands")
     checkEqual(trimmed?.clip(with: a.id)?.timelineEnd, 4, "source_out lands")
 
+    // 关键帧跟着素材窗口怎么走（2026-09-29 用户拍板：意图用参数说）。a 上源 0 → 1.0、源 10 → 1.2 的缩放。
+    var animatedA = a
+    var scaleTrack = KeyframeTrack()
+    scaleTrack.set(1.0, atSourceTime: 0, tolerance: 0.01)
+    scaleTrack.set(1.2, atSourceTime: 10, tolerance: 0.01)
+    animatedA.animation = ClipAnimation(width: scaleTrack, height: scaleTrack)
+    var animatedState = state
+    animatedState.mainClips[0] = animatedA
+    func keys(_ policy: AIKeyframePolicy?) -> [Keyframe]? {
+        var change = trim
+        change.keyframes = policy
+        return (try? AIClipEdit.apply(change, to: a.id, linkage: false, stillDuration: still, in: animatedState))?.clip(with: a.id)?.animation?.width.keys
+    }
+    let kept = keys(nil)
+    checkEqual(kept?.map(\.time), [2, 6], "keep_frames (default): the frames outside the new window collapse to its edges")
+    check(abs((kept?.first?.value ?? 0) - 1.04) < 1e-9 && abs((kept?.last?.value ?? 0) - 1.12) < 1e-9, "…with the values the motion had at those frames (1.04, 1.12)")
+    let stretched = keys(.stretch)
+    checkEqual(stretched?.map(\.time), [2, 6], "stretch: the keys move to the new window's ends")
+    checkEqual(stretched?.map(\.value), [1.0, 1.2], "…keeping the whole motion")
+    check(keys(.clear) == nil, "clear removes the animation")
+    var faster = AIClipChange()
+    faster.speed = 2
+    faster.keyframes = .keepFrames
+    checkEqual((try? AIClipEdit.apply(faster, to: a.id, linkage: false, stillDuration: still, in: animatedState))?.clip(with: a.id)?.animation?.width.keys.map(\.time),
+               [0, 10], "a speed change keeps the source frames (the window did not change)")
+
+    // 分割：两半各只留自己范围里的帧，切点补一个插值出来的帧。
+    var cut = animatedState
+    let created = (try? AITimelineEdits.split(at: 4, ids: [a.id], linkage: false, in: &cut)) ?? []
+    let left = cut.clip(with: a.id)?.animation?.width.keys
+    let right = created.first.flatMap { cut.clip(with: $0) }?.animation?.width.keys
+    checkEqual(left?.map(\.time), [0, 4], "the left half keeps the keys inside it plus one at the cut")
+    checkEqual(right?.map(\.time), [4, 10], "the right half starts with a key at the cut")
+    check(abs((left?.last?.value ?? 0) - 1.08) < 1e-9 && abs((right?.first?.value ?? 0) - 1.08) < 1e-9, "the value at the cut is continuous (1.08)")
+
     // 出点超出素材一丁点夹回来，超多了报错（用 B：它后面没有别的段，拉长了不会撞）。
     var nearEnd = AIClipChange()
     nearEnd.sourceOut = 20.03
