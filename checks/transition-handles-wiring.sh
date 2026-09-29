@@ -64,7 +64,7 @@ else
 fi
 grep -qE '\.renderHold(Head|Tail)[[:space:]]*=' "${HANDLES}" \
     || { echo "  ✗ 展开函数没写定格字段：余料不够的缝会在渲染时缺一截" >&2; FAILED=1; }
-for needle in 'clip.renderSourceStart' 'clip.renderSourceDuration' 'await insertHold('; do
+for needle in 'clip.renderSourceStart' 'clip.renderSourceDuration' 'await CompositionHold.insert('; do
     grep -qF "${needle}" "${BUILDER}" \
         || { echo "  ✗ 预览合成没用 ${needle}：定格那一截会插成素材之外的画面或空段" >&2; FAILED=1; }
 done
@@ -82,11 +82,19 @@ MIX_FILE="Sources/SrtFlow/VideoEditAudioMix.swift"
 MIX_BODY="$(awk '/static func make\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${MIX_FILE}")"
 grep -qF "${CALL}" <<<"${MIX_BODY}" \
     || { echo "  ✗ makeAudioMix 没有自己展开转场：预览换 mix 的三个入口会照着没展开的几何铺音量" >&2; FAILED=1; }
+# 接缝的零头（2026-09-29）：主轨上不到 `TimelineState.mainGapTolerance` 的空隙不算空隙，两条管线必须用
+# **同一个常量**判 —— 导出的分节早就不给 0.01 秒以内的缝补黑场，预览却把后一段照它自己的起点插，各自截断
+# 落在相邻两格，A/B 两条轨之间空出一格 = 接缝上一帧黑（成片没有）。行为断言在 check-preview-composition.sh
+# 的 SliceTicks 那一组；这里钉的是两边都读同一个数（docs/bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md）。
+for file in "${BUILDER}" "${GRAPH}"; do
+    grep -qF 'TimelineState.mainGapTolerance' "${file}" \
+        || { echo "  ✗ $(basename "${file}") 没按 TimelineState.mainGapTolerance 判接缝的零头：两条管线会各说各话" >&2; FAILED=1; }
+done
 if [ "$FAILED" -ne 0 ]; then
     echo "✗ 转场定格补足接线守卫失败" >&2
     exit 1
 fi
-echo "✓ 转场定格补足接线守卫通过（只有展开函数写定格字段，两条管线都消费它）"
+echo "✓ 转场定格补足接线守卫通过（只有展开函数写定格字段，两条管线都消费它，接缝的零头同一口径）"
 
 # ─────────────────────────────────────────────────────────────────────────
 # 下半：转场可点选、⌫ 可删除（2026-09-20）

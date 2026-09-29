@@ -84,6 +84,15 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
 案例：[加了音效预览整个黑屏](../bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)，
 回归在 `scripts/check-preview-composition.sh` 的 `AppendOnly.swift`。
 
+**切片表按格子铺、接缝的零头不算空隙**（`CompositionSlices` / `TimelineState.mainGapTolerance`，2026-09-29）：
+③ 视频合成的指令表先把每个切片边界落到 1/600 秒的格子上（同一个截断），**按格子去重**，相邻两格之间一片 ——
+以前按秒去重（差不到 0.5 毫秒的片不切），两个边界各自截断落在相邻两格，指令表就空出一格，整个视频合成判无效、
+预览从头黑到尾；求值照旧用边界本身的秒（关键帧、渐变的半程都是精确的折点）。④ 主轨上两段之间不到 0.01 秒的
+空隙不算空隙：成片的分节不补黑场，预览把后一段接在前一段真正的末尾上 —— 两条管线读同一个常量；否则各自截断
+之后 A/B 两条轨之间空出一格，24 fps 的一帧正好落在里面，接缝上一帧黑而成片没有。AI 按报出来的三位小数放段
+（19.96 对 19.9598）、变速后的零头都会撞上。案例：[叠化 + 关键帧之后预览全黑](../bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md)，
+回归在 `scripts/check-preview-composition.sh` 的 `SliceTicks.swift`，接线在 `checks/transition-handles-wiring.sh`。
+
 **叠化 × Transform 的合成模型**：转场语义上作用在**压平到黑底之后**的段上
 （导出就是这么做的：先合黑底再 xfade）。预览的叠化按接缝分两条路径，判定
 用 `coversCanvasOpaquely(canvas:isOverlay:)`：
