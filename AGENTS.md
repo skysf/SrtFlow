@@ -108,7 +108,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 画面渐入渐出、alpha 斜坡、转场仲裁 | [画面渐入渐出](docs/architecture/video-fades.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md) |
 | 主轨转场的容量、可用判定、借余料、首尾帧定格补足 | [主轨转场：借余料与定格补足](docs/architecture/transition-handles.md)、[转场预览有、成片没有](docs/bugfixes/2026-09-20-transition-preview-export-divergence.md) |
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
-| 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待、**老虎机位数不同的两头（`NumberOdometer`）** | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序；老虎机不存在的那一位滚成空白收掉，居中和右对齐右边不动）、[老虎机停在「090」](docs/bugfixes/2026-09-25-odometer-leading-zero.md)、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
+| 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待、**老虎机位数不同的两头（`NumberOdometer`）** | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序；老虎机不存在的那一位滚成空白收掉，居中和右对齐右边不动）、[老虎机停在「090」](docs/bugfixes/2026-09-25-odometer-leading-zero.md)、[主字体里没有的字画成乱码](docs/bugfixes/2026-09-29-text-fallback-glyphs-drawn-with-main-font.md)（排版给了谁的字形号就用谁画）、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
 | **盖一块（模糊 / 马赛克，`ShapeKind.blur` / `.mosaic`）**、预览的第二层播放器（`CoverPreviewLayer`）、导出里的 `gblur` / `pixelize`（`VideoEditCoverExport`）、`set_shape` 的 blur / mosaic、`look text_scan` 给的 `cover`（`AICoverBox`）、遮水印 / 遮旧字幕 | [盖一块](docs/architecture/cover-blur-mosaic.md)（形状的一种、时间线上的一段、**不跟着片段走**；落点在调色之后、形状之前；三条管线按构造一致：裁出这一块、在这块里做效果、边缘外延、贴回去；预览的蒙版和滤镜别挂同一层；`CIPixellate` 的格子要设成从左上角起算；框取偶数往外收；力度按画面高换算）、[滤镜](docs/architecture/filters.md)（预览不走自定义合成器、图层滤镜的地基）、[预览自由变换](docs/architecture/preview-free-transform.md)（源画面框换画布框的变换顺序）、[AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第 38 条）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（没有盖一块时第二层不建、性能计数不变） |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
@@ -174,7 +174,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
   下一次改动抹掉）：`checks/inspector-live-binding-wiring.sh`。
 - 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
-  以及动画的「模型给多少、成片就是多少」、预览上的可点范围、老虎机首帧 / 末帧就是起止值：
+  以及动画的「模型给多少、成片就是多少」、预览上的可点范围、老虎机首帧 / 末帧就是起止值，
+  还有主字体里没有的字（✨、汉字）用回退字体画（和直接用那款字体画的墨迹重合）：
   `scripts/check-text-render.sh`。
 - 预览上的字幕和烧出来的一样大（预览那个视图离屏渲一张、照导出那条路真烧一帧比字的外框：几种字体、字体里没有的字按回退的那一款（Helvetica 里的中文本机走苹方、CI 没下载苹方就两边换冬青黑体；韩文）、默认样式的粗体、逐词高亮放大），以及回退到系统私有字体时换内置字体的规矩，还有字幕在预览和成片里摆的**位置**（底部 / 居中 / 顶部 × 一两行 × 英文 / 混排 × 五种字体，上下沿差 ≤ 3 px：libass 的行框用 win 量度、预览用 hhea）、字幕**阴影**真画出来的像素（中灰底上白字，预览和成片各量右下多出来的暗处：偏多少、最黑的一点有多黑，透明度写反、哪一边没画都会红）：`scripts/check-subtitle-burn-size.sh`；ASS 里点名字体和逐词高亮一起写在 `SrtFlowCoreChecks` 的 `SubtitleWordChecks`。
 - `.contentShape` 不许写在 `.offset` / `.rotationEffect` / `.scaleEffect` 之后（几何效果只挪画面、
@@ -513,6 +514,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-29 搬走调色代码之后，一条接线守卫还在旧文件里找](docs/bugfixes/2026-09-29-pr84-first-ci-run-wiring-guard-in-moved-code.md) — PR #84 首跑 CI 第 4 组红：给盖一块腾地方把导出的调色搬进 `VideoEditGradeExport.swift`，`check-project-file.sh` 尾部那条「导出的调色读 renderedFilters」还指着旧文件；本机全绿，因为接线守卫接在 25 秒编译的后面、本地只跑秒级扫描守卫时跑不到 —— **和 09-25 的 PR #71 是同一个坑，写进案例的教训没被照做**。把接线守卫拆成秒级的 `checks/project-file-wiring.sh`（进第 1 组）、补了盖一块的三条。**同一个教训撞第二次，就把它变成机制；搬代码也算改接线。**
 - [2026-09-29 叠化 + 关键帧之后预览全黑，去掉转场、关键帧照样黑](docs/bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md) — 用户婚礼工程：视频合成的切片边界按秒去重、各自截断落在相邻两格，指令表空出一格就整个判无效；触发的不是转场或关键帧，是 AI 按报出来的三位小数放段（19.96 对 19.9598）和变速的零头，关键帧、转场只是多添几个挨得近的边界。改成先落格子再去重（`CompositionSlices`）；顺带发现接上之后接缝那一格 A/B 两轨都空、一帧黑而成片没有 —— 主轨不到 0.01 秒的缝两条管线同一个常量当作相接。**两个本该相等的时间各自换算就会落在相邻两格；用 App 自己的合成代码离线合成用户的工程、打印指令表，比猜「转场 + 关键帧」快得多。**
 - [2026-09-29 婚礼工程那一轮之后的五处工具小毛病](docs/bugfixes/2026-09-29-mcp-tool-followups-from-wedding-session.md) — `set_text` 把字面的 `\n` 显示成两个字符；`new_project` 顺手取消了文件级的 transcribe（生成字幕和 transcribe 共用一个串行槽，cancel 不分绑不绑工程）；`look` 把无效合成的黑底描述成「夜空」；`delete_items` 一个 id 认不出整批不执行却只提那一个；几个 AI 会话连一个 App 时 `get_timeline` 看不出工程是谁；改入点后关键帧跑到负时间不吭声。**说明里的记号客户端会照字面传；共用串行槽的任务取消要分清谁的；整批拒绝要说「一个都没做」。**
+- [2026-09-29 主字体里没有的字画成乱码](docs/bugfixes/2026-09-29-text-fallback-glyphs-drawn-with-main-font.md) — Core Text 排版时把 ✨、汉字回退到别的字体，字形号是那个字体的，绘制却拿主字体一把画完；默认字体苹方太全，换成花体才露馅。排版表记每个字形的字体（`TextLayoutFonts`），画的时候按字体分批；emoji 没有轮廓，描边跳过、裁剪改实画。**排版给了谁的字形号就用谁画；自检要拿故意缺字的字体。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

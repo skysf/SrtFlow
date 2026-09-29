@@ -73,6 +73,16 @@
 
 渐变填充用 `setTextDrawingMode(.clip)` 把裁剪区收成字的形状，再往里刷渐变。
 
+## 缺字回退：排版给了谁的字形号，就用谁画（2026-09-29）
+
+主字体里没有的字（emoji、拉丁字体下的汉字）Core Text 排版时按级联表换一个字体来排，run 上带着那个字体，字形号是
+**那个字体**的。`TextLayout.fonts`（`TextLayoutFonts`）记着主字体和回退到的字体，每个字形记 `fontIndex`；`TextDrawing`
+连续同一字体的字形一批用它自己的字体画。拿主字体画别的字体的字形号就是乱码
+（[案例](../bugfixes/2026-09-29-text-fallback-glyphs-drawn-with-main-font.md)）。
+
+彩色字形（Apple Color Emoji，`traitColorGlyphs`）没有轮廓：描边那一道跳过它、渐变填充的裁剪那一道直接实画它。数字元件的
+等宽格子、包围盒照旧按主字体算（`layout.font` = `fonts.main`）。回归：`checks/TextRender/FontFallback.swift`。
+
 ## 坐标系（最容易写错的地方）
 
 排版和渲染全程 **y 轴向上**（Core Graphics 原生），不像 `ShapePNGRenderer`
