@@ -8,6 +8,10 @@
 # 韩文回退到 Apple SD Gothic Neo）、默认样式的粗体、逐词高亮放大。
 # 案例：docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md
 #
+# 还量**阴影**（checks/SubtitleBurnSize/ShadowChecks.swift，2026-09-29 验收第二轮）：字幕样式的 shadow 之前只测了数值，没有测真画出来
+# 的像素。中灰底上白字，预览和成片各量白字右下多出来的暗处 —— 偏了多少、最黑的一点有多黑（ASS 的透明度是反的，写反了会差一截），
+# 有描边时阴影要伸到描边外面。
+#
 # 用法：
 #   scripts/check-subtitle-burn-size.sh
 #
@@ -39,6 +43,7 @@ xcrun swiftc \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/MediaFormatting.swift \
   Sources/SrtFlow/AppLanguage.swift \
+  checks/SubtitleBurnSize/ShadowChecks.swift \
   checks/SubtitleBurnSize/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

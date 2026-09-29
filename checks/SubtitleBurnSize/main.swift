@@ -63,8 +63,9 @@ func previewBox(_ text: String, style: BurnInStyle, highlights: [SubtitleTextRan
     return renderer.cgImage.flatMap(textBox)
 }
 
-/// 导出那条路：BurnInWorkspace 建工作目录（ASS + 字体软链），ffmpeg 在里面用同一个 subtitles 滤镜烧一帧。
-func burnBox(_ text: String, style: BurnInStyle, highlights: [SubtitleTextRange], highlight: SubtitleWordHighlight?, ffmpeg: String) -> CGRect? {
+/// 导出那条路：BurnInWorkspace 建工作目录（ASS + 字体软链），ffmpeg 在里面用同一个 subtitles 滤镜在 `background` 色的底上烧一帧。
+func burnFrame(_ text: String, style: BurnInStyle, highlights: [SubtitleTextRange] = [], highlight: SubtitleWordHighlight? = nil,
+               ffmpeg: String, background: String = "black") -> CGImage? {
     let cue = SubtitleCue(start: 0, end: 5, text: text)
     let block = SubtitleRenderBlock(cues: [cue], layout: nil, highlight: highlight,
                                     highlights: highlights.isEmpty ? [:] : [cue.id: highlights])
@@ -76,14 +77,17 @@ func burnBox(_ text: String, style: BurnInStyle, highlights: [SubtitleTextRange]
     let process = Process()
     process.executableURL = URL(fileURLWithPath: ffmpeg)
     process.currentDirectoryURL = prepared.directory
-    process.arguments = ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=black:s=1920x1080:d=1",
+    process.arguments = ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=\(background):s=1920x1080:d=1",
                          "-vf", "subtitles=filename=\(prepared.paths.assFileName):fontsdir=\(prepared.paths.fontsDirName)",
                          "-frames:v", "1", "frame.png"]
     guard (try? process.run()) != nil else { return nil }
     process.waitUntilExit()
     let png = prepared.directory.appendingPathComponent("frame.png")
-    guard let image = NSImage(contentsOf: png)?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-    return textBox(image)
+    return NSImage(contentsOf: png)?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+}
+
+func burnBox(_ text: String, style: BurnInStyle, highlights: [SubtitleTextRange], highlight: SubtitleWordHighlight?, ffmpeg: String) -> CGRect? {
+    burnFrame(text, style: style, highlights: highlights, highlight: highlight, ffmpeg: ffmpeg).flatMap(textBox)
 }
 
 let ffmpeg = ProcessInfo.processInfo.environment["SRTFLOW_FFMPEG"] ?? "vendor/ffmpeg"
@@ -135,6 +139,8 @@ for item in cases {
     check(abs(preview.width - burned.width) <= max(4, burned.width * 0.03),
           "\(label): preview text is \(Int(preview.width)) px wide, burned \(Int(burned.width)) px")
 }
+
+runShadowChecks(ffmpeg: ffmpeg)
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) checks failed")
