@@ -140,6 +140,7 @@ for item in cases {
           "\(label): preview text is \(Int(preview.width)) px wide, burned \(Int(burned.width)) px")
 }
 
+runPositionChecks(ffmpeg: ffmpeg)
 runShadowChecks(ffmpeg: ffmpeg)
 
 if failures > 0 {
