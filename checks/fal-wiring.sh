@@ -86,6 +86,12 @@ fi
   || fail "记账 recordSpend 只该在 reserve（生成）和配旁白读完一句之后各一处"
 
 # 5. 提示条上的问题。
+# 提示条只挂在剪辑页里（VideoEditView）：问之前必须先把剪辑页摆出来，不然用户在别的栏目时看不见、任务一直等。
+P="$(line_of 'AIEditorPresenter.prepareEditor(' "${RUN}")"
+A="$(line_of 'AISession.shared.ask(' "${RUN}")"
+if [ -z "${P}" ] || [ -z "${A}" ] || [ "${P}" -ge "${A}" ]; then
+  fail "${RUN}：问用户之前必须先 AIEditorPresenter.prepareEditor（提示条只在剪辑页里，别的栏目看不见问题）"
+fi
 Q="$(line_of 'if let question = session.question' "${BANNER}")"
 S="$(line_of 'switch session.phase' "${BANNER}")"
 if [ -z "${Q}" ] || [ -z "${S}" ] || [ "${Q}" -ge "${S}" ]; then

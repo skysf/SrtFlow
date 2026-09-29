@@ -79,6 +79,9 @@ final class FalGenerationRun {
             let texts = questionTexts(reason, store)
             waiting = "SrtFlow is asking the user to approve this cost on the bar at the top of its window (it is in front now): "
                 + texts.english + " Tell the user to answer there, then keep waiting with get_job."
+            // 提示条只挂在剪辑页里（VideoEditView）：用户此刻在别的栏目时问题就看不见，任务会一直等。问之前先把剪辑页摆出来
+            //（后台模式也一样：要用户点头的事不能悄悄等）。
+            try? await AIEditorPresenter.prepareEditor(project: project, bringForward: true)
             AITranslationReadiness.bringSrtFlowForward()
             let allowed = await AISession.shared.ask(texts.localized, allow: L10n("Allow"), decline: L10n("Not Now"), owner: job.id)
             waiting = nil
@@ -97,6 +100,7 @@ final class FalGenerationRun {
             self?.waiting = "macOS is asking the user, in a system dialog, whether SrtFlow may use the fal.ai key. Tell the user to click "
                 + "Always Allow (a Mac login password may be needed; a new version of SrtFlow is asked once), then keep waiting with get_job."
             AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
+            if MainWindowState.shared.section != .videoEdit { MainWindowState.shared.section = .videoEdit }   // 提示条在剪辑页里
             AITranslationReadiness.bringSrtFlowForward()
         })
         waiting = nil
