@@ -95,7 +95,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 修改范围 | 动手前必读 |
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
-| 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件）、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
+| 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）**、**新建 / 打开工程（切工程时清掉上一个的运行时状态、播放头归零）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件；五：卸片之后播放器的时间回调晚到一拍、没挂条目就丢掉，换完整份时间线就要 `scheduleRebuild()`）、[新工程停在上一个工程的位置](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
 | 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）**、**缩放的锚点（捏合钉指针、工具栏钉播放头）与纵向缩放（统一行高）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)（锚点从时间线自己的滚动几何量，别按坐标 hitTest 找滚动视图；纵向缩放统一成一个高度）、[锚点从来没生效](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
@@ -155,7 +155,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
-  不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许：
+  不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许，
+  以及卸片之后晚到的时间回调不许把播放头写回旧位置（真播放器、ffmpeg 现做的带声音素材）：
   `scripts/check-player-clock.sh`。
 - 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开，
   还有往合成轨上接素材只从末尾接、合成完正好和时间线一样长（多一格视频合成就无效 → 黑屏）：
@@ -484,6 +485,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-28 英文男声的配音开头「啪」地爆音](docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md) — Kokoro 的 am_fenrir 原始峰值超过满幅（1.05–1.15），写 .m4a 那一步原样照抄，AAC 存得下大于 1 的值、一播放就被砍平；之前给用户听的样音和端到端都没跑过这个音色，自检也没有一条量电平。两种声音改成只经 `AIAudioFileWriter.writeVoiceover` 写文件、先过 `AIVoiceLevel`（说话部分 −18 dBFS、峰值封顶 −1 dBFS、只乘一个增益），真写真读的自检 + 扫描钉着。**合成器给的采样不保证在 ±1 以内；角色换了音色要用生产那条路真跑、量一下。**
 - [2026-09-29 修完爆音，en_male 那几句反倒几乎听不见了](docs/bugfixes/2026-09-29-kokoro-short-pieces-explode.md) — 生产里一句旁白按句切开读，「Two.」被单独送进 Kokoro，这个转换版读太短的输入会炸（满幅的 90 倍，「好。」+43 dB，换计算单元一样）；09-28 那版「整句一个增益、按峰值封顶」被这一下带偏，后面的话掉到 −55 dB。09-28 验证时量峰值是整句喂模型、没走按句切开那一步，所以结论反了。改成放得下整句读、太短的垫一句再读只留自己的、响度按说话部分算再局部限幅。**验证修复要走生产那条路；一个尖峰不许决定整句的音量。**
 - [2026-09-29 成片里的字幕比预览小一截](docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md) — libass 把字号当行高（OS/2 的 usWinAscent + usWinDescent 撑满字号），预览的 CoreText 当 em，同一个字号成片只有预览的 71%（中文回退到苹方）–85%（Helvetica）；从 2026-07-30 有这个叠层起就这样，AI 按 `look` 挑的字号、生成字幕一行放几个字也跟着偏。改预览不改成片：每一截按实际画它的字体（中文回退、粗体选真粗体）乘比例（`SubtitleFontScale`），真烧一帧对比的自检钉着。第一版只量常规体、样本全绿，默认样式是粗体（Hiragino W6 比 W3 小 7%）。**同一个数字在两个渲染器里可以是两种量；「自动化够不着」要先试一下再写；样本要带上默认值。**
+- [2026-09-29 新建工程之后播放头停在上一个工程的 36.3 秒](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md) — 切工程先卸片、播放头归零，可播放器换掉条目之后时间回调还会晚到一拍、报旧条目的时间，`PlayerClock` 照收，AI 不给时间的配音 / 文字就放到了 36.3 秒；打开工程时重建读到这个晚到的值，新工程从上一个的位置（或片尾）开始。没挂条目就丢掉回调；顺带让新建工程也重排预览（和打开一样，作废上一个工程还在路上的重建）。老自检不挂真条目、卸片后马上断言，异步的那一拍到不了；新的一项第一版素材没音轨，停着那种照样绿。**平台回调是异步的，同步设好的状态会被「关于上一个条目」的回调盖掉；测异步要让主循环转起来、素材要像真的。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

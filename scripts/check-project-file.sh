@@ -443,6 +443,18 @@ require "预渲染必须接收仲裁过的渐变窗口" \
   Sources/SrtFlow/VideoEditPrerender.swift \
   'private static func normalized\(_ clip: EditClip, fades: FadeWindow\)'
 
+# 换了整份时间线就要重排预览：打开工程、补静帧 / 重链接都这么做。新建工程漏了这一步，上一个工程还在路上的那次重建
+# 落地时会把旧工程的画面挂进新工程（docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md）。
+NEW_PROJECT="$(awk '/func newProject\(\) \{$/ { inside = 1; next } inside && /^    \}$/ { exit } inside { print }' \
+  Sources/SrtFlow/VideoEditProjectDocument.swift)"
+if [ -z "$NEW_PROJECT" ]; then
+  echo "✗ 接线守卫：VideoEditProjectDocument.swift 里找不到 func newProject() {（改了名就把这条守卫跟过去）" >&2
+  WIRING_FAIL=1
+elif ! grep -c 'scheduleRebuild()' <<<"$NEW_PROJECT" >/dev/null; then
+  echo "✗ 接线守卫：新建工程必须重排预览（newProject 里没有 scheduleRebuild()）：上一个工程在路上的重建会落进新工程" >&2
+  WIRING_FAIL=1
+fi
+
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2
   exit 1

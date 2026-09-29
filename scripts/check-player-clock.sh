@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # PlayerClock 悬停预览（peek/endPeek/displayTime）状态机的自检，
-# 以及播放头的慢读法（PacedPlayhead：播放中不跟、停下追上一次）。
+# 以及播放头的慢读法（PacedPlayhead：播放中不跟、停下追上一次），
+# 和卸片之后晚到的时间回调不许把播放头写回去（真播放器 + ffmpeg 现做的小视频）。
 #
 # 用法：
 #   scripts/check-player-clock.sh
@@ -35,7 +36,15 @@ xcrun swiftc \
   checks/PlayerClock/main.swift \
   checks/PlayerClock/PacedPlayheadChecks.swift \
   checks/PlayerClock/GoToStartChecks.swift \
+  checks/PlayerClock/DetachChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
+# 卸片那一项要真的播放器和素材：现做一段 60 秒带声音的小视频（ffmpeg 同 check-text-render：vendor/ffmpeg 或
+# SRTFLOW_FFMPEG）。要带声音：没有音轨时停着卸片不出那一拍晚到的回调，只测得到「在播」那一种。
+FFMPEG="${SRTFLOW_FFMPEG:-$(pwd)/vendor/ffmpeg}"
+CLIP="$(dirname "$OUT")/clip.mp4"
+"$FFMPEG" -hide_banner -loglevel error -y -f lavfi -i testsrc2=s=64x64:r=10:d=60 -f lavfi -i sine=f=440:d=60 \
+  -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac "$CLIP"
+
 echo "==> 运行"
-"$OUT"
+"$OUT" "$CLIP"

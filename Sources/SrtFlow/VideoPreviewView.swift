@@ -50,6 +50,9 @@ final class PlayerClock: ObservableObject {
             forInterval: CMTime(seconds: observationInterval, preferredTimescale: 600),
             queue: .main
         ) { [weak self] cmTime in
+            // 卸了片（detach）之后还会晚到一拍、报旧条目的时间：新建 / 打开工程先卸片、播放头归零，这一拍把它写回
+            // 上一个工程的位置（2026-09-29，docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md）。没有条目就没有播放时间。
+            guard self?.player.currentItem != nil else { return }
             self?.observePlaybackTime(cmTime.seconds)
         }
         // 播放/暂停按钮要跟着实际状态走：播到片尾时 rate 会自己变 0，

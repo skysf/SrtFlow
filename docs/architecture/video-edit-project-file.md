@@ -270,6 +270,11 @@ Finder**。App 只负责「快速回到最近那几条」。
   「清选择」走 `clearSelection()` 一个入口（剪辑/形状/字幕 cue 三类一起），
   别在这里手抄字段名 —— 抄漏过一次（2026-08-09 复审），合同见
   [subtitle-track-visibility-and-layout](subtitle-track-visibility-and-layout.md)。
+- **播放头归零要真的归零**（2026-09-29，[新工程停在上一个工程的位置](../bugfixes/2026-09-29-new-project-keeps-old-playhead.md)）：
+  `detach()` 把播放头放到 0，可播放器换掉条目之后时间回调还会晚到一拍、报旧条目的时间（带音轨的素材停着卸片也会）。
+  `PlayerClock` 没挂条目时丢掉时间回调；以后谁要在卸片之后再读播放器的时间，也要先问有没有条目。
+- **换完整份时间线就要 `scheduleRebuild()`**：打开工程、补静帧 / 重链接都这么做，新建工程也要（上一个工程还在路上的
+  那次重建靠它作废，不然落地时把旧工程的画面挂进新工程）。`check-project-file.sh` 的接线守卫钉着 `newProject`。
 - flush 的三个时机：切走 Edit Video 栏（`onDisappear`）、⌘S、退出 App
   （`applicationWillTerminate`）。自动保存有 2 秒防抖，正好卡在那两秒里按 ⌘Q
   会丢改动。
@@ -354,3 +359,5 @@ Finder**。App 只负责「快速回到最近那几条」。
      点 Cancel 后剪辑还在；⌘Q 也应弹同一个框，Cancel 能取消退出
    - 两条音频轨各拖成不同高度 → 存盘 → 重开工程 → 两条轨各自的高度都还在；
      新建工程时每条轨回到默认高度（不会带着上一份工程的条目）
+   - 播放头停在工程后半段（在播、停着各一次）→ File ▸ New Project / 打开另一个工程 → 播放头在 0:00
+     （卸片之后晚到的时间回调由 `check-player-clock.sh` 用真播放器钉着，这一条看真窗口）
