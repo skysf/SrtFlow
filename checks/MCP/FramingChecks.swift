@@ -139,6 +139,38 @@ private func checkFitAndPlace() {
     // 回到正中、大小 1：就是默认布局，存 nil。
     checkEqual(AIFrameFit.place(placed, canvas: tall, crop: nil, x: 0.5, y: 0.5, scale: 1).placement, nil,
                "placing at the centre with scale 1 is the default layout")
+
+    // 放大的画面，中心出到 0–1 外边才够得到边（2026-09-29 验收：放大的幻灯片只看得到中间）：16:9 放进 9:16 放大 3.16 倍
+    // 正好盖满高度，x = 1 − 3.16 / 2 让画面的右边落在画布的右边。
+    let big = 1920.0 / 1080 * 1920 / 1080          // 盖满高度的倍数
+    let rightEdge = framed(wide, AIFrameFit.place(wide, canvas: tall, crop: nil, x: 1 - big / 2, y: 0.5, scale: big))
+    let corner1 = canvasPoint(CGPoint(x: 1, y: 1), of: rightEdge, canvas: tall)
+    check(abs(corner1.x - tall.width) < 0.5 && abs(corner1.y - tall.height) < 0.5,
+          "a centre below 0 brings the right edge of an enlarged picture to the frame's right edge (got \(corner1))")
+    let far = AIFrameFit.describe(framed(wide, AIFrameFit.place(wide, canvas: tall, crop: nil, x: -9, y: 9, scale: 2)), canvas: tall)
+    check(far.x == AIFrameFit.centerRange.lowerBound && far.y == AIFrameFit.centerRange.upperBound,
+          "the centre stops at -2…3 (got \(far.x), \(far.y))")
+    // 工具说明里写的范围 = App 认的（edit_clip 的 x / y、set_keyframes 的位置）。
+    for tool in ["edit_clip", "set_keyframes"] {
+        let definition = MCPToolName.listJSON.arrayValue?.first { $0["name"]?.stringValue == tool }
+        var ranges: [(Double?, Double?)] = []
+        func walk(_ value: JSONValue) {
+            if case .object(let object) = value {
+                if case .object(let properties)? = object["properties"] {
+                    for key in ["x", "y"] {
+                        if let schema = properties[key] { ranges.append((schema["minimum"]?.doubleValue, schema["maximum"]?.doubleValue)) }
+                    }
+                }
+                object.values.forEach(walk)
+            } else if case .array(let items) = value {
+                items.forEach(walk)
+            }
+        }
+        definition.map(walk)
+        check(!ranges.isEmpty && ranges.allSatisfy {
+            $0.0 == AIFrameFit.centerRange.lowerBound && $0.1 == AIFrameFit.centerRange.upperBound
+        }, "\(tool): x / y in the tool list allow \(AIFrameFit.centerRange) like the app (got \(ranges))")
+    }
 }
 
 private func checkPlacementDefault() {

@@ -84,8 +84,9 @@ enum AIKeyframes {
             animation.centerY = KeyframeTrack()
             for point in position {
                 let at = try source(point.time)
-                animation.centerX.set(min(max(point.x, 0), 1), atSourceTime: at, tolerance: tolerance)
-                animation.centerY.set(min(max(point.y, 0), 1), atSourceTime: at, tolerance: tolerance)
+                let range = AIFrameFit.centerRange   // 放大的画面中心可以出到 0–1 外边
+                animation.centerX.set(min(max(point.x, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance)
+                animation.centerY.set(min(max(point.y, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance)
             }
         }
         if let scale = request.scale {

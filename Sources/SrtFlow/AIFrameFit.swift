@@ -95,7 +95,12 @@ enum AIFrameFit {
         return CGRect(x: x, y: y, width: width, height: height)
     }
 
-    /// 按位置和大小摆：`x` / `y` 是画面中心在画布上的位置（0…1），`scale` 相对默认布局
+    /// 画面中心在画布上能放到哪（AI 的 x / y、位置关键帧）：画面比画布大时，中心要出到 0–1 外边，画面的边才够得到画布的边
+    /// （横屏素材铺满竖屏是 3.16 倍，0–1 只看得到中间那六成多）。scale 最大 6、1 = 放得下，所以 −2…3 够到任何一边
+    /// （2026-09-29 验收实剪：放大的幻灯片只看得到中间）。工具说明里的范围和它对账（check-mcp.sh）。
+    static let centerRange = -2.0...3.0
+
+    /// 按位置和大小摆：`x` / `y` 是画面中心在画布上的位置（0…1 在画布里，见 `centerRange`），`scale` 相对默认布局
     /// （1 = 裁剩的画面完整放进画布）。不给的沿用这一段此刻的样子。
     static func place(
         _ clip: EditClip, canvas: CGSize, crop: ClipCrop?, x: Double?, y: Double?, scale: Double?
@@ -105,8 +110,9 @@ enum AIFrameFit {
         cropped.crop = crop
         let base = cropped.defaultPlacement(canvas: canvas)
         let factor = min(max(scale ?? now.scale, 0.02), 8)
+        func inRange(_ value: Double) -> Double { min(max(value, centerRange.lowerBound), centerRange.upperBound) }
         let placement = ClipPlacement(
-            centerX: x ?? now.x, centerY: y ?? now.y, width: base.width * factor, height: base.height * factor
+            centerX: inRange(x ?? now.x), centerY: inRange(y ?? now.y), width: base.width * factor, height: base.height * factor
         )
         return Framing(crop: crop, placement: PlacementDefault.normalized(placement, fallback: base, canvas: canvas))
     }
