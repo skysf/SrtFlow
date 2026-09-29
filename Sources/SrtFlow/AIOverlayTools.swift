@@ -54,7 +54,8 @@ enum AIOverlayTools {
         }
         let block = TextRenderer.layoutFrame(overlay, canvas: canvas)
         if let out = AITextFit.overflow(of: block, canvas: canvas) {
-            warnings.append("On this \(Int(canvas.width))×\(Int(canvas.height)) frame the text block sticks out of the frame (\(AITextFit.describe(out))). Move it with position or x/y, or use a smaller font_size.")
+            // x / y 是版面框的中心、框默认宽 0.8：短字放到边上要先收窄框（2026-09-29 验收：地名卡放在左边，左边出去 384 px）。
+            warnings.append("On this \(Int(canvas.width))×\(Int(canvas.height)) frame the text block sticks out of the frame (\(AITextFit.describe(out))). x/y is the centre of a box box_width wide (\(String(format: "%.2f", overlay.boxWidth))): narrow box_width to put short text near an edge, move it, or use a smaller font_size.")
         }
         var result: [String: JSONValue] = [
             "text_id": .string(AIShortIDs(state: project.state).short(id)),
