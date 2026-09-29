@@ -36,6 +36,8 @@
 #      转写 / 生成字幕认不出语言时，AI 拿到「带上 language 再调」而不是面板那句（纯值 + 扫描）。
 #  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、放得下整句读 / 读不下切在离正中最近处、太短的垫一句（炸没炸、切口不越过垫的那句）、
 #      拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
+#  25. 盖一块（模糊 / 马赛克）的 AI 这一侧：set_shape 认 blur / mosaic（默认大小、strength 夹紧、不画东西所以没有颜色 / 线宽 / 实心、写回给 AI 的样子），
+#      工具目录的种类词表和 ShapeKind 对账；look text_scan 对时间线上的一段把源画面的框换成画布的框（裁切 / 翻转 / 摆放 / 旋转）、给出 set_shape 能抄的参数。
 #  24. 扫画面里的字（look text_scan）：字幕带、固定的字、满屏的字各认得出来；铺满时没人、字多就对准字，focus=text，字比窗宽说多少。
 #  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
 #      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
@@ -391,6 +393,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIBlackBars.swift \
   Sources/SrtFlow/AISubjectFocus.swift \
   Sources/SrtFlow/AITextRegions.swift \
+  Sources/SrtFlow/AICoverBox.swift \
   Sources/SrtFlow/AIVision.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AIContactSheet.swift \
@@ -432,6 +435,7 @@ xcrun swiftc \
   checks/MCP/ClipDetailChecks.swift \
   checks/MCP/TrackKeyframeChecks.swift \
   checks/MCP/ShapeChecks.swift \
+  checks/MCP/CoverChecks.swift \
   checks/MCP/TextPartChecks.swift \
   checks/MCP/RecipeChecks.swift \
   checks/MCP/RecipeSizeChecks.swift \

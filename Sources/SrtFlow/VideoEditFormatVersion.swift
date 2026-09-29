@@ -360,6 +360,17 @@ extension TimelineState {
             || ((subtitle?.cues ?? []) + (subtitleCompanion?.translation?.cues ?? [])).contains { $0.words != nil }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v26-only 持久数据。
+    ///
+    /// **登记清单（新增 v26-only 字段必须同步补进来）：**
+    /// 1. `ShapeKind.blur` / `.mosaic`（盖一块，2026-09-29）与 `ShapeAnnotation.coverAmount`（力度；**按需写入**：只有盖一块落键）。
+    ///
+    /// 为什么要抬：它**直接决定成片**。只认 v25 的旧版把不认识的种类宽容回落成长方形（`LenientCodableEnum`），
+    /// 该模糊的地方变成一圈黄描边，水印 / 旧字幕重新露出来，随手编辑触发自动保存即永久丢失。
+    var requiresFormatVersion26: Bool {
+        shapes.contains { $0.kind.isCover }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

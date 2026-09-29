@@ -110,6 +110,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待、**老虎机位数不同的两头（`NumberOdometer`）** | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序；老虎机不存在的那一位滚成空白收掉，居中和右对齐右边不动）、[老虎机停在「090」](docs/bugfixes/2026-09-25-odometer-leading-zero.md)、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
+| **盖一块（模糊 / 马赛克，`ShapeKind.blur` / `.mosaic`）**、预览的第二层播放器（`CoverPreviewLayer`）、导出里的 `gblur` / `pixelize`（`VideoEditCoverExport`）、`set_shape` 的 blur / mosaic、`look text_scan` 给的 `cover`（`AICoverBox`）、遮水印 / 遮旧字幕 | [盖一块](docs/architecture/cover-blur-mosaic.md)（形状的一种、时间线上的一段、**不跟着片段走**；落点在调色之后、形状之前；三条管线按构造一致：裁出这一块、在这块里做效果、边缘外延、贴回去；预览的蒙版和滤镜别挂同一层；`CIPixellate` 的格子要设成从左上角起算；框取偶数往外收；力度按画面高换算）、[滤镜](docs/architecture/filters.md)（预览不走自定义合成器、图层滤镜的地基）、[预览自由变换](docs/architecture/preview-free-transform.md)（源画面框换画布框的变换顺序）、[AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第 38 条）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（没有盖一块时第二层不建、性能计数不变） |
 | 工程帧率、关键帧容差 | [工程帧率](docs/architecture/project-frame-rate.md) |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
@@ -151,9 +152,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 核心库：`swift run --arch arm64 SrtFlowCoreChecks`（含逐词高亮：词对到去完标点的字上、此刻亮哪个、跟着编辑走、按词切段、ASS 标签，`SubtitleWordChecks`）。
 - 生成的字幕长什么样（去标点、断句、一行多长、显示时间、几段素材同时有字只留一条，用例是用户工程里真实转写出来的句子）：
   `SrtFlowCoreChecks` 的 `SubtitlePunctuationChecks` / `SubtitleSegmentationChecks` / `SubtitleSourceOverlapChecks`；
-  藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift` + 扫描守卫）。
+  藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift`）+ 接线扫描 `checks/project-file-wiring.sh`。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
-  `scripts/check-project-file.sh`。
+  `scripts/check-project-file.sh`；这批合同**有没有被生产代码调用**的接线扫描（隐藏清单、调色 / 盖一块 / 形状 / 文字读 `rendered*`、
+  字幕生成的可听快照等）单独成 `checks/project-file-wiring.sh`：秒级、不编译、进第 1 组，**搬代码 / 改名之后先在本地跑它**
+  （原来接在上一个脚本末尾的编译后面，本地跑不到，[PR #84 首跑 CI](docs/bugfixes/2026-09-29-pr84-first-ci-run-wiring-guard-in-moved-code.md) 才红）。
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
   不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许，
   以及卸片之后晚到的时间回调不许把播放头写回旧位置（真播放器、ffmpeg 现做的带声音素材）：
@@ -179,6 +182,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 滤镜调色：LUT 数学（强度那条等式）、层号规则，以及**预览与成片逐像素比对**
   （配方 ↔ CoreImage ↔ 真跑 ffmpeg）：`scripts/check-filters.sh`。
 - 滤镜挂到播放器上这段接线（拍窗口数像素）：`scripts/check-filter-preview-attach.sh`。
+- 盖一块（模糊 / 马赛克）在成片里真的盖了（真跑生产导出再抽帧：只改那一块、块外和基线一致、外接框就是那块、高斯剖面贴着理想的阶跃响应、马赛克格子边长对且从左上角起算、只在那一段时间里盖、形状压在它上面不被糊、调色在它前面、藏起来的不导出、不算总长）：`scripts/check-cover-export.sh`（`check-all.sh` 第 5 组）。
+- 预览上的盖一块真的盖上了（生产的 `CoverHostView` 放进真窗口、拍屏数像素：块里糊成混色块外还是硬的、改动的行正好是块的上下沿、调色带上了、马赛克格线从块的左上角起算、两块同时盖、撤掉之后回到参照）：`scripts/check-cover-preview-attach.sh`。**要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditCoverPreview.swift` / `VideoEditCoverFilters.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），以及电平表（离线读挂了
@@ -364,6 +369,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [用户文本文件的编码](docs/architecture/text-file-encoding.md) — 字幕、讲稿这类用户给的文本文件，编码识别只有 SrtFlowCore 的 `TextDecoding` 一处：BOM → 严格 UTF-8 → 像 UTF-16 才 UTF-16 → GBK；为什么 UTF-16 不能无条件排在 GBK 前面。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）、数字的等待、**老虎机位数不同的两头**（不存在的那一位滚成空白收掉、居中和右对齐右边不动、正在收的那一位原地滚走）、**时间线上的行**（行号进模型、行序 = 叠放序、新字开新行、换行往上找空行、老工程迁移）。
 - [滤镜](docs/architecture/filters.md) — 时间轴上的调色段、层号进模型（LUT 不可交换）、强度=表的线性插值、预览挂图层滤镜的实测地基（backgroundFilters 会污染整个窗口）、两条管线的四条对齐约束。
+- [盖一块：模糊 / 马赛克](docs/architecture/cover-blur-mosaic.md) — 形状的一种、时间线上的一段（`ShapeKind.blur` / `.mosaic`，不画东西、不算总长、不进 `renderedShapes`、格式 v26）、**不跟着片段走**（为什么：预览没有片段级的钩子、「从旧段构造新段」漏字段的教训）；盖谁：合成 + 调色之后、形状之前；三条管线按构造一致（预览第二层播放器 + 区域容器 + 边缘外延、导出 `split → crop → gblur / pixelize → overlay`、AI 的「看」CoreImage）；八条硬约束（层序、蒙版与滤镜别同层、边缘外延、格子从左上角起算、框取偶数、高斯半径是标准差、力度按画面高、没有盖一块时不建第二层）；AI（`set_shape` 的 blur / mosaic + `strength`、`text_scan` 给的 `cover`）；实测地基、已知不足、回归与人工清单。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
 - [检查器的排版](docs/architecture/inspector-layout.md) — 固定的窄栏（约 220pt）：一行的最小宽度不许超过它，否则整列被撑宽、右边被裁；菜单 Picker 不许锁宽度；长名字的下拉标题单独一行。
@@ -494,6 +500,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-29 没下载苹方的 Mac 上，拉丁字体的样式烧中文字幕是方框](docs/bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md) — 字幕大小的新自检第一次上 CI 就红：苹方完整版是按需下载的，CI 的机器没下载，CoreText 回退到系统私有的那份（预览照样是中文），libass 用不了、画成方框。回退到的字体文件在私有框架里时，预览和烧录一起换成每台 Mac 都有的冬青黑体（`SubtitleFallbackFont`），烧录在那几个字前面写 `\fn` 点名、和逐词高亮一起写（`SubtitleASSText`，`\r` 之后照样点名）；下载了苹方的 Mac 上什么都不变。**CoreText 找得到不等于 libass 找得到；认「私有」看文件在哪，不看族名。**
 - [2026-09-29 text_scan 的裁切量被幻灯片标题拉大，裁线切进 PDF 页里的一行字](docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md) — 第二轮复查（0.17.5）里测试员照提示裁完，L27 底边留着半行字、L16 幻灯片自己的小字少了半行。L27：某一帧幻灯片的标题恰好贴在字幕上面，被当成两行字幕的上一行，框的上沿被拉到 0.768，这节课字幕框只有十个、10% 分位几乎就是最小值，提示从 0.13 变成 0.14，裁线切进 PDF 页里的一行字；L16 是字幕压在幻灯片自己的字上，裁一条带必然一起裁，改数字没用。上一行改成要每句都换（至少两帧、两句不同）才认，提示补一句「裁的是整条带、裁完抽几帧看」；真素材六节课只有 L27 变（0.14 → 0.13），测试员那一帧半行字变成整行。**分开字幕行和幻灯片字的特征，同样分得开字幕的第二行；样本只有十来个时分位数就是最小值；会破坏内容的补救办法要在提示里说出来。**
 - [2026-09-29 text_scan 的字幕行：被切掉的字混进来、字幕稀疏时选成了幻灯片](docs/bugfixes/2026-09-29-text-scan-cutoff-text-and-sparse-subtitles.md) — PR #81 合并后核对交接里的三个「潜在弱点」：(b) 是真的 —— L27 里 PDF 页滚出画面只露一道的那一行（底边 0.997、高 0.011–0.028、字一直在变）被「不同的字最多」偏袒，字幕行 9 个框里 5 个是它们、框底边被抬到 0.997；光滤掉它们 L27 反而更糟（字幕稀疏，幻灯片 0.81–0.84 一段有 7 句不同的字，选了幻灯片、叫人裁 0.25）—— 原来是截断字碰巧凑数才对。改成截断的薄片不算字幕行、字幕是够多（≥ 3 句且 ≥ 最多那堆的三分之一）的几堆里最下面的一堆，六节调参的 + 七节留出的课共 26 组抽样裁切量一个没变、L27 底边 0.997 → 0.978。(a)「两行字幕合成一个框」抽两帧出来看是猜错了（一行字幕的框被花背景量大），`captionLike` 的上限不动；(c) 没有真实样本，不改。**「谁最多」在样本稀疏时不可靠，要用位置先验 + 最低支撑；修掉一个脏数据源前先看它是不是在替别的毛病挡枪；交接里的猜测先核对再动手。**
+- [2026-09-29 搬走调色代码之后，一条接线守卫还在旧文件里找](docs/bugfixes/2026-09-29-pr84-first-ci-run-wiring-guard-in-moved-code.md) — PR #84 首跑 CI 第 4 组红：给盖一块腾地方把导出的调色搬进 `VideoEditGradeExport.swift`，`check-project-file.sh` 尾部那条「导出的调色读 renderedFilters」还指着旧文件；本机全绿，因为接线守卫接在 25 秒编译的后面、本地只跑秒级扫描守卫时跑不到 —— **和 09-25 的 PR #71 是同一个坑，写进案例的教训没被照做**。把接线守卫拆成秒级的 `checks/project-file-wiring.sh`（进第 1 组）、补了盖一块的三条。**同一个教训撞第二次，就把它变成机制；搬代码也算改接线。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

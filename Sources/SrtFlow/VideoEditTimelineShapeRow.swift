@@ -122,7 +122,7 @@ private struct ShapeBlockView: View, Equatable {
         .frame(width: width, height: TimelineMarquee.shapeHeight, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 4)
-                .fill(shape.color.swiftUIColor.opacity(0.55))
+                .fill((shape.kind.isCover ? Color.teal : shape.color.swiftUIColor).opacity(0.55))   // 盖一块没有颜色：块用中性的青，和描边形状分得开
         )
         .timelineHiddenLook(shape.isHidden)
         .overlay {

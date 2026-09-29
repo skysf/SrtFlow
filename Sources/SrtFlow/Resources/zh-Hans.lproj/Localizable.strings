@@ -989,3 +989,7 @@
 "This project has its own subtitle style." = "这个工程用自己的字幕样式。";
 "Use Burn In style" = "用烧录页的样式";
 "Use the subtitle style from the Burn In Subtitles page again" = "重新用「烧录字幕」页设的字幕样式";
+
+/* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
+"Mosaic" = "马赛克";
+"Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "把它下面的画面模糊或打上马赛克，文字、形状和字幕不受影响。在预览里拖它的框来摆位置。";

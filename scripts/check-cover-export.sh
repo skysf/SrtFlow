@@ -1,20 +1,16 @@
 #!/usr/bin/env bash
-# **上层视频轨 + 画面渐变的真实回归**。
+# **盖一块（模糊 / 马赛克）在成片里真的盖了**。
 #
-# 调真实的 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数，真跑一遍导出，
-# 再抽帧量整幅亮度。断言里的数与 `scripts/check-preview-composition.sh` 中
-# 同一场景**对齐** —— 两条管线同账是这套东西的核心合同。
-#
-# 守三条契约（改 VideoEditExportGraph 的上层轨滤镜段之前必读）：
-#   1. 上层视频轨默认等比铺满画布居中，两侧留空露出下层（不是画中画小框，
-#      也不补黑）；
-#   2. 画面渐变在 alpha 上做，露出来的是下面那一层；
-#   3. 主轨接缝上有转场时，那一边的渐变让位给 xfade，不叠加。
+# 调真实的 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数，真跑一遍导出，再抽帧量像素（checks/Cover/）：
+# 只改那一块（块外和基线一致、改动的外接框就是那块）、模糊是高斯（剖面贴着理想的阶跃响应）、马赛克的格子边长对且从那块的左上角起算、
+# 只在那一段时间里盖、形状压在它上面不被糊、调色在它前面、藏起来的不导出、不算总长。
+# 预览那一层（同一个播放器再开一层）在 scripts/check-cover-preview-attach.sh（要图形会话，不在 check-all.sh 里）。
+# 长期约束见 docs/architecture/cover-blur-mosaic.md。
 #
 # 用法：
-#   scripts/check-video-fade.sh
+#   scripts/check-cover-export.sh
 #
-# 需要 ffmpeg：素材是现造的纯色视频（假文件过不了真实解码，抽不出帧）。
+# 需要 ffmpeg：素材是 ffmpeg 现造的（红蓝阶跃、棋盘、噪声；假文件过不了真实解码，抽不出帧）。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -28,7 +24,7 @@ echo "==> swift build ${ARCH_FLAG} --target SrtFlowCore"
 BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
-OUT="$(mktemp -d)/videofade"
+OUT="$(mktemp -d)/coverexport"
 trap 'rm -rf "$(dirname "$OUT")"' EXIT
 
 echo "==> 编译自检二进制"
@@ -98,9 +94,8 @@ xcrun swiftc \
   Sources/SrtFlow/SubtitleFallbackFont.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
-  checks/VideoFade/main.swift \
-  checks/VideoFade/Probes.swift \
-  checks/VideoFade/HiddenClips.swift \
+  checks/Cover/main.swift \
+  checks/Cover/ExportChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

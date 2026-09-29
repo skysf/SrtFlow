@@ -151,11 +151,13 @@ public enum MCPTimelineTools {
                 or change one when shape_id is given; only the fields you pass change. x/y is the centre as fractions \
                 of the frame; width (a line's length) and height are fractions of the frame (a square uses width). \
                 rotation turns lines only. line_width is pixels on a 1080-high frame. Shapes are drawn under texts. \
-                Delete with delete_items.
+                kind=blur or mosaic draws nothing: it blurs or pixelates the picture under it (hide a watermark or burned-in \
+                subtitles; look text_scan gives the values), strength is the blur radius or the mosaic cell in pixels on a \
+                1080-high frame. Delete with delete_items.
                 """,
                 input: MCPSchema.object([
                     "shape_id": MCPSchema.string("Change this shape instead of adding one."),
-                    "kind": MCPSchema.string("Shape (required when adding).", oneOf: ["line", "rectangle", "square"]),
+                    "kind": MCPSchema.string("Shape (required when adding).", oneOf: ["line", "rectangle", "square", "blur", "mosaic"]),
                     "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
                     "duration": MCPSchema.number("Seconds on screen (default 3).", minimum: 0.2),
                     "x": MCPSchema.number("Horizontal centre, 0–1.", minimum: 0, maximum: 1),
@@ -165,6 +167,7 @@ public enum MCPTimelineTools {
                     "rotation": MCPSchema.number("Lines only: clockwise degrees.", minimum: -90, maximum: 90),
                     "color": MCPSchema.string("#RRGGBB or #RRGGBBAA."),
                     "line_width": MCPSchema.number("Pixels on a 1080-high frame (default 6).", minimum: 1, maximum: 24),
+                    "strength": MCPSchema.number("blur/mosaic only, pixels on a 1080-high frame (blur 28, mosaic 22).", minimum: 2, maximum: 80),
                     "filled": MCPSchema.boolean("Rectangles and squares: solid instead of an outline."),
                     "hidden": MCPSchema.boolean("Hide it without deleting it.")
                 ])

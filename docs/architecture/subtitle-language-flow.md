@@ -104,7 +104,7 @@
      探针抽的却是日文 overlay。
    - **不许再从 `TimelineState` 枚举一套分叉的「声音来源」。**
      `TranscriptHarvester.detectSourceLocale` 刻意不收 `TimelineState` 参数，
-     让这件事在类型上就做不到；`scripts/check-project-file.sh` 末尾的接线
+     让这件事在类型上就做不到；`checks/project-file-wiring.sh` 的接线
      守卫再钉一道（禁止 `state.mainClips + state.audioTracks` 复活）。
      （2026-09-27 起「定语言 → 备模型 → 按窗转写落缓存」这一段从 `TranscriptionTask` 原样挪进了
      `TranscriptHarvester`，生成字幕和 AI 的转写共用；任务状态机、串行槽、分段、写回还在 `TranscriptionTask`。）
