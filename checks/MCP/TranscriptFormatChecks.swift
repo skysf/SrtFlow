@@ -7,6 +7,13 @@ import SrtFlowMCPKit
 // 这一段没人说话要说出来。编法见 scripts/check-mcp.sh。
 
 func runTranscriptFormatChecks() {
+    // 认不出说的是哪种话：AI 拿到「带上 language 再调」，不是面板那句；别的错原样（2026-09-29 验收实剪）。
+    let undetected = AIHarvestFailure.message(for: LanguageUndetectedError(), fallback: "fallback", retry: "transcribe")
+    check(undetected.contains("call transcribe again with language") && !undetected.contains("panel"),
+          "language not detected: the AI is told to pass language, not to use the panel (\(undetected))")
+    checkEqual(AIHarvestFailure.message(for: CancellationError(), fallback: "other", retry: "transcribe"), "other",
+               "other failures reach the AI unchanged")
+    check(LanguageUndetectedError().localizedDescription.contains("panel"), "the panel keeps its own wording")
     let plain = SubtitleClipWindow(clipID: UUID(), assetFingerprint: "f", sourceStart: 0, sourceEnd: 100, timelineStart: 0)
     // 每 2 秒一句：「Line 0.」「Line 1.」……
     let words = (0..<20).flatMap { index -> [TimedWord] in

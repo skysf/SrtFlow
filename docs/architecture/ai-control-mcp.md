@@ -265,6 +265,10 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - 缓存已经覆盖要的区间就当场按句读出来；没覆盖就起任务（`TranscriptionTask.transcribeOnly`：只转写、不生成字幕、不碰工程，
      **和生成字幕共用一个串行槽** —— 两边同时跑会互相删临时目录、抢同一份缓存；跑的时候面板上照样看得见进度，结束阶段回
      idle），AI 用 get_job 等完再调一次来读。
+   - **失败时给 AI 它能照做的话**（2026-09-29，[叫 AI 去面板里选语言](../bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md)）：
+     自动检测没认出语言时检测处抛 `LanguageUndetectedError`（单独一个类型，不挂在只在 macOS 26 上有的 TranscriptHarvester 里），
+     面板照旧说「去面板里选」；transcribe、generate_subtitles 的任务失败都经 `AIHarvestFailure`，换成「有人说话就带上 language 再调，
+     没人说话就不用转」。以后界面上的报错要叫人去点哪儿的，AI 那一路都要这样换一句（check-mcp.sh 扫描钉着这两个任务）。
    - 按句读（`SpeechTranscript`，Core）：词归哪段、从哪儿开口和生成字幕同一份（`SubtitleSegmenter.placed`：说话中点落在
      片段里才算，停顿后面第一个词按估出来的开口）；成句同一个函数（`SubtitleBreaks.sentences`）；一句超过 40 个词再切，
      优先切在逗号后面。时间：片段是时间线秒（变速换算好），文件是文件里的秒；两位小数。

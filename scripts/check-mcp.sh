@@ -33,6 +33,7 @@
 #  20. set_text 补的零件（字距、动画时长和强度、强调、数字滚动）和 set_shape 的实心。
 #  21. add_voiceover：挑声音、标记 → 带时间的词、每一句放在哪、配音的字幕（不覆盖已有的、语言对不上不加）；
 #      配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、说话部分同一个响度），两种声音都只经一处写文件（扫描）。
+#      转写 / 生成字幕认不出语言时，AI 拿到「带上 language 再调」而不是面板那句（纯值 + 扫描）。
 #  22. SrtFlow 自己的声音（Kokoro）：装了就用、角色对应的音色、放得下整句读 / 读不下切在离正中最近处、太短的垫一句（炸没炸、切口不越过垫的那句）、
 #      拼接与裁尾巴、R2 清单的校验、按字 / 词切 token。
 #  24. 扫画面里的字（look text_scan）：字幕带、固定的字、满屏的字各认得出来；铺满时没人、字多就对准字，focus=text，字比窗宽说多少。
@@ -274,6 +275,17 @@ for engine in Sources/SrtFlow/KokoroVoiceSpeech.swift Sources/SrtFlow/AISpeechSy
 done
 echo "   ✓ Kokoro 和 macOS 的声音都经 writeVoiceover 写文件"
 
+echo "==> 认不出语言时，AI 拿到的是它能照做的话"
+# 自动检测没认出语言，界面那句「去面板里选」AI 做不到（docs/bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md）。
+# 检测处抛 LanguageUndetectedError，transcribe、generate_subtitles 的任务失败都经 AIHarvestFailure 换成「带上 language 再调」。
+if [ "$(grep -c 'throw LanguageUndetectedError()' Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift || true)" -ne 1 ] \
+   || [ "$(grep -c 'AIHarvestFailure.message(' Sources/SrtFlow/AITranscribeTool.swift || true)" -ne 1 ] \
+   || [ "$(grep -c 'AIHarvestFailure.message(' Sources/SrtFlow/AISubtitleTools.swift || true)" -ne 1 ]; then
+  echo "✗ 认不出语言没抛成 LanguageUndetectedError，或 transcribe / generate_subtitles 的失败没经 AIHarvestFailure：AI 会被叫去面板里选" >&2
+  exit 1
+fi
+echo "   ✓ 检测处抛 LanguageUndetectedError，两个任务的失败都经 AIHarvestFailure"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -366,6 +378,8 @@ xcrun swiftc \
   Sources/SrtFlow/AudioLibraryManifest.swift \
   Sources/SrtFlow/AIEncodeOptions.swift \
   Sources/SrtFlow/AITranscriptFormat.swift \
+  Sources/SrtFlow/AIHarvestFailure.swift \
+  Sources/SrtFlow/SubtitleGen/LanguageUndetectedError.swift \
   Sources/SrtFlow/AudioBeatTracker.swift \
   Sources/SrtFlow/AISpeechCuts.swift \
   Sources/SrtFlow/AIBeatCuts.swift \

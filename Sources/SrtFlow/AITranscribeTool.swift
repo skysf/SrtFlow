@@ -92,7 +92,9 @@ enum AITranscribeTool {
             } catch is CancellationError {
                 AIJobs.shared.finish(job, .cancelled)
             } catch {
-                AIJobs.shared.finish(job, .failed, message: error.localizedDescription)
+                AIJobs.shared.finish(job, .failed, message: AIHarvestFailure.message(
+                    for: error, fallback: error.localizedDescription, retry: "transcribe"
+                ))
             }
         }
         return .ok([

@@ -216,9 +216,7 @@ struct TranscriptHarvester {
         guard let verdict = SubtitleLanguageDetection.pick(results),
               let winner = candidates.first(where: { $0.identifier == verdict.localeIdentifier })
         else {
-            throw HarvestError(message: L10n(
-                "Couldn't confidently detect the spoken language. Pick it in the panel and generate again."
-            ))
+            throw LanguageUndetectedError()
         }
         return winner
     }

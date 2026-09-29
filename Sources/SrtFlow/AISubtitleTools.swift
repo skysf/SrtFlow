@@ -63,7 +63,9 @@ enum AISubtitleTools {
                     AIJobs.shared.finish(job, .done, detail: ["lines": .number(Double(count))])
                 case .failed(let message):
                     waiting.watch?.stop()
-                    AIJobs.shared.finish(job, .failed, message: message)
+                    AIJobs.shared.finish(job, .failed, message: AIHarvestFailure.message(
+                        for: task.failure, fallback: message, retry: "generate_subtitles"
+                    ))
                 case .cancelled:
                     waiting.watch?.stop()
                     AIJobs.shared.finish(job, .cancelled)

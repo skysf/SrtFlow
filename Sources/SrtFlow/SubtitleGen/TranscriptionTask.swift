@@ -49,6 +49,8 @@ final class TranscriptionTask: ObservableObject {
     }
 
     private let service = SpeechTranscriptionService()
+    /// 上一次失败时抛的那个错（`stage` 里只剩文字）：AI 的 generate_subtitles 靠它认出「没认出语言」，换成它能照做的话。
+    private(set) var failure: Error?
     private var token: ExportCancellationToken?
     private var runner: Task<Void, Never>?
     /// 首次模型下载的进度观察：折进总进度 0.02–0.1 段（评审 P2）。
@@ -81,6 +83,7 @@ final class TranscriptionTask: ObservableObject {
         guard !isRunning else { return }
         let token = ExportCancellationToken()
         self.token = token
+        failure = nil
         progress = 0
         volatileText = nil
         skippedAssets = []
@@ -188,6 +191,7 @@ final class TranscriptionTask: ObservableObject {
             } catch is CancellationError {
                 self.stage = .cancelled
             } catch {
+                self.failure = error
                 self.stage = .failed(error.localizedDescription)
             }
         }
