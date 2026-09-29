@@ -32,12 +32,15 @@ enum MCPMediaTools {
                 .addVoiceover, title: "Add a voiceover",
                 description: """
                 Speak narration and put each line on an audio track as its own clip (a new audio track unless track is \
-                given; all lines of one call go on the same track). It uses SrtFlow's own voices (English, Chinese, \
+                given; all lines of one call go on the same track). Voices, best first: fal.ai's (when the user connected \
+                fal.ai and today's cost limit allows it; a role maps to a matching voice, or name one such as Rachel or \
+                Brian; the result's voice note says when it was not used), then SrtFlow's own voices (English, Chinese, \
                 Japanese, Spanish, French, Italian, Portuguese, Hindi) when they are downloaded, otherwise this Mac's \
                 voices, which sound much worse; download_voices=true downloads SrtFlow's voices (a job, about 333 MB; tell \
                 the user). voice is a role — \(MCPVocabulary.voiceRoles.joined(separator: ", ")) — one of SrtFlow's \
                 voices by name (af_heart, zf_xiaoxiao…), or a Mac voice's name; without it, a warm female voice in the \
-                text's language. The files go into SrtFlow/Voiceovers in the user's folder. subtitles=true also writes the \
+                text's language. clone_from clones a voice with fal.ai: a file (audio or video) of one person speaking \
+                clearly; the lines are spoken in that voice (clone_start / clone_seconds choose 5–30 s of it). The files go into SrtFlow/Voiceovers in the user's folder. subtitles=true also writes the \
                 words as subtitles, timed to the voice (lines over existing subtitles are left out). Pass on the result's \
                 voice note to the user.
                 """,
@@ -47,7 +50,10 @@ enum MCPMediaTools {
                         "start": MCPSchema.number("Timeline seconds (default: right after the previous line; the first at the playhead).", minimum: 0)
                     ], required: ["text"]), "The lines of narration, in order (not needed with download_voices).", minItems: 1),
                     "voice": MCPSchema.string("A role or an installed voice's name."),
-                    "speed": MCPSchema.number("1 = normal (default).", minimum: 0.5, maximum: 2),
+                    "speed": MCPSchema.number("1 = normal (default). Not used by fal.ai's voice.", minimum: 0.5, maximum: 2),
+                    "clone_from": MCPSchema.string("A file of one person speaking; the lines are spoken in that voice (fal.ai only)."),
+                    "clone_start": MCPSchema.number("Seconds into clone_from where the sample starts (default 0).", minimum: 0),
+                    "clone_seconds": MCPSchema.number("Length of the sample (default 10).", minimum: 5, maximum: 30),
                     "track": MCPSchema.string(MCPSchema.trackDescription),
                     "subtitles": MCPSchema.boolean("Also add the words as subtitles, timed to the voice."),
                     "download_voices": MCPSchema.boolean("Only download SrtFlow's own voices (returns a job); lines are ignored.")

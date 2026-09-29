@@ -12,6 +12,21 @@ struct AIActivityBanner: View {
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
+        if let question = session.question {
+            // 要用户点头的问题不管这一轮是什么状态都摆出来：AI 在等结果时这一轮可能早已「结束」，条不能因此收起来。
+            bar(icon: "questionmark.circle", message: question.text) {
+                Button(question.declineTitle) { session.answer(false) }
+                Button(question.allowTitle) { session.answer(true) }
+                Button("Stop") { session.stop() }
+                    .instantHelp("Stop the AI and cancel its exports and subtitle jobs")
+            }
+        } else {
+            statusBar
+        }
+    }
+
+    @ViewBuilder
+    private var statusBar: some View {
         switch session.phase {
         case .idle:
             EmptyView()

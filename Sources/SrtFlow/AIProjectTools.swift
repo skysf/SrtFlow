@@ -49,6 +49,8 @@ enum AIProjectTools {
         } else {
             result["subtitle_generation"] = false
         }
+        // 配了 fal（generate_media 在清单里）：告诉 AI 今天还剩多少额度、每种事默认用哪个模型。
+        if let generation = FalGenerateTool.statusJSON() { result["generation"] = generation }
         return .ok(.object(result))
     }
 

@@ -14,6 +14,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 小程序可能正是为了一次调用才把 App 拉起来的，它在等着连。
     func applicationDidFinishLaunching(_ notification: Notification) {
         AIBridgeServer.shared.start()
+        // 「配了 fal」的小文件启动时对一遍（被删了、Key 是别的途径删的）：小程序据此决定列不列 generate_media（方案第 36 条）。
+        FalSettingsStore.shared.refreshKeyStatus()
     }
 
     func applicationWillTerminate(_ notification: Notification) {

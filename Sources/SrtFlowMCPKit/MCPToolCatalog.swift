@@ -30,6 +30,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case transcribe = "transcribe"
     case findAudio = "find_audio"
     case addVoiceover = "add_voiceover"
+    case generateMedia = "generate_media"
     case addClips = "add_clips"
     case editClip = "edit_clip"
     case setKeyframes = "set_keyframes"
@@ -71,6 +72,8 @@ public enum MCPToolName: String, CaseIterable, Sendable {
             return MCPSenseTools.definition(for: self)
         case .findAudio, .addVoiceover:
             return MCPMediaTools.definition(for: self)
+        case .generateMedia:
+            return MCPGenerationTools.definition(for: self)
         case .recipes, .saveRecipe:
             return MCPRecipeTools.definition(for: self)
         case .transcribe, .cutSpeech, .cutToBeat:
@@ -85,10 +88,26 @@ public enum MCPToolName: String, CaseIterable, Sendable {
         }
     }
 
-    /// `tools/list` 的 `tools` 数组。
-    public static var listJSON: JSONValue {
-        .array(allCases.map(\.definition.json))
+    /// 这个工具要哪个提供方配好了才列出来（nil = 一直列）。方案第 36 条：谁都没配就不列出来。
+    public var provider: MCPProvider? {
+        switch self {
+        case .generateMedia: return .fal
+        default: return nil
+        }
     }
+
+    /// 配了这些提供方时该列出来的工具，顺序不变。
+    public static func listed(providers: Set<MCPProvider>) -> [MCPToolName] {
+        allCases.filter { tool in tool.provider.map(providers.contains) ?? true }
+    }
+
+    /// `tools/list` 的 `tools` 数组（配了这些提供方时）。
+    public static func listJSON(providers: Set<MCPProvider>) -> JSONValue {
+        .array(listed(providers: providers).map(\.definition.json))
+    }
+
+    /// 全部工具（每个提供方都配好的样子）：自检和说明总长度的守卫看的是这一份，不是某个用户此刻看到的。
+    public static var listJSON: JSONValue { listJSON(providers: Set(MCPProvider.allCases)) }
 }
 
 /// 一个工具的说明书。
@@ -102,10 +121,12 @@ public struct MCPToolDefinition: Sendable {
     /// 会删掉东西（时间线上的、撤销掉的、进废纸篓的文件；删文件时 SrtFlow 自己还会走 needs_confirmation）。
     /// SrtFlow 从不覆盖文件（撞名加编号），所以只是「写新文件」的工具不算。
     public var destructive: Bool
+    /// 会连到外面的服务、花用户的钱（生成类：fal.ai）。其余工具都在这台 Mac 上做。
+    public var openWorld: Bool
 
     public init(
         _ name: MCPToolName, title: String, description: String,
-        input: JSONValue = MCPSchema.object([:]), readOnly: Bool = false, destructive: Bool = false
+        input: JSONValue = MCPSchema.object([:]), readOnly: Bool = false, destructive: Bool = false, openWorld: Bool = false
     ) {
         self.name = name
         self.title = title
@@ -113,6 +134,7 @@ public struct MCPToolDefinition: Sendable {
         self.inputSchema = input
         self.readOnly = readOnly
         self.destructive = destructive
+        self.openWorld = openWorld
     }
 
     public var json: JSONValue {
@@ -126,9 +148,9 @@ public struct MCPToolDefinition: Sendable {
                 "readOnlyHint": .bool(readOnly),
                 "destructiveHint": .bool(destructive),
                 "idempotentHint": .bool(readOnly),
-                // 全在这台 Mac 上做；唯一上网的是 SrtFlow 自己的音乐库（一份固定的清单，不是开放的网络）。
-                // fal.ai 那一块另说。
-                "openWorldHint": false
+                // 全在这台 Mac 上做；上网的只有 SrtFlow 自己的音乐库（一份固定的清单，不是开放的网络）
+                // 和生成类的工具（fal.ai：用户自己的账号、要花钱）。
+                "openWorldHint": .bool(openWorld)
             ]
         ]
     }

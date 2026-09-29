@@ -34,6 +34,19 @@ final class AISession: ObservableObject {
     @Published private(set) var changeCount = 0
     /// 要用户动手的那一句（比如「在弹出的窗口里点下载」）。有它的时候提示条先显示它。
     @Published private(set) var hint: String?
+    /// 要用户点头才做的事（花钱超了每日上限、没登记单价的模型）：提示条上问、两个按钮。**不弹模态框**（方案第 9、10 条）。
+    @Published private(set) var question: Question?
+
+    struct Question: Identifiable, Equatable {
+        let id = UUID()
+        let text: String
+        let allowTitle: String
+        let declineTitle: String
+        /// 是谁问的（任务号）：那个任务被取消时把问题一起收回。
+        let owner: String
+    }
+
+    private var pendingQuestions: [(question: Question, continuation: CheckedContinuation<Bool, Never>)] = []
 
     /// 看得见（默认）还是后台（方案第 7 条）：后台时 SrtFlow 不摆窗口、不跟着选中 / 挪播放头，改动照样进工程、照样能 ⌘Z。
     /// 这次运行里一直有效，App 重开回到看得见。
@@ -101,6 +114,36 @@ final class AISession: ObservableObject {
         if hint != text { hint = text }
     }
 
+    /// 在提示条上问用户一句、等他点「允许」（true）或「不要」（false）。同时有几个问题就一个个问。
+    /// 用户按停止、或者问的那个任务被取消（`withdrawQuestions`），都算「不要」。
+    func ask(_ text: String, allow: String, decline: String, owner: String) async -> Bool {
+        let question = Question(text: text, allowTitle: allow, declineTitle: decline, owner: owner)
+        return await withCheckedContinuation { continuation in
+            pendingQuestions.append((question, continuation))
+            if self.question == nil { self.question = question }
+        }
+    }
+
+    /// 用户按了提示条上的一个按钮。
+    func answer(_ allow: Bool) {
+        guard !pendingQuestions.isEmpty else { return }
+        resolveFirst(allow)
+    }
+
+    /// 这个任务问的问题都收回（算「不要」）：任务被取消了，问题就不该还挂在条上。
+    func withdrawQuestions(owner: String) {
+        let owned = pendingQuestions.filter { $0.question.owner == owner }
+        pendingQuestions.removeAll { $0.question.owner == owner }
+        for pending in owned { pending.continuation.resume(returning: false) }
+        question = pendingQuestions.first?.question
+    }
+
+    private func resolveFirst(_ allow: Bool) {
+        let first = pendingQuestions.removeFirst()
+        question = pendingQuestions.first?.question
+        first.continuation.resume(returning: allow)
+    }
+
     /// AI 开了 / 建了另一个工程：快照换成新工程此刻的样子，「撤销这一轮」只退这个工程上的改动。
     func rebase(project: VideoEditProject) {
         snapshot = project.state
@@ -115,6 +158,8 @@ final class AISession: ObservableObject {
         lastCallAt = Date()
         idleTask?.cancel()
         AIJobs.shared.cancelAll()
+        // 还在等用户点头的问题一并算「不要」。
+        while !pendingQuestions.isEmpty { resolveFirst(false) }
     }
 
     /// 把工程退回这一轮开始之前（一步，可以再 ⌘Z 回来）。
