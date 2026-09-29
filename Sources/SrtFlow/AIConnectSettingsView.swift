@@ -5,7 +5,7 @@ import SwiftUI
 // 管什么：三个客户端各一行（连没连 + 一个按钮：连上了是「断开」，没连上 / 每次都会问是「连接」，「连接」在这台机器上
 // 用不了时换成「复制一段话」—— 2026-09-28 用户：没连上的时候不该显示断开，精简下），外加给别的客户端的配置；
 // 用户同意过、AI 读起来不再问的地方（AIReadGrants），一条一行、可以删；用户自己的剪辑风格（AIRecipeSettingsList）；
-// SrtFlow 自己的配音声音下没下（KokoroVoiceSettingsRow）。
+// SrtFlow 自己的配音声音下没下（KokoroVoiceSettingsRow）；fal.ai 的 Key、每日上限、模型（FalSettingsRow）。
 // 不管什么：配置文件怎么改（AIClientSetup / AIClientConfigFiles）、什么时候问（AIWorkspace）。
 
 struct AIConnectSection: View {
@@ -39,6 +39,7 @@ struct AIConnectSection: View {
                 AIReadGrantsList()
                 AIRecipesList()
                 KokoroVoiceSettingsRow()
+                FalSettingsRow()
             }
             if let message = setup.message {
                 Text(verbatim: message)

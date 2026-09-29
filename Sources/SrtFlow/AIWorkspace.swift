@@ -99,13 +99,14 @@ final class AIWorkspace {
     )
 
     enum Output {
-        case exports, projects, voiceovers
+        case exports, projects, voiceovers, generated
 
         var folderName: String {
             switch self {
             case .exports: return L10n("Exports")
             case .projects: return L10n("Projects")
             case .voiceovers: return L10n("Voiceovers")
+            case .generated: return L10n("Generated")
             }
         }
     }

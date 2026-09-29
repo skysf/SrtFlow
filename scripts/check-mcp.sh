@@ -39,6 +39,10 @@
 #  25. 盖一块（模糊 / 马赛克）的 AI 这一侧：set_shape 认 blur / mosaic（默认大小、strength 夹紧、不画东西所以没有颜色 / 线宽 / 实心、写回给 AI 的样子），
 #      工具目录的种类词表和 ShapeKind 对账；look text_scan 对时间线上的一段把源画面的框换成画布的框（裁切 / 翻转 / 摆放 / 旋转）、给出 set_shape 能抄的参数。
 #  24. 扫画面里的字（look text_scan）：字幕带、固定的字、满屏的字各认得出来；铺满时没人、字多就对准字，focus=text，字比窗宽说多少。
+#  25. 生成类工具的提供方（方案第 36 条）：generate_media 只在配了 fal 时列出来（真起小程序：没配 / 配了各列什么、总说明配了才提 fal、
+#      握手声明清单会变、新一代清单缓存一分钟；用户中途添加 / 删掉 Key 时老一代客户端收 list_changed、新一代不收）、那个小文件读得宽且不带机密、
+#      说明和参数和词表 / App 的类型对账、全清单说明总长 ≤ 72,000 字符；add_voiceover 的 fal 那一档：挑音色的优先级、角色表对账、
+#      fal 报的词时间换成字幕认的词、克隆参考音频的 WAV（真去调 fal 在 scripts/check-fal.sh）。
 #  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
 #      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
 #
@@ -268,14 +272,14 @@ echo "   ✓ 只有删文件和读别处的文件会问；读过的文件夹记�
 echo "==> 配音只经一处写文件（先过一道音量）"
 # Kokoro 的 am_fenrir 峰值会超过满幅，没过音量就写进文件，一声声爆音（docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md）。
 # 两种声音都只许经 AIAudioFileWriter.writeVoiceover 落盘、词的时间按它返回的那份算；写的那一步在自检二进制里真写真读。
-for engine in Sources/SrtFlow/KokoroVoiceSpeech.swift Sources/SrtFlow/AISpeechSynthesis.swift; do
+for engine in Sources/SrtFlow/KokoroVoiceSpeech.swift Sources/SrtFlow/AISpeechSynthesis.swift Sources/SrtFlow/AIFalVoice.swift; do
   if [ "$(grep -c 'let samples = try AIAudioFileWriter.writeVoiceover(' "${engine}" || true)" -ne 1 ] \
      || [ "$(grep -c 'AVAudioFile(forWriting' "${engine}" || true)" -ne 0 ]; then
     echo "✗ ${engine} 没经 AIAudioFileWriter.writeVoiceover 写配音（或自己开了文件写）：没过音量的声音会削波" >&2
     exit 1
   fi
 done
-echo "   ✓ Kokoro 和 macOS 的声音都经 writeVoiceover 写文件"
+echo "   ✓ Kokoro、macOS 和 fal 的声音都经 writeVoiceover 写文件"
 
 echo "==> 认不出语言时，AI 拿到的是它能照做的话"
 # 自动检测没认出语言，界面那句「去面板里选」AI 做不到（docs/bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md）。
@@ -353,6 +357,9 @@ xcrun swiftc \
   Sources/SrtFlow/AIRecipeTools.swift \
   Sources/SrtFlow/AIVoiceChoice.swift \
   Sources/SrtFlow/AIVoiceRole.swift \
+  Sources/SrtFlow/AIFalVoices.swift \
+  Sources/SrtFlow/Fal/FalOutputs.swift \
+  Sources/SrtFlow/Fal/FalModels.swift \
   Sources/SrtFlow/KokoroVoicePieces.swift \
   Sources/SrtFlow/KokoroVoicePadding.swift \
   Sources/SrtFlow/KokoroVoiceAssembly.swift \
@@ -451,6 +458,8 @@ xcrun swiftc \
   checks/MCP/BeatChecks.swift \
   checks/MCP/SpeechCutChecks.swift \
   checks/MCP/BeatCutChecks.swift \
+  checks/MCP/ProviderChecks.swift \
+  checks/MCP/FalVoiceChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o \
   "$BUILD_DIR"/SrtFlowKokoro.build/*.o

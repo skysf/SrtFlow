@@ -9,9 +9,11 @@ import SrtFlowMCPKit
 // 分两步（同 edit_clip）：`plan` 可以 await（合成、读文件），`apply` 同步提交、路由包在 `AIUndoGrouping.step` 里 ——
 // 放素材和加字幕在同一次 perform 里，一个工具 = 一步撤销。
 // 放上时间线走 add_clips 那一套（`AITimelineEdits.place`：撞上往上抬一轨；这一批都放进第一句新开的那条轨）。
-// 声音分两档（第 42、48 条）：下载了 SrtFlow 自己的声音（本机的 Kokoro）就用它，没下载 / 它读不了的语言用这台 Mac 的；
-// `download_voices=true` 开始下载、回任务号（第 50 条：AI 也能直接下，下的时候告诉用户）。fal 配音以后从这里再分出去。
-// 不管什么：挑声音（AIVoiceChoice）、怎么合成（KokoroVoiceSpeech / AISpeechSynthesis）、下载（KokoroVoicePack）。
+// 声音分三档（第 42、48 条）：用户接了 fal 就用 fal 的声音（`AIFalVoice`：有 Key、没超每日上限、Key 读得出来；不行就退到下一档并在结果里说为什么），
+// 其次下载了 SrtFlow 自己的声音（本机的 Kokoro），没下载 / 它读不了的语言用这台 Mac 的；
+// `download_voices=true` 开始下载、回任务号（第 50 条：AI 也能直接下，下的时候告诉用户）。
+// `clone_from`（第 52 条）：用一段素材里的声音当参考、让 fal 的克隆模型读 —— 只有 fal 能克隆，用不了就报错、不退档。
+// 不管什么：挑声音（AIVoiceChoice）、怎么合成（AIFalVoice / KokoroVoiceSpeech / AISpeechSynthesis）、下载（KokoroVoicePack）。
 
 @MainActor
 enum AIVoiceoverTool {
@@ -61,13 +63,50 @@ enum AIVoiceoverTool {
         ])
     }
 
+    /// 克隆用的素材在点名的文件夹以外：要发给 fal.ai，先问用户一次（同读别处的文件）。要问就回 needs_confirmation。
+    static func confirmations(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult? {
+        guard let clone = try cloneSource(args) else { return nil }
+        return try AIWorkspace.shared.confirmReading([clone.url], verb: "send to fal.ai", args: args, project: project)
+    }
+
+    private static func cloneSource(_ args: AIToolArguments) throws -> (url: URL, start: Double, seconds: Double)? {
+        guard let path = try args.string("clone_from"), !path.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        let url = AIWorkspace.shared.resolve(path)
+        guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("There is no file at \(path).") }
+        return (url, max(0, try args.double("clone_start") ?? 0), min(max(try args.double("clone_seconds") ?? 10, 5), 30))
+    }
+
     static func plan(_ args: AIToolArguments, _ project: VideoEditProject) async throws -> Plan {
         let lines = try parseLines(args)
         let speed = min(max(try args.double("speed") ?? 1, 0.5), 2)
         let language = AITextLanguage.dominant(in: lines.map(\.text)).map(AIVoiceChoice.baseLanguage) ?? "en"
         let kokoroVoices = KokoroVoicePack.shared.isInstalled ? KokoroVoiceSpeech.voiceNames(in: KokoroVoicePack.directory) : nil
-        let choice = try AIVoiceChoice.choose(try args.string("voice"), textLanguage: language,
-                                              kokoroVoices: kokoroVoices, installed: AISpeechSynthesis.installedVoices())
+        let characters = lines.reduce(0) { $0 + $1.text.count }
+        // fal 那一档：克隆只有 fal 能做（用不了就报错）；普通配音用不了就退到下一档，原因写进 voice.note。
+        var offer: AIFalVoice.Offer?
+        var reference: String?
+        var falNote: String?
+        var choice: AIVoiceChoice
+        if let clone = try cloneSource(args) {
+            let result = await AIFalVoice.offer(kind: .voiceClone, characters: characters)
+            guard let made = result.offer else {
+                throw AIToolError(result.note ?? "Cloning a voice needs a fal.ai key: ask the user to add one in SrtFlow → Settings → AI.")
+            }
+            offer = made
+            reference = try await AIFalVoice.referenceSample(from: clone.url, start: clone.start, seconds: clone.seconds)
+            choice = AIVoiceChoice(engine: .fal(voice: "cloned voice"), note: "The voice is cloned from \(clone.url.lastPathComponent).")
+        } else {
+            let result = await AIFalVoice.offer(kind: .voice, characters: characters)
+            offer = result.offer
+            falNote = result.note
+            choice = try AIVoiceChoice.choose(try args.string("voice"), textLanguage: language, kokoroVoices: kokoroVoices,
+                                              installed: AISpeechSynthesis.installedVoices(), falAvailable: offer != nil)
+        }
+        if case .fal = choice.engine, args.has("speed"), speed != 1 {
+            falNote = [falNote, "The fal.ai voice speaks at its own pace; speed was ignored (SrtFlow's or a Mac voice can change it)."]
+                .compactMap { $0 }.joined(separator: " ")
+        }
+        if let falNote { choice.note = [choice.note, falNote].compactMap { $0 }.joined(separator: " ") }
         let target = try args.string("track").map { try AITrackName.target($0, in: project.state) } ?? .newAudioBottom
         switch target {
         case .audio, .newAudioBottom: break
@@ -84,6 +123,12 @@ enum AIVoiceoverTool {
             }
             let output: AISpeechSynthesis.Output
             switch choice.engine {
+            case .fal(let voice):
+                guard let offer else { throw AIToolError("The fal.ai voice is not available.") }
+                output = try await AIFalVoice.speak(
+                    line.text, voice: voice, language: language, wantsWords: try args.bool("subtitles") ?? false,
+                    reference: reference, offer: offer, to: url
+                )
             case .kokoro(let voice, let voiceLanguage):
                 output = try await KokoroVoiceSpeech.shared.speak(line.text, language: voiceLanguage, voice: voice, speed: speed, to: url)
             case .system:
@@ -174,6 +219,12 @@ enum AIVoiceoverTool {
                 summary["skipped"] = .string("\(subtitles.skipped) lines overlap subtitles that were already there and were not added.")
             }
             if let refusal = subtitles.refusal { summary["note"] = .string(refusal) }
+            // fal 没报词时间（或报的读不出来）：那几句就没有字幕，别让 AI 以为加上了。
+            if case .fal = plan.choice.engine, plan.spoken.contains(where: { $0.output.words.isEmpty }) {
+                let note = "fal.ai did not say when each word is spoken for some lines, so those lines have no subtitles. "
+                    + "Run generate_subtitles on the voiceover clips, or use SrtFlow's own voice."
+                summary["note"] = .string([summary["note"]?.stringValue, note].compactMap { $0 }.joined(separator: " "))
+            }
             result["subtitles"] = .object(summary)
         }
         let first = plan.spoken.compactMap { state.clip(with: $0.clip.id)?.timelineStart }.min()

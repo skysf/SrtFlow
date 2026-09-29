@@ -7,15 +7,18 @@ import SrtFlowMCPKit
 // 没开就用 `open -g` 把它拉起来（不抢前台）、等它开始听、把请求交过去、把回答拿回来。
 // 不管什么：MCP 协议（MCPServerCore）、工具怎么做（App）。
 //
-// 测试用的三个环境变量（不设就完全不生效）：
+// 测试用的四个环境变量（不设就完全不生效）：
 // - SRTFLOW_MCP_SOCKET：直接连这个 socket（自检里的假 App）；
 // - SRTFLOW_MCP_NO_LAUNCH：连不上就报错，不去拉起 App；
-// - SRTFLOW_MCP_APP：App 的路径（小程序不在 .app 里、从 .build 直接跑的时候）。
+// - SRTFLOW_MCP_APP：App 的路径（小程序不在 .app 里、从 .build 直接跑的时候）；
+// - SRTFLOW_MCP_PROVIDERS：「配了哪些生成提供方」那个小文件的路径（自检里造一个临时的）。
 
 struct AppConnection {
     let appURL: URL?
     let bundleIdentifier: String
     let socketPath: String
+    /// 配好了哪些生成提供方（App 在 fal 的 Key 添加 / 删除时写的小文件，MCPProviderMarker）。
+    let providersURL: URL
     let appVersion: String
     let mayLaunch: Bool
 
@@ -29,6 +32,8 @@ struct AppConnection {
             appURL: appURL,
             bundleIdentifier: bundleID,
             socketPath: environment["SRTFLOW_MCP_SOCKET"] ?? MCPBridge.socketPath(bundleIdentifier: bundleID),
+            providersURL: environment["SRTFLOW_MCP_PROVIDERS"].map { URL(fileURLWithPath: $0) }
+                ?? MCPProviderMarker.url(bundleIdentifier: bundleID),
             appVersion: version,
             mayLaunch: environment["SRTFLOW_MCP_NO_LAUNCH"] == nil
         )

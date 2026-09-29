@@ -7,6 +7,19 @@ import Foundation
 // 这些规矩背后的产品决定见 docs/plans/2026-09-27-mcp.md。
 
 public enum MCPInstructions {
+    /// 配好了 fal 才有的一段（没配就不提它：客户端清单里也没有 generate_media）。
+    static let falParagraph = """
+
+    The user has a fal.ai account connected, so generate_media can make new images, video clips, music and sound \
+    effects (it costs the user money: they set a daily limit; tell them the estimated cost before several expensive \
+    calls). Narration through add_voiceover then uses fal.ai's voices first. Do not use it for footage the user \
+    already has.
+    """
+
+    public static func text(providers: Set<MCPProvider>) -> String {
+        providers.contains(.fal) ? text + falParagraph : text
+    }
+
     public static let text = """
     SrtFlow is a video editor running on the user's Mac. These tools edit the project that is open in \
     SrtFlow's window, and the user watches each step happen there (the edited clip is selected and the \

@@ -119,6 +119,7 @@ run_check "inspector-fits-width（扫描守卫：检查器里的 Picker 不许�
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
 run_check "encode-settings-memory（扫描守卫：压缩 / 烧录记住的设置在队列创建时读回来）" checks/encode-settings-memory.sh
 run_check "project-file-wiring（扫描守卫：工程存盘 / 选择 / 隐藏 / 导出这批合同的生产接线）" checks/project-file-wiring.sh
+run_check "fal-wiring（扫描守卫：fal 生成的接线 —— 先问后花、不弹模态框、Key 只经一处读、清单跟着 Key 走）" checks/fal-wiring.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
@@ -136,6 +137,7 @@ run_check "translation-preflight（翻译配对预检）" scripts/check-translat
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
 run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认）" scripts/check-timeline-zoom.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
+run_check "fal（fal.ai 生成：模型表与估价、花钱把关、请求体对着接口定义快照验、假 URLSession 走全流程）" scripts/check-fal.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh
 

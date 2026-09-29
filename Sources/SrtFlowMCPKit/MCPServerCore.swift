@@ -39,14 +39,29 @@ public final class MCPServerCore: @unchecked Sendable {
     public static var supportedVersions: [String] { modernVersions + legacyVersions }
 
     public static let serverName = "srtflow"
+    /// 工具清单让客户端缓存多久：短，因为它随「配没配 fal」变。
+    public static let toolListTTLms = 60_000
 
     private let serverVersion: String
+    /// 此刻配好了哪些提供方（每次回清单 / 握手时问一遍：用户中途添加或删掉 Key，下一次就跟着变）。
+    private let providers: @Sendable () -> Set<MCPProvider>
     private let lock = NSLock()
     /// 老一代客户端在 `initialize` 里报的名字（新一代每个请求自己带）。
     private var legacyClientName: String?
+    private var legacyInitialized = false
 
-    public init(serverVersion: String) {
+    public init(serverVersion: String, providers: @escaping @Sendable () -> Set<MCPProvider> = { [] }) {
         self.serverVersion = serverVersion
+        self.providers = providers
+    }
+
+    /// 老一代客户端握过手之后，清单变了要主动通知它（新一代客户端没有会话，靠清单上的缓存时间）。
+    public static let toolListChangedNotification: JSONValue = ["jsonrpc": "2.0", "method": "notifications/tools/list_changed"]
+
+    public var hasLegacySession: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return legacyClientName != nil || legacyInitialized
     }
 
     private var serverInfo: JSONValue {
@@ -83,8 +98,11 @@ public final class MCPServerCore: @unchecked Sendable {
         case "server/discover":
             return .reply(Self.success(id: id, result: decorate(discover, modern: true, cacheable: true)))
         case "tools/list":
+            // 清单会随「配没配 fal」变：缓存时间短一点，别让用户添了 Key 一小时之后才看到新工具。
             return .reply(Self.success(
-                id: id, result: decorate(["tools": MCPToolName.listJSON], modern: modern, cacheable: true)
+                id: id,
+                result: decorate(["tools": MCPToolName.listJSON(providers: providers())], modern: modern, cacheable: true,
+                                 ttlMs: Self.toolListTTLms)
             ))
         case "resources/list":
             return .reply(Self.success(id: id, result: decorate(["resources": []], modern: modern, cacheable: true)))
@@ -112,12 +130,14 @@ public final class MCPServerCore: @unchecked Sendable {
         let negotiated = Self.legacyVersions.contains(requested) ? requested : Self.legacyVersions[0]
         lock.lock()
         legacyClientName = params["clientInfo"]?["name"]?.stringValue
+        legacyInitialized = true
         lock.unlock()
         return Self.success(id: id, result: [
             "protocolVersion": .string(negotiated),
-            "capabilities": ["tools": ["listChanged": false]],
+            // 配好的提供方变了，清单跟着变：会通知（小程序盯着那个小文件，`toolListChangedNotification`）。
+            "capabilities": ["tools": ["listChanged": true]],
             "serverInfo": serverInfo,
-            "instructions": .string(MCPInstructions.text)
+            "instructions": .string(MCPInstructions.text(providers: providers()))
         ])
     }
 
@@ -125,7 +145,7 @@ public final class MCPServerCore: @unchecked Sendable {
         [
             "supportedVersions": .array(Self.supportedVersions.map { .string($0) }),
             "capabilities": ["tools": [:]],
-            "instructions": .string(MCPInstructions.text)
+            "instructions": .string(MCPInstructions.text(providers: providers()))
         ]
     }
 
@@ -150,15 +170,15 @@ public final class MCPServerCore: @unchecked Sendable {
 
     /// 新一代的结果要带 `resultType`、`_meta` 里的服务信息；清单类结果还要带缓存提示。
     /// 老一代客户端不认这些字段也不碍事，但照规范只给新一代加。
-    private func decorate(_ result: JSONValue, modern: Bool, cacheable: Bool) -> JSONValue {
+    private func decorate(_ result: JSONValue, modern: Bool, cacheable: Bool, ttlMs: Int = 3_600_000) -> JSONValue {
         guard modern, case .object(var object) = result else { return result }
         object["resultType"] = "complete"
         var meta = object["_meta"]?.objectValue ?? [:]
         meta["io.modelcontextprotocol/serverInfo"] = serverInfo
         object["_meta"] = .object(meta)
         if cacheable {
-            // 清单跟着 App 的版本走，一个小时内不会变；是这个用户自己的东西，不给共享缓存。
-            object["ttlMs"] = 3_600_000
+            // 清单跟着 App 的版本走，是这个用户自己的东西，不给共享缓存；缓存多久由调用方定（工具清单短，握手信息长）。
+            object["ttlMs"] = .number(Double(ttlMs))
             object["cacheScope"] = "private"
         }
         return .object(object)

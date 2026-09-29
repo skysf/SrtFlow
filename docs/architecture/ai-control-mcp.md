@@ -481,6 +481,18 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      会跳角的每处一块；顶层再有一句 `cover_hint`。看的是文件（没有片段）时没有 `cover`（没有画布可换）。
    - **盖完靠 `look`（时间线）核对**：`AIFrameComposer` 合成时把盖一块盖上（`CoverCompositing`，和预览同一份 `CoverFilters`），AI 看得到自己盖没盖住。
    - 已知不足：位置不跟着片段走（片段挪 / 缩放之后要重盖）；只按此刻的摆放换算、不看关键帧动画。
+39. **生成素材（`generate_media`，fal.ai，方案第 6 块、第 57 条）**：合同全在 [fal.ai 生成](fal-generation.md)，这里只记它怎么接进 MCP 这一层：
+   - **只在用户配了 fal 的 Key 时才出现在清单里**（方案第 36 条）：`MCPToolName.provider`；App 在 Key 添加 / 删除时和每次启动时写一个只有提供方名字的
+     `mcp-providers.json`（和 socket 同目录），小程序每回一次清单 / 握手都重读它；握过手的老一代客户端收 `notifications/tools/list_changed`，
+     新一代靠清单一分钟的缓存时间。没配时总说明里也不提它。全清单的说明总长度量的是每个提供方都配好时的样子。
+   - **生成是任务**：立刻回任务号（带估价、今天已花、每日上限），`get_job` 等；不改工程、不进撤销分组，放上时间线是 `add_clips`。
+   - **花钱超了额度、或价格不明，先在提示条上问用户**（`AISession.ask`：允许 / 先不要，不弹模态框、不管这一轮什么状态都摆出来），任务带 `waiting_for_user`；
+     用户按停止 / AI `cancel_job` 都把问题收回。同步的工具（配旁白）不能停下来问，额度不够就退档。
+   - 图生视频的首帧图、克隆的素材会发给 fal.ai：点名文件夹以外的先问一次（同读别处的文件，`confirmReading` 的动词是「send to fal.ai」）。
+40. **配旁白的 fal 那一档（`add_voiceover`，方案第 42、52 条）**：声音三档 fal > SrtFlow 自己的（Kokoro，第 35 条）> macOS（第 34 条）。fal 那一档只在
+    有 Key、没超每日上限、Key 读得出来时用，不行就退档并在 `voice.note` 里说为什么；点名 Kokoro 的音色或这台 Mac 的声音仍照点名。fal 的声音也**只经
+    `AIAudioFileWriter.writeVoiceover` 落盘**（第 34 条那条扫描加了它）。`clone_from` / `clone_start` / `clone_seconds`：用素材里一段人声克隆，只有 fal 能做、
+    用不了就报错不退档。词时间读不出来就没有（结果里说，改用 `generate_subtitles`）。
 
 ## 五、这一轮、停止、撤销这一轮
 
@@ -561,6 +573,11 @@ AI 下载、读不了的语言用 Mac 的，切段（句末、逗号、正中间
 `checks/timeline-drag-wiring.sh` 的「落点单一」一节把 AI 放素材单独数：拖文件进来那套仍是恰好两处
 （画框、落地），`AITimelineEdits.swift` 里恰好一处 —— 一处都没有就是 AI 另算了一份落点
 （2026-09-27 反向验证：拿掉那一处调用，守卫当场红）。
+
+**fal.ai 生成（第 6 块）**：`scripts/check-fal.sh`（`check-all` 第 2 组，不碰网络）、`scripts/check-mcp.sh` 里的 `ProviderChecks` /
+`FalVoiceChecks`（清单按 Key 列不列、老一代收 list_changed 新一代不收、小文件读写、挑音色、词时间、WAV）、`checks/fal-wiring.sh`（先问后花、不弹模态框、
+Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`（本机手动）、`scripts/fal-models/refresh.sh`（联网手动）。细节见
+[fal.ai 生成](fal-generation.md) 第十一节。
 
 ## 八、人工回归清单（发版前在真机上走一遍）
 
@@ -647,12 +664,14 @@ AI 下载、读不了的语言用 Mac 的，切段（句末、逗号、正中间
       也不会变得几乎听不见**（2026-09-29 第一版修法之后就是这样）；同一批里再换 zh_female_warm、en_male_british 各配一句，几句听起来一样响。
       再配几句只有一两个字的（「Go!」「好。」「我们开始吧。」），听着是正常的字、没有杂音。
 
+- [ ] fal.ai 生成、fal 的声音、克隆：整套人工回归清单在 [fal.ai 生成](fal-generation.md) 第十一节（要真 Key）。
+
 ## 九、已知不足（第一期）
 
 - 「一轮」按 30 秒没动静划分：AI 想得久会被切成两轮。
 - 「撤销这一轮」换回的是整条时间线：这一轮里用户自己动过的也会一起退回。
 - 压缩 / 烧录的进度只有侧边栏上那个角标；AI 起的任务不会把主窗口切到那一页。
-- 音效库还没做（App 里只有音乐），AI 找不到音效。
+- 音效库还没做（App 里只有音乐）；接了 fal 的用户可以让 AI 生成音效（`generate_media` 的 `sound_effect`），没接的 AI 找不到音效。
 - 转写要 macOS 26（SpeechAnalyzer）；macOS 15 上 transcribe 报「需要 macOS 26」，cut_speech 只能删停顿和按时间剪。
 - 鼓点对很平、没有鼓的音乐不可靠（照实说「拍子不清楚」）；小节头是猜的（四种相位里起音最强的那个）。
 - Claude 桌面版的「总是允许」只能用户自己在它的界面里设，Claude 更新之后可能被重置（官方已知问题）。

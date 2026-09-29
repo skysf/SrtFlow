@@ -990,6 +990,44 @@
 "Use Burn In style" = "用烧录页的样式";
 "Use the subtitle style from the Burn In Subtitles page again" = "重新用「烧录字幕」页设的字幕样式";
 
+// fal.ai（设置里的一节、横幅上问用户花钱、配旁白）
+"Generated" = "生成";
+"Allow" = "允许";
+"Not Now" = "先不要";
+"fal.ai · %@ — SrtFlow does not know this model's price, so it asks each time. Allow?" = "fal.ai · %@ —— SrtFlow 不知道这个模型的价格，所以每次都先问。允许吗？";
+"fal.ai · %@ — estimated cost %@. Today's spending would reach %@, over your %@ daily limit. Allow?" = "fal.ai · %@ —— 预计花费 %@。今天累计将达到 %@，超过你设的每日上限 %@。允许吗？";
+"macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow." = "macOS 马上会问是否允许 SrtFlow 使用你的 fal.ai 密钥，请点「始终允许」。";
+"That is not a fal.ai endpoint id. It looks like owner/model-name." = "这不是 fal.ai 的端点号，应该长得像 owner/model-name。";
+"The price must be a number." = "价格必须是一个数字。";
+"That does not look like a fal.ai API key. Copy the whole key from fal.ai/dashboard/keys." = "这看起来不是 fal.ai 的 API 密钥。请从 fal.ai/dashboard/keys 复制完整的密钥。";
+"Lets AI apps make images, video clips, music and sound effects, and speak narration with fal.ai's voices, using your own fal.ai account. It costs money on that account: SrtFlow stays within the daily limit below and asks you before going over it." = "让 Claude、Codex 这类 AI 用你自己的 fal.ai 账号生成图片、视频、音乐和音效，并用 fal.ai 的声音配旁白。这会花你账号里的钱：SrtFlow 会守住下面的每日上限，超过之前先问你。";
+"fal.ai models" = "fal.ai 模型";
+"Key saved in the keychain" = "密钥已存入钥匙串";
+"Remove Key" = "删除密钥";
+"Remove the fal.ai key from the macOS keychain; AI apps then lose the fal.ai tools" = "把 fal.ai 密钥从 macOS 钥匙串里删掉；AI 应用随之用不了 fal.ai 的工具";
+"fal.ai API key" = "fal.ai API 密钥";
+"Save Key" = "保存密钥";
+"Store the key in the macOS keychain (fal.ai/dashboard/keys)" = "把密钥存进 macOS 钥匙串（fal.ai/dashboard/keys）";
+"Daily limit" = "每日上限";
+"Spent today %@" = "今天已花 %@";
+"SrtFlow asks before AI spends more than this in one day (an estimate from each model's price, not fal.ai's bill)" = "AI 一天花的钱超过这个数之前，SrtFlow 会先问你（按每个模型登记的单价估算，不是 fal.ai 的账单）";
+"Go back to the model SrtFlow picked for this" = "改回 SrtFlow 为这一项挑的模型";
+"owner/model-name" = "owner/model-name";
+"price" = "价格";
+"Image" = "图片";
+"Video from a picture" = "图生视频";
+"Video from text" = "文生视频";
+"Narration voice" = "旁白声音";
+"Voice cloning" = "克隆声音";
+"Music" = "音乐";
+"Sound effects" = "音效";
+"USD per image" = "美元 / 张";
+"USD per second of video at 768p (the built-in model has its own prices for 480p and 1080p)" = "美元 / 秒视频（768p 的价；内置模型 480p 和 1080p 各有自己的价）";
+"USD per second of video" = "美元 / 秒视频";
+"USD per 1000 characters" = "美元 / 千字符";
+"USD per second of sound" = "美元 / 秒声音";
+"USD per minute of sound (a started minute counts as a whole one)" = "美元 / 分钟声音（不满一分钟按一分钟算）";
+
 /* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
 "Mosaic" = "马赛克";
 "Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "把它下面的画面模糊或打上马赛克，文字、形状和字幕不受影响。在预览里拖它的框来摆位置。";

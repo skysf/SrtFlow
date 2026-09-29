@@ -12,7 +12,9 @@ import SrtFlowMCPKit
 signal(SIGPIPE, SIG_IGN)
 
 let connection = AppConnection.locate()
-let core = MCPServerCore(serverVersion: connection.appVersion)
+let providersURL = connection.providersURL
+// 清单每回一次都重读那个小文件：用户中途添加 / 删掉 fal 的 Key，下一次就跟着变（方案第 36 条：没配就不列出来）。
+let core = MCPServerCore(serverVersion: connection.appVersion, providers: { MCPProviderMarker.read(at: providersURL) })
 let outputLock = NSLock()
 let inFlight = DispatchGroup()
 let callQueue = DispatchQueue(label: "srtflow-mcp.calls", attributes: .concurrent)
@@ -24,6 +26,19 @@ func send(_ message: JSONValue) {
     outputLock.lock()
     FileHandle.standardOutput.write(data)
     outputLock.unlock()
+}
+
+/// 配好的提供方变了：握过手的（老一代）客户端主动告诉它清单变了，它会重新要一遍；
+/// 新一代客户端没有会话，靠清单上的缓存时间（`MCPServerCore.toolListTTLms`）。
+Thread.detachNewThread {
+    var last = MCPProviderMarker.read(at: providersURL)
+    while true {
+        Thread.sleep(forTimeInterval: 2)
+        let now = MCPProviderMarker.read(at: providersURL)
+        guard now != last else { continue }
+        last = now
+        if core.hasLegacySession { send(MCPServerCore.toolListChangedNotification) }
+    }
 }
 
 /// 处理一条消息；工具调用放到后台去问 App，别的当场回。返回当场能给的回答（批量请求要攒起来）。
