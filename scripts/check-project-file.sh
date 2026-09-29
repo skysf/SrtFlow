@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
@@ -67,6 +68,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
@@ -96,6 +98,8 @@ xcrun swiftc \
   checks/ProjectFile/HiddenItems.swift \
   checks/ProjectFile/SubtitleTracks.swift \
   checks/ProjectFile/SubtitleSources.swift \
+  checks/ProjectFile/FilledShapes.swift \
+  checks/ProjectFile/SubtitleLook.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
@@ -250,7 +254,7 @@ require "ffmpeg 导出要滤掉隐藏的段" \
 forbid "ffmpeg 导出不许按轨去 lane.clips 里取段（走 overlayVisible 那一份清单）" \
   Sources/SrtFlow/VideoEditExportGraph.swift '^[^/]*in lane\.clips'
 require "「只导出选中的」也要滤掉隐藏的段" \
-  Sources/SrtFlow/VideoEditModels.swift 'ClipVisibility\.visible\(allClips'
+  Sources/SrtFlow/VideoEditExportSelection.swift 'ClipVisibility\.visible\(state\.allClips'
 require "V 键切的是选中的那几段" \
   Sources/SrtFlow/VideoEditView.swift 'toggleHiddenForSelection\(\)'
 # 回到开头（Return / 小键盘 Enter / Home，2026-09-26）：按键在编辑器的监听里接、只认主窗口，
@@ -337,41 +341,42 @@ forbid "导出面板不许再自己选烧哪条轨" \
 require "时间线要给译文轨一只自己的眼睛" \
   Sources/SrtFlow/VideoEditTimelineHeaderColumn.swift 'toggleTranslationHidden\(\)'
 
-# 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。
+# 自动检测：metadata 只许消费冻结的可听快照，探针也从同一份里挑。（2026-09-27 起这段代码在 TranscriptHarvester：
+# 生成字幕和 AI 的 transcribe 共用；守卫跟着代码走，留在老文件上的 forbid 会悄悄变成永远通过。）
 require "detectSourceLocale 必须走 selectProbe（真抽一次才算定下探针）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleAudibleClips\.selectProbe\('
 require "生产抽取器必须真接上 AudioWindowReader" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'AudioWindowReader\.extract\('
 # selectProbe 自己也要拿到任务的取消通道 —— 只靠抽取器内部那道，
 # 无音轨素材在检查之前就抛 ReadError，取消会被跳过逻辑吞成「素材都读不了」。
 if ! grep -A2 'SubtitleAudibleClips\.selectProbe(' \
-      Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+      Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
       | grep -c 'isCancelled: { token.isCancelled }' >/dev/null; then
   echo "✗ 接线守卫：selectProbe 必须收到 token 的取消通道" >&2
   WIRING_FAIL=1
 fi
 require "metadata 顺序必须以选定的探针为首" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleAudibleClips\.metadataOrder\(in: clips, probe:'
 require "metadata 查询必须吃 [SoundClip] 快照" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'metadataLanguageTag\(in clips: \[SoundClip\]\)'
 forbid "metadata 不许再从 TimelineState 自己枚举素材" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'state\.mainClips \+ state\.audioTracks'
 forbid "Auto-detect 不许留「单候选直接采用」的无证据捷径" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'candidates\.count == 1'
 require "候选去重必须走按语言的 selectCandidates" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'SubtitleLanguageDetection\.selectCandidates\('
 forbid "候选不许再按 locale 标识符自己去重截断（同语言变体会吃光名额）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'candidates\.count < 3'
 require "已装语言那一档必须排序（系统返回顺序实测会变）" \
-  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift \
+  Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'installed\.map\(\\\.identifier\)\.sorted\(\)'
 
 # 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
@@ -438,6 +443,18 @@ require "导出路由必须问 needsPerFrameRender（上层轨）" \
 require "预渲染必须接收仲裁过的渐变窗口" \
   Sources/SrtFlow/VideoEditPrerender.swift \
   'private static func normalized\(_ clip: EditClip, fades: FadeWindow\)'
+
+# 换了整份时间线就要重排预览：打开工程、补静帧 / 重链接都这么做。新建工程漏了这一步，上一个工程还在路上的那次重建
+# 落地时会把旧工程的画面挂进新工程（docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md）。
+NEW_PROJECT="$(awk '/func newProject\(\) \{$/ { inside = 1; next } inside && /^    \}$/ { exit } inside { print }' \
+  Sources/SrtFlow/VideoEditProjectDocument.swift)"
+if [ -z "$NEW_PROJECT" ]; then
+  echo "✗ 接线守卫：VideoEditProjectDocument.swift 里找不到 func newProject() {（改了名就把这条守卫跟过去）" >&2
+  WIRING_FAIL=1
+elif ! grep -c 'scheduleRebuild()' <<<"$NEW_PROJECT" >/dev/null; then
+  echo "✗ 接线守卫：新建工程必须重排预览（newProject 里没有 scheduleRebuild()）：上一个工程在路上的重建会落进新工程" >&2
+  WIRING_FAIL=1
+fi
 
 if [ "$WIRING_FAIL" -ne 0 ]; then
   echo "接线守卫失败" >&2

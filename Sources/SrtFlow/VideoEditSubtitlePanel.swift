@@ -170,6 +170,8 @@ struct VideoEditSubtitlePanel: View {
                     .buttonStyle(.borderless)
                     .instantHelp("Scroll to the line being spoken during playback")
                 }
+                // 逐词高亮、工程自己的样式（VideoEditSubtitleLookRow.swift）。
+                VideoEditSubtitleLookRow(project: project)
                 if !canEditAnything {
                     Text("Every subtitle track is hidden — turn an eye back on to edit.")
                         .font(.caption2)

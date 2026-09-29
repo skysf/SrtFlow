@@ -44,7 +44,7 @@
 | --- | --- |
 | 预览合成 | `VideoEditCompositionBuilder`：主轨循环的 `guard`，上层轨/音频轨走 `ClipVisibility.visible` |
 | ffmpeg 导出 | `VideoEditExportGraph`：`mainVisible` / `overlayVisible` / `audioClips` / `pendingStills`；叠上层轨和逐帧预渲染**都只走 `overlayVisible`**，不许按轨去 `lane.clips` 里取段（[2026-09-26 案例](../bugfixes/2026-09-26-hidden-upper-clip-still-exported.md)） |
-| 只导出选中的 | `TimelineState.selectionForExport` |
+| 只导出选中的 | `TimelineExportSelection.subset` |
 | 定格 | `isFreezeEligible`：藏起来的段没有「这一帧」可言 |
 | 字幕生成（转写哪些声音） | `SubtitleAudibleClips.soundClips` 走 `ClipVisibility.visible`：藏起来的段听不见，不转写（[2026-09-26 案例](../bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)）；生成之后再藏的段，已有的字幕不动 |
 
@@ -68,7 +68,7 @@
 
 ### 只导出选中的：起点按真会导出的段算
 
-`selectionForExport` 里隐藏的段不进子时间线，**而且不参与起点计算** —— 算进来的
+`TimelineExportSelection.subset` 里隐藏的段不进子时间线，**而且不参与起点计算** —— 算进来的
 话，藏在最前面的那一段会把整条子时间线往后推，成片开头多出一截黑场。
 
 选中的**全是**隐藏段时给一份空时间线，让导出当场报「先加一段素材」。这里不能

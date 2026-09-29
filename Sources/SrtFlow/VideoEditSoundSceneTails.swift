@@ -23,9 +23,9 @@ enum SceneTailCarrier {
             guard clips.contains(where: { $0.soundScene != nil }),
                   let last = clips.max(by: { $0.timelineEnd < $1.timelineEnd }),
                   let track = composition.track(withTrackID: lane.trackID) else { continue }
-            let start = CMTime(seconds: last.timelineEnd, preferredTimescale: 600)
-            let end = CMTime(seconds: min(last.timelineEnd + SceneRecipe.maximumTail, state.duration),
-                             preferredTimescale: 600)
+            // 接在合成轨真正的末尾后面（CompositionTime）：算出来的秒数差一丝，就会插进最后一段里面、把它挤走。
+            let start = CompositionTime.appendPoint(CMTime(seconds: last.timelineEnd, preferredTimescale: 600), on: track)
+            let end = CMTime(seconds: min(last.timelineEnd + SceneRecipe.maximumTail, state.duration), preferredTimescale: 600)
             guard CMTimeCompare(end, start) > 0,
                   let source = try? await assetFor(last.sourceURL).loadTracks(withMediaType: .audio).first,
                   let available = try? await source.load(.timeRange),

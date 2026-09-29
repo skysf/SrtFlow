@@ -31,7 +31,7 @@ Finder**。App 只负责「快速回到最近那几条」。
 | 窗口形态 | **单窗口栏内切工程**，同时只开一个。刻意不用 `NSDocument`/`DocumentGroup` —— 那套要求一个工程一个窗口，跟「一个主窗口 + 侧边栏切工具」的结构对不上 |
 | 保存方式 | **自动保存**：改动后 2 秒防抖写盘，⌘S 只是「立刻 flush」，关窗/切栏目不弹「要保存吗」 |
 | 素材归属 | **只存引用，不拷贝**。工程文件几十 KB |
-| 未命名工程 | 拖素材进来就能开工，不强制先建工程；`documentURL == nil` 时**不自动落盘**，等第一次 ⌘S / Save As |
+| 未命名工程 | 拖素材进来就能开工，不强制先建工程；`documentURL == nil` 时**不自动落盘**，等第一次 ⌘S / Save As（面板从起点开始：点名的文件夹 → 工程的家 → 「下载」）。**例外**：AI 改了它就马上存进 `<起点>/SrtFlow/工程`（[AI 接口](ai-control-mcp.md) 第四节第 10 条） |
 
 ## 三、文件格式
 
@@ -89,6 +89,8 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v21 | `TextOverlay.row` —— 文字在时间线上哪一行，行序就是画面上的叠放序（**无条件落盘**，有文字就是 v21）；`NumberRoll.delay` —— 数字元件先等几秒再滚（**按需写入**：0 不落键） | **直接决定成片**：只认 v20 的旧版打开后行号消失、重叠的文字按时间重排，谁压谁跟着变；等待消失、数字从段起点就开始滚。随手编辑触发自动保存即永久丢失。老工程没有 `row` 键，载入时按当年的自动排布补（`normalizeTextRows`）。合同见 [画面文字](text-overlays.md)「时间线上的行」「等待」 |
 | v22 | `TextOverlay.isHidden` / `ShapeAnnotation.isHidden` / `FilterClip.isHidden` —— 文字、形状、滤镜段单个藏起来（V，**按需写入**：没藏过的不落键） | **直接决定成片里有没有这一个**：只认 v21 的旧版打开后藏起来的文字、形状、调色全部回到画面上，随手编辑触发自动保存即永久抹掉。合同见 [段的显隐](clip-visibility.md) |
 | v23 | 字幕拆成两条独立轨：译文句有**自己的 ID 和时间**，从哪句原文翻来记在 `SubtitleCompanion.translationLinks`（键是译文句的 ID）；`translationLayout` —— 译文在画面上自己的位置和大小（**按需写入**：叠在原文下面时不落键）；`SubtitleCompanion.hiddenCueIDs` —— 字幕单句藏起来（V，**按需写入**） | 只认 v22 的旧版把译文当成原文的镜像、按 ID 对原文，新工程里的译文一句都对不上，读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失。**老工程（< v23）打开时拆开**：每句译文换新 ID、来源记成原来那句原文，当年标过「过期」的照样过期（`SubtitleCompanion.splitMirroredTranslation`，载入时按版本号判）。合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md) |
+| v24 | `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（电影遮幅、色块底；2026-09-28 MCP 第 5 块补的零件，**按需写入**：描边的不落键） | **直接决定成片**：只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，随手编辑触发自动保存即永久丢失。预览和导出都问同一个 `drawsFilled`（线条永远是线），导出的画法在 `ShapePNGRenderer`（VideoEditShapePNGRenderer.swift） |
+| v25 | `projectSubtitleStyle` —— 这个工程自己的字幕样式（AI 改样式只改这一份，方案第 54 条）；`subtitleHighlight` —— 逐词高亮（颜色、放大多少）；`SubtitleCue.words` —— 字幕每个词什么时候说（生成、配音的字幕才有）（三样都**按需写入**） | **直接决定成片**：只认 v24 的旧版不认识这些键，字幕退回全 App 的样式、不再高亮，随手编辑触发自动保存即永久丢失；词的时间丢了之后再打开高亮也亮不起来。用样式都问 `TimelineState.subtitleStyle(appWide:)`，合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md)「工程自己的样式与逐词高亮」 |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是
@@ -268,6 +270,11 @@ Finder**。App 只负责「快速回到最近那几条」。
   「清选择」走 `clearSelection()` 一个入口（剪辑/形状/字幕 cue 三类一起），
   别在这里手抄字段名 —— 抄漏过一次（2026-08-09 复审），合同见
   [subtitle-track-visibility-and-layout](subtitle-track-visibility-and-layout.md)。
+- **播放头归零要真的归零**（2026-09-29，[新工程停在上一个工程的位置](../bugfixes/2026-09-29-new-project-keeps-old-playhead.md)）：
+  `detach()` 把播放头放到 0，可播放器换掉条目之后时间回调还会晚到一拍、报旧条目的时间（带音轨的素材停着卸片也会）。
+  `PlayerClock` 没挂条目时丢掉时间回调；以后谁要在卸片之后再读播放器的时间，也要先问有没有条目。
+- **换完整份时间线就要 `scheduleRebuild()`**：打开工程、补静帧 / 重链接都这么做，新建工程也要（上一个工程还在路上的
+  那次重建靠它作废，不然落地时把旧工程的画面挂进新工程）。`check-project-file.sh` 的接线守卫钉着 `newProject`。
 - flush 的三个时机：切走 Edit Video 栏（`onDisappear`）、⌘S、退出 App
   （`applicationWillTerminate`）。自动保存有 2 秒防抖，正好卡在那两秒里按 ⌘Q
   会丢改动。
@@ -352,3 +359,5 @@ Finder**。App 只负责「快速回到最近那几条」。
      点 Cancel 后剪辑还在；⌘Q 也应弹同一个框，Cancel 能取消退出
    - 两条音频轨各拖成不同高度 → 存盘 → 重开工程 → 两条轨各自的高度都还在；
      新建工程时每条轨回到默认高度（不会带着上一份工程的条目）
+   - 播放头停在工程后半段（在播、停着各一次）→ File ▸ New Project / 打开另一个工程 → 播放头在 0:00
+     （卸片之后晚到的时间回调由 `check-player-clock.sh` 用真播放器钉着，这一条看真窗口）

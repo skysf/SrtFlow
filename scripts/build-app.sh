@@ -81,6 +81,14 @@ chmod +x "$APP/Contents/Helpers/ffmpeg"
 scripts/vendor-ffmpeg.sh --readme-only
 cp vendor/README.md "$APP/Contents/Resources/ffmpeg-LICENSE.md"
 
+# AI 客户端（Claude、Codex……）启动的 MCP 小程序，和 ffmpeg 一样放 Helpers。
+# 客户端配置里写的就是这个路径；它从自己的位置往上找到所在的 App
+# （docs/architecture/ai-control-mcp.md）。上面那条 swift build 已经把它一起编了。
+echo "==> 内置 srtflow-mcp"
+cp "$BUILD_DIR/srtflow-mcp" "$APP/Contents/Helpers/srtflow-mcp"
+strip -xS "$APP/Contents/Helpers/srtflow-mcp" 2>/dev/null || true
+chmod +x "$APP/Contents/Helpers/srtflow-mcp"
+
 # 图标：脚本生成 iconset → iconutil 合成 icns（仓库中不放二进制图标文件）
 echo "==> 生成图标"
 ICONSET="$(mktemp -d)/SrtFlow.iconset"
@@ -92,6 +100,7 @@ rm -rf "$(dirname "$ICONSET")"
 # 嵌套的可执行文件要先签，再签外层 bundle，否则外层签名会立即失效。
 echo "==> codesign (ad-hoc)"
 codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/ffmpeg"
+codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/srtflow-mcp"
 codesign --force --sign - "$APP"
 codesign --verify --deep --strict "$APP" && echo "   签名校验通过"
 

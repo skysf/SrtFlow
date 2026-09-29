@@ -888,7 +888,7 @@ final class VideoEditProject {
     func convertStillClip(_ clipID: UUID, from url: URL, generation: Int) async {
         guard let ffmpeg = MediaToolchain.shared.runtime?.url else {
             notice = L10n("The video engine is not ready yet.")
-            perform(rebuildsPreview: false) { $0.remove(clipID) }
+            AIUndoGrouping.step(effectiveUndoManager) { perform(rebuildsPreview: false) { $0.remove(clipID) } }
             return
         }
         do {
@@ -908,7 +908,7 @@ final class VideoEditProject {
         } catch {
             guard isCurrentGeneration(generation) else { return }
             notice = error.localizedDescription
-            perform(rebuildsPreview: false) { $0.remove(clipID) }
+            AIUndoGrouping.step(effectiveUndoManager) { perform(rebuildsPreview: false) { $0.remove(clipID) } }
         }
     }
 
@@ -920,10 +920,10 @@ final class VideoEditProject {
     var canConvertStills: Bool { MediaToolchain.shared.runtime != nil }
 
     /// 要导出的时间线：完整的，或只含选中内容（逻辑在
-    /// `TimelineState.selectionForExport`，纯值变换，工程文件自检里有回归）。
+    /// `TimelineExportSelection.subset`，纯值变换，工程文件自检里有回归）。
     func stateForExport(selectionOnly: Bool) -> TimelineState {
         guard selectionOnly, !selectedClipIDs.isEmpty else { return state }
-        return state.selectionForExport(ids: selectedClipIDs)
+        return TimelineExportSelection.subset(of: state, ids: selectedClipIDs)
     }
 
     // MARK: - 剪辑操作
@@ -950,22 +950,15 @@ final class VideoEditProject {
         }
         guard !targets.isEmpty else { return }
 
-        perform { state in
-            for id in targets {
-                state.split(clipID: id, at: time)
-            }
-        }
+        // 切完理顺链接组：一对切成两对，不是连成一串（LinkRegrouping）。
+        perform { state in LinkRegrouping.split(targets, at: time, in: &state) }
     }
 
     /// 刀片工具：在指定时刻切开指定的段（链接开着时同组一起切）。
     func splitClip(_ id: UUID, at time: Double) {
         guard let clip = state.clip(with: id), clip.contains(time: time) else { return }
         let targets = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
-        perform { state in
-            for member in targets {
-                state.split(clipID: member, at: time)
-            }
-        }
+        perform { state in LinkRegrouping.split(targets, at: time, in: &state) }
     }
 
 

@@ -81,7 +81,8 @@ struct PreviewSubtitleLayer: View {
     let project: VideoEditProject
     @ObservedObject var clock: PlayerClock
     let boxSize: CGSize
-    let style: BurnInStyle
+    /// 全 App 的字幕样式（烧录页记住的那套）。这个工程有自己的就用自己的（`subtitleStyle(appWide:)`）。
+    let appWideStyle: BurnInStyle
     /// 预览里正在就地编辑的那句字幕（双击画面上的字幕进入）。
     @Binding var editingCueID: UUID?
     /// 每一块字幕此刻的实测高度（定框用），由文字那几块回报。引用类型、这一层自己持有（见类型的说明）。
@@ -91,20 +92,23 @@ struct PreviewSubtitleLayer: View {
         let _ = PerfCounters.body(Self.self)
         // 眼睛是唯一的判据：两只都关（或没有字幕轨）就一块都没有，预览不画。
         let blocks = project.state.subtitleScreenBlocks()
+        let style = project.state.subtitleStyle(appWide: appWideStyle)
         // displayTime：悬停预览时字幕要和画面显示的那一帧对上，而不是播放头。
         let time = clock.displayTime
         let scale = boxSize.height / Double(BurnInStyle.referenceHeight)
         ForEach(blocks, id: \.measureKey) { block in
-            if let text = block.text(at: time) {
+            if let display = block.display(at: time) {
                 PreviewSubtitleText(
-                    text: text, style: style, scale: scale, boxSize: boxSize, layout: block.layout,
+                    text: display.text, highlights: display.highlights, highlight: block.highlight,
+                    style: style, scale: scale, boxSize: boxSize, layout: block.layout,
                     onBlockSize: { [measurements] in measurements.record($0.height, for: block.measureKey) }
                 )
                 .equatable()
                 if block.isStacked, let tail = block.text(of: .translation, at: time) {
                     // 只量不画：译文那几行单独多高，拖框按它把整块切成上下两截。
                     PreviewSubtitleText(
-                        text: tail, style: style, scale: scale, boxSize: boxSize, layout: block.layout,
+                        text: tail, highlights: [], highlight: nil,
+                        style: style, scale: scale, boxSize: boxSize, layout: block.layout,
                         onBlockSize: { [measurements] in measurements.record($0.height, for: block.tailMeasureKey) }
                     )
                     .equatable()
@@ -143,6 +147,9 @@ struct PreviewSubtitleLayer: View {
 /// （`SubtitleBlockMeasurements`），不许捎带读写值类型的状态。
 private struct PreviewSubtitleText: View, Equatable {
     let text: String
+    /// 正在说的词（逐词高亮）：换一个词这一块就重排一次，一秒两三次，比时钟一跳一次少得多。
+    let highlights: [SubtitleTextRange]
+    let highlight: SubtitleWordHighlight?
     let style: BurnInStyle
     let scale: Double
     let boxSize: CGSize
@@ -150,8 +157,8 @@ private struct PreviewSubtitleText: View, Equatable {
     let onBlockSize: (CGSize) -> Void
 
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.text == rhs.text && lhs.style == rhs.style && lhs.scale == rhs.scale
-            && lhs.boxSize == rhs.boxSize && lhs.layout == rhs.layout
+        lhs.text == rhs.text && lhs.highlights == rhs.highlights && lhs.highlight == rhs.highlight
+            && lhs.style == rhs.style && lhs.scale == rhs.scale && lhs.boxSize == rhs.boxSize && lhs.layout == rhs.layout
     }
 
     var body: some View {
@@ -162,6 +169,8 @@ private struct PreviewSubtitleText: View, Equatable {
             scale: scale,
             boxSize: boxSize,
             layout: layout,
+            highlights: highlights,
+            highlight: highlight,
             onBlockSize: onBlockSize
         )
     }

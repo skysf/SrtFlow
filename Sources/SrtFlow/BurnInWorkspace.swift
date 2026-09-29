@@ -41,7 +41,11 @@ enum BurnInWorkspace {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
 
         let paths = FFmpegCommand.BurnIn()
-        let ass = style.assDocument(blocks: blocks, aspectRatio: aspectRatio, title: title)
+        // 这台 Mac 上 libass 找不到回退字体的字（没下载苹方时的中文）点名一个每台 Mac 都有的，预览用同一个（SubtitleFallbackFont）。
+        let ass = style.assDocument(
+            blocks: blocks, aspectRatio: aspectRatio, title: title,
+            fontOverrides: { SubtitleFontScale.burnOverrides($0, style: style) }
+        )
         try Data(ass.utf8).write(to: directory.appendingPathComponent(paths.assFileName))
 
         let fontsDirectory = directory.appendingPathComponent(paths.fontsDirName, isDirectory: true)
@@ -62,9 +66,8 @@ enum BurnInWorkspace {
 enum SubtitleLoader {
     static func load(_ url: URL) throws -> SubtitleDocumentModel {
         let data = try Data(contentsOf: url)
-        guard let content = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .utf16)
-                ?? String(data: data, encoding: .init(rawValue: 0x8000_0421)) /* GBK */ else {
+        // UTF-8 → UTF-16 → GBK，规则只在 SrtFlowCore 的 TextDecoding 一处（批量转换、AI 读文稿同一份）。
+        guard let content = TextDecoding.decode(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
         let format = SubtitleFormat.detect(from: url.lastPathComponent) ?? .text

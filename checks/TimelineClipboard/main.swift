@@ -280,6 +280,10 @@ do {
                "音频库素材切开：两半都带着 manifest 的键（重链接的第一层线索）")
 }
 
+// MARK: - 5. 分割之后链接组一对还是一对（LinkGroups.swift）
+
+checkLinkGroups()
+
 // MARK: - 收尾
 
 print("TimelineClipboard checks: \(checks) 项，失败 \(failures) 项")

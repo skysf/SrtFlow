@@ -110,6 +110,13 @@ final class FontCatalogStore: ObservableObject {
         fonts.first { $0.familyName == name }
     }
 
+    /// 等扫描完再用（最多等 5 秒）：AI 按名字认字体、导出要拿字体文件时，页面可能还没打开过、表还是空的。
+    func loadedFonts() async -> [SubtitleFont] {
+        loadIfNeeded()
+        for _ in 0..<50 where isLoading { try? await Task.sleep(nanoseconds: 100_000_000) }
+        return fonts
+    }
+
     var chineseCapableFonts: [SubtitleFont] { fonts.filter(\.supportsChinese) }
     var otherFonts: [SubtitleFont] { fonts.filter { !$0.supportsChinese } }
 }

@@ -54,7 +54,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 1. **轻量化优先。** 优先复用 macOS 原生能力（AVFoundation、AppKit、SwiftUI），
    不随意引入第三方依赖。需要自写合成器、自建文件管理等重量级方案时，先征得用户
-   同意。既有产品决策：文件管理交给 Finder；混合模式不为此自建 Metal 合成器。
+   同意。既有产品决策：界面上的文件管理交给 Finder（AI 只在用户开口时帮忙整理点名文件夹里的文件，删除先问、进废纸篓，
+   见 [MCP 方案](docs/plans/2026-09-27-mcp.md) 第 23、24 条）；混合模式不为此自建 Metal 合成器。
 2. **复用优先，抽象克制。** 同一模式出现第二次时，按仓库现有粒度抽成共享组件；
    没有真实第二用例时不提前制造泛型和框架。参考：`ResizableFrameBox`、
    `LenientCodableEnum`、`liveApply` / `perform`。
@@ -94,13 +95,13 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 修改范围 | 动手前必读 |
 | --- | --- |
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
-| 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件）、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
+| 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）**、**新建 / 打开工程（切工程时清掉上一个的运行时状态、播放头归零）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件；五：卸片之后播放器的时间回调晚到一拍、没挂条目就丢掉，换完整份时间线就要 `scheduleRebuild()`）、[新工程停在上一个工程的位置](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
 | 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）**、**缩放的锚点（捏合钉指针、工具栏钉播放头）与纵向缩放（统一行高）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)（锚点从时间线自己的滚动几何量，别按坐标 hitTest 找滚动视图；纵向缩放统一成一个高度）、[锚点从来没生效](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
-| 预览变换、叠化、上层视频轨、导出滤镜 | [预览自由变换](docs/architecture/preview-free-transform.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
+| 预览变换、叠化、上层视频轨、导出滤镜、**预览合成往合成轨上接东西（只从末尾接、合成完裁到总长、换格子别改成四舍五入）** | [预览自由变换](docs/architecture/preview-free-transform.md)（「一份时间账」：多一格就黑屏）、[加了音效预览整个黑屏](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
 | 从 Finder 拖文件 / ⌘V 粘贴文件进时间线、导入落点 | [拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[外部拖入被内层落点独占](docs/bugfixes/2026-09-23-timeline-file-drop-claimed-by-inner-drop-region.md)（结论已更正）、[拖动手势](docs/architecture/timeline-drag-gestures.md)（主轨保序、§5e-2 唯一落点）、[视频轨对等化](docs/architecture/video-tracks.md) |
-| 时间线上的复制 / 剪切 / 粘贴（⌘C ⌘X ⌘V、编辑菜单、块和轨道空白处的右键菜单）、剪贴板类型、粘贴落点（鼠标优先、否则播放头）、从旧段构造新段（分割 / 复制，别漏字段） | [复制粘贴](docs/architecture/timeline-clipboard.md)（剪贴板只有一套、不写纯文本；每一样换新身份走编码往返；撞上了往上抬、几组保住上下关系）、[方案](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md)、[分割丢了隐藏和音频库的键](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
+| 时间线上的复制 / 剪切 / 粘贴（⌘C ⌘X ⌘V、编辑菜单、块和轨道空白处的右键菜单）、剪贴板类型、粘贴落点（鼠标优先、否则播放头）、从旧段构造新段（分割 / 复制，别漏字段）、**分割之后的链接组** | [复制粘贴](docs/architecture/timeline-clipboard.md)（剪贴板只有一套、不写纯文本；每一样换新身份走编码往返；撞上了往上抬、几组保住上下关系；三之二：分割都走 `LinkRegrouping.split`，一对切开是两对）、[分割后整串互为伙伴](docs/bugfixes/2026-09-28-split-links-every-piece-together.md)、[方案](docs/plans/2026-09-26-timeline-clipboard-and-zoom.md)、[分割丢了隐藏和音频库的键](docs/bugfixes/2026-09-26-split-drops-hidden-and-library-key.md)、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md) |
 | 时间线上的任何拖放落点（`.onDrop`：文件 / 滤镜 / 音频库 / 转场卡片）、新的自定义拖放 / 剪贴板类型 | [拖动手势 §5e-2](docs/architecture/timeline-drag-gestures.md)（整条时间线只许一个 `.onDrop`；自定义类型必须在 Info.plist 声明；不能放回 `.forbidden` 不回 `.cancel`）、[转场拖放被 `.cancel` 取消](docs/bugfixes/2026-09-23-transition-drop-cancel-ends-session.md)、[卡片被文件落点吞了](docs/bugfixes/2026-09-23-in-app-drops-swallowed-by-file-underlay.md)、[自定义类型没声明](docs/bugfixes/2026-09-23-custom-drag-types-not-declared.md)、[GUI 冒烟流程](docs/testing/gui-smoke-testing.md)（落点路由探针） |
 | 轨道模型、时间线行结构、轨道行高、轨道配色、预览点选 | [视频轨对等化](docs/architecture/video-tracks.md)、[工程文件与素材重链接](docs/architecture/video-edit-project-file.md) |
 | 段的显隐（V / 眼睛）、隐藏段进不进预览和成片，文字 / 形状 / 滤镜段的隐藏（`rendered*` 清单） | [段的显隐](docs/architecture/clip-visibility.md)、[视频轨对等化](docs/architecture/video-tracks.md)、[上层轨藏起来的段还在成片里](docs/bugfixes/2026-09-26-hidden-upper-clip-still-exported.md) |
@@ -118,17 +119,19 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表、预览合成里声音怎么排到合成音轨上 | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节第 7 条：一条合成音轨只装一种源格式；第 8 条：tap 给的时间可以比 0 早）、[播放中按 Return 崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
 | Inspector 数值框、拖调、Transform 写入、检查器里的滑杆行（`labelledSlider` / `InspectorSliderRow`，右边的数值框能打字）、「Shows for」 | [Inspector 数值框合同](docs/architecture/inspector-scrub-number-field.md)（滑杆行的数值框：打字提交要立刻 `endLiveEdit`） |
 | 往检查器里加任何一行（标题 + 控件、下拉、滑杆行） | [检查器的排版](docs/architecture/inspector-layout.md)（固定窄栏，一行不许比它宽；菜单 Picker 不许 `.fixedSize()`）、[声音场景那一行把检查器撑宽](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) |
-| 定格、静帧、图片转视频 | [定格长期约束](docs/architecture/freeze-frame.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
+| 定格、静帧、图片转视频、**在最后一帧里定格（不到一帧的右半）** | [定格长期约束](docs/architecture/freeze-frame.md)（第 4 节：不到一帧的右半拿掉）、[静帧后面剩一截](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
-| 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)、[自动检测拿音效当探针](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md)（探针长的先、先听有没有人声） |
+| 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）**、**生成 / 翻译结束时回写工程** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[回写要自己成一步撤销](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（包在 `AIUndoGrouping.step` 里）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)、[自动检测拿音效当探针](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md)（探针长的先、先听有没有人声） |
 | 生成出来的字幕长什么样：**去标点**、**断句**（逗号拆小句、太短的并、放不下的怎么切、中文按词边界）、**一行多长**（字数 + 画面宽度）、**显示时间**（最短、2 帧间隔、接上、说完多停）、**几段素材同时有字只留一条**、面板上「只用选中的片段」、机器翻译落字去标点 | [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md)（先断句后去标点、时间在整条轨上排；**停顿被识别器并进相邻的词，先估开口**；切法是动态规划不是贪心；中文按整句判语言；去重叠只比不同素材）、[停顿被算进相邻的词](docs/bugfixes/2026-09-26-pause-stretches-next-word.md)、[方案与调研](docs/plans/2026-09-26-subtitle-generation-style.md)（别的剪辑软件怎么做、Netflix / BBC 的数字、用户逐条拍的板） |
-| 字幕轨、眼睛、预览叠层、烧录、布局、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
+| 字幕轨、眼睛、预览叠层、烧录、布局、**预览上字幕画多大（按 libass 的字号口径）**、选择（点选互斥 / 框选混选 / ⌘A 全选 / ⌘⇧A 取消 / 滤镜多选）、字幕的三个编辑入口、**工程自己的字幕样式（`subtitleStyle(appWide:)`）与逐词高亮（词的时间、预览和烧录同一份）**、**原文 / 译文两条独立轨**（挪裁删拆互不影响、译文的来源表、两个翻译按钮、画面上叠在一起 / 分开摆、按时间切块）、预览上字幕块量高度 | [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md)（第 3 条：两条轨独立、来源表现算过期；布局 2：译文布局为 nil = 叠在原文下面、量块高不许被默认值盖掉；「工程自己的样式与逐词高亮」：用样式只问 `subtitleStyle(appWide:)`、只有带词时间的句子亮、词的时间跟着编辑走）、[成片比预览小](docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md)（预览只用 `BurnInSubtitleOverlay` 画，按实际画字的那一款字体乘 `SubtitleFontScale`）、[没下载苹方时中文烧成方框](docs/bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md)（回退到系统私有字体时预览和烧录一起换内置字体，烧录用 `\fn` 点名）、[叠在一起时点英文落到中文](docs/bugfixes/2026-09-26-stacked-subtitle-frame-lands-on-translation.md)、[拖动手势 §3.5b](docs/architecture/timeline-drag-gestures.md)、[两条独立轨的方案](docs/plans/2026-09-26-hide-guides-independent-subtitles.md) |
 | 轨道块标记、时间线块 overlay、扫帧 peek | [轨道块标记](docs/architecture/clip-markers.md)（单击只选中、双击才弹面板：点一下就弹带输入框的面板 = 交出键盘）、[悬停影子播放头](docs/bugfixes/2026-08-08-hover-ghost-playhead-and-delete-key.md)、[标记 ⌫ 删不掉](docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md) |
-| 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点） |
-| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名 | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置）、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
+| 音频库（音乐 / 音效）、manifest、试听、素材缓存、署名 | [音频库](docs/plans/2026-09-22-audio-library.md)、[素材管线](docs/build/audio-library-pipeline.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)（ducking 的夹紧点）、[AI 接口](docs/architecture/ai-control-mcp.md) §4 第 23 条（AI 搜音乐、放上时间线、署名句，和界面同一个搜索函数、同一个署名口径） |
+| 导出面板、编码设置、分辨率档位（压缩 / 烧录 / 剪辑导出）、导出文件名与撞名（面板上先问再替换；批量转换、压缩 / 烧录、AI 的输出加编号，`ExportFileName.unoccupied`）、**压缩 / 烧录记住的设置和全 App 的字幕样式** | [导出设置](docs/architecture/export-settings.md)（面板上只放管线真消费的设置；记住的设置在队列创建时读回来，不挂在页面的 `onAppear` 上）、[字幕样式要先去烧录页转一圈](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)、[导出面板改版方案](docs/plans/2026-09-24-export-panel.md)、[竖屏被缩小](docs/bugfixes/2026-09-24-resolution-cap-shrinks-portrait-video.md)、[音频原样复制是假话](docs/bugfixes/2026-09-24-export-panel-promised-audio-copy.md) |
+| 读用户给的文本文件（字幕文件、讲稿、笔记）的编码 | [用户文本文件的编码](docs/architecture/text-file-encoding.md)（只走 SrtFlowCore 的 `TextDecoding`；UTF-16 不许无条件排在 GBK 前面）、[GBK 字幕读成乱码](docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md) |
 | 任何按钮的提示文案、快捷键、hover | [即时提示](docs/architecture/instant-tooltips.md) |
 | 预览性能、性能计数与基线；**新写或改写任何 SwiftUI 视图 / 修饰器 / `NSViewRepresentable` / Canvas**（body 第一行要计数，写完跑 `checks/preview-perf-wiring.sh --fix` 自动补）；性能那一步红了但没动编辑器界面；**往时间线上加一种块 / 行里的列表项**；**任何要跟着播放头变的界面**（订阅播放器时钟、在 body 里读 `clock.time`、按钮能不能点看播放头）；**在视图 body 里读工程的属性、给 `VideoEditProject` 加属性**（工程是 `@Observable`） | [预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（计数必须接满、只许降、**已知的偶发误报怎么认、怎么重跑**、什么时候能重定基线、**时间线上的块不读工程、按值比较 + `.equatable()`**、**第十二节：订阅时钟的只许是名单里的小视图，停着才有意义的读 `PacedPlayhead`**、**第十三节：body 读了什么就只被什么叫醒，大视图少读、不驱动界面的存储 `@ObservationIgnored`、读不可观察的东西要自己找叫醒的来源**）、[预览性能 ratchet 方案](docs/plans/2026-09-24-preview-perf-ratchet.md)、[每个块都订阅着整个工程](docs/bugfixes/2026-09-24-timeline-blocks-observe-whole-project.md)、[播放时每一跳叫醒整个编辑器](docs/bugfixes/2026-09-25-playback-wakes-whole-editor.md)、[播放丝滑方案](docs/plans/2026-09-25-smooth-playback.md)、[点一下选中一段整个编辑器跟着重算](docs/bugfixes/2026-09-26-selection-wakes-whole-editor.md) |
 | 任何界面文案、翻译、字符串表、应用内语言切换，新加 sheet / popover / 自建宿主视图 | [本地化](docs/architecture/localization.md)（第三节第 3 条：sheet / popover 不继承应用内语言）、[sheet 全是英文](docs/bugfixes/2026-09-24-sheets-ignore-in-app-language.md)、[守卫不扫 LabeledContent](docs/bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md) |
+| AI 接口（MCP）：给 AI 的工具清单与说明、**剪辑风格（预设风格与用户存的，工具 recipes / save_recipe）**、**配旁白（add_voiceover：SrtFlow 自己的声音 Kokoro、没下载时 macOS 的声音）、`Sources/SrtFlowKokoro/` 这个模块、模型的下载与 R2 上的那一份**、`srtflow-mcp` 小程序、小程序与 App 的通道、AI 改时间线的规则、「看得见」（一轮开始时摆出剪辑页、每步定位）、这一轮 / 停止 / 撤销这一轮、需要用户点头的事、设置里的「连接 AI」、**AI 的手和眼**（`edit_clip` 的铺满 / 完整显示 / 裁切 / 位置大小、去黑边、对准主体、`look` 看、`listen` 听）、**AI 的眼睛（第 4 块：分镜头 `look shots`、一次看几个文件 `look files`、铺满跟拍 `follow`；第 5 块：扫画面里的字 `look text_scan`、按字取景 `focus=text`）**、**AI 够得着的现有功能**（后台模式、读文稿、整理文件、访达选中、推子关键帧、形状、复制、定格、音乐库、压缩 / 烧录 / 转字幕） | [AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第四节 14–24 条逐个工具写着复用了哪条手动的路；读点名文件夹以外的文件都走 `AIWorkspace.confirmReading`；压缩 / 烧录排进现成的队列、条目自带设置、不替用户开跑；清单只有一份、两代协议都接、一个工具 = 一步撤销且每个改动工具包一层 `AIUndoGrouping.step`（别去关按事件自动开的组；要 await 的先 plan 再同步 apply）、不许弹模态框、只有删文件才问（别处的文件问一次、记住文件夹；撞名加编号；「连接」顺带放行客户端那层；工具不按个数卡、说明总长度有上限）、阻塞收发只在自己开的线程上；第四节 11–13 条：铺满是一扇窗映满画布、先裁切再摆放；29–31 条：镜头切点学 PySceneDetect、长视频走任务、跟拍只跟人且换镜头跳过去、裁切不能做关键帧所以只动摆放框中心，look 按预览的层序合成、每层调现成的那份，listen 读波形那一份、窗和均方桶对齐）、[预览自由变换](docs/architecture/preview-free-transform.md)（裁切和摆放的模型）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)（Vision 的 perform 在 `MediaReadQueue.analysis` 上跑）、[波形与深度缩放](docs/architecture/audio-waveform.md)（均方和峰值同一遍读）、[AI 的改动撤一步全空了](docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md)、[挂字幕落在 step 外面，之后撤一步全空](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（一次调用里所有登记都在同一个 step 里；异步落账各包一层）、[AI 翻译按旧的原文语言去翻](docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md)（要人动手就走 `waiting_for_user` + 提示条）、[叫 AI 去面板里选语言](docs/bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md)（界面的报错叫人去点哪儿的，AI 那一路换成它能照做的话）、[字幕带把幻灯片标签也框进去](docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md)（字幕带只量底边同一条线、字最多变的那一堆）、[裁切量被幻灯片标题拉大](docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md)（字幕的上一行要每句都换才认；提示写明裁的是整条带、裁完抽帧看）、[MCP 方案](docs/plans/2026-09-27-mcp.md)、[配方卡中文稿](docs/plans/2026-09-28-mcp-recipes.md)（改套路先改它、再同步 App 资源里的英文卡）、[风格卡给竖屏的字号大了](docs/bugfixes/2026-09-29-recipe-sizes-too-big-on-vertical.md)（字号按画面高度算，卡里写明画幅） |
 | 真实窗口、系统权限、手势实测 | [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) |
 
 ## 构建与检查入口
@@ -137,21 +140,26 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   [docs/build/build-and-packaging.md](docs/build/build-and-packaging.md)。
 - 音频库素材的制备与上传（选曲 → 规格化 → manifest → R2）：
   [docs/build/audio-library-pipeline.md](docs/build/audio-library-pipeline.md)。
+- 本机配音模型（Kokoro）的整理与上传（钉版本的来源 → 整理 + 清单 → R2，密钥放仓库外）：
+  [docs/build/voice-model-pipeline.md](docs/build/voice-model-pipeline.md)。脚本在 `scripts/voice-models/`，R2 签名只有 `scripts/r2.py` 一份，
+  **不在 `check-all.sh` 里**。
   脚本在 `scripts/audio-library/`，**不在 `check-all.sh` 里**（它制备素材，不是检查）。
 - 全部自动检查：`scripts/check-all.sh`。CI 在每个 PR 上运行同一入口：
   `.github/workflows/checks.yml`，按 `--shard N --of 5` 分到 5 台免费的 macOS runner 上并行跑，
   由一个叫 `check-all` 的汇总 job 给结论（分组、组数校验、汇总 job 为什么不能被跳过，见
   [构建与打包「CI」一节](docs/build/build-and-packaging.md)）。新加检查要放进某个 `shard`。
-- 核心库：`swift run --arch arm64 SrtFlowCoreChecks`。
+- 核心库：`swift run --arch arm64 SrtFlowCoreChecks`（含逐词高亮：词对到去完标点的字上、此刻亮哪个、跟着编辑走、按词切段、ASS 标签，`SubtitleWordChecks`）。
 - 生成的字幕长什么样（去标点、断句、一行多长、显示时间、几段素材同时有字只留一条，用例是用户工程里真实转写出来的句子）：
   `SrtFlowCoreChecks` 的 `SubtitlePunctuationChecks` / `SubtitleSegmentationChecks` / `SubtitleSourceOverlapChecks`；
   藏起来的段不转写、「只用选中的片段」在 `scripts/check-project-file.sh`（`HiddenItems.swift`、`SubtitleSources.swift` + 扫描守卫）。
 - 工程存盘与素材重链接、选择模型（点选互斥 / 框选混选）、轨道块标记：
   `scripts/check-project-file.sh`。
 - 播放头与悬停 peek 状态机，以及播放头的慢读法 `PacedPlayhead`（只跟「放置」、播放中不跟、停下追上一次、
-  不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许：
+  不认悬停），还有「回到开头」（Return / Home）只由 `goToStart` 请时间线滚回最左、普通 seek 不许，
+  以及卸片之后晚到的时间回调不许把播放头写回旧位置（真播放器、ffmpeg 现做的带声音素材）：
   `scripts/check-player-clock.sh`。
-- 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开：
+- 预览合成真取帧，以及素材缓存命中时合成逐帧一样、同一路径换了文件或原地改写过必须重开，
+  还有往合成轨上接素材只从末尾接、合成完正好和时间线一样长（多一格视频合成就无效 → 黑屏）：
   `scripts/check-preview-composition.sh`。
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
@@ -163,6 +171,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
   以及动画的「模型给多少、成片就是多少」、预览上的可点范围、老虎机首帧 / 末帧就是起止值：
   `scripts/check-text-render.sh`。
+- 预览上的字幕和烧出来的一样大（预览那个视图离屏渲一张、照导出那条路真烧一帧比字的外框：几种字体、字体里没有的字按回退的那一款（Helvetica 里的中文本机走苹方、CI 没下载苹方就两边换冬青黑体；韩文）、默认样式的粗体、逐词高亮放大），以及回退到系统私有字体时换内置字体的规矩，还有字幕**阴影**真画出来的像素（中灰底上白字，预览和成片各量右下多出来的暗处：偏多少、最黑的一点有多黑，透明度写反、哪一边没画都会红）：`scripts/check-subtitle-burn-size.sh`；ASS 里点名字体和逐词高亮一起写在 `SrtFlowCoreChecks` 的 `SubtitleWordChecks`。
 - `.contentShape` 不许写在 `.offset` / `.rotationEffect` / `.scaleEffect` 之后（几何效果只挪画面、
   不挪布局框，可点范围会留在原位）：`checks/hit-shape-before-offset.sh`。
 - `PreferenceKey.reduce` 不许写成 `value = nextValue()`（兄弟节点的默认值会把量出来的尺寸盖成零）：
@@ -173,7 +182,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），以及电平表（离线读挂了
-  tap 的真实混音，对账轨道表 / 总表 / 红灯）：`scripts/check-audio-fade.sh`。
+  tap 的真实混音，对账轨道表 / 总表 / 红灯）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
+  4 分钟就判红，并说出卡在哪一组；CI 上第 8b 组「换了源格式…60 秒没读完」偶发，认法见
+  [推子与电平表](docs/architecture/audio-mixer.md)「已知的偶发」）。
 - 波形数据（多级峰值、原始采样块）逐采样对账，以及**很多文件同时读**必须全部读完、
   不许把线程池堵死（看门狗判红）：`scripts/check-waveform.sh`。
 - 成片的声音只有一条管线（导出图里不许出现声音滤镜，混音读的是预览那份合成 + audioMix，
@@ -183,7 +194,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 生产导出帧率与分辨率（真跑导出：数帧、读成片尺寸 —— 只降不升、按短边、像素是方的）：
   `scripts/check-export-frame-rate.sh`；禁止写死帧率扫描：
   `checks/no-hardcoded-fps.sh`。
-- 定格时间线变换：`scripts/check-freeze-frame.sh`。
+- 定格时间线变换（含在最后一帧里定格时不到一帧的右半不留）：`scripts/check-freeze-frame.sh`。
 - 按钮提示与快捷键单一来源：`checks/instant-tooltip-wiring.sh`。
 - 检查器里的菜单 Picker 不许锁死宽度（锁了会把整列撑宽、右边被裁）：`checks/inspector-fits-width.sh`。
 - 字幕编辑期间全局快捷键让路（⌫ 不删正在编辑的 cue）：
@@ -202,6 +213,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - **进程内 GUI 冒烟**（人在用这台机器时也能跑：不动鼠标、不抢前台，按步骤表点 / 拖 / 滚 / 按键，
   结果里带选择、各段位置和每个视图重算了几次）：`scripts/gui-smoke/in-process/run.sh <步骤.json> [工程拷贝]`。
   **要图形会话，不在 `check-all.sh` 里**；格式与坑见 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md)「四之六」。
+- **扮成 AI 客户端驱动测试版**（MCP 冒烟：起 App 包里的 `srtflow-mcp`，照 JSON 调用表发工具调用，`look` 的图存成 jpg）：
+  `scripts/gui-smoke/mcp-client/client.py`。要装好的测试版、素材复制到 scratchpad，见 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md)「四之七」。
 - 跨 App 的文件拖放重放（自带拖源，Finder 不吃合成事件）：
   `scripts/gui-smoke/external-file-drag/replay.sh`。**要图形会话，故意不在
   `check-all.sh` 里**，按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
@@ -211,8 +224,20 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 从 Finder 拖文件进轨道的落点（撞上就抬一轨、多文件接龙、隐藏轨跳过、落地后
   主轨仍按时间排序）：`scripts/check-media-import.sh`；接线扫描（含「整条时间线
   只许一个 `.onDrop`」）在 `checks/timeline-drag-wiring.sh` 里。
+- AI 接口（MCP）：小程序说的协议（老一代握手 / 新一代每个请求自带版本，真起小程序、假 App 接调用，几百 KB 的图原样穿过通道）、AI 改时间线的规则、客户端配置的增删、词表和 App 类型对账、打包把小程序装进 Helpers 且先签它，
+  新东西默认放哪（点名的文件夹 → 工程的家 → 下载，没有「影片」；AI 改了没存过的工程马上存）、窗口只在一轮开始时摆到前面，
+  以及 AI 的手和眼：铺满时窗的四角正好落在画布四角（各种比例 × 焦点）、去黑边、对准主体（真让 Vision 认一张图、框不许上下反）、
+  look 的拼图和文字描述、listen 的电平 / 静音段 / 曲线，总说明里「不用外部工具改素材」那一句；现有功能铺满的纯值规则
+  （剪辑的其余设置、轨道推子、关键帧、形状、复制一份、音乐库的署名句、压缩 / 烧录的参数与起名），以及压缩 / 烧录的条目
+  自带设置、不替用户开跑（扫描）；配音的音量（峰值超过满幅的一句真写成 .m4a 读回来不削波、两种声音只经一处写文件）；什么时候问（只有删文件和读别处的文件会问、读过的文件夹记住、撞名加编号，扫描）、记住哪里、
+  「连接」时写进 Claude Code / Codex 的放行配置、工具清单总长度的上限；第 4 块的镜头切点与翻页、跟拍（窗的两边落在画布两边、
+  只跟人、换镜头跳过去）；第 5 块的剪辑风格（配方卡的格式、合并与查找、存一套 / 删一套，**卡里提到的工具名、参数名、选项值都存在**，卡里的字号写明画幅、9:16 的上限用生产的排版真排得下）、
+  set_text 补的零件（字距、动画时长、强调、数字滚动）和实心形状、add_voiceover（挑声音、语速表、标记 → 词、配音的字幕不覆盖已有的）、
+  字幕的 style（只改工程自己的样式、给了位置收掉拖框的布局、逐词高亮的开关和倍数、烧录用不了的字体报错、烧录一批自带的样式）、
+  扫画面里的字（字幕带、固定的字、满屏的字互不混，字幕带的框不被贴在字幕上面的幻灯片标题拉大，没人字多按字对准）：
+  `scripts/check-mcp.sh`。
 - 时间线复制 / 剪切 / 粘贴：拿什么、换新身份（除了 id 每个字段照抄）、粘到哪（撞上往上抬、几组保住上下关系、
-  声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段：
+  声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段、分割后链接组一对还是一对：
   `scripts/check-timeline-clipboard.sh`；接线（编辑菜单三项、右键菜单、落点鼠标优先含 Finder 文件、标尺不算轨道、
   剪贴板只有一套且不写纯文本）：`checks/timeline-clipboard-wiring.sh`。
 - 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
@@ -220,6 +245,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
+- 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来（不挂在页面的 `onAppear` 上），剪辑页和 AI 的字幕样式都经
+  `subtitleStyle(appWide:)`（工程自己的样式优先）：`checks/encode-settings-memory.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。
 - 代码文件的行数上限（超过 600 行就红，老文件只许降不许涨，变短了用 `--update` 改小基线）：
   `checks/source-file-size.sh`。
@@ -289,6 +316,18 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   用户看着南极工程提的四件事（重叠、藏起来的还在生成、字幕不该有标点、长句拆开）、先查清的事实（重叠两个来源、翻译是一条一条送的）、
   调研（Premiere / Resolve / FCP / 剪映 / Descript 怎么选声音和处理同时说话；Netflix 英文与简体中文、BBC 的数字）、
   逐条拍的板（跟随素材「先不用」、双语顺序「不改」）和我定的实现细节。
+- [让 AI 调用 SrtFlow 剪视频：MCP 方案](docs/plans/2026-09-27-mcp.md) — 第一到第四块在 PR #81 实施中（真实状态看实施报告）。2026-09-27 访谈拍的 28 条板 + 实测后补的 4 条（AI 改了没存过的工程自动存、默认位置不要「影片」没给文件夹放「下载」、第 31 条 AI 不靠外部工具——裁切 / 看 / 听做成 SrtFlow 自己的工具、第 32 条窗口一轮只摆一次），以及 2026-09-28 讨论工具上限时补的 4 条（第 33 条不按个数卡、守三条；第 34 条只有删文件才问、别处的文件问一次记住文件夹；第 35 条「连接」顺带放行客户端的权限；第 36 条 SkyStudio 的 MCP 以后另做、生成类工具提供方可换），和同一天讨论第 5 块拍的板（第 37–56 条：HyperFrames 不装、学它的长处自己做；逐词高亮字幕；剪辑风格 AI 自己挑、不做斜杠命令、中文叫「剪辑风格」不叫「套路」；配方卡中文稿；自存套路；配音三档 fal > 本机开源模型 > macOS；本机模型用 CoreML 不用 MLX、听完样音选 Kokoro、八个角色的音色、模型放我们的 R2；克隆放第 6 块走 fal；五刀的顺序；AI 改字幕样式只改当前工程、第 ④ 刀之后插「扫画面里的字」和模糊 / 马赛克块）：
+  第一期 Claude + Codex（ChatGPT 聊天框要隧道、用 Codex 代替）、除录屏外全部功能、默认看得见（每步定位高亮）、
+  ⌘Z + 撤销这一轮、只有动硬盘才问（后来收成只有删文件才问）、本机 Vision 识别画面、按文字剪 / 删静音 / 踩点、剪辑套路（MCP Prompts）、
+  fal.ai 生成（每日上限）；架构（`srtflow-mcp` 只传话、干活的只有 App 本体、协议自己写不引 SDK）、六块分块与两个真实验收任务。
+- [剪辑风格：五种预设风格（中文稿）](docs/plans/2026-09-28-mcp-recipes.md) — MCP 第 5 块的剪辑风格内容：怎么用（AI 自己挑、一句话告诉用户、用户的话优先）、
+  所有剪辑风格共用的规矩（先摸清素材、先问平台、9:16 安全区、字和声音的口径、不编造、导出前自检）、带货 / 课程推广、电影开头、科幻、纪录片、
+  日常 vlog 五张卡（画幅、时长、按秒的结构、镜头、转场、动画、滤镜、字体、字幕、配乐、配音、自检）、配音音色的角色表、要补的零件、给 App 用的 .md 格式。
+- [AI 接口（MCP）第一块实施报告](docs/reports/2026-09-27-mcp-slice1-report.md) — 23 个工具做到了哪、CI 与端到端实测的证据、测试版怎么出（`scripts/build-beta-app.sh`）、过程中修掉的事（撤销分组、提示条位置、文字折断、翻译语言与下载引导、自动存盘与默认位置）、还差什么（第二块起的功能、Claude 桌面版 / Codex 要用户点「连接」）。
+- [AI 接口（MCP）第二块实施报告](docs/reports/2026-09-27-mcp-slice2-report.md) — 第二块起手「AI 的手和眼」（方案第 31 条）：`edit_clip` 的画面放法、去黑边、对准主体、`look`、`listen`、总说明里不用外部工具那一句，窗口一轮只摆一次（第 32 条）；然后现有功能铺满（后台模式、读文稿、整理文件、访达选中、剪辑的其余设置、推子关键帧、形状、复制、定格、音乐库、压缩烧录转换，工具 23 → 37 个）；每一刀的 CI、本机自检、测试版冒烟的证据，过程中撞上的事（三个老 bug），还差什么。
+- [AI 接口（MCP）第三块实施报告](docs/reports/2026-09-28-mcp-slice3-report.md) — 分析数据 + 智能剪：`transcribe`（词级时间，和生成字幕同一套 `TranscriptHarvester`）、`listen beats=true`（鼓点）、`cut_speech`（按文字剪、删停顿、口头禅、说重了）、`cut_to_beat`（音乐踩点），工具 37 → 40 个（到预算）；CI 与测试版冒烟的证据、撞上的事（切开之后链接成对、new_audio 接在 A1 后面两个老 bug），还差什么（音频库没有鼓点清楚的音乐、转写要 macOS 26）。
+- [AI 接口（MCP）第四块实施报告](docs/reports/2026-09-28-mcp-slice4-report.md) — 本机识别画面：`look shots=true` 分镜头（切点学 PySceneDetect、整个文件扫一遍缓存、长视频走任务）、`look files` 一次看 24 个文件、`edit_clip fit=fill` 跟着人走（位置关键帧、换镜头跳过去）；解码速度和切点的探针实测、测试版冒烟（素材A 47 个镜头、14.6 分钟的课 130 个镜头）、跟拍第一版乱晃怎么改的、还差什么。
+- [AI 接口（MCP）第五块实施报告（进行中）](docs/reports/2026-09-28-mcp-slice5-report.md) — 剪辑风格 + 配音 + 逐词高亮字幕：第 ① 刀剪辑风格与零件（recipes / save_recipe、实心形状 v24、set_text 补参数）、第 ② 刀 macOS 配音（add_voiceover，词的标记只从代理方法来、语速按实测表换）、第 ③ 刀 Kokoro 与 Qwen3-TTS 的 CoreML 探针（M1 上 Kokoro 实时 10 倍、Qwen3 实时 0.2 倍、段尾逗号让 Kokoro 冒杂音）、用户选 Kokoro 之后接进 App（模块、R2、八个角色、按字 / 词的时间）、用户试用撞上的爆音、**⑤ 验收实剪第一轮**（AI 剪了两条，撞出的十几件事逐条怎么处理的、哪些等用户听、哪些功能等拍板），还差什么（第 ④ 刀起的顺序见方案第 54–56 条）。
 - [原生录屏实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md) —
   Phase 0–5 的真实进度、实测证据、偏差和未完成项。
 
@@ -297,6 +336,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [写代码的规范](docs/architecture/coding-standards.md) — 模块化的六条（一个文件一件事、抽有名字的顶层类型、
   别开只有 extension 的文件、纯计算和副作用分开、同一规则只有一处实现、函数别太长），单文件目标 400 / 上限 600
   行与老文件只许降的基线、审查清单。
+- [AI 接口（MCP）](docs/architecture/ai-control-mcp.md) — 三段结构（客户端 → `srtflow-mcp` → App，活只在 App 里做）、工具清单只有一份且小程序给、不按个数卡守三条（不许两个长得像、只读和写文件不混、说明总长度有上限）、选项词表抄一份就要对账、两代协议（老的 initialize / 新的 `_meta` + `server/discover`）、通道（按 bundle id 分 socket、一次调用一条连接、不抢别人的 socket、阻塞收发只在自己的线程上）、工具在 App 里的十三条规矩（一个工具 = 一步撤销、复用手动操作的规则、排队、看得见但不抢键盘且一轮只摆一次窗口、不许弹模态框、只有删文件才问（读别处的文件问一次、记住文件夹；撞名加编号）、长任务回任务号、AI 看不见就替它量、短 id 与 V1/A1 轨道名、做出来的文件放哪、画面怎么放（铺满 = 窗映满画布）、look 看、listen 听，第 4 块的分镜头、一次看几个文件、铺满跟拍，第 5 块的剪辑风格（AI 自己挑、内置卡在资源里不用 Bundle.module、用户的存 Application Support、卡里的名字必须存在）与配方卡要用的零件、配旁白（按角色挑声音、词的标记只从代理方法来、语速按实测表换、字幕走生成字幕那一套），SrtFlow 自己的声音（本机的 Kokoro：模块从 speech-swift 搬来改过、模型从我们的 R2 下载并核校验值、按字切 token 拿到每个字的时刻、在第一段安静处切掉尾巴杂音））、总说明里「只用 SrtFlow 的工具」、这一轮 / 停止 / 撤销这一轮、「连接 AI」三个客户端各用什么办法（连上顺带放行工具）、人工回归清单。
 - [时间线缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案、**锚点**（捏合钉指针底下那一刻、工具栏钉播放头，滚动视图只从 `TimelineScrollGeometry` 拿、`keepAnchored` 同一拍挪 + 下一轮补挪）、**纵向缩放**（⌥ 捏合 / ⌥ + Ctrl + 滚轮 / ⌘↓ ⌘↑，视频和音频轨统一成一个高度、细行不变、按行认锚点）、人工回归清单。
 - [时间线上的复制 / 剪切 / 粘贴](docs/architecture/timeline-clipboard.md) — 能拷什么（标记、转场跟着段走）、入口（编辑菜单在响应链末端、右键菜单是函数不是视图）、系统剪贴板一套自己的类型且不写纯文本（滤镜那套并进来了）、落点鼠标优先否则播放头（右键菜单用右键按下的那一处）、换新身份走编码往返、各类落到哪（剪辑整组同轨、撞上往上抬、画面组上下关系不变；文字 / 滤镜往上找空的；字幕句按指着的轨）、粘完选中且一步撤销、剪切 = 拷贝 + ⌫、人工回归清单。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式、定位、脏标记与自动保存。
@@ -321,6 +361,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [主轨转场：借余料与定格补足](docs/architecture/transition-handles.md) — 不挪用户片段、三种几何与容量、余料不够用首尾帧定格补足（2026-09-23 拍板）、定格字段只在渲染副本里且只许展开函数写、两条管线怎么做定格。
 - [画面段的入场 / 出场动画](docs/architecture/clip-animation.md) — 五种效果都落在三种斜坡上、效果与画面渐变共用一个槽（老工程零迁移）、铺满画布不露边的补偿、逐帧效果走预渲染的代价。
 - [视频轨对等化](docs/architecture/video-tracks.md) — 取消画中画、一轨一色、⌥ 点击穿透、轨道头这一列的动作（按住拖 = 整条轨换位置、拖下边缘 = 调行高），以及尚未对齐的两项。
+- [用户文本文件的编码](docs/architecture/text-file-encoding.md) — 字幕、讲稿这类用户给的文本文件，编码识别只有 SrtFlowCore 的 `TextDecoding` 一处：BOM → 严格 UTF-8 → 像 UTF-16 才 UTF-16 → GBK；为什么 UTF-16 不能无条件排在 GBK 前面。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）、数字的等待、**老虎机位数不同的两头**（不存在的那一位滚成空白收掉、居中和右对齐右边不动、正在收的那一位原地滚走）、**时间线上的行**（行号进模型、行序 = 叠放序、新字开新行、换行往上找空行、老工程迁移）。
 - [滤镜](docs/architecture/filters.md) — 时间轴上的调色段、层号进模型（LUT 不可交换）、强度=表的线性插值、预览挂图层滤镜的实测地基（backgroundFilters 会污染整个窗口）、两条管线的四条对齐约束。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
@@ -328,7 +369,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [检查器的排版](docs/architecture/inspector-layout.md) — 固定的窄栏（约 220pt）：一行的最小宽度不许超过它，否则整列被撑宽、右边被裁；菜单 Picker 不许锁宽度；长名字的下拉标题单独一行。
 - [定格](docs/architecture/freeze-frame.md) — 一次性提交、PNG 归属、波纹范围与静帧管线。
 - [字幕语言流](docs/architecture/subtitle-language-flow.md) — 目标语言可见性、预检与自动检测。
-- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、**两条轨独立**（2026-09-26 起：各自的 ID 和时间、来源表现算过期 / 缺译文、两个翻译按钮各动哪些句子）、画面上的布局（译文叠在原文下面或各摆各的、预览和烧录读同一份按时间切好的块）、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
+- [字幕轨可见性与布局](docs/architecture/subtitle-track-visibility-and-layout.md) — 一语言一轨、**两条轨独立**（2026-09-26 起：各自的 ID 和时间、来源表现算过期 / 缺译文、两个翻译按钮各动哪些句子）、画面上的布局（译文叠在原文下面或各摆各的、预览和烧录读同一份按时间切好的块）、**工程自己的样式与逐词高亮**（2026-09-28：样式两层只问 `subtitleStyle(appWide:)`、词的时间记在句子上并跟着编辑走、按词切段、ASS 标签与预览同一份位置）、选择模型（点选互斥 / 框选混选），以及三个编辑入口共用的合同。
 - [轨道块标记](docs/architecture/clip-markers.md) — 源时间锚定、标记对所有选择互斥、命中区分层。
 - [即时提示](docs/architecture/instant-tooltips.md) — 不许用系统 `.help`、快捷键单一来源、面板四条硬约束。
 - [本地化](docs/architecture/localization.md) — 写死的文案必须两张表都有、L10n 与 Text 的分工、lproj 小写坑、**sheet / popover 不继承应用内语言**与已知盲区。
@@ -430,6 +471,27 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-26 按 V 藏起来的片段照样被转写成字幕](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md) — 字幕生成的可听快照（`SubtitleAudibleClips.soundClips`）是照着预览合成**抄**的一份合同，2026-09-18 加单段的 V 时预览、导出都接上了，它没人记得，藏起来的段照样被转写。改成调同一个 `ClipVisibility.visible`；落点表补上字幕生成这一行。**「复刻某某合同」的副本，合同一改就漏；能调同一个函数就调同一个。**
 - [2026-09-26 停顿被算进相邻的词：字幕比声音早 0.9 秒、片段开头的词丢了](docs/bugfixes/2026-09-26-pause-stretches-next-word.md) — 识别器把句号后的停顿并进**下一个词的开头**、句末的停顿并进**它自己的结尾**（拿 ffmpeg silencedetect 量出来的）；拿开头当字幕起点就早出来，拿整段中点判归属就把片段边上的「That's」判丢。改成先估开口、按标点判停顿在哪边、宁早勿晚；太短的小句按能在屏上留多久算。**识别器给的词时间不是开口时间，用它之前先对一遍真音频；一个大毛病（整体晚 2.5 秒）会盖住另一个。**
 - [2026-09-26 自动检测语言拿音效当探针，明明是英语却检测不出来](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md) — 探针只取可听快照里第一段读得出来的，主轨在前，AI 视频的镜头只有音效，每个候选语言都 0 分。改成长的先、每段先用已装语言短转写听一听有没有人声（最多 6 段）。**「读得出来」不等于「有人说话」：挑样本要先确认它带着要判的东西。**
+- [2026-09-27 AI 的改动撤一步，整条时间线空了](docs/bugfixes/2026-09-27-ai-edits-share-one-undo-group.md) — 撤销管理器按**用户事件**分组，AI 从 socket 来的改动不是事件、后台的 App 又一个事件都没有，所有步堆进同一组；第一版手动关掉自动开的组，下一次登记就抛异常、App 闪退（自检在命令行里当场崩出来）。改成每个改动工具自己显式开一组、暂时绕开按事件分组，包的那一段必须同步。**「按事件分组」只对用户事件成立；别去关别人自动开的组。**
+- [2026-09-27 AI 翻译按旧的原文语言去翻，等下载时又一声不吭](docs/bugfixes/2026-09-27-ai-translation-stale-source-language.md) — AI 把原文改写成中文，工程里记的还是英文，系统按「英文→韩文」去翻；缺语言时 macOS 的下载框只能由用户点，框在后面、任务停在 0%、谁都在等，系统框的进度条还会停。改成按字判断原文语言、翻之前先查装没装、要下载就把 SrtFlow 摆到前面并在结果 / 进度 / 提示条里写明「去点下载」、自己每两秒问一次真实状态。**给 AI 用的入口按内容现判、别信旧标签；要人动手的地方必须说出来。**
+- [2026-09-27 加了几段音效，预览整个黑屏（标题照样在）](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md) — 合成器用 `CMTime(seconds:)` 换格子会**截断**：5.3 + 1.4 = 6.699999999999999 落在前一格，补空白时从那儿插进去，切下前一段音效的最后一格、一路挤到全片最后，合成比画面长 1/600 秒，视频合成判无效 → 预览只剩黑底，正式版一样。改成只往合成轨真正的末尾后面接、合成完裁到总长（`CompositionTime`）；第一版顺手把换算改成四舍五入，CI（macOS 15）的声音渐变自检卡死 30 分钟，退回截断，并给那项自检加了看门狗。二分到「中间空一截 + 最后一段收在结尾」这个组合才找到。**CMTime 截断、AVFoundation 的 insert 会挤走已有内容而不报错、合成总长多一格就黑屏；修 bug 别顺手改到处在用的换算。**
+- [2026-09-27 拼图函数叫 `sheet(`，被 sheet 语言守卫当成了 SwiftUI 的 `.sheet`](docs/bugfixes/2026-09-27-contact-sheet-name-trips-sheet-guard.md) — AI「看」把几帧拼成一张的函数叫 `AIContactSheet.sheet(`，按调用名扫的守卫把它当成弹出的 sheet，CI 第 1 组红；改名 `draw`。**按名字扫的守卫，名字就是接口：别给自己的函数取 SwiftUI 修饰器的名字；推之前把 `checks/*.sh` 的扫描守卫也跑一遍（秒级）。**
+- [2026-09-27 GBK 编码的字幕文件读出来是乱码](docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md) — 读字幕（剪辑页挂字幕、字幕编辑、烧录）和批量转换都是「UTF-8 → UTF-16 → GBK」，而 `.utf16` 几乎什么都解得出来，GBK 永远轮不到，整份读成乱码；两份抄来的规则还不一样。给 AI 写读文稿的自检时造了一份 GBK 才撞出来。改成只有 `TextDecoding` 一处、先看 BOM、像 UTF-16 才按 UTF-16。**「解得出来」不等于「解对了」：宽容的解码器只能放最后，或者先用特征确认。**
+- [2026-09-27 段上画了音量曲线时，AI 调 volume_db 听不出变化](docs/bugfixes/2026-09-27-ai-volume-ignored-on-curved-clips.md) — 有曲线时曲线取代 `volume`，AI 却一律写 `volume`；检查器早就改成整条曲线平移。改成同检查器、回给 AI 的状态带上曲线。**给 AI 开参数之前先看检查器改同一个值时做了什么。**
+- [2026-09-27 烧录页存好的字幕样式，要先去烧录页转一圈，剪辑页才用得上](docs/bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md) — 全 App 共用的字幕样式放在烧录队列上，读回来却写在烧录页的 `onAppear` 里；App 直接进剪辑页时那一页从没出现过，预览、导出、AI 用的都是默认样式。改成队列创建时读回来（`EncodeQueueMemory`，同 `VideoEditExporter` 的 init），守卫钉着。顺带查过：`burnInFontURL` 从没赋值，但这版 libass 用 CoreText 按名字找到同一个文件，成片一样。**一份设置有了第二个读者，读回来就不能挂在某一页的 `onAppear` 上。**
+- [2026-09-27 AI 放素材时顺带挂了字幕，之后撤一步整条时间线空了](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md) — `add_clips` 先挂字幕（登记在 `AIUndoGrouping.step` 外面）再进 step 放素材；后台的 App 里按事件自动开的那一组关不上，之后每个 step 都嵌进去。冒烟 A / B 两组只差一个 .srt 才定的性。挂字幕挪进同一个 step，生成字幕、翻译写回、删占位块这些异步落账也各包一层，守卫钉着。**「每个工具包一层 step」只在一次调用里所有登记都在 step 里时成立；异步落账要自己成一步。**
+- [2026-09-27 批量转换字幕，旁边的同名文件被悄悄盖掉](docs/bugfixes/2026-09-27-batch-convert-overwrites-existing-files.md) — `convertFile` 算出名字就覆盖写，同格式转回源文件夹连源文件都盖（开源第一版起就这样）；用户拍板改成加编号。「撞名加编号」挪进 SrtFlowCore 的 `ExportFileName.unoccupied` 只留一份（App 里原有两份），写时再带 `.withoutOverwriting`。**写用户文件夹的地方默认不覆盖：要覆盖就先问，不问就加编号。**
+- [2026-09-28 链接开着时删掉分割出来的一块，整条素材连声音全没了](docs/bugfixes/2026-09-28-split-links-every-piece-together.md) — 链接关系就是「同一个组号」，分割却原样抄了组号：一对切开四段同号、互为伙伴，越切整串越大，删 / 拖 / 裁一块整串都跟着走（「链接」默认关，所以一直没人撞上）。切都改走 `LinkRegrouping.split`：按时间上重叠重分组，一对切开是两对。写 AI 的 cut_speech 时拿纯函数试出来的。**从旧段构造新段时，身份类的字段（id、组号）不能照抄。**
+- [2026-09-28 一次放两首配乐，第二首点名要新开一条轨，却接在了 A1 后面](docs/bugfixes/2026-09-28-new-audio-lands-on-a1.md) — `add_clips` 用「这一批开过的新轨」把同批的 new_audio 并进同一条，可只要落地新开了轨就记下，前一首只是因为没有音频轨才开的 A1 也算了进去。改成只认点名要新开的那段。**要记的是意图，不是副作用。**
+- [2026-09-28 英文男声的配音开头「啪」地爆音](docs/bugfixes/2026-09-28-kokoro-voiceover-clipping.md) — Kokoro 的 am_fenrir 原始峰值超过满幅（1.05–1.15），写 .m4a 那一步原样照抄，AAC 存得下大于 1 的值、一播放就被砍平；之前给用户听的样音和端到端都没跑过这个音色，自检也没有一条量电平。两种声音改成只经 `AIAudioFileWriter.writeVoiceover` 写文件、先过 `AIVoiceLevel`（说话部分 −18 dBFS、峰值封顶 −1 dBFS、只乘一个增益），真写真读的自检 + 扫描钉着。**合成器给的采样不保证在 ±1 以内；角色换了音色要用生产那条路真跑、量一下。**
+- [2026-09-29 修完爆音，en_male 那几句反倒几乎听不见了](docs/bugfixes/2026-09-29-kokoro-short-pieces-explode.md) — 生产里一句旁白按句切开读，「Two.」被单独送进 Kokoro，这个转换版读太短的输入会炸（满幅的 90 倍，「好。」+43 dB，换计算单元一样）；09-28 那版「整句一个增益、按峰值封顶」被这一下带偏，后面的话掉到 −55 dB。09-28 验证时量峰值是整句喂模型、没走按句切开那一步，所以结论反了。改成放得下整句读、太短的垫一句再读只留自己的、响度按说话部分算再局部限幅。**验证修复要走生产那条路；一个尖峰不许决定整句的音量。**
+- [2026-09-29 成片里的字幕比预览小一截](docs/bugfixes/2026-09-29-subtitle-preview-bigger-than-burn.md) — libass 把字号当行高（OS/2 的 usWinAscent + usWinDescent 撑满字号），预览的 CoreText 当 em，同一个字号成片只有预览的 71%（中文回退到苹方）–85%（Helvetica）；从 2026-07-30 有这个叠层起就这样，AI 按 `look` 挑的字号、生成字幕一行放几个字也跟着偏。改预览不改成片：每一截按实际画它的字体（中文回退、粗体选真粗体）乘比例（`SubtitleFontScale`），真烧一帧对比的自检钉着。第一版只量常规体、样本全绿，默认样式是粗体（Hiragino W6 比 W3 小 7%）。**同一个数字在两个渲染器里可以是两种量；「自动化够不着」要先试一下再写；样本要带上默认值。**
+- [2026-09-29 新建工程之后播放头停在上一个工程的 36.3 秒](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md) — 切工程先卸片、播放头归零，可播放器换掉条目之后时间回调还会晚到一拍、报旧条目的时间，`PlayerClock` 照收，AI 不给时间的配音 / 文字就放到了 36.3 秒；打开工程时重建读到这个晚到的值，新工程从上一个的位置（或片尾）开始。没挂条目就丢掉回调；顺带让新建工程也重排预览（和打开一样，作废上一个工程还在路上的重建）。老自检不挂真条目、卸片后马上断言，异步的那一拍到不了；新的一项第一版素材没音轨，停着那种照样绿。**平台回调是异步的，同步设好的状态会被「关于上一个条目」的回调盖掉；测异步要让主循环转起来、素材要像真的。**
+- [2026-09-29 风格卡给竖屏写的字号大了 1.78 倍](docs/bugfixes/2026-09-29-recipe-sizes-too-big-on-vertical.md) — `font_size` 和字幕 `size` 都是「1080 高的画面上多少像素」，9:16 的画面 1920 高，卡里照别的软件的习惯给竖屏写了大字 110–140、字幕 64–72，AI 照做的大字折成三行顶出画面、字幕一行一两个词；工具说明的「64-80 for short-video captions」同样。按生产的排版量出来改成大字 44–52、字幕 42–48，共用规矩写明换算，卡里每个字号写明画幅，自检用 `set_text` 的排版和 `SubtitleLineFit` 真排一遍上限。**写给 AI 的数字也是代码：写之前在 SrtFlow 里真排一下；单位跟着画面的哪条边走要写明。**
+- [2026-09-29 转写认不出语言时，AI 被叫去「面板里选」](docs/bugfixes/2026-09-29-ai-told-to-pick-language-in-panel.md) — 自动检测没认出语言抛的是一个只带文字的错，文字是给面板写的，transcribe / generate_subtitles 原样交给 get_job。改成单独的 `LanguageUndetectedError`（面板文字不变），两个 AI 任务的失败都经 `AIHarvestFailure` 换成「带上 language 再调」，扫描钉着。**给界面写的报错不能原样交给 AI；要按种类换说法，错误就得有类型。**
+- [2026-09-29 在最后一帧上定格，静帧后面还剩一截原片](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md) — 定格 = 切开、插静帧、右边后挪；想停在最后一帧上，切点只能落在最后一帧里，右半不到一帧、没有自己的画面，只在静帧后面闪一下、咔一声（手动定格一样）。`FreezeSliver` 判断、`insertFreeze` 拿掉它且后面少挪这一截；够一帧的照旧留，AI 的结果里带 `tail_id`。**切出来不到一帧的那一截不是内容，切的操作要自己收拾；够一帧的要指出来，别让人去找。**
+- [2026-09-29 扫画面里的字：字幕带把幻灯片底部居中的标签也框了进去](docs/bugfixes/2026-09-29-text-scan-band-swallows-slide-labels.md) — 字幕带的框按所有「下面、正中、会变」的行取，课程录屏里随页换的幻灯片标签也算进去，框从 0.77 起、叫人裁 0.24。拿六节课真跑、逐帧打出来：字幕底边都在同一条线上、每帧都不同，标签位置各异、一页停几帧同一句。改成按底边分堆、不同的字最多那一堆才是字幕（`subtitleLines`），六节课裁 0.11–0.14，和 AI 一段段看完定的对得上。**统计量要挑能把两种东西分开的特征；用真素材打出逐帧数据再定规则。**
+- [2026-09-29 没下载苹方的 Mac 上，拉丁字体的样式烧中文字幕是方框](docs/bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md) — 字幕大小的新自检第一次上 CI 就红：苹方完整版是按需下载的，CI 的机器没下载，CoreText 回退到系统私有的那份（预览照样是中文），libass 用不了、画成方框。回退到的字体文件在私有框架里时，预览和烧录一起换成每台 Mac 都有的冬青黑体（`SubtitleFallbackFont`），烧录在那几个字前面写 `\fn` 点名、和逐词高亮一起写（`SubtitleASSText`，`\r` 之后照样点名）；下载了苹方的 Mac 上什么都不变。**CoreText 找得到不等于 libass 找得到；认「私有」看文件在哪，不看族名。**
+- [2026-09-29 text_scan 的裁切量被幻灯片标题拉大，裁线切进 PDF 页里的一行字](docs/bugfixes/2026-09-29-text-scan-crop-hint-stretched-by-slide-title.md) — 第二轮复查（0.17.5）里测试员照提示裁完，L27 底边留着半行字、L16 幻灯片自己的小字少了半行。L27：某一帧幻灯片的标题恰好贴在字幕上面，被当成两行字幕的上一行，框的上沿被拉到 0.768，这节课字幕框只有十个、10% 分位几乎就是最小值，提示从 0.13 变成 0.14，裁线切进 PDF 页里的一行字；L16 是字幕压在幻灯片自己的字上，裁一条带必然一起裁，改数字没用。上一行改成要每句都换（至少两帧、两句不同）才认，提示补一句「裁的是整条带、裁完抽几帧看」；真素材六节课只有 L27 变（0.14 → 0.13），测试员那一帧半行字变成整行。**分开字幕行和幻灯片字的特征，同样分得开字幕的第二行；样本只有十来个时分位数就是最小值；会破坏内容的补救办法要在提示里说出来。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

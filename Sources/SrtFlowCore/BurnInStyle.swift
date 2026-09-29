@@ -263,10 +263,13 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
     /// 几块字幕各自一个样式（各自的布局）的 ASS 文本：视频编辑器里原文、译文分开摆时是两块
     /// （SubtitleRenderBlocks.swift）。第 i 块的事件放在 Layer i —— libass 只让同一层的事件互相避让，
     /// 分开摆的两块哪怕挨着也不互相推开，和预览一致。
+    /// `fontOverrides`：一句字里哪几截要点名字体（烧录时 App 给：这台 Mac 上 libass 找不到回退字体的字，SubtitleASSText）；
+    /// 导出字幕文件不给（点名的是这台机器的替补字体，不该写进给别人用的文件）。
     public func assDocument(
         blocks: [SubtitleRenderBlock],
         aspectRatio: Double,
-        title: String = "SrtFlow"
+        title: String = "SrtFlow",
+        fontOverrides: (String) -> [SubtitleFontOverride] = { _ in [] }
     ) -> String {
         let height = Self.referenceHeight
         let safeAspect = aspectRatio.isFinite && aspectRatio > 0.1 ? aspectRatio : 16.0 / 9.0
@@ -287,7 +290,11 @@ public struct BurnInStyle: Codable, Hashable, Sendable, Identifiable {
                 copy.styleName = style.name
                 // 只有一块时不动原来的 Layer（外挂 ASS 自带的层照旧），产物和以前逐字一样。
                 if blocks.count > 1 { copy.layer = index }
-                copy.text = SubtitleSerializer.assText(SubtitleSerializer.plainText(cue.text))
+                let plain = SubtitleSerializer.plainText(cue.text)
+                // 逐词高亮（此刻正在说的词换色、放大，预览按同一份位置画）和点名字体一起写（SubtitleASSText.swift）。
+                copy.text = SubtitleASSText.text(
+                    plain, highlight: block.highlight, lit: block.highlights[cue.id] ?? [], fonts: fontOverrides(plain)
+                )
                 copy.marginL = nil
                 copy.marginR = nil
                 copy.marginV = nil

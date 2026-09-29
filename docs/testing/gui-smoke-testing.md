@@ -347,6 +347,35 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
    `state` 里每段带 `transition`（接缝上的转场）和 `volumePoints`（音量线上的点），验这两样
    读它。拿不准落在谁上，先加一步 `hit`。
 
+## 四之七、扮成 AI 客户端驱动测试版（MCP 冒烟，2026-09-27）
+
+AI 接口（MCP）的工具要在真 App 上看结果时（合成的画面、Vision 认出来的东西、听出来的电平），用
+`scripts/gui-smoke/mcp-client/client.py`：它起 App 包里的 `srtflow-mcp`（默认 `/Applications/SrtFlow Beta.app` 里那个，
+`SRTFLOW_MCP_HELPER` 可换），按老一代握手，照一份 JSON 调用表一个一个发，打印结果，`look` 回的图存成 jpg。
+
+```bash
+scripts/gui-smoke/mcp-client/client.py <scratchpad>/calls.json <scratchpad>/out
+# calls.json：[{"name": "open_folder", "arguments": {"path": "<scratchpad>/素材"}},
+#              {"name": "look", "arguments": {"file": "企鹅.mp4", "count": 6}}, …]
+```
+
+1. **测的是装好的测试版**（`scripts/build-beta-app.sh` 出、装进「应用程序」），不是 `.build` 里的调试版：小程序按自己所在的
+   App 包找 socket，调试版没有包。App 没开时小程序会 `open -g` 把它拉起来；之后要换版本就得等用户自己退出它。
+2. **素材复制到 scratchpad**，别用符号链接指回 `~/Downloads`：新签名的测试版读 Downloads 可能重新弹系统的权限框（要用户点），
+   复制出来的只在临时目录里。需要特殊素材（遮幅、纯色）用仓库的 `vendor/ffmpeg` 现做 —— 那是测试夹具，不是 AI 该用的东西。
+3. AI 第一次改工程时 SrtFlow 的窗口会摆到前面一次（一轮只摆一次），用户正在用电脑时先说一声。
+4. 图要**量**，别只用眼看缩略图：同一刻开 / 关滤镜各看一次，小图上几乎看不出差别，量一块区域的平均色才看得出冷铁那种
+   红降蓝升。看图时把 jpg 读进来，位置、层序、有没有黑边这类一眼就能核对。
+5. 正在跑的 AI 会话（比如这个 Claude Code）里那个小程序是**启动它时**的旧版本，新加的工具它列不出来 —— 新工具就用这个脚本测。
+6. **每轮都要有「改很多步之后撤一步」**，而且放素材时**带上一个字幕文件**、中间起一次生成字幕 / 翻译：一处撤销登记落在
+   `AIUndoGrouping.step` 外面，后台的 App 里之后每一步都并进去，撤一步全空 —— 只有这样的顺序才露馅
+   （[案例](../bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)；当时是只差一个 .srt 的 A / B 两组才定的性）。
+   同一个测试版里出过一次之后，那个进程里的撤销就不可信了，要验修复得换新版本重开。
+7. **验「记住的设置」**（压缩 / 烧录 / 字幕样式）：趁测试版没开，用 `defaults write com.srtflow.SrtFlow.beta <键> -string '<JSON>'`
+   写一份和默认值一眼就分得出的（黄字、CRF 26；JSON 用 `SrtFlowCore` 的编码器现生成，别手写），测试版停在剪辑页启动，
+   不打开那两页，让 AI `look` 看字幕颜色、`compress_videos` 看结果里的 `settings`。**测完 `defaults delete` 删掉写进去的键**
+   （先 `defaults read` 记下原来有没有）—— 那是用户的测试版设置。
+
 ## 五、要真实窗口、但已经自动化了的检查
 
 有些检查**不需要人来操作**，只是需要一个图形会话（会建真实的 `NSWindow` /

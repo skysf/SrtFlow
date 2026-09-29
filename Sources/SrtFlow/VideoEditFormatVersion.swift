@@ -334,6 +334,32 @@ extension TimelineState {
             || subtitleCompanion?.hiddenCueIDs.isEmpty == false
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v24-only 持久数据。
+    ///
+    /// **登记清单（新增 v24-only 字段必须同步补进来）：**
+    /// 1. `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（2026-09-28，电影遮幅、色块底；**按需写入**：
+    ///    描边的不落键）。
+    ///
+    /// 为什么要抬：它**直接决定成片**。只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，
+    /// 画面当场就不一样；随手编辑触发自动保存即永久丢失。
+    var requiresFormatVersion24: Bool {
+        shapes.contains(where: \.isFilled)
+    }
+
+    /// 是否存在「旧版打开会被静默丢掉」的 v25-only 持久数据。
+    ///
+    /// **登记清单（新增 v25-only 字段必须同步补进来）：**
+    /// 1. `projectSubtitleStyle` —— 这个工程自己的字幕样式（2026-09-28，方案第 54 条：AI 改样式只改这一份；按需写入）。
+    /// 2. `subtitleHighlight` —— 逐词高亮（方案第 38 条；按需写入：不高亮不落键）。
+    /// 3. `SubtitleCue.words` —— 字幕每个词什么时候说（生成、配音的字幕才有；按需写入）。
+    ///
+    /// 为什么要抬：前两项**直接决定成片**里的字幕长什么样。只认 v24 的旧版不认识这些键，字幕退回全 App 的样式、
+    /// 不再高亮，随手编辑触发自动保存即永久丢失；第三项丢了，之后再打开高亮也亮不起来。
+    var requiresFormatVersion25: Bool {
+        projectSubtitleStyle != nil || subtitleHighlight != nil
+            || ((subtitle?.cues ?? []) + (subtitleCompanion?.translation?.cues ?? [])).contains { $0.words != nil }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

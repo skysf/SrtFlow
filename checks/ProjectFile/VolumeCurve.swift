@@ -265,7 +265,7 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     withOverlay.overlayTracks = [EditLane(clips: [upper], volume: 0.25)]
     withOverlay.audioTracks = [EditLane(clips: [voice], volume: 1.5)]
     withOverlay.masterVolume = 0.8
-    let sub = withOverlay.selectionForExport(ids: [upper.id, voice.id])
+    let sub = TimelineExportSelection.subset(of: withOverlay, ids: [upper.id, voice.id])
     checkEqual(sub.mainVolume, 0.25, "升成主轨的那条带着自己的推子")
     checkEqual(sub.audioTracks.first?.volume, 1.5, "音频轨的推子跟着走")
     checkEqual(sub.masterVolume, 0.8, "总推子跟着走")
@@ -300,7 +300,7 @@ func checkVolumeCurveAndMixer(root: URL) throws {
     try VideoEditProjectIO.save(rich, to: file)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
     // 数字写死 19，不引用 latestFormatVersion：拿常量跟自己比是自反断言。
-    checkEqual(raw?["formatVersion"] as? Int, 23, "带曲线 / 推子的工程写 latest（v23）")
+    checkEqual(raw?["formatVersion"] as? Int, 25, "带曲线 / 推子的工程写 latest（v25）")
     let loaded = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(loaded.audioTracks.first?.clips.first?.volumeCurve, ramp.volumeCurve, "曲线往返保真")
     checkEqual(loaded.audioTracks.first?.volume, 0.4, "轨道推子往返保真")

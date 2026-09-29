@@ -5,16 +5,25 @@ import SrtFlowCore
 // 生成出来的每一条都不会被折成两行。
 //
 // 管什么：可用宽度只从 `SubtitleFrameGeometry` 取（预览拖框、就地编辑用的同一份换算，不算第二遍），
-// 除以原文轨的字号（全局样式 × 工程布局的倍率），再给描边、字距留一点余量。
+// 除以原文轨真画出来的字宽（字号 × 工程布局的倍率 × libass 的字号比例），再给描边、字距留一点余量。
 // 不管什么：一行按什么数字数、上限多少（SrtFlowCore 的 `SubtitleLineMeasure` / `SubtitleSegmentationConfig`）。
 // 生成之后再改字号 / 边距，已生成的字幕不重排 —— 放不下时由渲染自动折行。
 
 enum SubtitleLineFit {
+    /// 这个工程生成字幕时一行放得下几个字号宽：用工程此刻的样式（`subtitleStyle(appWide:)`，AI 改过就是工程自己的）、
+    /// 原文的布局；打开了逐词高亮、那个词会放大时再留一点余量（放大的词按占一行的一半算），不然说到它时整行变宽、
+    /// 折到第二行。生成字幕、配音的字幕都问这里。
+    static func ems(for state: TimelineState, appWide: BurnInStyle, renderSize: CGSize) -> Double {
+        let base = ems(style: state.subtitleStyle(appWide: appWide), layout: state.subtitleLayout, renderSize: renderSize)
+        guard let highlight = state.subtitleHighlight else { return base }
+        return base / (1 + (highlight.scale - 1) * 0.5)
+    }
+
     /// 给描边、字距和「粗体英文比估的宽」留的余量。
     static let safety = 0.95
 
     /// - Parameters:
-    ///   - style: 全局烧录样式（预览同一份）。
+    ///   - style: 这个工程用的字幕样式（预览同一份）。
     ///   - layout: 原文轨的工程布局覆盖（`TimelineState.subtitleLayout`），nil = 按全局样式。
     ///   - renderSize: 画面尺寸（只用它的宽高比）。
     static func ems(style: BurnInStyle, layout: SubtitleLayout?, renderSize: CGSize) -> Double {
@@ -22,7 +31,8 @@ enum SubtitleLineFit {
         let reference = Double(BurnInStyle.referenceHeight)
         let box = CGSize(width: reference * renderSize.width / renderSize.height, height: reference)
         let geometry = SubtitleFrameGeometry(boxSize: box, style: style, layout: layout, blockHeight: 0)
-        let fontSize = style.fontSize * (layout?.fontScale ?? 1)
+        // 烧出来的字的 em 是字号乘这个比例（libass 把字号当行高，SubtitleFontScale）：按样式的字体和它的中文回退里大的那个算。
+        let fontSize = style.fontSize * (layout?.fontScale ?? 1) * SubtitleFontScale.lineScale(style: style)
         guard fontSize > 0 else { return .infinity }
         return Double(geometry.frameRect.width) / fontSize * safety
     }

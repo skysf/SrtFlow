@@ -28,9 +28,10 @@ swift run --arch arm64 SrtFlowCoreChecks      # 核心自检（184 项断言，C
 
 ## 打包流程（scripts/build-app.sh）
 
-Release 构建 → 手写 Info.plist 组装 `dist/SrtFlow.app` → 拷入 SwiftPM 资源包与
-vendor/ffmpeg（`Contents/Helpers/`）→ 生成图标 → **先签嵌套二进制再签外层**
-（顺序反了外层签名立即失效）→ `hdiutil` 生成 DMG。
+Release 构建 → 手写 Info.plist 组装 `dist/SrtFlow.app` → 拷入 SwiftPM 资源包、
+vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Contents/Helpers/`，
+见 [AI 接口（MCP）](../architecture/ai-control-mcp.md)）→ 生成图标 → **先签嵌套二进制再签外层**
+（顺序反了外层签名立即失效；`scripts/check-mcp.sh` 钉着 srtflow-mcp 这一条）→ `hdiutil` 生成 DMG。
 
 产物：`dist/SrtFlow.app`（约 52 MB）、`dist/SrtFlow-<版本>-arm64.dmg`。
 
@@ -39,9 +40,15 @@ vendor/ffmpeg（`Contents/Helpers/`）→ 生成图标 → **先签嵌套二进�
 以前这里是写死的默认值，发到 0.4.1 了还停在 0.3.0，打出过贴错版本号的包，
 见 [bugfixes/2026-08-06-build-version-and-shell-traps.md](../bugfixes/2026-08-06-build-version-and-shell-traps.md)。
 
+## 测试版（SrtFlow Beta）
+
+没合并的功能要给用户在自己机器上实测时：`VERSION=x.y.z scripts/build-app.sh && scripts/build-beta-app.sh`，得到 `dist/SrtFlow Beta.app`。换了名字和 bundle id（`com.srtflow.SrtFlow.beta`），设置、AI 的通道都和正式版分开；每种文档类型都只做「备选」，双击工程文件仍由正式版打开。`build-app.sh` 会顺手打一个同版本号的 DMG、覆盖 `dist/SrtFlow.app` —— 只出测试版时记得把它们删掉 / 换回去，别让 `dist/` 里留着贴了未发布版本号的包。
+
 ## 产物验收清单
 
 - `lipo -archs dist/SrtFlow.app/Contents/MacOS/SrtFlow` → `arm64`
+- `dist/SrtFlow.app/Contents/Helpers/srtflow-mcp` 在、能跑：往它的 stdin 喂一行 `initialize`，
+  stdout 回一行带 `"serverInfo":{"name":"srtflow"` 的 JSON
 - `strings ... | grep <新增字符串>` → 命中
 - 脚本自带 `codesign --verify --deep --strict` → "签名校验通过"
 - `swift run --arch arm64 SrtFlowCoreChecks` → "All 184 checks passed."

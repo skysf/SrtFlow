@@ -155,6 +155,18 @@ extension VideoEditProject {
         perform(rebuildsPreview: false) { $0.translationLayout = nil }
     }
 
+    /// 逐词高亮开 / 关 / 换色（字幕表表头那一行；AI 走 edit_subtitles 的 style）。nil = 关。一次一步撤销。
+    func setSubtitleHighlight(_ highlight: SubtitleWordHighlight?) {
+        guard state.subtitleHighlight != highlight else { return }
+        perform(rebuildsPreview: false) { $0.subtitleHighlight = highlight }
+    }
+
+    /// 不用这个工程自己的字幕样式了，回到全 App 的（烧录页那套）。
+    func useAppWideSubtitleStyle() {
+        guard state.projectSubtitleStyle != nil else { return }
+        perform(rebuildsPreview: false) { $0.projectSubtitleStyle = nil }
+    }
+
     /// 点选字幕 cue：与剪辑、形状选择都互斥（互斥规则在 `EditSelection`）。
     /// ⌘/⇧ 点是加选或取消，和剪辑、形状一致。
     func selectSubtitleCue(_ id: UUID, additive: Bool = false) {

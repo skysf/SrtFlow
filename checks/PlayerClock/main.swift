@@ -71,6 +71,9 @@ checkPacedPlayhead()
 // 10. 回到开头（Return / Home）：只有它请时间线滚回最左
 checkGoToStart()
 
+// 11. 卸片之后晚到的时间回调不许把播放头写回旧位置（新建 / 打开工程）
+checkDetachDropsLateTicks(clip: URL(fileURLWithPath: CommandLine.arguments[1]))
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 exit(failures == 0 ? 0 : 1)

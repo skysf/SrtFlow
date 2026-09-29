@@ -85,7 +85,8 @@
   只放内存、不进工程文件（不是画面数据，不值得动格式版本）。和默认一样就不记，工程
   改名时标题才会跟着走。
 - **导出位置**：记住的文件夹（全局一个，`UserDefaults` 的 `videoEditExportFolder`；App 没开
-  沙盒，存路径就行）→ 工程文件旁边 → `~/Movies`。记住的文件夹不在了（删了、外接盘
+  沙盒，存路径就行）→ 起点（`DefaultFolder`：AI 点名的文件夹 → 工程的家 → 「下载」；2026-09-27 起不再是
+  `~/Movies`，见 [AI 接口](ai-control-mcp.md) 第四节第 10 条）。记住的文件夹不在了（删了、外接盘
   拔了）就当没记过。导出时用的那个文件夹就是下次的默认。
 - **独立字幕文件**写进同一个文件夹，文件名跟标题走：`<标题>.<lang>.srt`，和视频同名，
   播放器能自动挂上。
@@ -101,6 +102,10 @@
    任何一步失败都不碰旧文件。
 4. 字幕文件以前是撞名追加 `-2` / `-3`（计划第 13 节），重导几次就堆出一串、还和视频
    配不上对；2026-09-24 起改成和视频同一条规则。
+5. **不经过这个面板、不问的那几处一律加编号，从不覆盖**：批量转换字幕、压缩 / 烧录页的成品、AI 做出来的文件、替没存过的
+   工程存的盘 —— `名字.后缀` 占了就 `名字 2.后缀`、`名字 3.后缀`。规则只有 SrtFlowCore 的 `ExportFileName.unoccupied` 一份；
+   写的时候再带 `.withoutOverwriting`。同格式转回源文件夹也只会另起名字，不会盖源文件
+   （[案例](../bugfixes/2026-09-27-batch-convert-overwrites-existing-files.md)）。
 
 ## 六、记住与恢复默认
 
@@ -109,6 +114,14 @@
   置灰，点了不弹确认。
 - 分辨率也记住。记住的档位这块画布给不了（换到了更小的工程）就显示「跟随工程」——
   导出那边是同一个结果：档位不小于画布短边时 `cappedSize` 本来就不缩。
+- 压缩 / 烧录两页的编码设置、烧录的字幕样式、「再挂一条可开关的字幕轨」也记住（`compressSettings`、
+  `burnInSettings`、`burnInStyle`、`burnInSoftTrack`）。**在队列创建时读回来**（`EncodeQueueMemory`，和
+  `VideoEditExporter` 在 init 里读同一个做法），**不许挪回页面的 `onAppear`**：烧录队列上的样式是全 App 的
+  字幕样式，剪辑页预览、剪辑导出、AI 都读它，烧录页没出现过也必须是用户存的那套
+  （[案例](../bugfixes/2026-09-27-remembered-subtitle-style-waits-for-burn-in-page.md)，`checks/encode-settings-memory.sh` 钉着）。
+  2026-09-28 起工程可以有**自己的**字幕样式（AI 改的就是它，方案第 54 条）：剪辑页和 AI 一律问
+  `TimelineState.subtitleStyle(appWide:)`，烧录队列的样式只当「全 App 的」传进去（同一个守卫的第 5 条），
+  见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md)「工程自己的样式与逐词高亮」。
 
 ## 回归矩阵
 
@@ -118,6 +131,8 @@
 | `SrtFlowCoreChecks`（分辨率档位一节） | `cappedSize` 的确切像素（竖屏、奇怪比例取偶数）、`downscaleOptions` 给哪几档 |
 | `SrtFlowCoreChecks`（标题 → 文件名主干一节） | `ExportFileName.stem` 的清理规则 |
 | `SrtFlowCoreChecks`（字幕导出规划器一节） | 同名旧文件被整份原子替换、失败不碰已有文件 |
+| `SrtFlowCoreChecks`（`SubtitleConvertChecks`） | 批量转换撞名加编号：旁边手改过的同名文件一个字不动、同格式转回源文件夹不盖源文件 |
+| `checks/encode-settings-memory.sh`（第一组） | 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来；键和读法只有 `EncodeQueueMemory` 一处，页面不自己读；剪辑页和 AI 的字幕样式都经 `subtitleStyle(appWide:)` |
 | `scripts/check-export-frame-rate.sh`（第三组） | 剪辑导出**真跑一遍**读成片尺寸：16:9 / 9:16 选 720p、跟随工程、档位不小于画布时不缩；奇怪比例下像素是方的（守 `setsar=1`） |
 
 ## 人工回归清单（自动化够不着，发版前实机过）
@@ -136,3 +151,7 @@
 9. 中文界面：整个面板和确认框都是中文（sheet 不继承应用内语言的坑，见
    [本地化](localization.md)）。
 10. 压缩 / 烧录两个工具的设置页不受影响：分辨率、帧率、音频「原样复制」都还在。
+11. 在烧录页把字幕改成黄字 → 退出 → 重开（上次停在剪辑页）→ **不去烧录页**：剪辑页预览里的字幕已经是黄的，
+    导出的成片也是；再去烧录页，样式、编码设置、「再挂一条字幕轨」都是上次的。
+12. 批量转换：旁边已经有 `a.vtt` 时把 `a.srt` 转成 VTT → 列表里显示 `✓ a 2.vtt`，原来的 `a.vtt` 没变；
+    同格式转回原文件夹同理。

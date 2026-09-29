@@ -77,8 +77,14 @@ final class VideoEditExporter: ObservableObject {
         return defaults
     }
 
-    func export(state: TimelineState, to output: URL, subtitleStyle: BurnInStyle, subtitleFontURL: URL?) {
+    /// - Parameter settingsOverride: 这一次用的编码设置（AI 指定了分辨率时传）。nil = 面板上记住的那份。
+    ///   **不写回 `settings`**：AI 导一次 720p，不该把用户记住的导出设置悄悄改掉。
+    func export(
+        state: TimelineState, to output: URL, subtitleStyle: BurnInStyle, subtitleFontURL: URL?,
+        settingsOverride: VideoEncodeSettings? = nil
+    ) {
         guard !isExporting else { return }
+        let settings = settingsOverride ?? self.settings
         guard let runtime = MediaToolchain.shared.runtime else {
             errorMessage = L10n("The video engine is not ready yet.")
             return

@@ -105,16 +105,9 @@ public enum SubtitleSegmenter {
         }
     }
 
-    // MARK: 分段
-
-    /// 源时间词流 → 本窗口的字幕（显示时间在 `assemble` 里排）。
-    public static func segment(
-        words: [TimedWord],
-        window: SubtitleClipWindow,
-        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
-    ) -> SegmentedSubtitles {
-        // ① 截取归属本窗口的词，② 映射到时间线（保留源时间做 provenance）。
-        let placed = attributeWords(words, to: window)
+    /// 归属本窗口的词，按时间排好、映射到时间线（保留源时间）。字幕分段和 AI 的转写结果（`SpeechTranscript`）共用。
+    static func placed(_ words: [TimedWord], in window: SubtitleClipWindow) -> [PlacedWord] {
+        attributeWords(words, to: window)
             .sorted { $0.start < $1.start }
             .map { word in
                 PlacedWord(
@@ -126,6 +119,18 @@ public enum SubtitleSegmenter {
                     confidence: word.confidence
                 )
             }
+    }
+
+    // MARK: 分段
+
+    /// 源时间词流 → 本窗口的字幕（显示时间在 `assemble` 里排）。
+    public static func segment(
+        words: [TimedWord],
+        window: SubtitleClipWindow,
+        config: SubtitleSegmentationConfig = SubtitleSegmentationConfig()
+    ) -> SegmentedSubtitles {
+        // ① 截取归属本窗口的词，② 映射到时间线（保留源时间做 provenance）。
+        let placed = placed(words, in: window)
         // ③ 成句，④ 句内按逗号分小句、太短的并、放不下的在最好的地方切，⑤ 去标点成字幕。
         var result = SegmentedSubtitles()
         let sentences = SubtitleBreaks.sentences(placed, pauseThreshold: config.pauseThreshold)
@@ -154,6 +159,7 @@ public enum SubtitleSegmenter {
             cues.append(contentsOf: part.cues)
             meta.merge(part.meta) { a, _ in a }
         }
+        let bornAt = Dictionary(cues.map { ($0.id, $0.start) }, uniquingKeysWith: { a, _ in a })
         let windowByClip = Dictionary(windows.map { ($0.clipID, $0) }, uniquingKeysWith: { a, _ in a })
         func window(of cue: SubtitleCue) -> SubtitleClipWindow? {
             meta[cue.id]?.provenance?.clipID.flatMap { windowByClip[$0] }
@@ -161,6 +167,10 @@ public enum SubtitleSegmenter {
         let laneRank: (UUID?) -> Int = { clipID in clipID.flatMap { windowByClip[$0]?.laneRank } ?? -1 }
         // 几段素材同时有字：只留一条（谁识别得更清楚留谁）；丢掉的连旁表一起丢。
         cues = SubtitleSourceOverlap.resolve(cues, meta: meta, laneRank: laneRank, config: config)
+        // 给别的素材让开时截掉了开头：声音没动，词（逐词高亮）留在原来那一刻。
+        for i in cues.indices {
+            if let born = bornAt[cues[i].id] { SubtitleCueWords.keepInPlace(&cues[i], oldStart: born) }
+        }
         let keptIDs = Set(cues.map(\.id))
         meta = meta.filter { keptIDs.contains($0.key) }
         cues = SubtitleOverlap.ordered(cues, meta: meta, laneRank: laneRank)
@@ -201,7 +211,9 @@ public enum SubtitleSegmenter {
         guard !text.isEmpty else { return }
 
         let confidences = chunk.compactMap(\.confidence)
-        let cue = SubtitleCue(start: first.start, end: last.end, text: text)
+        // 每个词说在哪一刻、落在去完标点排好行的哪几个字上（逐词高亮用，SubtitleCueWords.align）。
+        let words = SubtitleCueWords.align(chunk.map { ($0.text, $0.start, $0.end) }, in: text, cueStart: first.start)
+        let cue = SubtitleCue(start: first.start, end: last.end, text: text, words: words)
         result.cues.append(cue)
         result.meta[cue.id] = CueMeta(
             recognitionConfidence: confidences.isEmpty

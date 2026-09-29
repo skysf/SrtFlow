@@ -305,6 +305,48 @@ do {
     check(state == before, "切点落在别的段上时时间线不该有任何变化")
 }
 
+// MARK: - 8. 在最后一帧里定格：切口右边不到一帧的那一截不留
+//
+// 2026-09-29 验收实剪：AI 想让片子停在最后一帧上，在 39.1 秒定格，静帧后面剩 0.01 秒原片（闪一下、带一声咔）。
+// 不到一帧的右半没有自己的一帧画面，拿掉（FreezeSliver）；够一帧的照旧留着。
+
+do {
+    let info = MediaInfo(duration: 40, displaySize: CGSize(width: 1920, height: 1080), frameRate: 24,
+                         videoCodec: "h264", audioCodec: "aac", hasAudio: true, audioCanCopyToMP4: true, fileBytes: 1)
+    func withInfo(_ clip: EditClip) -> EditClip {
+        var copy = clip
+        copy.info = info
+        return copy
+    }
+    func endingAt3911() -> TimelineState {
+        var state = TimelineState()
+        state.mainClips = [withInfo(videoClip(start: 0, duration: 30)), withInfo(videoClip(start: 30, duration: 9.11))]
+        return state
+    }
+    // 结尾在 39.11：39.1 定格，右边只剩 0.01 秒（不到 1/24 秒）→ 拿掉，片子收在静帧上。
+    var state = endingAt3911()
+    let target = state.mainClips[1]
+    state.insertFreeze(freeze(of: target, at: 39.1), splitting: target.id, at: 39.1)
+    check(state.mainClips.count == 3, "不到一帧的右半不留（实得 \(state.mainClips.count) 段）")
+    check(state.mainClips.last?.isStillImage == true, "片子收在静帧上")
+    checkClose(state.duration, 41.1, "总长 = 切口 + 定格 2 秒")
+
+    // 39.0 定格：右边 0.11 秒（两帧多，还在动、带声音）照旧留着。
+    var kept = endingAt3911()
+    let keptTarget = kept.mainClips[1]
+    kept.insertFreeze(freeze(of: keptTarget, at: 39.0), splitting: keptTarget.id, at: 39.0)
+    check(kept.mainClips.count == 4, "够一帧的右半留着（实得 \(kept.mainClips.count) 段）")
+    checkClose(kept.mainClips[3].timelineDuration, 0.11, "留下的是那 0.11 秒")
+
+    // 中间那段在最后一帧里定格（磁吸关着）：后面的段紧接在静帧后面，不留那一截的缝。
+    var middle = TimelineState()
+    middle.mainClips = [withInfo(videoClip(start: 0, duration: 10)), withInfo(videoClip(start: 10, duration: 10))]
+    let first = middle.mainClips[0]
+    middle.insertFreeze(freeze(of: first, at: 9.99), splitting: first.id, at: 9.99)
+    check(middle.mainClips.count == 3, "中间那段不到一帧的右半也不留（实得 \(middle.mainClips.count) 段）")
+    checkClose(middle.mainClips[2].timelineStart, 11.99, "后面的段紧接在静帧后面（没留缝）")
+}
+
 print("\(checks - failures)/\(checks) 项通过")
 if failures > 0 {
     print("定格自检失败：\(failures) 项")

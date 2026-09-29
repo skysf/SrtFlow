@@ -29,6 +29,8 @@ extension VideoEditProject {
         guard prepareToCloseDocument() else { return }
         closeCurrentDocument()
         replaceStateForDocument(TimelineState())
+        // 和打开工程一样重排预览：上一个工程还在路上的那次重建就此作废，不然它落地时把旧工程的画面挂进新工程。
+        scheduleRebuild()
     }
 
     // MARK: - 切换工程的把关
@@ -115,7 +117,7 @@ extension VideoEditProject {
         panel.allowedContentTypes = [.srtFlowProject]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.directoryURL = Self.defaultProjectDirectory
+        panel.directoryURL = AIWorkspace.shared.startFolder(project: self)
         panel.prompt = L10n("Open")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await openProject(at: url) }
@@ -352,7 +354,7 @@ extension VideoEditProject {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.srtFlowProject]
         panel.nameFieldStringValue = suggestedFileName
-        panel.directoryURL = Self.defaultProjectDirectory
+        panel.directoryURL = documentURL?.deletingLastPathComponent() ?? AIWorkspace.shared.startFolder(project: self)
         panel.canCreateDirectories = true
         panel.prompt = L10n("Save")
         guard panel.runModal() == .OK, var url = panel.url else { return }
@@ -360,17 +362,23 @@ extension VideoEditProject {
         if url.pathExtension.lowercased() != VideoEditProjectFile.fileExtension {
             url = url.appendingPathExtension(VideoEditProjectFile.fileExtension)
         }
-        // 新身份只有写盘成功才作数。先换后写的话，写失败（目标盘只读、满了）
-        // 会让工程卡在一个根本写不进去的 URL 上，原来那份从此不再更新。
+        saveDocument(as: url)
+    }
+
+    /// 存到 `url` 并从此以它为准（另存为、AI 新建工程共用这一份）。
+    /// 新身份只有写盘成功才作数。先换后写的话，写失败（目标盘只读、满了）
+    /// 会让工程卡在一个根本写不进去的 URL 上，原来那份从此不再更新。
+    @discardableResult
+    func saveDocument(as url: URL) -> Bool {
         let previousURL = documentURL
         let previousBookmark = documentBookmark
         documentURL = url
         documentBookmark = nil
         hasUnsavedChanges = true
-        if !saveNow() {
-            documentURL = previousURL
-            documentBookmark = previousBookmark
-        }
+        if saveNow() { return true }
+        documentURL = previousURL
+        documentBookmark = previousBookmark
+        return false
     }
 
     /// 未命名工程的建议文件名：拿主轨第一段素材的名字，比 "Untitled" 好认。
@@ -445,11 +453,6 @@ extension VideoEditProject {
             bookmarkDataIsStale: &stale
         ), FileManager.default.fileExists(atPath: resolved.path) else { return nil }
         return resolved
-    }
-
-    /// 新工程默认往哪存。`~/Movies` 是 macOS 给影片的标准位置，不自建目录。
-    static var defaultProjectDirectory: URL? {
-        FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
     }
 
     // MARK: - Finder
@@ -591,42 +594,5 @@ extension VideoEditProject {
         // 丢失名单以本次核对为准：被挪回原位/找回来的自动消条。
         let stillMissing = missing.filter { current.contains($0) }
         if missingMedia != stillMissing { missingMedia = stillMissing }
-    }
-}
-
-// MARK: - 最近打开
-
-/// 「最近的工程」直接用系统那份列表：File ▸ Open Recent 菜单、Dock 图标右键
-/// 的最近文件，和编辑器空状态里的网格读的是同一份数据，不用自己维护。
-enum RecentProjects {
-
-    @MainActor
-    static func note(_ url: URL) {
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-    }
-
-    /// 已经打不开了（被删了、盘拔了）就从列表里去掉。
-    @MainActor
-    static func forget(_ url: URL) {
-        let remaining = NSDocumentController.shared.recentDocumentURLs.filter { $0 != url }
-        NSDocumentController.shared.clearRecentDocuments(nil)
-        for item in remaining.reversed() {
-            NSDocumentController.shared.noteNewRecentDocumentURL(item)
-        }
-    }
-
-    /// 还真实存在的最近工程。列表里可能留着已经被删掉的文件，进界面前过一遍。
-    @MainActor
-    static func existing(limit: Int = 12) -> [URL] {
-        NSDocumentController.shared.recentDocumentURLs
-            .filter { $0.pathExtension.lowercased() == VideoEditProjectFile.fileExtension }
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .prefix(limit)
-            .map { $0 }
-    }
-
-    @MainActor
-    static func modifiedAt(_ url: URL) -> Date? {
-        (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
     }
 }

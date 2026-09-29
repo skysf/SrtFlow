@@ -21,7 +21,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 # 例外（每一条都要写清为什么不会凑满线程池）：
-# - 字幕生成按窗口抽音频：严格一个窗口一个窗口地读（TranscriptionTask 里的 for 循环），
+# - 字幕生成按窗口抽音频：严格一个窗口一个窗口地读（TranscriptHarvester 里的 for 循环），
 #   同一时刻最多卡住一条线程，凑不满。哪天要并行抽，先挪到 MediaReadQueue。
 ALLOWED="Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift"
 

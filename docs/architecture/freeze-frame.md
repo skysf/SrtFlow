@@ -83,6 +83,12 @@
 > 切开、切口右边的音频顺推一个定格时长，为的是自动保住声画同步。按用户
 > 反馈改成现状。
 
+**在最后一帧里定格：切口右边不到一帧的那一截拿掉**（2026-09-29，
+[静帧后面剩一截](../bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md)）。想让片子停在最后一帧上，定格点只能落在
+最后一帧里，切出来的右半不到一帧：它没有自己的一帧画面，留着只会在静帧后面闪一下、带一声咔。`FreezeSliver` 按这一段的
+源帧率（算上变速）判断，`insertFreeze` 拿掉它、后面的内容少挪这一截（不留缝）；后面接着转场、不知道帧率的不动。
+够一帧的右半照旧留着 —— 那是还在动的画面和声音，删不删由人定（AI 的结果里带 `tail_id`）。
+
 ## 4a. 为什么牵扯转场的主轨段不给定格
 
 禁用最初的理由是声画错位：转场时长有个「不超过两边任一段 45%」的上限
@@ -195,3 +201,15 @@ AVFoundation、ffmpeg、磁盘、UI。这不是洁癖：`scripts/check-freeze-fr
 - 定格段最长 60 秒（`StillImageClipFactory.stillDuration`）。
 - **HDR 素材的定格帧是 SDR**：整条静帧管线就是 SDR（yuv420p、无 HDR 元数据），
   `dynamicRangePolicy = .forceSDR` 只是把这件事写死成可预期的那一种。
+
+## AI 的定格（freeze_frame）
+
+AI 接口的 `freeze_frame` 和工具栏 / ⇧⌘F **走同一个 `runFreeze`**：准入（`isFreezeEligible`）、零容差抽帧、PNG 放在工程旁边、
+转码之后的 CAS 核对、一次性提交，一样都不另写。入口 `VideoEditProject.freezeFrame(clipID:at:duration:commit:)` 只多两样：
+
+- **时长由调用方给**（手动定格固定 `FreezeFrame.defaultDuration`，AI 可以 0.2…60 秒），交给 `makeFreezeClip(duration:)`；
+- **提交那一下经 `commit` 走**：手动传默认的「直接提交」，AI 传 `AIUndoGrouping.step` —— 一个工具 = 一步撤销，而包进撤销组的
+  那一段不许有 await，只能包最后那次同步的 `perform`（docs/architecture/ai-control-mcp.md 第四节第 1、22 条）。
+
+`runFreeze` 同时把结果交回（`FreezeOutcome`：插进去的定格段 / 失败原因），失败时照旧亮提示。`check-mcp.sh` 钉着 AI 那边的包法。
+

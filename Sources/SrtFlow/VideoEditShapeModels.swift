@@ -55,6 +55,12 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     /// 单个藏起来（选中按 V，2026-09-26 用户拍板）：时间线上灰显、仍可编辑，预览和成片里都没有。
     /// 和剪辑的 `EditClip.isHidden` 同一条语义（docs/architecture/clip-visibility.md）。v22 字段，按需写键。
     var isHidden = false
+    /// 实心：长方形、正方形整块涂满颜色，不画描边（电影遮幅、色块底、面板；2026-09-28 MCP 第 5 块补的零件）。
+    /// 线条没有这个概念，恒为 false。v24 字段，按需写键。
+    var isFilled = false
+
+    /// 这一个真的画成实心（线条永远是线）。预览和导出都问它，不各判一份。
+    var drawsFilled: Bool { isFilled && kind != .line }
 
     init(
         id: UUID = UUID(),
@@ -122,7 +128,7 @@ extension ShapeKind: LenientCodableEnum {
 extension ShapeAnnotation: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, timelineStart, duration, color, lineWidth
-        case centerX, centerY, width, height, rotationDegrees, isHidden
+        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled
     }
 
     init(from decoder: Decoder) throws {
@@ -142,6 +148,8 @@ extension ShapeAnnotation: Codable {
         )
         // 缺键 = 没藏：v21 及更早没有这个概念，那时它就是显示的。
         isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        // 缺键 = 描边：v23 及更早只有描边。
+        isFilled = try c.decodeIfPresent(Bool.self, forKey: .isFilled) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -159,5 +167,7 @@ extension ShapeAnnotation: Codable {
         try c.encode(rotationDegrees, forKey: .rotationDegrees)
         // 按需写键：没藏过的形状不落它，没用过 V 的工程照旧能被旧版打开。
         if isHidden { try c.encode(isHidden, forKey: .isHidden) }
+        // 同上：只有实心的才落键，两处（这里和 requiresFormatVersion24）同源。
+        if isFilled { try c.encode(isFilled, forKey: .isFilled) }
     }
 }

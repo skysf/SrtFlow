@@ -51,7 +51,8 @@ Transform 面板追加的四个字段（都有「无操作」默认值，全默�
 
 Inspector 的语义：Position = 摆放框中心相对画布中心的**输出像素**偏移；
 Scale = 相对默认布局宽度的百分比，改动等比乘在当前宽高上（保留边拉伸变形）；
-`setPlacement` 会把约等于默认布局的摆放归一回 nil。**归一化容差必须小于
+`setPlacement` 会把约等于默认布局的摆放归一回 nil（规则只有 `PlacementDefault` 一处，AI 摆画面
+也走它，见 [AI 接口](ai-control-mcp.md) 第四节第 11 条）。**归一化容差必须小于
 一个可见输出像素**（现为半像素：X/宽 `0.5/renderWidth`、Y/高
 `0.5/renderHeight`）——固定归一化容差（如 0.001 ≈ 1920 宽下 1.9px）会把
 Inspector 的 ±1px 步进整个吞回默认值，点了没反应。
@@ -72,6 +73,16 @@ CompositionBuilder 会垫一条 `BlackBaseVideoFactory` 的不透明黑视频当
 [2026-08-04-opacity-green-background](../bugfixes/2026-08-04-opacity-green-background.md)。
 工厂是 actor 单飞：唯一临时文件 → 校验 → 原子替换，消费前还要再验一遍，
 「文件存在」不等于「文件可用」。
+
+**往合成轨上接东西的两条规矩**（`CompositionTime`，2026-09-27）：合成器（和声音场景的余音载体）把素材、
+空白、定格接到合成轨上时，① **只往合成轨真正的末尾后面接**，不信 Double 算出来的游标 —— `insertTimeRange` /
+`insertEmptyTimeRange` 是插入，落点早于末尾就把已有内容挤走、而且不报错；秒换 1/600 秒的格子用的
+`CMTime(seconds:)` 会截断，5.3 + 1.4 = 6.699999999999999 落在前一格，拿它当落点就插进了上一段里面；
+② 合成完**每条合成轨裁到时间线总长** —— 视频合成的指令只铺到总长，哪条轨多一格，合成就判无效，预览只剩
+黑底（叠层照样画在上面）。**换格子照旧截断，别改成四舍五入**：截断保证从素材里取的范围不超出素材本身；
+改成四舍五入的那一版在 CI（macOS 15）上把声音渐变自检卡死过（原因没找到）。
+案例：[加了音效预览整个黑屏](../bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)，
+回归在 `scripts/check-preview-composition.sh` 的 `AppendOnly.swift`。
 
 **叠化 × Transform 的合成模型**：转场语义上作用在**压平到黑底之后**的段上
 （导出就是这么做的：先合黑底再 xfade）。预览的叠化按接缝分两条路径，判定

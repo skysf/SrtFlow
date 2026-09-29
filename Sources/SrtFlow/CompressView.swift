@@ -12,8 +12,8 @@ struct CompressView: View {
     // 光靠环境 locale 变化不会重新求值 body，所以要显式观察语言选择。
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
-    /// 设置存在 UserDefaults 里，下次打开还是上次那套。
-    @AppStorage("compressSettings") private var storedSettings = ""
+    /// 设置存在 UserDefaults 里，下次打开还是上次那套（读回来在队列创建时，EncodeQueueMemory）。
+    @AppStorage(EncodeQueueMemory.compress.settings) private var storedSettings = ""
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
@@ -27,7 +27,6 @@ struct CompressView: View {
         .frame(minWidth: 760, minHeight: 500)
         .onAppear {
             toolchain.resolveIfNeeded()
-            restoreSettings()
             takeHandoff()
         }
         .onChange(of: handoff.pendingVideos) { _, _ in takeHandoff() }
@@ -168,10 +167,4 @@ struct CompressView: View {
         storedSettings = String(decoding: data, as: UTF8.self)
     }
 
-    private func restoreSettings() {
-        guard !storedSettings.isEmpty,
-              let decoded = try? JSONDecoder().decode(VideoEncodeSettings.self, from: Data(storedSettings.utf8))
-        else { return }
-        queue.settings = decoded
-    }
 }

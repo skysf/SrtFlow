@@ -15,6 +15,10 @@ enum SidebarActivity: Equatable {
 struct BurnInRequest: Sendable {
     var subtitleURL: URL?
     var document: SubtitleDocumentModel?
+    /// AI 排进来的这一条自带的字幕样式（burn_subtitles 的 style，只用于这一条）；nil = 烧录页的那套。
+    var style: BurnInStyle?
+    /// 自带样式的字体文件（同 `EncodeQueue.burnInFontURL`：软链进任务目录，libass 才认得出）。
+    var styleFontURL: URL?
     /// 有没有改过但还没写回文件的内容。
     var hasUnsavedEdits = false
 
@@ -37,6 +41,9 @@ struct EncodeItem: Identifiable {
     var outputBytes: Int64?
     var errorMessage: String?
     var burnIn: BurnInRequest?
+    /// AI 排进来的条目自带设置（只用于这一条，不动页面上记住的那套），输出位置也是它自己定的：
+    /// 页面上改设置、改输出文件夹都不碰它。nil = 用户自己加的，跟着队列走。
+    var ownSettings: VideoEncodeSettings?
 
     var isActive: Bool { status == .probing || status == .running }
     var isDone: Bool { status == .finished || status == .failed || status == .cancelled }
@@ -76,9 +83,11 @@ final class EncodeQueue: ObservableObject {
     private var currentProcess: FFmpegProcess?
     private var currentItemID: EncodeItem.ID?
 
-    init(outputSuffix: String, requiresSubtitles: Bool = false) {
+    /// `memory`：这个队列记住的设置存在哪；创建时就读回来（EncodeQueueMemory）。
+    init(outputSuffix: String, requiresSubtitles: Bool = false, memory: EncodeQueueMemory.Keys? = nil) {
         self.outputSuffix = outputSuffix
         self.requiresSubtitles = requiresSubtitles
+        if let memory { EncodeQueueMemory.restore(self, memory) }
     }
 
     // MARK: - 全局唯一的两个队列
@@ -88,10 +97,10 @@ final class EncodeQueue: ObservableObject {
     /// 刻意做成全局的，而不是压缩界面自己的 `@StateObject`：主窗口是侧边栏切换，
     /// 切走那一栏的视图会被销毁。队列要是跟着视图走，正在跑的编码就会被中断。
     /// 放在这里，压缩可以在后台一直跑，用户同时去调字幕样式或转格式。
-    static let compress = EncodeQueue(outputSuffix: "_compressed")
+    static let compress = EncodeQueue(outputSuffix: "_compressed", memory: EncodeQueueMemory.compress)
 
     /// 烧字幕队列。理由同上。
-    static let burnIn = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true)
+    static let burnIn = EncodeQueue(outputSuffix: "_sub", requiresSubtitles: true, memory: EncodeQueueMemory.burnIn)
 
     /// 侧边栏那一行要显示的状态：正在跑就报进度，跑完了报个完成数。
     var sidebarActivity: SidebarActivity? {
@@ -121,6 +130,16 @@ final class EncodeQueue: ObservableObject {
         }
     }
 
+    /// AI 用：带着自己的设置和输出位置排一条（输出位置由调用方挑好、不撞）。同一个文件已经在排队就 nil。
+    func add(_ url: URL, output: URL, settings: VideoEncodeSettings, burnIn: BurnInRequest? = nil) -> EncodeItem.ID? {
+        guard !items.contains(where: { $0.inputURL == url && !$0.isDone }) else { return nil }
+        var item = EncodeItem(inputURL: url, outputURL: output, burnIn: burnIn)
+        item.ownSettings = settings
+        items.append(item)
+        probeInfo(for: item.id)
+        return item.id
+    }
+
     func remove(id: EncodeItem.ID) {
         if currentItemID == id { cancel(id: id) }
         items.removeAll { $0.id == id }
@@ -137,7 +156,13 @@ final class EncodeQueue: ObservableObject {
 
     func updateBurnIn(_ burnIn: BurnInRequest?, for id: EncodeItem.ID) {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
-        items[index].burnIn = burnIn
+        var next = burnIn
+        // 页面上换了字幕文件：AI 给这一条自带的样式照留（它属于这一条，不属于那个文件）。
+        if next != nil, let own = items[index].burnIn, own.style != nil {
+            next?.style = own.style
+            next?.styleFontURL = own.styleFontURL
+        }
+        items[index].burnIn = next
         items[index].errorMessage = nil
     }
 
@@ -166,7 +191,7 @@ final class EncodeQueue: ObservableObject {
 
     /// 设置变了要重算输出名（比如从压缩切到烧字幕），但只动还没跑的。
     func refreshOutputPaths() {
-        for index in items.indices where items[index].status == .waiting {
+        for index in items.indices where items[index].status == .waiting && items[index].ownSettings == nil {
             items[index].outputURL = proposedOutputURL(for: items[index].inputURL)
         }
     }
@@ -174,17 +199,10 @@ final class EncodeQueue: ObservableObject {
     private func proposedOutputURL(for input: URL) -> URL {
         let directory = outputDirectory ?? input.deletingLastPathComponent()
         let base = input.deletingPathExtension().lastPathComponent
-        var candidate = directory.appendingPathComponent("\(base)\(outputSuffix).mp4")
-
-        // 绝不能写到源文件上：ffmpeg 同时读写一个文件会把源文件毁掉。
-        var counter = 2
-        while candidate.standardizedFileURL == input.standardizedFileURL
-            || FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = directory.appendingPathComponent("\(base)\(outputSuffix) \(counter).mp4")
-            counter += 1
-            if counter > 999 { break }
+        // 撞名加编号（规则只有 ExportFileName 一份）；绝不能写到源文件上：ffmpeg 同时读写一个文件会把源文件毁掉。
+        return ExportFileName.unoccupied(in: directory, stem: base + outputSuffix, pathExtension: "mp4") { candidate in
+            candidate.standardizedFileURL == input.standardizedFileURL || FileManager.default.fileExists(atPath: candidate.path)
         }
-        return candidate
     }
 
     private func probeInfo(for id: EncodeItem.ID) {
@@ -278,7 +296,7 @@ final class EncodeQueue: ObservableObject {
         var command = FFmpegCommand(
             inputPath: item.inputURL.path,
             outputPath: item.outputURL.path,
-            settings: settings,
+            settings: item.ownSettings ?? settings,
             burnIn: burnInPaths,
             softSubtitlePath: softSubtitlePath,
             hasAudio: info.hasAudio,
@@ -388,8 +406,8 @@ final class EncodeQueue: ObservableObject {
     private func prepareBurnInDirectory(_ request: BurnInRequest, info: MediaInfo) throws -> PreparedBurnIn {
         let prepared = try BurnInWorkspace.create(
             cues: request.cues,
-            style: burnInStyle,
-            fontFileURL: burnInFontURL,
+            style: request.style ?? burnInStyle,
+            fontFileURL: request.style == nil ? burnInFontURL : request.styleFontURL,
             aspectRatio: info.aspectRatio,
             title: request.subtitleURL?.deletingPathExtension().lastPathComponent ?? "SrtFlow"
         )

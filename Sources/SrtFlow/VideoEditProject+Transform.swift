@@ -80,26 +80,19 @@ extension VideoEditProject {
     }
 
     /// 摆放写入的核心规则：关键帧优先，否则按默认布局归一化（约等于默认就
-    /// 存 nil）。返回 nil 表示这段此刻取不到（已被删除之类）。
-    ///
-    /// 归一化容差必须是**亚像素**（半个输出像素）：固定 0.001 在 1920 宽画布
-    /// 上约等于 1.9px，会把 Inspector 的 ±1px 步进整个吞回默认值，见
-    /// preview-free-transform.md。
+    /// 存 nil，容差是半个输出像素，规则在 `PlacementDefault`，AI 摆画面也走它）。
+    /// 返回 nil 表示这段此刻取不到（已被删除之类）。
     private func placementMutation(_ id: UUID, _ placement: ClipPlacement) -> ((inout TimelineState) -> Void)? {
         guard let clip = state.clip(with: id) else { return nil }
         let clamped = placement.clamped
         if let write = keyframedPlacementWriter(id, clamped) {
             return { state in state.update(id) { write(&$0) } }
         }
-        let fallback = clip.defaultPlacement(canvas: renderSize)
-        let toleranceX = 0.5 / max(renderSize.width, 1)
-        let toleranceY = 0.5 / max(renderSize.height, 1)
-        let isDefault = abs(clamped.centerX - fallback.centerX) < toleranceX
-            && abs(clamped.centerY - fallback.centerY) < toleranceY
-            && abs(clamped.width - fallback.width) < toleranceX
-            && abs(clamped.height - fallback.height) < toleranceY
+        let stored = PlacementDefault.normalized(
+            clamped, fallback: clip.defaultPlacement(canvas: renderSize), canvas: renderSize
+        )
         return { state in
-            state.update(id) { $0.placement = isDefault ? nil : clamped }
+            state.update(id) { $0.placement = stored }
         }
     }
 

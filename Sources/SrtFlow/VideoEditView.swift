@@ -286,6 +286,8 @@ struct VideoEditView: View {
 
     private var previewPane: some View {
         VStack(spacing: 0) {
+            // AI 在剪的时候：谁在剪 · 停止；剪完：改了几处 · 撤销这一轮。只订阅 AISession、不读工程。
+            AIActivityBanner()
             if !project.missingMedia.isEmpty {
                 MissingMediaBar(project: project)
                 Divider()
@@ -337,7 +339,7 @@ struct VideoEditView: View {
                     project: project,
                     clock: clock,
                     boxSize: size,
-                    style: burnInQueue.burnInStyle,
+                    appWideStyle: burnInQueue.burnInStyle,
                     editingCueID: $previewEditingCueID
                 )
             }
@@ -577,10 +579,10 @@ struct VideoEditView: View {
 
     private var addMenu: some View {
         Menu {
-            Button("Add Media…") { pickMedia(toOverlay: false) }
-            Button("Add to Upper Track…") { pickMedia(toOverlay: true) }
+            Button("Add Media…") { VideoEditMediaPicker.addMedia(to: project, toOverlay: false) }
+            Button("Add to Upper Track…") { VideoEditMediaPicker.addMedia(to: project, toOverlay: true) }
                 .disabled(project.state.mainClips.isEmpty)
-            Button("Add Subtitle File…") { pickSubtitle() }
+            Button("Add Subtitle File…") { VideoEditMediaPicker.addSubtitle(to: project) }
             Divider()
             Button {
                 project.addTextOverlay()
@@ -647,22 +649,5 @@ struct VideoEditView: View {
             return true
         }
         return project.mainClipAtPlayhead() != nil
-    }
-
-    private func pickMedia(toOverlay: Bool) {
-        var types = MediaFileTypes.video
-        types.append(contentsOf: [.image, .png, .jpeg, .audio, .mp3, .mpeg4Audio, .wav])
-        if !toOverlay {
-            types.append(contentsOf: SubtitleFileTypes.readable)
-        }
-        let urls = FilePicker.chooseFiles(types: types)
-        guard !urls.isEmpty else { return }
-        project.addMedia(urls: urls, videosToOverlay: toOverlay)
-    }
-
-    private func pickSubtitle() {
-        let urls = FilePicker.chooseFiles(types: SubtitleFileTypes.readable, allowsMultiple: false)
-        guard let url = urls.first else { return }
-        project.attachSubtitle(url)
     }
 }

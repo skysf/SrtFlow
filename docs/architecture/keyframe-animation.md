@@ -20,7 +20,7 @@
   行为与迁移前一致）。
 - 空轨回落到静态字段：`animatedPlacement/Rotation/Opacity(atTimeline:)` 是
   唯一取值口，预览合成、交互框、Inspector 数值都从这里读。
-- 工程格式 **v3**；升轨（selectionForExport）丢 animation（相对画布的属性）。
+- 工程格式 **v3**；升轨（只导出选中的，`TimelineExportSelection.subset`）丢 animation（相对画布的属性）。
 
 ## 交互约定（对齐 CapCut）
 

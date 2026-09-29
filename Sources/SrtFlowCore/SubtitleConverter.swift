@@ -9,22 +9,31 @@ public enum SubtitleConverter {
         return SubtitleSerializer.serialize(doc, format: target)
     }
 
-    /// Converts a file on disk, writing `<name>.<targetExt>` into `outputDirectory`
-    /// (defaults to the source file's directory). Returns the output URL.
-    @discardableResult
-    public static func convertFile(at url: URL, to target: SubtitleFormat, outputDirectory: URL? = nil) throws -> URL {
+    /// Reads a subtitle file (format from its extension, text via `TextDecoding`) and returns it converted to
+    /// `target`, without writing anything. Batch conversion and the AI's convert_subtitles both go through here.
+    public static func convertedContents(of url: URL, to target: SubtitleFormat) throws -> String {
         guard let source = SubtitleFormat.detect(from: url.lastPathComponent) else {
             throw CocoaError(.fileReadUnsupportedScheme)
         }
         let data = try Data(contentsOf: url)
-        guard let content = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .utf16) else {
+        guard let content = TextDecoding.decode(data) else {
             throw CocoaError(.fileReadInapplicableStringEncoding)
         }
-        let converted = convert(content, from: source, to: target)
+        return convert(content, from: source, to: target)
+    }
+
+    /// Converts a file on disk, writing `<name>.<targetExt>` into `outputDirectory`
+    /// (defaults to the source file's directory). Returns the output URL.
+    /// A name that is taken gets a number (`<name> 2.<targetExt>`, `ExportFileName.unoccupied`): an existing file is
+    /// never overwritten, and neither is the source when converting to its own format in its own folder.
+    @discardableResult
+    public static func convertFile(at url: URL, to target: SubtitleFormat, outputDirectory: URL? = nil) throws -> URL {
+        let converted = try convertedContents(of: url, to: target)
         let directory = outputDirectory ?? url.deletingLastPathComponent()
-        let outputURL = directory.appendingPathComponent(url.deletingPathExtension().lastPathComponent)
-            .appendingPathExtension(target.fileExtension)
-        try Data(converted.utf8).write(to: outputURL)
+        let outputURL = ExportFileName.unoccupied(
+            in: directory, stem: url.deletingPathExtension().lastPathComponent, pathExtension: target.fileExtension
+        ) { FileManager.default.fileExists(atPath: $0.path) }
+        try Data(converted.utf8).write(to: outputURL, options: .withoutOverwriting)
         return outputURL
     }
 }

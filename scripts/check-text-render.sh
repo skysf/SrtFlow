@@ -78,13 +78,16 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
+  Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
   Sources/SrtFlow/VideoEditExportFilterScript.swift \
   Sources/SrtFlow/VideoEditExportMixdown.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/CompositionTime.swift \
   Sources/SrtFlow/VideoEditMediaAssetCache.swift \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
@@ -93,6 +96,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/BurnInWorkspace.swift \
+  Sources/SrtFlow/SubtitleFontScale.swift \
+  Sources/SrtFlow/SubtitleFallbackFont.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/TextRender/main.swift \

@@ -32,19 +32,17 @@ public enum SubtitleTrackEditing {
 
     /// 改时间。**改完必须重排 + 重编号**：`cues` 的数组顺序就是时间顺序，下游全按顺序消费
     /// （`cue(at:)` 取第一条命中的、序列化按数组写、字幕表按数组显示）。译文记「时间手动改过」——
-    /// 之后重译换字时不再动它的时间。
+    /// 之后重译换字时不再动它的时间。词的时间（逐词高亮）见 `retime`。
     public static func setTime(
         id: UUID, start: TimeInterval, end: TimeInterval,
         original: inout SubtitleDocumentModel, companion: inout SubtitleCompanion
     ) {
         if let i = original.cues.firstIndex(where: { $0.id == id }) {
-            original.cues[i].start = start
-            original.cues[i].end = end
+            retime(&original.cues[i], start: start, end: end)
             normalizeOrder(&original)
         } else if var doc = companion.translation, let t = doc.cues.firstIndex(where: { $0.id == id }) {
             let moved = doc.cues[t].start != start || doc.cues[t].end != end
-            doc.cues[t].start = start
-            doc.cues[t].end = end
+            retime(&doc.cues[t], start: start, end: end)
             normalizeOrder(&doc)
             companion.translation = doc
             if moved { companion.translationLinks[id]?.timeEdited = true }
@@ -60,6 +58,8 @@ public enum SubtitleTrackEditing {
     ) {
         if let i = original.cues.firstIndex(where: { $0.id == id }) {
             guard original.cues[i].text != text else { return }
+            // 没改的字保住原来的时间（逐词高亮），SubtitleCueWords.realigned。
+            original.cues[i].words = SubtitleCueWords.realigned(original.cues[i].words, from: original.cues[i].text, to: text)
             original.cues[i].text = text
             var meta = companion.cueMeta[id] ?? CueMeta()
             meta.recognitionConfidence = nil
@@ -67,6 +67,7 @@ public enum SubtitleTrackEditing {
             companion.cueMeta[id] = meta
         } else if var doc = companion.translation, let t = doc.cues.firstIndex(where: { $0.id == id }) {
             guard doc.cues[t].text != text else { return }
+            doc.cues[t].words = SubtitleCueWords.realigned(doc.cues[t].words, from: doc.cues[t].text, to: text)
             doc.cues[t].text = text
             companion.translation = doc
             guard var link = companion.translationLinks[id] else { return }
@@ -235,6 +236,16 @@ public enum SubtitleTrackEditing {
 
     // MARK: - 共用的小件
 
+    /// 改一句的时间，词的时间（逐词高亮）跟着：两头挪了一样多 = 整句挪动，词跟着走（记的是相对这句开头的秒，
+    /// 不用动）；不一样多 = 裁，声音没动，词留在原来那一刻（`SubtitleCueWords.keepInPlace`）。
+    static func retime(_ cue: inout SubtitleCue, start: TimeInterval, end: TimeInterval) {
+        let oldStart = cue.start
+        let isMove = abs((start - cue.start) - (end - cue.end)) < 1e-9
+        cue.start = start
+        cue.end = end
+        if !isMove { SubtitleCueWords.keepInPlace(&cue, oldStart: oldStart) }
+    }
+
     /// 按时间稳定排序 + 重编号。**稳定**很重要：起点相同的两条要保持原有先后，
     /// 不然每挪一次顺序都可能翻个个儿。
     static func normalizeOrder(_ doc: inout SubtitleDocumentModel) {
@@ -281,15 +292,21 @@ public enum SubtitleTrackEditing {
     ) -> Bool {
         guard let i = doc.cues.firstIndex(where: { $0.id == id }),
               time > doc.cues[i].start, time < doc.cues[i].end else { return false }
-        var second = doc.cues[i]
+        let whole = doc.cues[i]
+        var second = whole
         second.id = newID
         second.start = time
         doc.cues[i].end = time
         if let texts {
+            let words = SubtitleCueWords.split(whole, firstText: texts.first, secondText: texts.second, at: time)
             doc.cues[i].text = texts.first
+            doc.cues[i].words = words.first
             second.text = texts.second
+            second.words = words.second
         } else {
+            // 字整句留在前半（它的词照旧），后半空着。
             second.text = ""
+            second.words = nil
         }
         doc.cues.insert(second, at: i + 1)
         doc.reindex()
@@ -305,6 +322,7 @@ public enum SubtitleTrackEditing {
         doc.cues[keptIndex].start = picked.map(\.element.start).min() ?? picked[0].element.start
         doc.cues[keptIndex].end = picked.map(\.element.end).max() ?? picked[0].element.end
         doc.cues[keptIndex].text = picked.map(\.element.text).filter { !$0.isEmpty }.joined(separator: " ")
+        doc.cues[keptIndex].words = SubtitleCueWords.merged(picked.map(\.element), start: doc.cues[keptIndex].start)
         let dropped = picked.dropFirst().map(\.element.id)
         doc.removeCues(ids: Set(dropped))
         normalizeOrder(&doc)

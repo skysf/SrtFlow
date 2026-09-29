@@ -117,6 +117,7 @@ run_check "subtitle-editing-wiring（扫描守卫）" checks/subtitle-editing-wi
 run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-binding-wiring.sh
 run_check "inspector-fits-width（扫描守卫：检查器里的 Picker 不许锁死宽度）" checks/inspector-fits-width.sh
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
+run_check "encode-settings-memory（扫描守卫：压缩 / 烧录记住的设置在队列创建时读回来）" checks/encode-settings-memory.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
@@ -143,6 +144,7 @@ run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.s
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
+run_check "subtitle-burn-size（预览上的字幕和烧出来的一样大）" scripts/check-subtitle-burn-size.sh
 run_check "audio-fade（渐入渐出 / 音量曲线 / 推子的真实包络 + 音量钉点不变量）" scripts/check-audio-fade.sh
 
 # ---- 第 4 组 ----
@@ -150,6 +152,7 @@ shard 4
 run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1 / 很多文件同时读）" scripts/check-waveform.sh
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
+run_check "mcp（AI 接口：两代客户端的协议、改时间线的规则、客户端配置、词表对账）" scripts/check-mcp.sh
 # 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 

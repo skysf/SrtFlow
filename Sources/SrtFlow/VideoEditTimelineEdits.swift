@@ -169,9 +169,12 @@ extension TimelineState {
         // 同轨让位。切口右边的一切（含刚切出来的右半）整体后挪，定格段填进空档。
         // 磁吸开着时 `packMain()` 之后还会按数组顺序重排一遍，这里的位移是给
         // 磁吸关着的情况用的 —— 一条代码路径两种情况都对。
+        // 右半不到一帧（在最后一帧里定格）就拿掉，后面的内容少挪这一截（FreezeSliver）。
         var clips = self[track: location.track]
+        let sliver = FreezeSliver.length(of: clips, after: location.clipIndex)
+        if sliver > 0 { clips.remove(at: location.clipIndex + 1) }
         for index in clips.indices where clips[index].timelineStart >= time - 0.0005 {
-            clips[index].timelineStart += duration
+            clips[index].timelineStart += duration - sliver
         }
         var placed = freeze
         placed.timelineStart = time

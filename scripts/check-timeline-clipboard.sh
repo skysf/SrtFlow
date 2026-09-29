@@ -63,6 +63,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/FreezeSliver.swift \
+  Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditMediaImport.swift \
@@ -74,6 +76,7 @@ xcrun swiftc \
   Sources/SrtFlow/AppLanguage.swift \
   checks/TimelineClipboard/main.swift \
   checks/TimelineClipboard/Landing.swift \
+  checks/TimelineClipboard/LinkGroups.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

@@ -131,6 +131,17 @@ func main() async {
         check(near(range?.max ?? 0, 0.9), "第 \(level) 级也看得见那个单采样尖峰（量到 \(String(describing: range))）")
     }
 
+    // ---- 1b. 能量（均方）：「听」量响度用，和峰值同一遍读出来 ----
+    // 正弦的均方是振幅平方的一半：L 0.5 → 0.125，R 0.25 → 0.03125，合起来是两个声道的平均。
+    let leftPower = peaks.meanSquare(channel: 0, from: 24_000, to: 48_000) ?? -1
+    let rightPower = peaks.meanSquare(channel: 1, from: 24_000, to: 48_000) ?? -1
+    let bothPower = peaks.meanSquare(channel: nil, from: 24_000, to: 48_000) ?? -1
+    check(abs(leftPower - 0.125) < 0.001, "左声道 0.5 的正弦均方 0.125（量到 \(leftPower)）")
+    check(abs(rightPower - 0.03125) < 0.001, "右声道 0.25 的正弦均方 0.03125，没被左声道串进来（量到 \(rightPower)）")
+    check(abs(bothPower - 0.078125) < 0.001, "两个声道合起来是平均（量到 \(bothPower)）")
+    let quiet = peaks.meanSquare(channel: nil, from: 150_000, to: 160_000) ?? -1
+    check(quiet >= 0 && quiet < 1e-9, "静音段的均方是 0（量到 \(quiet)）")
+
     // ---- 2. 选级：最粗、但一个桶不超过一个像素的那一级 ----
     check(WaveformPeaks.level(forFramesPerPixel: 10) == 0, "一个像素 10 个采样 → 第 0 级")
     check(WaveformPeaks.level(forFramesPerPixel: 300) == 1, "一个像素 300 个采样 → 第 1 级（256）")
@@ -151,6 +162,11 @@ func main() async {
         let across = longPeaks.extremes(channel: nil, from: boundary - 500, to: boundary + 500, level: 0)
         check(near(across?.max ?? 0, 0.6) && near(across?.min ?? 0, -0.7),
               "跨块取峰值：接缝两侧的尖峰都在（量到 \(String(describing: across))）")
+        // 均方的桶也跨块：接缝两侧各一个桶，里面各一个尖峰（0.49、0.36），合起来按帧数平均。
+        let bucket = WaveformPowerBuilder.bucket
+        let seamPower = longPeaks.meanSquare(channel: nil, from: boundary - bucket, to: boundary + bucket) ?? -1
+        check(abs(seamPower - (0.49 + 0.36) / Double(2 * bucket)) < 1e-6,
+              "跨块取均方：接缝两侧的桶都算进去（量到 \(seamPower)）")
         let coarse = longPeaks.extremes(channel: nil, from: 0, to: 2_400_000, level: WaveformPeaks.levelCount - 1)
         check(near(coarse?.max ?? 0, 0.6) && near(coarse?.min ?? 0, -0.7),
               "缩到最小时整条也看得见两个尖峰（量到 \(String(describing: coarse))）")
