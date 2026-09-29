@@ -18,9 +18,21 @@ import SwiftUI
 
 enum AIFrameComposer {
     /// 时间线在这几个时刻的画面，每一帧都是画布那么大。
-    static func frames(of state: TimelineState, at times: [Double], subtitleStyle: BurnInStyle) async -> [AIFrameSampler.Frame] {
+    static func frames(of state: TimelineState, at times: [Double], subtitleStyle: BurnInStyle) async throws -> [AIFrameSampler.Frame] {
         let canvas = VideoEditCompositionBuilder.renderSize(for: state)
         let built = await VideoEditCompositionBuilder.build(from: state)
+        // 合成被判无效时播放器一帧都不画，取帧器也只会给黑底：那不是素材黑，是 SrtFlow 的 bug。以前这里照样
+        // 把黑帧交给 Vision，描述成「夜空」（2026-09-29 婚礼工程，指令表空出一格那次）。报错，别装作看见了。
+        if let built, let video = built.videoComposition {
+            let whole = CMTimeRange(start: .zero, duration: built.composition.duration)
+            let valid = (try? await video.isValid(for: built.composition, timeRange: whole, validationDelegate: nil)) ?? false
+            guard valid else {
+                throw AIToolError(
+                    "SrtFlow could not render the timeline: its preview composition is invalid, so the preview would be "
+                        + "black. This is a SrtFlow bug, not the footage; save the project and report it."
+                )
+            }
+        }
         let generator = built.map { built -> AVAssetImageGenerator in
             let generator = AVAssetImageGenerator(asset: built.composition)
             generator.videoComposition = built.videoComposition

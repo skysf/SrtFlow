@@ -44,6 +44,15 @@ require "state 的 didSet 要摘掉失效的字幕 cue 选择" \
 require "切工程必须四类选择一起清" \
   Sources/SrtFlow/VideoEditProjectDocument.swift 'clearSelection\(\)'
 
+# 切工程（2026-09-29，婚礼工程 BUG-11）：只取消绑着工程的转写（生成字幕）；AI 的 transcribe 只转文件，
+# 不许被 new_project / open_project 顺手取消。`cancelIfBoundToProject` 自己判，别改回无差别的 `cancel()`。
+require "切工程只取消绑工程的转写，AI 的 transcribe 要让它跑完" \
+  Sources/SrtFlow/VideoEditProject.swift 'TranscriptionTask\.shared\.cancelIfBoundToProject\(\)'
+require "生成字幕那一次要记成绑工程的" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift 'boundToProject = true'
+require "只转文件那一次要记成不绑工程的" \
+  Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift 'boundToProject = false'
+
 # 标记（2026-08-09）：纯值合同在上面断言过了，这里钉住它在生产里的接线。
 require "state 的 didSet 要摘掉失效的标记选择" \
   Sources/SrtFlow/VideoEditProject.swift 'pruneMarkerSelection\(\)'
