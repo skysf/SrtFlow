@@ -29,6 +29,20 @@ func averageBrightness(_ built: VideoEditCompositionBuilder.Built, at seconds: D
     return (Double(pixel[0]) + Double(pixel[1]) + Double(pixel[2])) / 3 / 255
 }
 
+/// 正好某一格上的那一帧的整幅平均亮度（容差为零）：接缝上空出的那一格只有 1/600 秒，
+/// 带容差的取帧会拿邻近的帧糊弄过去。
+func exactBrightness(_ built: VideoEditCompositionBuilder.Built, atTick tick: Int64) async -> Double {
+    let generator = AVAssetImageGenerator(asset: built.composition)
+    generator.videoComposition = built.videoComposition
+    generator.requestedTimeToleranceBefore = .zero
+    generator.requestedTimeToleranceAfter = .zero
+    // 拿不到正好这一格的帧就报 -1：合成在这一格上一个源都没有时，取帧器会退回邻近的帧，量到的不是这个洞。
+    guard let result = try? await generator.image(at: CMTime(value: tick, timescale: 600)),
+          result.actualTime == CMTime(value: tick, timescale: 600) else { return -1 }
+    let image = result.image
+    return averageRGBA(image, region: CGRect(x: 0, y: 0, width: image.width, height: image.height)).red
+}
+
 /// 归一化区域（左上原点，0…1）的平均亮度。推移/擦除的方向要分区量。
 func regionBrightness(
     _ built: VideoEditCompositionBuilder.Built, at seconds: Double, region: CGRect
