@@ -22,7 +22,7 @@ struct VideoEditInspectorView: View {
                 } else if let filter = project.selectedFilter {
                     filterSection(filter)
                 } else if let shape = project.selectedShape {
-                    shapeSection(shape)
+                    if shape.kind.isCover { coverSection(shape) } else { shapeSection(shape) }
                 } else if let overlay = project.selectedTextOverlay {
                     textSection(overlay)
                 } else if let clip = project.selectedClip {
@@ -532,7 +532,7 @@ struct VideoEditInspectorView: View {
     }
 
     /// 步进按钮是离散动作，每一下一步撤销。
-    private func shapeDurationBinding(_ shape: ShapeAnnotation) -> Binding<Double> {
+    func shapeDurationBinding(_ shape: ShapeAnnotation) -> Binding<Double> {
         Binding(
             get: { project.state.shapes.first { $0.id == shape.id }?.duration ?? shape.duration },
             set: { newValue in
@@ -541,7 +541,7 @@ struct VideoEditInspectorView: View {
         )
     }
 
-    private func liveShapeBinding(_ shape: ShapeAnnotation, _ keyPath: WritableKeyPath<ShapeAnnotation, Double>) -> Binding<Double> {
+    func liveShapeBinding(_ shape: ShapeAnnotation, _ keyPath: WritableKeyPath<ShapeAnnotation, Double>) -> Binding<Double> {
         Binding(
             get: {
                 project.state.shapes.first { $0.id == shape.id }?[keyPath: keyPath]

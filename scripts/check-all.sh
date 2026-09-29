@@ -118,6 +118,7 @@ run_check "inspector-live-binding（扫描守卫）" checks/inspector-live-bindi
 run_check "inspector-fits-width（扫描守卫：检查器里的 Picker 不许锁死宽度）" checks/inspector-fits-width.sh
 run_check "presented-views-app-language（扫描守卫：sheet / popover 套应用内语言）" checks/presented-views-app-language.sh
 run_check "encode-settings-memory（扫描守卫：压缩 / 烧录记住的设置在队列创建时读回来）" checks/encode-settings-memory.sh
+run_check "project-file-wiring（扫描守卫：工程存盘 / 选择 / 隐藏 / 导出这批合同的生产接线）" checks/project-file-wiring.sh
 run_check "fal-wiring（扫描守卫：fal 生成的接线 —— 先问后花、不弹模态框、Key 只经一处读、清单跟着 Key 走）" checks/fal-wiring.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
@@ -162,6 +163,8 @@ run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-scr
 shard 5
 run_check "audio-library（清单解析的宽容边界 + 双语搜索）" scripts/check-audio-library.sh
 run_check "video-fade（上层视频轨铺满 + 画面渐变真产物）" scripts/check-video-fade.sh
+# 盖一块（模糊 / 马赛克）真导出抽帧：只改那一块、高斯剖面、格子从左上角起算、只在那一段、形状压在上面、不算总长。
+run_check "cover-export（盖一块：真导出抽帧）" scripts/check-cover-export.sh
 # 预览取帧 + 真导出抽帧两边逐点对账（五种效果 + fill/matte），所以慢。
 run_check "clip-animation（入场/出场动画：预览与成片对账）" scripts/check-clip-animation.sh
 run_check "still-clip-encode（静帧真实产物）" scripts/check-still-clip-encode.sh

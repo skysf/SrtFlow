@@ -106,6 +106,59 @@ private func textRegionChecks() {
     }
     check(abs((AITextRegions.report(wrapping).band?.box.minY ?? 0) - 0.84) < 0.02, "text scan: a subtitle that wraps now and then still has its upper line in the band")
 
+    // 幻灯片 / PDF 往下滚出画面（2026-09-29，L27 的 PDF 页）：最底下那一行只露出上面一道，贴着画面底边（底边 0.997、高 0.011–0.028），
+    // 每帧滚到不同的一行、字一直在变。它不是字幕；混进字幕那一堆，「不同的字最多」会偏袒它。字幕离得远（底边 0.95）时它一个人赢：
+    // 框成了 0.983–0.997、叫人裁 0.03，真的字幕（0.87 起）一个字没裁。
+    let scrolledFar = (0..<10).map { index -> AITextRegions.Frame in
+        var texts = [text("cut off line \(index)", 0.25, 0.983, 0.5, 0.014)]
+        if index % 3 == 0 { texts.append(text("字幕第\(index)句", 0.3, 0.87, 0.4, 0.08)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    let farBand = AITextRegions.report(scrolledFar).band
+    check(abs((farBand?.box.minY ?? 0) - 0.87) < 0.005 && abs((farBand?.box.maxY ?? 0) - 0.95) < 0.005,
+          "text scan: a line cut off by the bottom edge is not the subtitle band (band \(farBand?.box.minY ?? -1)–\(farBand?.box.maxY ?? -1))")
+    check(AITextRegions.json(AITextRegions.report(scrolledFar))["subtitle_band"]?["hint"]?.stringValue?.contains("crop bottom 0.14") == true,
+          "text scan: so the crop is for the real subtitles, not 0.03 off the edge")
+    // 字幕离得近（底边 0.978，和它们差不到 0.02）：分到同一堆，框的底边被抬到 0.997。
+    let scrolledNear = (0..<10).map { index -> AITextRegions.Frame in
+        var texts = [text("cut off line \(index)", 0.25, 0.983, 0.5, 0.014)]
+        if index % 3 == 0 { texts.append(text("字幕第\(index)句", 0.3, 0.886, 0.4, 0.092)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    let nearBand = AITextRegions.report(scrolledNear).band
+    check(abs((nearBand?.box.maxY ?? 0) - 0.978) < 0.005, "text scan: the band's bottom is the subtitle's, not the cut-off line's 0.997 (bottom \(nearBand?.box.maxY ?? -1))")
+    // 字幕真的贴着底边（底边 0.995、有一整行高）不是被切掉的：照样是字幕。
+    let lowSubtitle = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text("字幕第\($0)句", 0.3, 0.935, 0.4, 0.06)]) }
+    check(abs((AITextRegions.report(lowSubtitle).band?.box.minY ?? 0) - 0.935) < 0.005, "text scan: a full-height subtitle line near the bottom edge is still a subtitle")
+    // 太高的框（一行字幕的框被背景量大，L27 的 0.860–1.001）不算字幕行：算进去会多裁 0.04（那一帧字幕只有一行，字形在 0.90–0.965）。
+    let oversized = (0..<8).map { index -> AITextRegions.Frame in
+        var texts = [text("字幕第\(index)句", 0.3, 0.886, 0.4, 0.092)]
+        if index == 4 { texts = [text("个视频中，我们将讨论钱的问题。", 0.27, 0.860, 0.57, 0.141)] }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: texts)
+    }
+    check(abs((AITextRegions.report(oversized).band?.box.minY ?? 0) - 0.886) < 0.005, "text scan: a box measured too tall for one line does not stretch the band")
+
+    // 字幕稀疏、幻灯片的字多（2026-09-29，L27 的生产抽样：24 帧里只有 4 帧有字幕，幻灯片 0.81–0.84 一段里有 9 句不同的字，每页停两帧）：
+    // 以前「不同的字最多」选了幻灯片，框从 0.78 起、叫人裁 0.23；字幕是够多的几堆里最下面的一堆。
+    let sparse = (0..<24).map { index -> AITextRegions.Frame in
+        var lines = index < 18 ? [text("slide line \(index / 2)", 0.15, 0.78 + Double(index / 2 % 4) * 0.008, 0.6, 0.03)] : []
+        if index % 6 == 1 { lines.append(text("字幕第\(index)句", 0.3, 0.886, 0.4, 0.092)) }
+        return AITextRegions.Frame(time: Double(index) * 6.7, texts: lines)
+    }
+    let sparseBand = AITextRegions.report(sparse).band
+    check(abs((sparseBand?.box.minY ?? 0) - 0.886) < 0.005 && abs((sparseBand?.box.maxY ?? 0) - 0.978) < 0.005,
+          "text scan: a sparse subtitle track below a slide's many text rows is still the band (band \(sparseBand?.box.minY ?? -1)–\(sparseBand?.box.maxY ?? -1))")
+    // 下面再有一行、只有三句不同的话（页脚、台标的几种写法）撑不起字幕：最下面的一堆也得至少是最多那堆的三分之一。
+    let footer = (0..<12).map { index -> AITextRegions.Frame in
+        var lines = [text("字幕第\(index)句", 0.3, 0.85, 0.4, 0.05)]
+        if index < 9 { lines.append(text("Ad number \(index / 3)", 0.4, 0.95, 0.2, 0.03)) }
+        return AITextRegions.Frame(time: Double(index) * 2, texts: lines)
+    }
+    check(abs((AITextRegions.report(footer).band?.box.minY ?? 0) - 0.85) < 0.005, "text scan: a low footer with three different texts does not take the band from a full subtitle track")
+    // 只有两句轮着出现：字没怎么变，不是字幕。
+    let alternating = (0..<6).map { AITextRegions.Frame(time: Double($0), texts: [text($0 % 2 == 0 ? "Buy now" : "Sale today", 0.3, 0.85, 0.4, 0.06)]) }
+    checkEqual(AITextRegions.report(alternating).band, nil, "text scan: two texts taking turns are not a subtitle band")
+
     // 提示要说清楚：裁的是一整条，条里别的字（幻灯片自己贴底边的小字）也一起没了。
     check(AITextRegions.json(AITextRegions.report(course))["subtitle_band"]?["hint"]?.stringValue?.contains("everything in that strip") == true,
           "text scan: the hint says the crop takes off whatever else is in the strip")

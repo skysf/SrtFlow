@@ -1027,3 +1027,7 @@
 "USD per 1000 characters" = "美元 / 千字符";
 "USD per second of sound" = "美元 / 秒声音";
 "USD per minute of sound (a started minute counts as a whole one)" = "美元 / 分钟声音（不满一分钟按一分钟算）";
+
+/* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
+"Mosaic" = "马赛克";
+"Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "把它下面的画面模糊或打上马赛克，文字、形状和字幕不受影响。在预览里拖它的框来摆位置。";

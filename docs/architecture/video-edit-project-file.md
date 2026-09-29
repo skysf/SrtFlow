@@ -91,6 +91,7 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v23 | 字幕拆成两条独立轨：译文句有**自己的 ID 和时间**，从哪句原文翻来记在 `SubtitleCompanion.translationLinks`（键是译文句的 ID）；`translationLayout` —— 译文在画面上自己的位置和大小（**按需写入**：叠在原文下面时不落键）；`SubtitleCompanion.hiddenCueIDs` —— 字幕单句藏起来（V，**按需写入**） | 只认 v22 的旧版把译文当成原文的镜像、按 ID 对原文，新工程里的译文一句都对不上，读盘时当坏数据整条丢掉，随手编辑触发自动保存即永久丢失。**老工程（< v23）打开时拆开**：每句译文换新 ID、来源记成原来那句原文，当年标过「过期」的照样过期（`SubtitleCompanion.splitMirroredTranslation`，载入时按版本号判）。合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md) |
 | v24 | `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（电影遮幅、色块底；2026-09-28 MCP 第 5 块补的零件，**按需写入**：描边的不落键） | **直接决定成片**：只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，随手编辑触发自动保存即永久丢失。预览和导出都问同一个 `drawsFilled`（线条永远是线），导出的画法在 `ShapePNGRenderer`（VideoEditShapePNGRenderer.swift） |
 | v25 | `projectSubtitleStyle` —— 这个工程自己的字幕样式（AI 改样式只改这一份，方案第 54 条）；`subtitleHighlight` —— 逐词高亮（颜色、放大多少）；`SubtitleCue.words` —— 字幕每个词什么时候说（生成、配音的字幕才有）（三样都**按需写入**） | **直接决定成片**：只认 v24 的旧版不认识这些键，字幕退回全 App 的样式、不再高亮，随手编辑触发自动保存即永久丢失；词的时间丢了之后再打开高亮也亮不起来。用样式都问 `TimelineState.subtitleStyle(appWide:)`，合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md)「工程自己的样式与逐词高亮」 |
+| v26 | `ShapeKind.blur` / `.mosaic`（盖一块，2026-09-29）与 `ShapeAnnotation.coverAmount`（力度；**按需写入**：只有盖一块落键） | **直接决定成片**：只认 v25 的旧版把不认识的种类宽容回落成长方形，该糊的地方变成一圈描边、水印 / 旧字幕重新露出来，随手编辑触发自动保存即永久丢失。合同见 [盖一块](cover-blur-mosaic.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是

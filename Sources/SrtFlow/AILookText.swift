@@ -38,7 +38,13 @@ enum AILookText {
         for frame in frames {
             scanned.append(.init(time: frame.time, texts: await AIVision.analyze(frame.image, .text).texts))
         }
-        var payload = AITextRegions.json(AITextRegions.report(scanned), timeline: { target.clip?.timelineTime(atSource: $0) ?? $0 })
+        let report = AITextRegions.report(scanned)
+        let timeline: (Double) -> Double = { target.clip?.timelineTime(atSource: $0) ?? $0 }
+        var payload = AITextRegions.json(report, timeline: timeline)
+        // 看的是时间线上的一段：再给出盖住它的 set_shape 参数（源画面上的框换成画布上的；方案第 56 条）。
+        if let clip = target.clip {
+            AICoverBox.annotate(&payload, report: report, clip: clip, canvas: VideoEditCompositionBuilder.renderSize(for: project.state), timeline: timeline)
+        }
         payload["looked_at"] = .string(target.label(project))
         payload["scanned_frames"] = .number(Double(scanned.count))
         payload["every_seconds"] = AIFormat.seconds((upper - lower) / Double(count))

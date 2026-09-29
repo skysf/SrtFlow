@@ -25,7 +25,9 @@ struct ShapeOverlayCanvas: View {
         ZStack(alignment: .topLeading) {
             Color.clear
             // displayTime：悬停预览时形状的出没要跟画面那一帧走。
-            ForEach(project.visibleShapes(at: clock.displayTime)) { shape in
+            // 盖一块（模糊 / 马赛克）不在 `visibleShapes` 里（它不画东西）；被选中的那块要在这儿画一圈虚线框、能拖 ——
+            // 没选中的不画、不拦点击（不然一块盖在画面上的看不见的东西会挡住下面的剪辑）。
+            ForEach(project.visibleShapes(at: clock.displayTime) + selectedCover(at: clock.displayTime)) { shape in
                 shapeView(shape)
             }
             // 选中形状的变换框：线条只给左右（改长度），正方形只给四角（保形），
@@ -75,6 +77,12 @@ struct ShapeOverlayCanvas: View {
         return frame
     }
 
+    /// 被选中、此刻在屏上的那块盖一块（没有就是空）。
+    private func selectedCover(at time: Double) -> [ShapeAnnotation] {
+        guard let shape = project.selectedShape, shape.kind.isCover, !shape.isHidden, shape.contains(time: time) else { return [] }
+        return [shape]
+    }
+
     private func resizeHandles(_ shape: ShapeAnnotation) -> Set<FrameHandle> {
         switch shape.kind {
         case .line:
@@ -83,7 +91,7 @@ struct ShapeOverlayCanvas: View {
             let rotated = abs(shape.rotationDegrees.truncatingRemainder(dividingBy: 360)) > 0.5
             return rotated ? [] : FrameHandle.horizontal
         case .square: return FrameHandle.corners
-        case .rectangle: return FrameHandle.all
+        case .rectangle, .blur, .mosaic: return FrameHandle.all
         }
     }
 
@@ -97,7 +105,7 @@ struct ShapeOverlayCanvas: View {
                 $0.centerX = min(max(newRect.midX / boxSize.width, 0), 1)
                 $0.centerY = min(max(newRect.midY / boxSize.height, 0), 1)
                 $0.width = min(max(rect.width / boxSize.width, 0.02), 1)
-                if kind == .rectangle {
+                if kind == .rectangle || kind.isCover {
                     $0.height = min(max(rect.height / boxSize.height, 0.02), 1)
                 }
             }
@@ -117,6 +125,13 @@ struct ShapeOverlayCanvas: View {
                     .frame(width: max(2, frame.width), height: strokeWidth)
                     .rotationEffect(.degrees(shape.rotationDegrees))
                     .frame(width: max(2, frame.width), height: max(strokeWidth, frame.width))
+            case .blur, .mosaic:
+                // 只有选中的盖一块才会走到这儿：一圈虚线框标出它盖哪儿（编辑用的提示，不进成片、不进 AI 的「看」）。
+                Rectangle()
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .background(Color.white.opacity(0.06))
+                    .frame(width: max(2, frame.width), height: max(2, frame.height))
             case .rectangle, .square:
                 // 实心的整块涂满（导出 ShapePNGRenderer 同一个判据 `drawsFilled`）。
                 Rectangle()

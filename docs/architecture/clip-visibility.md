@@ -77,7 +77,8 @@
 
 ### 文字、形状、滤镜段：进预览和成片的清单只有一份
 
-`TimelineState.renderedTextOverlays`（按叠放序）/ `renderedShapes` / `renderedFilters`（按生效顺序）在
+`TimelineState.renderedTextOverlays`（按叠放序）/ `renderedShapes` / `renderedCovers`（盖一块：模糊 / 马赛克，
+[盖一块](cover-blur-mosaic.md)；它不画东西，所以不在 `renderedShapes` 里）/ `renderedFilters`（按生效顺序）在
 `VideoEditClipVisibility.swift` 里算一次，**预览和导出都读它**：预览上的文字叠层（`visibleTextOverlays`）、
 形状叠层（`visibleShapes`）、调色（`activeFilters(at:)`）；导出的文字 PNG、形状 PNG、`lut3d` 链。直接读
 `state.shapes` / `textOverlaysInStackingOrder` / `orderedFilters` 去渲染就会漏过 V（扫描守卫钉着）。

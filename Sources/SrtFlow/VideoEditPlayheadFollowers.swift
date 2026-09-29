@@ -112,16 +112,24 @@ struct TransportTimeLabel: View {
 ///
 /// 滤镜挂在播放器视图自己身上，所以预览 ZStack 里它**上面**的叠层（形状 / 文字 / 字幕 / 变换框）
 /// 天然不吃调色 —— 与导出滤镜链里「滤镜插在画面合成之后、形状之前」一字不差。
+///
+/// 盖一块（模糊 / 马赛克，`CoverPreviewLayer`）：同一个播放器再开一层，叠在播放器上面、别的叠层下面，盖的是调完色的画面。
+/// **没有盖一块时不建这一层**（性能计数和以前一样）。
 struct PreviewPlayerSurface: View {
     let project: VideoEditProject
     @ObservedObject var clock: PlayerClock
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
-        PlayerViewRepresentable(
-            player: clock.player,
-            controlsStyle: .none,
-            filterStack: FilterStack(in: project.state, at: clock.displayTime)
-        )
+        let time = clock.displayTime
+        let grade = FilterStack(in: project.state, at: time)
+        let covers = CoverStack(in: project.state, at: time)
+        ZStack {
+            PlayerViewRepresentable(player: clock.player, controlsStyle: .none, filterStack: grade)
+            if !covers.isEmpty {
+                CoverPreviewLayer(player: clock.player, covers: covers, grade: grade)
+                    .allowsHitTesting(false)
+            }
+        }
     }
 }

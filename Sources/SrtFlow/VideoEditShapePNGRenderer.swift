@@ -64,6 +64,8 @@ enum ShapePNGRenderer {
             context.addLine(to: CGPoint(x: frame.width / 2, y: 0))
             context.strokePath()
             context.restoreGState()
+        case .blur, .mosaic:
+            break   // 盖一块不画东西：它的效果是导出图里的滤镜（VideoEditCoverExport），不在这张 PNG 上
         case .rectangle, .square:
             if shape.drawsFilled {
                 // 实心：整块涂满、不画描边（预览是同一个框的 fill）。

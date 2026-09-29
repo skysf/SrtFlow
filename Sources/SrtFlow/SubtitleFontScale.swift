@@ -15,6 +15,8 @@ import SrtFlowCore
 // 0.839），libass 选的也是它，所以比例按粗体那一款量 —— 接口只收整份样式，漏不掉粗体。
 // 回退到的是系统私有的字体（没下载苹方的 Mac）时换成每台 Mac 都有的那几个（SubtitleFallbackFont），烧录那边点名同一个
 // （`burnOverrides`）。
+// 除了大小还有**行框**：libass 的行框（基线上下各多高）用 OS/2 的 win 量度，CoreText 用 hhea —— `ascentShare` 给 win 量度里「上面」占几成，
+// 预览把行距和竖向位置补成 libass 那样是 `SubtitleLineMetrics` 的事。
 // 不管什么：怎么画（BurnInSubtitleOverlay）、一行放多少（SubtitleLineFit 用 `lineScale`）。
 
 enum SubtitleFontScale {
@@ -32,13 +34,18 @@ enum SubtitleFontScale {
 
     /// 这个字体（按粗体 / 斜体选到的那一款）的 em 是字号的多少：UPM / (usWinAscent + usWinDescent)；读不到表就当 1。
     static func scale(ofFont name: String, bold: Bool, italic: Bool) -> Double {
-        cache.withLock { cached in
-            let key = "\(name)|\(bold)|\(italic)"
-            if let known = cached[key] { return known }
-            let value = measuredScale(face(name, bold: bold, italic: italic))
-            cached[key] = value
-            return value
-        }
+        metrics(ofFont: name, bold: bold, italic: italic).scale
+    }
+
+    /// libass 的行框里基线上面占几成：usWinAscent / (usWinAscent + usWinDescent)；读不到表就用 CoreText 自己的上下量度
+    /// （那样预览不用挪）。
+    static func ascentShare(ofFont name: String, bold: Bool, italic: Bool) -> Double {
+        metrics(ofFont: name, bold: bold, italic: italic).ascentShare
+    }
+
+    /// 按名字、字号、粗体 / 斜体要一个 CTFont（预览的 `Font.custom` + `.weight(.bold)` 选的是同一款）。
+    static func ctFont(named name: String, size: Double, bold: Bool, italic: Bool) -> CTFont {
+        face(name, size: size, bold: bold, italic: italic)
     }
 
     /// 一段字按实际用到的字体分成几截（挨着的同一个字体并成一截）。
@@ -93,28 +100,47 @@ enum SubtitleFontScale {
 
     // MARK: 内部
 
-    private static let cache = Locked<[String: Double]>([:])
+    private struct FaceMetrics {
+        var scale: Double
+        var ascentShare: Double
+    }
+
+    private static let cache = Locked<[String: FaceMetrics]>([:])
+
+    private static func metrics(ofFont name: String, bold: Bool, italic: Bool) -> FaceMetrics {
+        cache.withLock { cached in
+            let key = "\(name)|\(bold)|\(italic)"
+            if let known = cached[key] { return known }
+            let value = measured(face(name, size: 12, bold: bold, italic: italic))
+            cached[key] = value
+            return value
+        }
+    }
 
     /// 粗体 / 斜体选家族里真的那一款（预览的 `.weight(.bold)`、libass 的 Bold 都是这么选的）；没有斜体的家族只按粗体选
     /// （斜体是斜切出来的，量度和正体一样）；都没有就是它本身。
-    private static func face(_ name: String, bold: Bool, italic: Bool) -> CTFont {
-        let base = CTFontCreateWithName(name as CFString, 12, nil)
+    private static func face(_ name: String, size: Double, bold: Bool, italic: Bool) -> CTFont {
+        let base = CTFontCreateWithName(name as CFString, size, nil)
         var wanted: CTFontSymbolicTraits = []
         if bold { wanted.insert(.traitBold) }
         if italic { wanted.insert(.traitItalic) }
         guard !wanted.isEmpty else { return base }
-        if let styled = CTFontCreateCopyWithSymbolicTraits(base, 0, nil, wanted, wanted) { return styled }
-        if bold, let styled = CTFontCreateCopyWithSymbolicTraits(base, 0, nil, .traitBold, .traitBold) { return styled }
+        if let styled = CTFontCreateCopyWithSymbolicTraits(base, size, nil, wanted, wanted) { return styled }
+        if bold, let styled = CTFontCreateCopyWithSymbolicTraits(base, size, nil, .traitBold, .traitBold) { return styled }
         return base
     }
 
-    private static func measuredScale(_ font: CTFont) -> Double {
+    private static func measured(_ font: CTFont) -> FaceMetrics {
+        let ascent = Double(CTFontGetAscent(font)), descent = Double(CTFontGetDescent(font))
+        let coreTextShare = ascent + descent > 0 ? ascent / (ascent + descent) : 0.8
         let units = Double(CTFontGetUnitsPerEm(font))
-        guard units > 0, let table = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) as Data?, table.count >= 78 else { return 1 }
+        guard units > 0, let table = CTFontCopyTable(font, CTFontTableTag(kCTFontTableOS2), []) as Data?, table.count >= 78 else {
+            return FaceMetrics(scale: 1, ascentShare: coreTextShare)
+        }
         let winAscent = Double(Int(table[74]) << 8 | Int(table[75]))
         let winDescent = Double(Int(table[76]) << 8 | Int(table[77]))
-        guard winAscent + winDescent > 0 else { return 1 }
-        return units / (winAscent + winDescent)
+        guard winAscent + winDescent > 0 else { return FaceMetrics(scale: 1, ascentShare: coreTextShare) }
+        return FaceMetrics(scale: units / (winAscent + winDescent), ascentShare: winAscent / (winAscent + winDescent))
     }
 }
 

@@ -53,6 +53,9 @@
 
 - **点菜单，别发快捷键**：`keystroke` 会被终端(cmux)抢焦点漏进别的应用。
   `click menu item "Edit Video" of menu "File" of menu bar item "File"` 可靠。
+- **预览上的盖一块（模糊 / 马赛克）**改了 `VideoEditCoverPreview.swift` / `VideoEditCoverFilters.swift` 要跑 `scripts/check-cover-preview-attach.sh`
+  （生产的 `CoverHostView` 放进真窗口拍屏数像素，方法同 `check-filter-preview-attach.sh`；看门狗防 FIFO 握手挂住；区域上下要**不对称**，
+  对称的框翻不翻转 y 都一样，抓不到 CA 左下原点没换算）。
 - **按窗口 ID 截图，别依赖 frontmost**：CGWindowListCopyWindowInfo 按 pid 找
   kCGWindowNumber，`screencapture -l <id> -x` 可无视遮挡；加 `-o` 去阴影后
   图像与窗口坐标是干净的 2x 映射，方便换算注入坐标。

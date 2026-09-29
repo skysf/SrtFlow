@@ -8,7 +8,7 @@ import SwiftUI
 // MARK: - 时间线在某一刻的画面（「看」用）
 //
 // 管什么：按预览同样的几层合成一帧：视频轨（预览那份合成：摆放、裁切、转场、渐变、藏起来的不画）→ 滤镜
-// （预览那串 CIFilter）→ 形状（导出那份 PNG）→ 文字（唯一的绘制入口 TextRenderer）→ 字幕（预览那个
+// （预览那串 CIFilter）→ 盖一块（模糊 / 马赛克，`CoverCompositing`：AI 盖了之后靠它核对盖没盖住）→ 形状（导出那份 PNG）→ 文字（唯一的绘制入口 TextRenderer）→ 字幕（预览那个
 // SwiftUI 视图，离屏渲）。层序同导出滤镜链（docs/architecture/text-overlays.md）。**每一层都调现成的那一份，
 // 不另写**：「看」到的就是用户在预览里看到的。
 // 不管什么：素材文件的帧（AIFrameSampler）、描述画面（AIFrameDescription）、拼成一张（AIContactSheet）。
@@ -60,7 +60,10 @@ enum AIFrameComposer {
         let whole = CGRect(x: 0, y: 0, width: width, height: height)
         context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
         context.fill(whole)
-        if let video { context.draw(graded(video, stack: FilterStack(in: state, at: time)), in: whole) }
+        if let video {
+            let covered = CoverCompositing.apply(state.renderedCovers.filter { $0.contains(time: time) }, to: graded(video, stack: FilterStack(in: state, at: time)))
+            context.draw(covered, in: whole)
+        }
         // 形状：导出那份整幅透明 PNG（位置和预览一致）。
         for shape in state.renderedShapes where shape.contains(time: time) {
             if let data = ShapePNGRenderer.render(shape, canvas: canvas), let image = decode(data) {
