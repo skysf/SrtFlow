@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SrtFlowCore
 import SrtFlowMCPKit
@@ -17,6 +18,8 @@ struct AISubtitleStyleChange: Equatable {
     var position: SubtitlePosition?
     /// 离那条边多远（1080 基准像素）。
     var margin: Int?
+    /// 一行最宽占画面宽的几成（0.3–1）：换算成左右边距落在样式上；只对工程字幕（要知道画幅）。
+    var maxWidth: Double?
     var size: Double?
     var font: String?
     var bold: Bool?
@@ -59,6 +62,10 @@ struct AISubtitleStyleChange: Equatable {
             }
             margin = Int((fraction * Double(BurnInStyle.referenceHeight)).rounded())
         }
+        if let value = try fields.double("max_width") {
+            guard (0.3...1).contains(value) else { throw AIToolError("style.max_width is a fraction of the frame width, from 0.3 to 1.") }
+            maxWidth = value
+        }
         if let value = try fields.double("size") {
             guard BurnInStyle.fontSizeRange.contains(value) else {
                 throw AIToolError("style.size must be 20 to 140 (pixels on a frame 1080 pixels tall).")
@@ -100,8 +107,24 @@ struct AISubtitleStyleChange: Equatable {
 
     /// 改了字幕本身的样子（不只是高亮、不只是 reset）。
     var changesLook: Bool {
-        position != nil || margin != nil || size != nil || font != nil || bold != nil || color != nil
+        position != nil || margin != nil || maxWidth != nil || size != nil || font != nil || bold != nil || color != nil
             || outline != nil || outlineWidth != nil || box != nil || shadow != nil
+    }
+
+    /// ASS 画布的宽（PlayResX：高 1080、按画幅算、取偶数，同 `BurnInStyle.assDocument`）。边距就是这个单位。
+    static func playResWidth(canvas: CGSize) -> Int {
+        let aspect = canvas.width > 0 && canvas.height > 0 ? canvas.width / canvas.height : 16.0 / 9.0
+        return max(2, Int((Double(BurnInStyle.referenceHeight) * aspect / 2).rounded()) * 2)
+    }
+
+    /// 一行最宽占几成 ↔ 左右边距（1080 基准的画布单位）。
+    static func horizontalMargin(maxWidth: Double, canvas: CGSize) -> Int {
+        Int(((1 - min(max(maxWidth, 0.3), 1)) / 2 * Double(playResWidth(canvas: canvas))).rounded())
+    }
+
+    static func maxWidth(marginHorizontal: Int, canvas: CGSize) -> Double {
+        let width = Double(playResWidth(canvas: canvas))
+        return ((1 - 2 * Double(marginHorizontal) / width) * 100).rounded() / 100
     }
 
     var changesHighlight: Bool { highlight != nil || highlightScale != nil }
@@ -169,10 +192,13 @@ struct AISubtitleStyleChange: Equatable {
     }
 
     /// edit_subtitles：落到这个工程上（一次 perform 里调）。
-    func apply(to state: inout TimelineState, appWide: BurnInStyle) {
+    /// `canvas`：这个工程的画布（`VideoEditCompositionBuilder.renderSize(for:)`，调用方给：`max_width` 要按画幅换成边距）。
+    func apply(to state: inout TimelineState, appWide: BurnInStyle, canvas: CGSize) {
         if reset { state.projectSubtitleStyle = nil }
         if changesLook {
-            state.projectSubtitleStyle = applied(to: state.subtitleStyle(appWide: appWide))
+            var style = applied(to: state.subtitleStyle(appWide: appWide))
+            if let maxWidth { style.marginHorizontal = Self.horizontalMargin(maxWidth: maxWidth, canvas: canvas) }
+            state.projectSubtitleStyle = style
         }
         if position != nil || margin != nil {
             // 拖框的布局锚定在底部中心，会盖住这里给的位置。
@@ -192,7 +218,7 @@ struct AISubtitleStyleChange: Equatable {
     }
 
     /// 回给 AI 看的「这个工程的字幕现在长什么样」（get_subtitles、edit_subtitles 的结果）。
-    static func describe(_ state: TimelineState, appWide: BurnInStyle) -> JSONValue {
+    static func describe(_ state: TimelineState, appWide: BurnInStyle, canvas: CGSize) -> JSONValue {
         let style = state.subtitleStyle(appWide: appWide)
         let layout = state.subtitleLayout
         var object: [String: JSONValue] = [
@@ -201,6 +227,7 @@ struct AISubtitleStyleChange: Equatable {
             "font": .string(style.fontName),
             "bold": .bool(style.bold),
             "color": .string(AIColor.hex(style.fillColor)),
+            "max_width": .number(maxWidth(marginHorizontal: style.marginHorizontal, canvas: canvas)),
             "highlight": .string(state.subtitleHighlight.map { AIColor.hex($0.color) } ?? "none")
         ]
         if layout != nil {

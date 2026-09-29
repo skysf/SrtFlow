@@ -47,6 +47,9 @@ enum AIEncodeTools {
         }
         // 这一批自带的字幕样式（烧录页记住的那套不动）；字幕文件里没有词的时间，逐词高亮不适用。
         var styleChange = try AISubtitleStyleChange(args)
+        guard styleChange?.maxWidth == nil else {
+            throw AIToolError("style.max_width applies to the project's subtitles (edit_subtitles); files being burned each have their own frame.")
+        }
         if styleChange?.changesHighlight == true {
             throw AIToolError("style.highlight needs word times, which subtitle files do not have. It works on the project's own subtitles (edit_subtitles).")
         }

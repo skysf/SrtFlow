@@ -26,8 +26,11 @@ struct AISubtitleEdits {
     var changes: [Change] = []
     var additions: [Addition] = []
     var deletions: Set<UUID> = []
+    /// 要并成一句的几组（每组两句以上、同一条轨、按顺序）：走界面「合并」那份合同（`SubtitleTrackEditing.mergeCues`），
+    /// 逐词时间拼起来。改字把两句抄成一句会把挪进来的词的时间丢掉（2026-09-29 婚礼工程 BUG-06）。
+    var merges: [[UUID]] = []
 
-    var isEmpty: Bool { changes.isEmpty && additions.isEmpty && deletions.isEmpty }
+    var isEmpty: Bool { changes.isEmpty && additions.isEmpty && deletions.isEmpty && merges.isEmpty }
 
     static func parse(_ args: AIToolArguments, ids: AIShortIDs, in state: TimelineState) throws -> AISubtitleEdits {
         var edits = AISubtitleEdits()
@@ -55,12 +58,30 @@ struct AISubtitleEdits {
             guard state.subtitleCue(id) != nil else { throw AIToolError("delete: \(text) is not a subtitle line.") }
             edits.deletions.insert(id)
         }
+        for (index, item) in (try args.array("merge") ?? []).enumerated() {
+            guard case .array(let members) = item, members.count >= 2 else {
+                throw AIToolError("merge[\(index)]: give two or more line ids to join.")
+            }
+            var group: [UUID] = []
+            var tracks: Set<SubtitleTrack> = []
+            for member in members {
+                guard let text = member.stringValue else { throw AIToolError("merge[\(index)]: ids must be strings.") }
+                let id = try ids.resolve(text)
+                guard let track = state.subtitleTrack(of: id) else { throw AIToolError("merge[\(index)]: \(text) is not a subtitle line.") }
+                tracks.insert(track)
+                if !group.contains(id) { group.append(id) }
+            }
+            guard tracks.count == 1 else { throw AIToolError("merge[\(index)]: all lines must be on the same track (original or translation).") }
+            guard group.count >= 2 else { throw AIToolError("merge[\(index)]: give two or more different lines.") }
+            edits.merges.append(group)
+        }
         return edits
     }
 
-    /// 一次改完，返回新加的那几句的 id。还没有字幕轨时就地建一条原文轨（同界面上的「+」）。
-    func apply(to state: inout TimelineState) -> [UUID] {
+    /// 一次改完，返回新加的那几句的 id 和每组合并后留下的那句的 id。还没有字幕轨时就地建一条原文轨（同界面上的「+」）。
+    func apply(to state: inout TimelineState) -> (created: [UUID], merged: [UUID]) {
         var created: [UUID] = []
+        var merged: [UUID] = []
         state.editSubtitleTracks(creatingOriginal: !additions.isEmpty) { original, companion in
             for change in changes {
                 if let text = change.text {
@@ -82,10 +103,18 @@ struct AISubtitleEdits {
                     created.append(id)
                 }
             }
+            for group in merges {
+                // 留下的是文档顺序里最靠前的那句（mergeCues 的合同）。
+                let order = original.cues.map(\.id) + (companion.translation?.cues.map(\.id) ?? [])
+                guard let kept = order.first(where: { group.contains($0) }),
+                      SubtitleTrackEditing.mergeCues(ids: Set(group), original: &original, companion: &companion)
+                else { continue }
+                merged.append(kept)
+            }
             if !deletions.isEmpty {
                 SubtitleTrackEditing.removeCues(ids: deletions, original: &original, companion: &companion)
             }
         }
-        return created
+        return (created, merged)
     }
 }

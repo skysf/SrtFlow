@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import SrtFlowCore
 import SrtFlowMCPKit
@@ -11,6 +12,9 @@ func runSubtitleStyleChecks() {
     styleOnProject()
     styleForBurnBatch()
 }
+
+/// 大多数用例按 16:9 的画布算（max_width 那组自己给 9:16 的）。
+private let wideCanvas = CGSize(width: 1920, height: 1080)
 
 private func change(_ object: [String: JSONValue]) throws -> AISubtitleStyleChange? {
     try AISubtitleStyleChange(AIToolArguments(.object(["style": .object(object)])))
@@ -44,38 +48,57 @@ private func styleOnProject() {
     let appWide = BurnInStyle.default
     var state = TimelineState()
     state.subtitleLayout = SubtitleLayout(marginLeft: 100, marginRight: 100, marginBottom: 40, fontScale: 1.5)
-    try? change(["size": 70])?.apply(to: &state, appWide: appWide)
+    try? change(["size": 70])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.subtitleStyle(appWide: appWide).fontSize, 70, "工程：给了字号就改工程自己的样式")
     checkEqual(state.subtitleLayout?.fontScale, 1, "工程：只给字号时拖框的布局留着、字号倍率归一（出来就是这个字号）")
     checkEqual(appWide, BurnInStyle.default, "工程：烧录页记住的那套不动")
-    try? change(["position": "top", "margin": 0.08])?.apply(to: &state, appWide: appWide)
+    try? change(["position": "top", "margin": 0.08])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     check(state.subtitleLayout == nil && state.translationLayout == nil, "工程：给了位置就收掉拖框的布局（它锚定在底部，会盖住位置）")
     checkEqual(state.subtitleStyle(appWide: appWide).position, .topCenter, "工程：位置")
     checkEqual(state.subtitleStyle(appWide: appWide).fontSize, 70, "工程：之前改的字号还在（从此刻用的那套改起）")
 
-    try? change(["highlight": "#00E5FF"])?.apply(to: &state, appWide: appWide)
+    try? change(["highlight": "#00E5FF"])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.subtitleHighlight?.scale, SubtitleWordHighlight.defaultScale, "高亮：打开时默认放大 1.1 倍")
-    try? change(["highlight_scale": 1])?.apply(to: &state, appWide: appWide)
+    try? change(["highlight_scale": 1])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.subtitleHighlight, SubtitleWordHighlight(color: SubtitleColor(red: 0, green: 0xE5 / 255.0, blue: 1), scale: 1),
                "高亮：只给倍数时颜色照旧")
-    let described = AISubtitleStyleChange.describe(state, appWide: appWide)
+    let described = AISubtitleStyleChange.describe(state, appWide: appWide, canvas: wideCanvas)
     checkEqual(described["own_style"], .bool(true), "回给 AI：这个工程用自己的样式")
     checkEqual(described["position"]?.stringValue, "top", "回给 AI：位置")
     checkEqual(described["highlight"]?.stringValue, "#00E5FF", "回给 AI：高亮颜色")
-    try? change(["highlight": "none"])?.apply(to: &state, appWide: appWide)
+    try? change(["highlight": "none"])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.subtitleHighlight, nil, "高亮：none 关掉")
 
-    try? change(["reset": true])?.apply(to: &state, appWide: appWide)
+    try? change(["reset": true])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.projectSubtitleStyle, nil, "工程：reset 回到烧录页的样式")
-    try? change(["reset": true, "color": "#FFFFFF", "bold": false])?.apply(to: &state, appWide: appWide)
+    try? change(["reset": true, "color": "#FFFFFF", "bold": false])?.apply(to: &state, appWide: appWide, canvas: wideCanvas)
     checkEqual(state.projectSubtitleStyle?.fontSize, appWide.fontSize, "工程：reset 之后再改，从烧录页那套改起")
     checkEqual(state.projectSubtitleStyle?.bold, false, "工程：reset 之后的改动照样生效")
     state.subtitleLayout = SubtitleLayout(marginLeft: 0, marginRight: 0, marginBottom: 200)
-    checkEqual(AISubtitleStyleChange.describe(state, appWide: appWide)["position"]?.stringValue,
+    checkEqual(AISubtitleStyleChange.describe(state, appWide: appWide, canvas: wideCanvas)["position"]?.stringValue,
                "dragged in the preview (a custom spot)", "回给 AI：拖过框的说是自己摆的位置")
 }
 
+/// max_width：一行最宽占几成 → 左右边距，按画幅换算；回读一致（2026-09-29 婚礼工程 ISSUE-16）。
+private func maxWidthChecks() {
+    let wide = CGSize(width: 1920, height: 1080), tall = CGSize(width: 1080, height: 1920)
+    checkEqual(AISubtitleStyleChange.playResWidth(canvas: wide), 1920, "16:9 的 ASS 画布 1920 宽")
+    checkEqual(AISubtitleStyleChange.playResWidth(canvas: tall), 608, "9:16 的 ASS 画布 608 宽（同 assDocument）")
+    checkEqual(AISubtitleStyleChange.horizontalMargin(maxWidth: 0.9, canvas: wide), 96, "16:9 上 0.9 → 左右各 96")
+    checkEqual(AISubtitleStyleChange.horizontalMargin(maxWidth: 0.9, canvas: tall), 30, "9:16 上 0.9 → 左右各 30")
+    checkEqual(AISubtitleStyleChange.maxWidth(marginHorizontal: 80, canvas: wide), 0.92, "默认边距 80 在 16:9 上是 0.92")
+    checkEqual(AISubtitleStyleChange.maxWidth(marginHorizontal: 80, canvas: tall), 0.74, "在 9:16 上只有 0.74")
+    checkEqual((try? change(["max_width": 0.9]))?.maxWidth, 0.9, "max_width 读进来")
+    checkThrows("max_width 超出范围报错") { _ = try change(["max_width": 0.2]) }
+    var state = TimelineState()
+    state.canvasRatio = .tall9x16
+    (try? change(["max_width": 0.9]))?.apply(to: &state, appWide: BurnInStyle.default, canvas: tall)
+    checkEqual(state.projectSubtitleStyle?.marginHorizontal, 30, "落到工程样式的左右边距上（9:16）")
+    checkEqual(AISubtitleStyleChange.describe(state, appWide: BurnInStyle.default, canvas: tall)["max_width"]?.doubleValue, 0.9, "describe 回读 max_width")
+}
+
 private func styleForBurnBatch() {
+    maxWidthChecks()
     let base = BurnInStyle.default
     let boxed = (try? change(["box": "#00000099"]))?.applied(to: base)
     checkEqual(boxed?.borderStyle, .box, "烧录一批：给了底条就是底条模式")
@@ -96,8 +119,8 @@ private func styleForBurnBatch() {
           "阴影：底条模式里给阴影就回到描边（底条没有阴影，预览和烧录都不画）")
     check((try? change(["shadow": "#000000B3"]))?.changesLook == true, "阴影：算改了样子（工程从此用自己的样式）")
     var state = TimelineState()
-    try? change(["shadow": "#00000099"])?.apply(to: &state, appWide: base)
-    checkEqual(AISubtitleStyleChange.describe(state, appWide: base)["shadow"]?.stringValue, "#00000099", "阴影：回给 AI 看得见")
+    try? change(["shadow": "#00000099"])?.apply(to: &state, appWide: base, canvas: wideCanvas)
+    checkEqual(AISubtitleStyleChange.describe(state, appWide: base, canvas: wideCanvas)["shadow"]?.stringValue, "#00000099", "阴影：回给 AI 看得见")
     checkEqual(base, BurnInStyle.default, "烧录一批：烧录页那套不动（值拷贝）")
     check((try? change(["highlight": "#FFFF00"]))?.changesHighlight == true, "烧录一批：高亮看得出来（工具据此拒绝：字幕文件没有词的时间）")
 }

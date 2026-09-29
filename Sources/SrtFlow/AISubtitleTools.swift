@@ -192,6 +192,8 @@ enum AISubtitleTools {
                         "end": AIFormat.seconds(cue.end),
                         "text": .string(cue.text)
                     ]
+                    // 这句里几个词知道自己的时间：改字并句后有的词没有时间就不亮（2026-09-29 婚礼工程 BUG-06）。
+                    if let words = cue.words { line["timed_words"] = .number(Double(words.count)) }
                     if state.isSubtitleCueHidden(cue.id) { line["hidden"] = true }
                     return .object(line)
                 }),
@@ -203,7 +205,9 @@ enum AISubtitleTools {
         var result: [String: JSONValue] = [:]
         if which != "translation" { result["original"] = lines(.original) }
         if which != "original" { result["translation"] = lines(.translation) }
-        result["style"] = AISubtitleStyleChange.describe(state, appWide: EncodeQueue.burnIn.burnInStyle)
+        result["style"] = AISubtitleStyleChange.describe(
+            state, appWide: EncodeQueue.burnIn.burnInStyle, canvas: VideoEditCompositionBuilder.renderSize(for: state)
+        )
         // 逐词高亮只亮知道词时间的句子（SrtFlow 自己从语音、配音做的）。
         result["lines_with_word_times"] = .number(Double(state.allSubtitleCues.filter { $0.words != nil }.count))
         return .ok(.object(result))
@@ -224,20 +228,25 @@ enum AISubtitleTools {
         let edits = try AISubtitleEdits.parse(args, ids: ids, in: state)
         guard !edits.isEmpty || style != nil else { throw AIToolError("Pass changes, add, delete or style.") }
         var next = state
-        let created = edits.apply(to: &next)
+        let (created, merged) = edits.apply(to: &next)
         // 只改这个工程自己的样式（方案第 54 条），烧录页记住的那套不动。
-        style?.apply(to: &next, appWide: EncodeQueue.burnIn.burnInStyle)
+        style?.apply(to: &next, appWide: EncodeQueue.burnIn.burnInStyle, canvas: VideoEditCompositionBuilder.renderSize(for: next))
         project.perform(rebuildsPreview: false) { $0 = next }
         let fresh = AIShortIDs(state: project.state)
         let firstTime = (edits.changes.compactMap { project.state.subtitleCue($0.id)?.start }
-            + created.compactMap { project.state.subtitleCue($0)?.start }).min()
-        AIEditorPresenter.reveal(.init(cues: Set(created + edits.changes.map(\.id)), time: firstTime), project: project)
+            + (created + merged).compactMap { project.state.subtitleCue($0)?.start }).min()
+        AIEditorPresenter.reveal(.init(cues: Set(created + merged + edits.changes.map(\.id)), time: firstTime), project: project)
         var result: [String: JSONValue] = [
             "changed": .number(Double(edits.changes.count)),
             "added": .array(created.map { .string(fresh.short($0)) }),
             "deleted": .number(Double(edits.deletions.count))
         ]
-        if style != nil { result["style"] = AISubtitleStyleChange.describe(project.state, appWide: EncodeQueue.burnIn.burnInStyle) }
+        if !merged.isEmpty { result["merged"] = .array(merged.map { .string(fresh.short($0)) }) }
+        if style != nil {
+            result["style"] = AISubtitleStyleChange.describe(
+                project.state, appWide: EncodeQueue.burnIn.burnInStyle, canvas: VideoEditCompositionBuilder.renderSize(for: project.state)
+            )
+        }
         return .ok(.object(result), changed: true)
     }
 }
