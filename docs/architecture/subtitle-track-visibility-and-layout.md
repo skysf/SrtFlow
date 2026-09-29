@@ -87,7 +87,14 @@
    71%（苹方）–100%（黑体）。所以预览上的字幕**只许**用 `BurnInSubtitleOverlay` 画，它按每一截实际画它的字体
    （中文回退、粗体选到的那一款）乘 `SubtitleFontScale` 的比例；任何按字号估字宽的地方（`SubtitleLineFit`）也乘这个比例。
    改的是预览、不是成片：以前的成片、烧录页停着时真烧的那一帧、别的播放器打开 .ass 看到的都是 libass 的大小。
-   已知差异：正中摆放、大字号时 Helvetica 英文预览高几个像素（行框一个按 win 量度摆、一个按 hhea）；默认的底部居中差 1–2 px。
+   **行框也按 libass 的摆**（2026-09-29，[预览的位置和行距和成片对不上](../bugfixes/2026-09-29-subtitle-preview-line-box-differs-from-libass.md)）：
+   libass 排一行用字体 OS/2 的 win 量度（一行高 = 字号，基线在行框顶下 `winAscent / (winAscent + winDescent)` 处），CoreText 用 hhea
+   （不含 leading），两套量度不一样的字体（Helvetica 是默认字体、Hiragino Sans GB、宋体）预览和成片的竖向位置、两行的行距原来对不上。
+   `SubtitleLineMetrics` 按这句字用到的每个字体算出差多少，`BurnInSubtitleOverlay` 照着补：**一行一个 `Text` 放进 VStack**
+   （SwiftUI 的 `.lineSpacing` 不认负数，宋体要把行距收紧；VStack 的间距正负都认），整块按对齐（底 / 中 / 顶）`.offset(y:)`
+   往下挪 —— **只动画面、不动布局框**，拖框（`SubtitleFrameGeometry`）按边距和量出来的块高算，不看这一挪。换行不是字，不进行框。
+   `scripts/check-subtitle-burn-size.sh` 比预览和成片字的上下沿（三种对齐 × 一 / 两行 × 英文 / 混排 × 五种字体，容差 3 px）。
+   已知不足：逐词高亮放大的那个词行框按不放大的量（差 2 px）；一行太长自己折出来的行只补正的行距。
    **回退到系统私有字体时两边一起换成内置字体**（2026-09-29，[没下载苹方时中文烧成方框](../bugfixes/2026-09-29-chinese-burns-as-boxes-without-pingfang.md)）：
    苹方完整版是按需下载的字体资源，没下载的 Mac 上 CoreText 回退到系统私有的那份，预览照样是中文，libass 却用不了、画成方框。
    所以回退到的字体文件在 `/PrivateFrameworks/` 里（认文件、不认族名）时，`SubtitleFallbackFont` 换成每台 Mac 都有的
