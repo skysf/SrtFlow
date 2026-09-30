@@ -16,7 +16,8 @@ import SwiftUI
 //
 //   {"do": "add", "kind": "text" | "shape" | "blur" | "filter" | "transition"}
 //   {"do": "show", "panel": "export" | "subtitles" | "record" | "settings" | "subtitleList"
-//                          | "library:transitions" | "library:filters" | "library:audio" | "dismiss"}
+//                          | "library:transitions" | "library:filters" | "library:audio" | "dismiss"
+//                          | "section:compress" | "section:burnIn" | "section:batchConvert" | "section:videoEdit"}
 //   {"do": "snapshot", "name": "export", "target": "sheet"}
 
 @MainActor
@@ -79,6 +80,12 @@ enum SmokeUISteps {
             }
             NSApp.sendAction(item.action ?? Selector(("showSettingsWindow:")), to: item.target, from: item)
         case "subtitleList": project.showsSubtitleList = true
+        case "section:compress", "section:burnIn", "section:videoEdit", "section:batchConvert":
+            // 切主窗口的栏目（驱动只在剪辑页里起得来，别的页要看就切过去）。
+            guard let section = ToolSection(rawValue: String(step.panel!.dropFirst("section:".count))) else {
+                throw SmokeScriptError("show：栏目不认识 \(step.panel!)")
+            }
+            MainWindowState.shared.section = section
         case "library:transitions", "library:filters", "library:audio":
             // 素材库那一栏记在 @AppStorage("libraryColumnTab") 里，改 defaults 它就跟着换页。
             UserDefaults.standard.set(String(step.panel!.dropFirst("library:".count)), forKey: "libraryColumnTab")

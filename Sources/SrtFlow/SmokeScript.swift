@@ -28,7 +28,7 @@ import Foundation
 //   {"do": "snapshot", "name": "export", "target": "sheet"}   拍主窗口上的 sheet；"other" 拍别的窗口（设置）
 //   {"do": "add", "kind": "text"}                    往时间线上加东西：text / shape / blur / filter / transition（SmokeUISteps）
 //   {"do": "show", "panel": "export"}                摆出面板：export / subtitles / record / settings / subtitleList /
-//                                                    library:filters … / dismiss（收回导出、字幕、录屏面板）
+//                                                    library:filters … / section:burnIn …（切主窗口的栏目）/ dismiss（收回导出、字幕、录屏面板）
 //   {"do": "quit"}
 //
 // 坐标一律是**窗口的点、左上原点**（按窗口 ID 截的图除以 2 就是）。

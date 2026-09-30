@@ -64,7 +64,10 @@
 | 转场卡片「Empuje a la izqui…」等三张截断 | 卡片宽度只放得下约 17 个字 | 译文改短：Empuje izquierda / Barrido abajo 这一类（#109） |
 | 压缩页 CRF 滑杆右端「Archivo más pequeño」折成两行 | 英文「Smaller file」很短 | 译文改成「Menor tamaño」（#109） |
 | 检查器动画两行标签「In」「Out」是英文，字体目录分组「Chinese」「Other」是英文 | 从没进过表：经参数转交的文案，守卫的手抄清单没有 `title:` 和位置参数 | [案例](../bugfixes/2026-09-30-animation-in-out-labels-never-localized.md)，守卫改成从声明推 |
-| 烧录页文件行的两句提示被截断、字幕列空状态文字和按钮被裁掉右边 | **英文同尺寸（1180 宽）一样**，是内层 `HSplitView` 的 ideal 之和放不下时最后一栏溢出（[2026-08-12 案例](../bugfixes/2026-08-12-subtitle-editing-surfaces-smoke-fixes.md)的老问题） | 与语言无关，没在这一轮修；记在这里等拍板 |
+| 烧录页文件行的两句提示被截断、字幕列空状态文字和按钮被裁掉右边 | **英文同尺寸（1180 宽）一样**，是内层 `HSplitView` 的 ideal 之和放不下时最后一栏溢出（[2026-08-12 案例](../bugfixes/2026-08-12-subtitle-editing-surfaces-smoke-fixes.md)的老问题） | 与语言无关，但西班牙语收尾时一起修了：[案例](../bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md) |
+| 录屏面板「24 fps · follows the project」、烧录列表「· N lines」是英文 | 带插值的键，守卫写明的盲区 | [案例](../bugfixes/2026-10-01-interpolated-keys-never-localized.md)，守卫对每个 `\(…)` 试 %lld / %@ |
+| 滤镜库卡片「Verde azulado y…」截断 | 卡片只放得下约 15 个字 | 译文改成「Cian y naranja」 |
 
-放得下的：检查器的速度 / 音量 / 声音场景 / 转场 / Transform / 裁切四个缩写（Izq Der Sup Inf）/ 动画；压缩页、烧录页的样式编辑、批量转换页；
-时间线工具栏。法语、土耳其语照这个流程再看一遍。
+放得下的：检查器的速度 / 音量 / 声音场景 / 转场 / Transform / 裁切四个缩写（Izq Der Sup Inf）/ 动画；文字 / 形状 / 盖一块 / 滤镜的检查器；
+导出面板、字幕生成面板、录屏面板、设置窗口、字幕列表、素材库三页；压缩页、烧录页的样式编辑、批量转换页；时间线工具栏。
+第二轮（2026-09-30 晚）靠冒烟驱动新加的 `add` / `show` / `snapshot target` 三步拍的（PR #112）。法语、土耳其语照这个流程再看一遍。
