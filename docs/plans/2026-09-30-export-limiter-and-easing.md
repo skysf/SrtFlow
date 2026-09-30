@@ -24,7 +24,9 @@
 | 先 A 后 B，再出 Beta 0.18.5 | 含 #101 #102 和这两件 | 上次婚礼一晚报了 21 条：真实使用比任何单个功能都值钱 |
 | 限幅器只在写 f32 那一步 | 预览走 AVPlayer，不经这条路，**预览不限幅**（已知差异，写进架构文档） | 预览里做限幅要另搭一套（tap 里做），用户没要 |
 | 只报响度，不归一 | 面板和 AI 的结果都带 LUFS，用户自己决定推子 | 用户 2026-09-30 明确不做响度目标 |
-| 缓动的默认值 | 检查器手打的默认线性（同 CapCut）；AI 没给时默认 ease_in_out | AI 做的多是推镜和位移，缓入缓出最像人做的；手打的沿用老行为 |
+| 缓动的默认值 | 检查器手打的默认线性（同 CapCut）；AI 没给时默认 easeInOut | AI 做的多是推镜和位移，缓入缓出最像人做的；手打的沿用老行为 |
+| 曲线的名字 | `linear` / `easeIn` / `easeOut` / `easeInOut`，存盘和 AI 同一套（同 `crossFade`、`strokeDraw` 的写法） | 一套词表、一条对账 |
+| `set_keyframes` 的 `easing` 是整次调用一个 | 不按点给（四个点对象各加一个字段要 600 字，清单预算只剩 39） | 存储仍是每帧一个，检查器（PR 3）能逐段改 |
 | 检查器的曲线选择器 | 单独一个小 PR（PR 3） | 一个 PR 一件事 |
 
 ## 三、A：限幅 + 响度（PR 1，已实施）
@@ -69,7 +71,7 @@
 - 反向验证（2026-09-30）：限幅器不乘增益 → 10a 大片红、10b「f32 没有一个采样超过 −1 dBFS」红；换回硬削 → 10a「均方根 = 上限 / √2」
   「逐采样差 < 2%」红、10b「峰值 / 均方根 = √2」红。
 
-## 四、B：缓动（PR 2；检查器选择器 PR 3）
+## 四、B：缓动（PR 2 已实施；检查器选择器 PR 3）
 
 ### 查到的事实
 
@@ -89,8 +91,10 @@
   的那一段**用什么曲线。`value(atSourceTime:)` 先算 t，再过曲线（easeIn → easeInCubic、easeOut → easeOutCubic、easeInOut → 新加 easeInOutCubic）。
   `clipped` / `stretched` 带着 easing 走。老工程没有 easing 键 = linear，一个字都不变；登记新的格式版本（任一关键帧 easing ≠ linear）。
 - 预览：位置 / 缩放 / 不透明度的段 easing ≠ linear 时按帧加密切片（工程帧率；单段上限沿用 400），旋转照旧 ≤ 6°/片再叠加密。线性段一片不多。
-- AI：`set_keyframes` 每个点加 `easing`（词表 `MCPVocabulary.keyframeEasings`，和 App 的枚举对账）；AI 没给时默认 ease_in_out；
-  `get_timeline` 的关键帧摘要带 easing。风格卡三处慢推加一句 ease_in_out（先中文稿再英文）。预算：先从别的工具说明砍出约 300 字。
+  切片的规则从 builder 拆成纯值 `KeyframeSliceTimes`（builder 登记在基线里只许降，拆出去之后还短了）。
+- AI：`set_keyframes` 整次调用一个 `easing`（词表 `MCPVocabulary.keyframeEasings`，和 App 的枚举对账）；AI 没给时默认 easeInOut；
+  `get_timeline` 的关键帧摘要每个点末尾带曲线名。风格卡三处慢推加一句「缓动用默认的 easeInOut」（先中文稿再英文）。
+  预算：只从 `set_keyframes` 自己的说明里压（四处「Timeline seconds, inside the clip.」、x / y 的说明、四个列表的说明），加完 71,960 / 72,000。
 - 检查器（PR 3）：`keyframeCluster` 旁一个小菜单「曲线：线性 / 缓入 / 缓出 / 缓入缓出」，改的是播放头所在那一帧到下一帧的那段；文案两张表、别 `.fixedSize()`。
 
 ### 验收

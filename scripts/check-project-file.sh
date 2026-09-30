@@ -67,6 +67,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
+  Sources/SrtFlow/VideoEditKeyframeEasing.swift \
+  Sources/SrtFlow/VideoEditKeyframeSlices.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/FreezeSliver.swift \
@@ -102,6 +104,7 @@ xcrun swiftc \
   checks/ProjectFile/SubtitleSources.swift \
   checks/ProjectFile/FilledShapes.swift \
   checks/ProjectFile/CoverShapes.swift \
+  checks/ProjectFile/KeyframeEasing.swift \
   checks/ProjectFile/SubtitleLook.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

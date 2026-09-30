@@ -1,8 +1,8 @@
 # 关键帧动画：源时间锚定、切片规则、fill+matte 预渲染
 
-> 2026-08-04 引入。改关键帧模型（VideoEditAnimation.swift）、预览切片
->（CompositionBuilder）、导出预渲染（VideoEditPrerender.swift）之前必读。
-> 相关：[preview-free-transform](preview-free-transform.md)。
+> 2026-08-04 引入。改关键帧模型（VideoEditAnimation.swift、VideoEditKeyframeEasing.swift）、预览切片
+>（CompositionBuilder、KeyframeSliceTimes）、导出预渲染（VideoEditPrerender.swift）之前必读。
+> 相关：[preview-free-transform](preview-free-transform.md)、[限幅 + 缓动方案](../plans/2026-09-30-export-limiter-and-easing.md)。
 
 ## 模型（VideoEditAnimation.swift）
 
@@ -12,7 +12,7 @@
   这一条定了，变速/裁头尾/分割全都自动正确：分割后两半带同一份轨、各播
   自己窗口内的段落、接缝数值连续（有 check 守着）。时间线 ↔ 源的换算走
   `sourceTime(atTimeline:)` / `timelineTime(atSource:)`。
-- 线性插值、两端夹紧；半帧内重写同一时刻是**替换**不是堆积
+- 两帧之间按**起点那帧的曲线**插值（默认线性，见下面「缓动」）、两端夹紧；半帧内重写同一时刻是**替换**不是堆积
   （连续拖动反复落同一帧靠它幂等）。**容差自 2026-08-07 起不再是写死的 1/60s**：
   工程有 24/30/60 可选帧率后，容差=工程半帧，且**分空间** —— source 侧
   `半帧 × |speed|`、timeline 侧只用半帧，详见
@@ -21,6 +21,24 @@
 - 空轨回落到静态字段：`animatedPlacement/Rotation/Opacity(atTimeline:)` 是
   唯一取值口，预览合成、交互框、Inspector 数值都从这里读。
 - 工程格式 **v3**；升轨（只导出选中的，`TimelineExportSelection.subset`）丢 animation（相对画布的属性）。
+
+## 缓动（2026-09-30）
+
+- `Keyframe.easing: KeyframeEasing`（`VideoEditKeyframeEasing.swift`）= 从这一帧到**下一帧**那一段用什么曲线：linear / easeIn /
+  easeOut / easeInOut（最后一帧的没用）。曲线函数只有 `TextEasing` 一份（easeIn → easeInCubic、easeOut → easeOutCubic、
+  easeInOut → easeInOutCubic），这里只是挑。`value(atSourceTime:)` 先算 t 再过曲线；**linear 那条式子和以前逐位一致**（自检钉着）。
+- **默认值分两头**：检查器手打的帧默认线性（同 CapCut，老行为不变）；AI 的 `set_keyframes` 没给 `easing` 时一律 easeInOut
+  （推镜、位移像人手做的）。`KeyframeTrack.set` 只在给了 `easing` 时才换已有帧的曲线，`setEasing` 只换曲线。
+- `clipped` 补出来的头帧接着用被切开那段的曲线、`stretched` 带着曲线走（形状尽量保住；分割、`edit_clip keyframes` 都靠它们）。
+- 存盘：linear **不落键**（老工程存一轮 diff 是空的）、不认识的值回落 linear（`LenientCodableEnum`）；任一关键帧 easing ≠ linear 才抬
+  **v27**（`requiresFormatVersion27`：旧版打开会退回直线，画面节奏当场不一样）。
+- **只对画面的六条轨有意义**：音量曲线（`EditClip.volumeCurve`）也是 `KeyframeTrack`，但预览的 audioMix 斜坡和导出的 `aeval`
+  读的都是折线表、不看 easing —— 没有任何入口给音量曲线写 easing，别加。
+- 预览切片见下一节第 3 条；AI 见「AI 接口」。回归：`scripts/check-project-file.sh` 第 39 组（`checks/ProjectFile/KeyframeEasing.swift`：
+  每种曲线在 0 / ¼ / ½ / ¾ / 1 的值、linear 逐位一致、set / clipped / stretched 的规矩、存盘按需写键 + 老文件 + 往返 + v27、
+  切片按帧 / 线性一片不多 / 旋转照旧 / 变速 / 400 片上限）、`scripts/check-mcp.sh` 的 `TrackKeyframeChecks`（默认 easeInOut、给了照给的、
+  不认识的报错、读回来每个点带曲线）+ `ConfigChecks` 词表对账、`scripts/check-preview-composition.sh` B2（缓动的缩放真合成：
+  片数 = 帧数、四分之一处的面积按曲线只有 0.0625 而线性是 0.16）。
 
 ## 交互约定（对齐 CapCut）
 
@@ -41,17 +59,20 @@
 - **意图用参数说**：`edit_clip keyframes` = `keep_frames`（默认：留在原画面上、窗口外的帧收成两头的值）/ `stretch`
   （`KeyframeTrack.stretched`，按新窗口等比重排）/ `clear`；结果里 `keyframes_note` 说明发生了什么。速度变了范围不变，三种都原样。
 - **让 AI 少算**：`set_keyframes relative=true`，时间是片段的比例（0 = 第一帧、1 = 最后一帧）。
+- **缓动**：`set_keyframes easing`（linear / easeIn / easeOut / easeInOut，词表 `MCPVocabulary.keyframeEasings` 和 `KeyframeEasing` 对账）
+  管这一次给的每一段；没给一律 easeInOut。`get_timeline` 报的每个点末尾带那一段的曲线名。
 
 ## 预览切片（CompositionBuilder）
 
-指令切片边界在原有转场折点之外追加：每个关键帧的时间线时刻；旋转相邻帧
+指令切片边界在原有转场折点之外追加（规则和数字都在 `KeyframeSliceTimes`，纯值，2026-09-30 从 builder 拆出来）：每个关键帧的时间线时刻；旋转相邻帧
 之间按 **≤6°/片** 加密（`setTransformRamp` 是矩阵线性插值，走弦不走弧，
-角度大了明显缩水变形；单段上限 400 片）；不透明度动画 × 转场衰减是两条
+角度大了明显缩水变形）；**带缓动的段按帧加密**（工程帧率；曲线靠密集折线逼近，每片两端的值落在曲线上，
+线性段一片不多）；单段上限 400 片；不透明度动画 × 转场衰减是两条
 线性通道的**乘积**（二次曲线），转场窗口内按 0.1s 加密。片内一切都线性，
 所以每片用两端取值的 ramp 就是精确重建 —— `applyOpacity` 已重构为
 「fadeFactor × animatedOpacity」端点求值，别改回分支穷举的老写法。
 
-位置/缩放动画的矩阵插值本身精确（平移/缩放分量独立线性），不用加密。
+线性的位置/缩放动画的矩阵插值本身精确（平移/缩放分量独立线性），不用加密。
 `coversCanvasOpaquely` 对动画段保守返回 false（叠化走近似路径）。
 
 边界攒齐之后**先落到 1/600 秒的格子上、按格子去重**再铺指令（`CompositionSlices`，2026-09-29）：

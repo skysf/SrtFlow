@@ -8,13 +8,21 @@ import SrtFlowCore
 // 接缝处数值天然连续 —— 全都不需要特判。时间线时刻 ↔ 源时刻的换算见
 // `EditClip.sourceTime(atTimeline:)`。
 
-/// 一个关键帧：源时刻 + 值。
+/// 一个关键帧：源时刻 + 值 + 到下一帧那一段的曲线。
 struct Keyframe: Hashable, Sendable {
     var time: Double
     var value: Double
+    /// 从这一帧到**下一帧**那一段用什么曲线（最后一帧的没用）。老工程没有这个键 = linear（VideoEditKeyframeEasing.swift）。
+    var easing: KeyframeEasing = .linear
+
+    init(time: Double, value: Double, easing: KeyframeEasing = .linear) {
+        self.time = time
+        self.value = value
+        self.easing = easing
+    }
 }
 
-/// 一条属性的关键帧轨：按时间升序，两帧之间线性插值，两端外夹紧。
+/// 一条属性的关键帧轨：按时间升序，两帧之间按起点那帧的曲线插值（默认线性），两端外夹紧。
 struct KeyframeTrack: Hashable, Sendable {
     private(set) var keys: [Keyframe] = []
 
@@ -37,7 +45,7 @@ struct KeyframeTrack: Hashable, Sendable {
 
     var isEmpty: Bool { keys.isEmpty }
 
-    /// 线性插值取值；空轨返回 nil（用静态字段兜底）。
+    /// 插值取值（起点那帧的曲线；线性那条式子和以前逐位一致）；空轨返回 nil（用静态字段兜底）。
     func value(atSourceTime time: Double) -> Double? {
         guard let first = keys.first, let last = keys.last else { return nil }
         if time <= first.time { return first.value }
@@ -47,22 +55,42 @@ struct KeyframeTrack: Hashable, Sendable {
             let b = keys[index]
             let span = b.time - a.time
             guard span > 0.0001 else { return b.value }
-            return a.value + (b.value - a.value) * (time - a.time) / span
+            if a.easing == .linear {
+                return a.value + (b.value - a.value) * (time - a.time) / span
+            }
+            return a.value + (b.value - a.value) * a.easing.apply((time - a.time) / span)
         }
         return last.value
+    }
+
+    /// 有没有哪一段不是线性（存盘要抬版本：VideoEditFormatVersion 的 v27）。
+    var hasEasing: Bool { keys.contains { $0.easing != .linear } }
+
+    /// 播到 `time` 正处在哪一段：那一段起点那帧的曲线（首帧之前算第一段的）；空轨 nil。
+    func easing(atSourceTime time: Double) -> KeyframeEasing? {
+        guard let first = keys.first else { return nil }
+        return (keys.last { $0.time <= time } ?? first).easing
     }
 
     func key(atSourceTime time: Double, tolerance: Double) -> Keyframe? {
         keys.first { abs($0.time - time) < tolerance }
     }
 
-    mutating func set(_ value: Double, atSourceTime time: Double, tolerance: Double) {
+    /// 写一帧：半帧内已有的只改值（曲线留着，给了 `easing` 才换）；没有的新加（曲线 = `easing`，默认线性）。
+    mutating func set(_ value: Double, atSourceTime time: Double, tolerance: Double, easing: KeyframeEasing? = nil) {
         if let index = keys.firstIndex(where: { abs($0.time - time) < tolerance }) {
             keys[index].value = value
+            if let easing { keys[index].easing = easing }
         } else {
-            keys.append(Keyframe(time: time, value: value))
+            keys.append(Keyframe(time: time, value: value, easing: easing ?? .linear))
             keys.sort { $0.time < $1.time }
         }
+    }
+
+    /// 只换某一帧到下一帧那段的曲线（检查器的曲线菜单）；半帧内没有帧就不动。
+    mutating func setEasing(_ easing: KeyframeEasing, atSourceTime time: Double, tolerance: Double) {
+        guard let index = keys.firstIndex(where: { abs($0.time - time) < tolerance }) else { return }
+        keys[index].easing = easing
     }
 
     mutating func remove(atSourceTime time: Double, tolerance: Double) {
@@ -80,7 +108,9 @@ struct KeyframeTrack: Hashable, Sendable {
         var inside = keys.filter { $0.time >= from - tolerance && $0.time <= to + tolerance }
         if first.time < from - tolerance, inside.first.map({ abs($0.time - from) >= tolerance }) ?? true,
            let value = value(atSourceTime: from) {
-            inside.insert(Keyframe(time: from, value: value), at: 0)
+            // 切在一段中间：补出来的那帧接着用这一段的曲线（形状尽量保住）。
+            let easing = keys.last { $0.time < from }?.easing ?? .linear
+            inside.insert(Keyframe(time: from, value: value, easing: easing), at: 0)
         }
         if last.time > to + tolerance, inside.last.map({ abs($0.time - to) >= tolerance }) ?? true,
            let value = value(atSourceTime: to) {
@@ -93,9 +123,11 @@ struct KeyframeTrack: Hashable, Sendable {
     func stretched(from old: ClosedRange<Double>, to new: ClosedRange<Double>) -> KeyframeTrack {
         let oldSpan = old.upperBound - old.lowerBound
         let newSpan = new.upperBound - new.lowerBound
-        guard oldSpan > 0.0001 else { return KeyframeTrack(keys: keys.map { Keyframe(time: new.lowerBound, value: $0.value) }) }
+        guard oldSpan > 0.0001 else {
+            return KeyframeTrack(keys: keys.map { Keyframe(time: new.lowerBound, value: $0.value, easing: $0.easing) })
+        }
         return KeyframeTrack(keys: keys.map { key in
-            Keyframe(time: new.lowerBound + (key.time - old.lowerBound) / oldSpan * newSpan, value: key.value)
+            Keyframe(time: new.lowerBound + (key.time - old.lowerBound) / oldSpan * newSpan, value: key.value, easing: key.easing)
         })
     }
 }
@@ -114,6 +146,12 @@ struct ClipAnimation: Hashable, Sendable {
         centerX.isEmpty && centerY.isEmpty && width.isEmpty
             && height.isEmpty && rotation.isEmpty && opacity.isEmpty
     }
+
+    /// 六条轨里有没有哪一段不是线性（存盘要抬版本：VideoEditFormatVersion 的 v27）。
+    var hasEasing: Bool { tracks.contains(where: \.hasEasing) }
+
+    /// 六条轨（按检查器的顺序）。
+    var tracks: [KeyframeTrack] { [centerX, centerY, width, height, rotation, opacity] }
 
     /// 六条轨一起裁到 [from, to] 里（`KeyframeTrack.clipped`）。
     func clipped(from: Double, to: Double, tolerance: Double) -> ClipAnimation {
@@ -143,7 +181,7 @@ struct ClipAnimation: Hashable, Sendable {
     /// 这里比较的是 source time，去重容差要用 source 空间的（含 speed）。
     func allKeyTimes(tolerance: Double) -> [Double] {
         var times: [Double] = []
-        for track in [centerX, centerY, width, height, rotation, opacity] {
+        for track in tracks {
             for key in track.keys
             where !times.contains(where: { abs($0 - key.time) < tolerance }) {
                 times.append(key.time)
@@ -222,21 +260,24 @@ extension EditClip {
 
 extension Keyframe: Codable {
     private enum CodingKeys: String, CodingKey {
-        case time, value
+        case time, value, easing
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             time: try c.decodeIfPresent(Double.self, forKey: .time) ?? 0,
-            value: try c.decodeIfPresent(Double.self, forKey: .value) ?? 0
+            value: try c.decodeIfPresent(Double.self, forKey: .value) ?? 0,
+            easing: try c.decodeIfPresent(KeyframeEasing.self, forKey: .easing) ?? .linear
         )
     }
 
+    /// `easing` 按需写：线性不落键（老工程存一轮 diff 是空的；v27 只在真有曲线时才抬）。
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(time, forKey: .time)
         try c.encode(value, forKey: .value)
+        if easing != .linear { try c.encode(easing, forKey: .easing) }
     }
 }
 

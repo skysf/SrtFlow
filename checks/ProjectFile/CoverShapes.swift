@@ -27,7 +27,7 @@ func checkCoverShapes(root: URL) throws {
     check(state.requiresFormatVersion26, "有盖一块 → v26 判据为真")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 26, "带盖一块的工程写 latest（v26）")
+    checkEqual(raw?["formatVersion"] as? Int, 27, "带盖一块的工程写 latest（v27）")
     let back = try VideoEditProjectIO.load(from: path).timeline
     checkEqual(back.shapes.map(\.kind), [.rectangle, .blur, .mosaic], "往返不丢种类")
     checkEqual(back.shapes[1].coverAmount, 36, "往返不丢力度")

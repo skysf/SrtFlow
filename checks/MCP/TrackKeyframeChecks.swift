@@ -4,7 +4,8 @@ import SrtFlowMCPKit
 
 // set_track（AITrackSettings）：轨道名只认现有的轨和 master、推子 dB 换算、藏起来写绝对值、总推子不能藏；
 // set_keyframes（AIKeyframes）：时间线秒换源时间（变速的段也对）、大小按默认布局换算、来回写一遍不变、空列表去掉那一行、
-// 全去掉回到没动画、段外的时间和纯音频的段报错。编法见 scripts/check-mcp.sh。
+// 全去掉回到没动画、段外的时间和纯音频的段报错；缓动（没给 = easeInOut、给了照给的、不认识的报错、读回来每个点带曲线）。
+// 编法见 scripts/check-mcp.sh。
 
 func runTrackKeyframeChecks() {
     checkTrackSettings()
@@ -57,8 +58,19 @@ private func checkKeyframes() {
     check(abs((animated.animation?.width.keys.last?.value ?? 0) - base.width * 1.2) < 1e-9, "scale 1.2 is 1.2 × the default width")
     check(abs((animated.animation?.height.keys.last?.value ?? 0) - base.height * 1.2) < 1e-9, "and 1.2 × the default height")
     let summary = AIKeyframes.summary(animated, canvas: canvas, frameRate: .fps30)
-    checkEqual(summary?["scale"]?.arrayValue?.last?.arrayValue?.map(\.doubleValue), [13, 1.2], "read back: timeline time and the same scale")
-    checkEqual(summary?["position"]?.arrayValue?.first?.arrayValue?.map(\.doubleValue), [11, 0.4, 0.5], "position reads back")
+    checkEqual(summary?["scale"]?.arrayValue?.last?.arrayValue?.map(\.doubleValue), [13, 1.2, nil], "read back: timeline time, the same scale, then the easing")
+    checkEqual(summary?["position"]?.arrayValue?.first?.arrayValue?.map(\.doubleValue), [11, 0.4, 0.5, nil], "position reads back")
+    checkEqual(summary?["scale"]?.arrayValue?.first?.arrayValue?.last?.stringValue, "easeInOut", "no easing given: every move eases in and out")
+    checkEqual(animated.animation?.opacity.keys.map(\.easing), [.easeInOut, .easeInOut], "the default easing is stored on every key")
+
+    // 给了 easing：照给的存；不认识的报错。
+    var linear = clip
+    try? AIKeyframes.apply(try! AIKeyframes.parse(args(["easing": "linear", "scale": [["time": 10, "value": 1], ["time": 13, "value": 1.2]]])),
+                           to: &linear, canvas: canvas, frameRate: .fps30)
+    checkEqual(linear.animation?.width.keys.map(\.easing), [.linear, .linear], "easing=linear is stored as given")
+    checkEqual(AIKeyframes.summary(linear, canvas: canvas, frameRate: .fps30)?["scale"]?.arrayValue?.first?.arrayValue?.last?.stringValue, "linear",
+               "and reads back per point")
+    checkThrows("an unknown easing is refused") { _ = try AIKeyframes.parse(args(["easing": "bouncy", "scale": [["time": 10, "value": 1]]])) }
 
     var cleared = animated
     try? AIKeyframes.apply(AIKeyframes.Request(scale: [], opacity: []), to: &cleared, canvas: canvas, frameRate: .fps30)
@@ -74,7 +86,7 @@ private func checkKeyframes() {
     let staleSummary = AIKeyframes.summary(stale, canvas: canvas, frameRate: .fps30)
     checkEqual(staleSummary?["scale"]?.arrayValue?.map { $0.arrayValue?.first?.doubleValue ?? -1 }, [stale.timelineStart, stale.timelineEnd],
                "keys outside the clip are reported as edge values at the clip's own start and end (timeline seconds)")
-    check(abs((staleSummary?["scale"]?.arrayValue?.first?.arrayValue?.last?.doubleValue ?? 0) - 1.1) < 0.01,
+    check(abs((staleSummary?["scale"]?.arrayValue?.first?.arrayValue?.dropLast().last?.doubleValue ?? 0) - 1.1) < 0.01,
           "the edge value is the interpolation at that frame (1.1 at source 7)")
     var edge = clip
     try? AIKeyframes.apply(AIKeyframes.Request(scale: [(time: clip.timelineEnd + 0.0009, value: 1.2)]), to: &edge, canvas: canvas, frameRate: .fps30)

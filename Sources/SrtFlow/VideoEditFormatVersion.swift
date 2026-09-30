@@ -371,6 +371,17 @@ extension TimelineState {
         shapes.contains { $0.kind.isCover }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v27-only 持久数据。
+    ///
+    /// **登记清单（新增 v27-only 字段必须同步补进来）：**
+    /// 1. `Keyframe.easing`（关键帧的缓动，2026-09-30；**按需写入**：linear 不落键）。
+    ///
+    /// 为什么要抬：它**直接决定成片**。只认 v26 的旧版不认识这个键，缓入缓出的推镜、位移退回直线，画面的节奏当场不一样；
+    /// 随手编辑触发自动保存即永久丢失。
+    var requiresFormatVersion27: Bool {
+        allClips.contains { $0.animation?.hasEasing ?? false }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

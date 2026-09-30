@@ -23,7 +23,7 @@ use_for: The opening of a short film or travel film, a trailer feel, a portfolio
 
 - Shots 3–6 s in the build, 1.5–2.5 s in the lift. Let actions finish; never cut in the middle of a movement.
 - Transitions: crossFade (0.8–1.5 s) and blackFade between parts. No pushes or wipes.
-- Picture animation: still or steady shots slowly push in with set_keyframes (scale 1 → 1.06–1.1 over the whole shot).
+- Picture animation: still or steady shots slowly push in with set_keyframes (scale 1 → 1.06–1.1 over the whole shot, the default easeInOut easing).
 - Filter: blockbuster look tealOrange, nostalgic fadedFilm; strength 0.6–0.8.
 
 ## Text

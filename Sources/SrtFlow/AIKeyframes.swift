@@ -6,8 +6,9 @@ import SrtFlowMCPKit
 // MARK: - set_keyframes：给一段画面做关键帧动画（纯值）
 //
 // 管什么：AI 给位置 / 大小 / 旋转 / 不透明度各一串（时间线秒, 值），整行换掉；空列表去掉那一行；以及写回给 AI 看。
-// 模型见 docs/architecture/keyframe-animation.md：关键帧锚在**源时间**上（段挪了、变速了跟着走），两帧之间直线插值，
-// 同一帧的容差是半帧（`KeyframeTrack.sourceTolerance`，和检查器打关键帧同一把尺）。
+// 模型见 docs/architecture/keyframe-animation.md：关键帧锚在**源时间**上（段挪了、变速了跟着走），两帧之间按起点那帧的曲线插值
+// （AI 没给 `easing` 时一律 easeInOut —— 推镜、位移像人手做的；检查器手打的默认线性），同一帧的容差是半帧
+// （`KeyframeTrack.sourceTolerance`，和检查器打关键帧同一把尺）。
 // 不管什么：检查器那套「在播放头处打一帧」（VideoEditProject+Keyframes），提交和撤销（AITimelineTools / 路由）。
 //
 // 口径：
@@ -29,6 +30,8 @@ enum AIKeyframes {
         var opacity: [(time: Double, value: Double)]?
         /// 时间是这一段的比例（0 = 第一帧、1 = 最后一帧），不是时间线秒：AI 不用自己拿四舍五入的秒去算段尾。
         var relative = false
+        /// 这一次给的每一段（一帧到下一帧）用什么曲线；没给就是缓入缓出。
+        var easing: KeyframeEasing = .easeInOut
 
         var isEmpty: Bool { position == nil && scale == nil && rotation == nil && opacity == nil }
     }
@@ -36,6 +39,12 @@ enum AIKeyframes {
     static func parse(_ args: AIToolArguments) throws -> Request {
         var request = Request()
         request.relative = try args.bool("relative") ?? false
+        if let raw = try args.string("easing") {
+            guard let easing = KeyframeEasing(rawValue: raw) else {
+                throw AIToolError("easing must be one of \(MCPVocabulary.keyframeEasings.joined(separator: ", ")); got \(raw).")
+            }
+            request.easing = easing
+        }
         request.position = try points("position", args).map { list in
             try list.enumerated().map { index, point in
                 (try point.requiredDouble("time"), try required(point, "x", "position[\(index)]"), try required(point, "y", "position[\(index)]"))
@@ -94,8 +103,8 @@ enum AIKeyframes {
             for point in position {
                 let at = try source(point.time)
                 let range = AIFrameFit.centerRange   // 放大的画面中心可以出到 0–1 外边
-                animation.centerX.set(min(max(point.x, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance)
-                animation.centerY.set(min(max(point.y, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance)
+                animation.centerX.set(min(max(point.x, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance, easing: request.easing)
+                animation.centerY.set(min(max(point.y, range.lowerBound), range.upperBound), atSourceTime: at, tolerance: tolerance, easing: request.easing)
             }
         }
         if let scale = request.scale {
@@ -105,20 +114,20 @@ enum AIKeyframes {
             for point in scale {
                 let at = try source(point.time)
                 let factor = min(max(point.value, 0.02), 8)
-                animation.width.set(base.width * factor, atSourceTime: at, tolerance: tolerance)
-                animation.height.set(base.height * factor, atSourceTime: at, tolerance: tolerance)
+                animation.width.set(base.width * factor, atSourceTime: at, tolerance: tolerance, easing: request.easing)
+                animation.height.set(base.height * factor, atSourceTime: at, tolerance: tolerance, easing: request.easing)
             }
         }
         if let rotation = request.rotation {
             animation.rotation = KeyframeTrack()
             for point in rotation {
-                animation.rotation.set(min(max(point.value, -360), 360), atSourceTime: try source(point.time), tolerance: tolerance)
+                animation.rotation.set(min(max(point.value, -360), 360), atSourceTime: try source(point.time), tolerance: tolerance, easing: request.easing)
             }
         }
         if let opacity = request.opacity {
             animation.opacity = KeyframeTrack()
             for point in opacity {
-                animation.opacity.set(min(max(point.value, 0), 1), atSourceTime: try source(point.time), tolerance: tolerance)
+                animation.opacity.set(min(max(point.value, 0), 1), atSourceTime: try source(point.time), tolerance: tolerance, easing: request.easing)
             }
         }
         clip.animation = animation.isEmpty ? nil : animation
@@ -143,27 +152,28 @@ enum AIKeyframes {
         }
     }
 
-    /// 写给 AI 看：每一行的点（时间线秒）。报的是**这段范围里实际播的**：范围外的帧收成两头的值（人手裁过的段
-    /// 可能还留着范围外的帧，AI 不该看见负数的时刻）。没有关键帧是 nil。
+    /// 写给 AI 看：每一行的点（时间线秒, 值…, 到下一帧的曲线）。报的是**这段范围里实际播的**：范围外的帧收成两头的值
+    /// （人手裁过的段可能还留着范围外的帧，AI 不该看见负数的时刻）。没有关键帧是 nil。
     static func summary(_ clip: EditClip, canvas: CGSize, frameRate: ProjectFrameRate) -> JSONValue? {
         guard let animation = clip.clippingAnimation(frameRate: frameRate), !animation.isEmpty else { return nil }
         func time(_ source: Double) -> JSONValue { AIFormat.seconds(clip.timelineTime(atSource: source)) }
         func round(_ value: Double) -> JSONValue { .number((value * 1000).rounded() / 1000) }
+        func easing(_ key: Keyframe) -> JSONValue { .string(key.easing.rawValue) }
         var object: [String: JSONValue] = [:]
         if !animation.centerX.isEmpty {
             object["position"] = .array(animation.centerX.keys.map { key in
-                .array([time(key.time), round(key.value), round(animation.centerY.value(atSourceTime: key.time) ?? 0.5)])
+                .array([time(key.time), round(key.value), round(animation.centerY.value(atSourceTime: key.time) ?? 0.5), easing(key)])
             })
         }
         if !animation.width.isEmpty {
             let base = clip.defaultPlacement(canvas: canvas).width
-            object["scale"] = .array(animation.width.keys.map { .array([time($0.time), round(base > 0 ? $0.value / base : 1)]) })
+            object["scale"] = .array(animation.width.keys.map { .array([time($0.time), round(base > 0 ? $0.value / base : 1), easing($0)]) })
         }
         if !animation.rotation.isEmpty {
-            object["rotation"] = .array(animation.rotation.keys.map { .array([time($0.time), round($0.value)]) })
+            object["rotation"] = .array(animation.rotation.keys.map { .array([time($0.time), round($0.value), easing($0)]) })
         }
         if !animation.opacity.isEmpty {
-            object["opacity"] = .array(animation.opacity.keys.map { .array([time($0.time), round($0.value)]) })
+            object["opacity"] = .array(animation.opacity.keys.map { .array([time($0.time), round($0.value), easing($0)]) })
         }
         return .object(object)
     }
