@@ -295,6 +295,20 @@ if [ "$(grep -c 'throw LanguageUndetectedError()' Sources/SrtFlow/SubtitleGen/Tr
 fi
 echo "   ✓ 检测处抛 LanguageUndetectedError，两个任务的失败都经 AIHarvestFailure"
 
+# 合成音效（docs/architecture/sound-effect-synth.md）：合成器和工具自己不碰 AVAudioFile（写文件只经 AIAudioFileWriter，同配音）；
+# 渲染 + 写盘在 MediaReadQueue.analysis 上跑，不占 Swift 并发的线程池。
+SFX_WRITERS="$(grep -l 'AVAudioFile' Sources/SrtFlow/SoundEffects/*.swift Sources/SrtFlow/AISoundEffect*.swift || true)"
+if [ -n "${SFX_WRITERS}" ]; then
+  echo "✗ 音效的文件只能经 AIAudioFileWriter 写，这些文件自己碰了 AVAudioFile：${SFX_WRITERS}"
+  exit 1
+fi
+if [ "$(grep -c 'MediaReadQueue.run(on: MediaReadQueue.analysis)' Sources/SrtFlow/AISoundEffectTool.swift || true)" -ne 1 ] \
+   || [ "$(grep -c 'AIAudioFileWriter.writeSoundEffect(' Sources/SrtFlow/AISoundEffectTool.swift || true)" -ne 1 ]; then
+  echo "✗ AISoundEffectTool 要在 MediaReadQueue.analysis 上渲染并经 AIAudioFileWriter.writeSoundEffect 写文件"
+  exit 1
+fi
+echo "   ✓ 合成音效：写文件只经 AIAudioFileWriter，渲染在 MediaReadQueue 上"
+
 echo "==> swift build ${ARCH_FLAG}（小程序 + SrtFlowCore）"
 # SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --product srtflow-mcp 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
@@ -371,6 +385,14 @@ xcrun swiftc \
   Sources/SrtFlow/AIVoiceWords.swift \
   Sources/SrtFlow/AIVoiceLevel.swift \
   Sources/SrtFlow/AIAudioFileWriter.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectDSP.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectBuffer.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectReverb.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectPreset.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectAirPresets.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectHitPresets.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectTonePresets.swift \
+  Sources/SrtFlow/AISoundEffectRequest.swift \
   Sources/SrtFlow/AIVoiceoverPlacement.swift \
   Sources/SrtFlow/AIVoiceoverSubtitles.swift \
   Sources/SrtFlow/SubtitleGen/SubtitleLineFit.swift \
@@ -466,6 +488,7 @@ xcrun swiftc \
   checks/MCP/BeatCutChecks.swift \
   checks/MCP/ProviderChecks.swift \
   checks/MCP/FalVoiceChecks.swift \
+  checks/MCP/SoundEffectChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o \
   "$BUILD_DIR"/SrtFlowKokoro.build/*.o

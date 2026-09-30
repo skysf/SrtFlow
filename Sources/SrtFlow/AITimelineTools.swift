@@ -33,9 +33,10 @@ enum AITimelineTools {
     // MARK: add_clips
 
     private struct ClipRequest {
-        /// 文件路径，或者音乐库里一首的 id（`library_id`，AIAudioLibraryTools）。两个只给一个。
+        /// 文件路径、音乐库里一首的 id（`library_id`，AIAudioLibraryTools）、或者要合成的音效（`sound_effect`）。三个只给一个。
         var url: URL?
         var libraryID: String?
+        var soundEffect: AISoundEffectRequest?
         var sourceIn: Double?
         var sourceOut: Double?
         var track: String?
@@ -53,17 +54,19 @@ enum AITimelineTools {
                 sourceIn: try entry.double("source_in"), sourceOut: try entry.double("source_out"),
                 track: try entry.string("track"), start: try entry.double("start")
             )
-            switch (try entry.string("file"), try entry.string("library_id")) {
-            case (let path?, nil):
+            switch (try entry.string("file"), try entry.string("library_id"), try AISoundEffectRequest.parse(entry, index: index)) {
+            case (let path?, nil, nil):
                 let url = AIWorkspace.shared.resolve(path)
                 guard FileManager.default.fileExists(atPath: url.path) else {
                     throw AIToolError("clips[\(index)]: \(path) does not exist.")
                 }
                 request.url = url
-            case (nil, let id?):
+            case (nil, let id?, nil):
                 request.libraryID = id
+            case (nil, nil, let effect?):
+                request.soundEffect = effect
             default:
-                throw AIToolError("clips[\(index)]: give either file or library_id.")
+                throw AIToolError("clips[\(index)]: give one of file, library_id or sound_effect.")
             }
             return request
         }
@@ -77,7 +80,9 @@ enum AITimelineTools {
         var plans: [AITimelineEdits.PlannedClip] = []
         var images: [(id: UUID, url: URL)] = []
         var library: [UUID: AudioLibraryItem] = [:]
-        for (index, request) in requests.enumerated() where !request.isSubtitle {
+        var effects: [UUID: AISoundEffectTool.Made] = [:]
+        for (index, original) in requests.enumerated() where !original.isSubtitle {
+            var request = original
             var clip: EditClip
             var isAudio = true
             var name: String
@@ -86,6 +91,23 @@ enum AITimelineTools {
                 (clip, name) = (found.clip, found.item.title)
                 library[clip.id] = found.item
                 try trim(&clip, duration: found.item.duration, name: name, request: request, index: index)
+            } else if let effect = request.soundEffect {
+                // 合成的音效：落点压在 hit_at 上（开头 = hit_at − 声音里的落点）；没给 hit_at 也没给 start 就放在播放头。
+                let made = try await AISoundEffectTool.make(effect.parameters, project: project)
+                guard let media = await project.probeImports([made.url]).first else {
+                    throw AIToolError("clips[\(index)]: SrtFlow could not read back the sound effect file \(made.url.lastPathComponent).")
+                }
+                (clip, name) = (project.clip(for: media), made.url.lastPathComponent)
+                clip.volume = AudioGain.linear(fromDecibels: AudioGain.clampedDecibels(effect.volumeDB))
+                if let hit = effect.hitAt {
+                    let placement = AISoundEffectRequest.placement(hitAt: hit, renderedHit: made.hitAt)
+                    request.start = placement.start
+                    request.sourceIn = placement.sourceIn
+                } else if request.start == nil {
+                    request.start = project.clock.time
+                }
+                try trim(&clip, duration: media.duration, name: name, request: request, index: index)
+                effects[clip.id] = made
             } else {
                 guard let url = request.url, let media = await project.probeImports([url]).first else {
                     throw AIToolError("clips[\(index)]: SrtFlow cannot use \(request.url?.lastPathComponent ?? "it") as a clip.")
@@ -142,6 +164,10 @@ enum AITimelineTools {
                 entry["title"] = .string(item.title)
             } else {
                 entry["file"] = .string(AIWorkspace.shared.display(clip.stillImageURL ?? clip.sourceURL))
+            }
+            if let made = effects[clip.id] {
+                entry["sound_effect"] = .string(made.parameters.preset.rawValue)
+                entry["hit_at"] = AIFormat.seconds(clip.timelineStart + made.hitAt - clip.sourceStart)
             }
             return .object(entry)
         }

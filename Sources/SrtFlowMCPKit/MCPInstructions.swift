@@ -43,7 +43,8 @@ public enum MCPInstructions {
     - Talk and beat cuts: transcribe, cut_speech, listen beats=true, cut_to_beat
     - Picture: set_canvas (for 9:16, then edit_clip fit=fill each clip), set_transition, set_filter, set_text, \
     set_shape (also blur or mosaic, e.g. a watermark)
-    - Sound: find_audio (music library), add_voiceover (narration), set_track
+    - Sound: find_audio (music library), add_clips sound_effect (whoosh, riser, impact, pop, ding… made on this Mac), \
+    add_voiceover (narration), set_track
     - Subtitles: generate_subtitles, translate_subtitles, get_subtitles, edit_subtitles
     - Output: export_video; compress_videos, burn_subtitles, convert_subtitles (files, no project needed); get_job, \
     cancel_job
