@@ -128,9 +128,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    `AIConfirmations` 发的令牌绑着具体那件事（`action` 字符串），一次有效、十分钟过期，换一件事拿它来不认。
    时间线上的改动一律不问。
 7. **长任务回任务号**（客户端对一次调用大多只等一分钟）。结局在任务结束的**那一刻**记下（导出挂在
-   `isExporting` 变回 false 上 —— `@Published` 在赋值前发，那时成品路径 / 错误已经写好；导出的结果带 `audio_peak_dbfs`，混音过了 0 dBFS
-   在 −1 dBFS 削平的还带 `audio_clipped_seconds` 和一句 `note` 叫 AI 用 `set_track master volume_db` 压下去再导，
-   [成片的声音](export-audio-mixdown.md) 第二节第 3 条；生成字幕挂在 `stage`
+   `isExporting` 变回 false 上 —— `@Published` 在赋值前发，那时成品路径 / 错误已经写好；导出的结果带 `audio_loudness_lufs`、
+   `audio_peak_dbfs`（限幅前），混音过了 −1 dBFS 被限幅器压过的还带 `audio_limited_seconds`、`audio_max_reduction_db`，压过 3 dB 的再带
+   一句 `note` 叫 AI 用 `set_track master volume_db` 压下去再导，[成片的声音](export-audio-mixdown.md) 第二节第 3 条；生成字幕挂在 `stage`
    上并且 `dropFirst`，订阅那一刻发的是上一次任务留下的结局）。AI 指定的分辨率只用于这一次
    （`settingsOverride`），不写回用户在面板上记住的设置；压缩 / 烧录同理（第 24 条）。
    **任务在等用户动手时必须说出来**：结果和 `get_job` 里带 `waiting_for_user`（总说明要求 AI 立刻转告），

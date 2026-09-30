@@ -24,13 +24,26 @@
 2. **正好 `duration` 秒。** 离线读在最后一个有声音的采样处就停了（最后一截只有画面时会短），
    重采样的段还会短十几毫秒：读短了补静音、长了截掉，和画面一样长 —— 以前的滤镜链靠 `anullsrc`
    补齐，这条账不能丢。一个出声的段都没有时，导出图垫一路 `anullsrc`，成片照样有一条音轨。
-3. **中间文件是 f32，但在 −1 dBFS 封顶、封顶前的峰值要报出去。** 各轨直接相加、不压不限（同以前的 `amix normalize=0`），
-   和可以过 0 dBFS；`AVFoundation` 读出来的 float 也不削。可是交给 AAC 编码器的信号过了 0 就不可预期（2026-09-30 探针：两轨各 +6 dB
-   叠加，成片 RMS 比混音掉 4.5 dB、峰值冒到 +12 dBFS、主推子降 3 dB 成片只降 2 dB，
-   [案例](../bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)），所以写 f32 时每个采样在 `ExportAudioMixdown.peakCeiling`
-   （−1 dBFS，留 1 dB 给编码器的过冲，同配音文件）封顶，封顶前的峰值和削了多少帧记在 `Levels` 里，经 `Plan.audioLevels` →
-   `VideoEditExporter.finishedAudioLevels` 到导出面板（橙字一句）和 AI 的 `get_job` 结果（`audio_peak_dbfs`、`audio_clipped_seconds`、
-   `note`）。不做限幅器、不做响度目标（用户要的选项，另拍板）。30 分钟立体声约 675MB，放在导出的工作目录里，导出结束随目录删。
+3. **中间文件是 f32，写之前过真峰值限幅器（上限 −1 dBFS），限幅前的峰值、压了多久多深、整段响度都要报出去。**
+   各轨直接相加、不压不限（同以前的 `amix normalize=0`），和可以过 0 dBFS；`AVFoundation` 读出来的 float 也不削。可是交给 AAC 编码器的
+   信号过了 0 就不可预期（2026-09-30 探针：两轨各 +6 dB 叠加，成片 RMS 比混音掉 4.5 dB、峰值冒到 +12 dBFS、主推子降 3 dB 成片只降 2 dB，
+   [案例](../bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)）。第一版（#102）是逐采样硬削；同一天用户拍板换成限幅器
+   （[方案](../plans/2026-09-30-export-limiter-and-easing.md)）：
+   - **`ExportPeakLimiter`（流式、纯值）**：上限 `defaultCeiling` = 0.891（−1 dBFS，留 1 dB 给编码器的过冲，同配音文件 `AIVoiceLevel.peakCeiling`），
+     前瞻 5 ms（240 帧）、释放约 80 ms。每帧算「要压到多少」r = min(1, 上限 / 最响的声道)；前瞻窗内取最小 r（单调队列）；再做同样长的
+     滑动平均把台阶变成斜坡 —— 数学上每帧的增益仍 ≤ 它自己的 r，所以**一个采样都不超过上限**；往上只按释放时间一阶慢慢回。
+     信号延迟 5 ms：写盘前先攒够前瞻、`flush` 把末尾冲干净，**总长度不变**（第 2 条那本账照旧）。没过顶的地方逐采样原样；
+     稳态的过顶正弦出来是等幅的干净正弦，不是方波。
+   - **`ExportLoudnessMeter`（流式、纯值）**：BS.1770-4 的整段响度 —— K 加权（`AudioKWeighting`，48 kHz 系数只写这一处，合成音效也用它）
+     → 400 ms 块、100 ms 步 → 绝对门限 −70 LUFS → 相对门限 −10 LU → 平均。喂的是限幅之后、真写进文件的采样。只报、不归一
+     （用户不要响度目标）。
+   - **`Levels`**：`peak`（限幅前）、`outputPeak`、`limitedFrames`、`maxReductionDB`、`loudnessLUFS`；压得超过 `attentionThresholdDB`（3 dB）
+     才 `needsAttention`，建议降的量 = 压得最深的那一下。经 `Plan.audioLevels` → `VideoEditExporter.finishedAudioLevels` 到导出面板
+     （总是一行「响度 · 峰值」，压过的再一句橙字）和 AI 的 `get_job` 结果（`audio_loudness_lufs`、`audio_peak_dbfs`，压过的带
+     `audio_limited_seconds`、`audio_max_reduction_db`，超过 3 dB 才带 `note`）。
+   - **预览不限幅**（已知差异）：预览走 AVPlayer，不经这条路；过顶的地方预览里是 AVFoundation 的线性和（也不削），成片是压过的。
+     电平表的红灯照旧管预览。
+   30 分钟立体声约 675MB，放在导出的工作目录里，导出结束随目录删。
 4. **阻塞读取在 `MediaReadQueue.export`**（宽度 1），不进 Swift 并发的线程池
    （[阻塞的媒体读取](blocking-media-reads.md)）。读的途中每拿一块就看一眼取消标记。
 5. **变速的保音调算法只有一个常量**：`VideoEditCompositionBuilder.timePitchAlgorithm`（`.spectral`），
@@ -60,7 +73,7 @@
 
 | 检查 | 守什么 |
 | --- | --- |
-| `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望；第 10 组：过 0 dBFS 的混音在 −1 dBFS 封顶、封顶前的峰值和削了多久照实记、成片峰值不冒出 0、成片响度和混音一致、主推子压下来不削且线性 |
+| `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望；第 10a 组（`checks/AudioFade/Limiter.swift`，纯值）：限幅器没过顶逐采样原样、过顶一个采样不超上限、+6 dB 稳态正弦出来是干净的等幅正弦、50 Hz 不被抽扁、尖峰时刻不变 / 前 5 ms 是斜坡 / 1 s 后回到原样、分块喂 = 整段喂且总长不变；响度表按 EBU Tech 3341（−23 → −23、门限、单声道低 3.01）；第 10b 组（`Ceiling.swift`，真跑导出）：过 0 dBFS 的混音限幅前的峰值 / 压了多久多深照实记、f32 里没有一个采样超过 −1 dBFS 且峰值 / 均方根 = √2（不是削平）、整段响度和 ffmpeg `ebur128` 差 < 0.5 LU、成片峰值不冒出 0、成片响度和混音一致、主推子压下来不压且峰值 / 响度都线性 |
 | `checks/export-audio-single-pipeline.sh` | 导出图的真代码里没有声音滤镜；导出图调了混音、接了它的文件；混音读的是 `build` 的合成并挂着它的 audioMix；两边的保音调算法是同一个常量 |
 | `checks/transition-handles-wiring.sh` | `makeAudioMix` 自己展开转场（三个预览入口传的是用户状态） |
 | `scripts/check-export-frame-rate.sh`、`check-video-fade.sh` 等 | 真导出照常跑通（含没有声音的时间线走 `anullsrc`） |
@@ -68,6 +81,8 @@
 **反向验证（2026-09-24）**：混音读取不挂 audioMix → `check-audio-fade` 导出那几组的渐变全红、
 单一管线守卫点名那一行；在导出图里塞一行 `afade` → 守卫红；撤掉 `makeAudioMix` 里的展开 →
 第 6b 组红（见 [案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)）。
+**（2026-09-30）**：限幅器不乘增益 → 10a 大片红、10b「f32 没有一个采样超过 −1 dBFS」红；换回硬削 → 10a「均方根 = 上限 / √2」
+「逐采样差 < 2%」红、10b「峰值 / 均方根 = √2」红。
 
 **人工回归**（发版前实机）：
 
@@ -75,3 +90,5 @@
 - [ ] 有变速段（1.5x / 0.75x）的工程：成片的变速听感和预览一样。
 - [ ] 最后几秒只有画面的工程：成片总长不变，结尾那几秒是静音，不是提前结束。
 - [ ] 导出进行到「读声音」那一段（进度条还在 0）点 Stop：马上停下，不留临时文件。
+- [ ] 几个音效叠在音乐上、故意推过 0 dBFS 的工程：导出面板那一行「响度 · 峰值」出来，橙字说压了多久多深；成片听音效的那几下
+      不「啪」也不闷，音乐部分和预览一样响。

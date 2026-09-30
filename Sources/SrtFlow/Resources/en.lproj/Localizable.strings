@@ -309,7 +309,10 @@
 "Export Video" = "Export Video";
 "Subtitles are burned in with the Burn In tool's current style." = "Subtitles are burned in with the Burn In tool's current style.";
 "Exporting… %@" = "Exporting… %@";
-"The sound peaked at %@ dBFS: %@ s were clipped at -1 dBFS. Lower the master volume by at least %@ dB." = "The sound peaked at %@ dBFS: %@ s were clipped at -1 dBFS. Lower the master volume by at least %@ dB.";
+"Loudness %@ LUFS · Peak %@ dBFS" = "Loudness %@ LUFS · Peak %@ dBFS";
+"Peak %@ dBFS" = "Peak %@ dBFS";
+"The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB." = "The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB.";
+"The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB. Lowering the master volume by %@ dB would be cleaner." = "The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB. Lowering the master volume by %@ dB would be cleaner.";
 "Close" = "Close";
 "Stop" = "Stop";
 "The video engine is not ready yet." = "The video engine is not ready yet.";

@@ -90,6 +90,9 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
   Sources/SrtFlow/VideoEditExportFilterScript.swift \
   Sources/SrtFlow/VideoEditExportMixdown.swift \
+  Sources/SrtFlow/ExportPeakLimiter.swift \
+  Sources/SrtFlow/ExportLoudnessMeter.swift \
+  Sources/SrtFlow/AudioKWeighting.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/CompositionTime.swift \

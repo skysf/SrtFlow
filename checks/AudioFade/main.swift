@@ -484,8 +484,8 @@ func main() async {
     group("9. 声音场景")
     await checkSoundScenes(videoSource: videoSource)
 
-    // ---- 10. 过 0 dBFS 的混音在 −1 dBFS 封顶、报峰值（checks/AudioFade/Ceiling.swift）----
-    group("10. 过 0 dBFS 的混音：封顶、报峰值、成片和混音一致")
+    // ---- 10. 过 0 dBFS 的混音：限幅器与响度表（checks/AudioFade/Limiter.swift 纯值、Ceiling.swift 真跑导出）----
+    checkLimiterAndLoudness()
     await checkMixCeiling()
 
     print("\(checks) checks, \(failures) failures")

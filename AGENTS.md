@@ -123,7 +123,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 工程帧率、关键帧容差、**AI 读写关键帧（报出来的永远在片段范围里、`edit_clip keyframes` 策略、`relative` 时间）** | [工程帧率](docs/architecture/project-frame-rate.md)、[关键帧动画](docs/architecture/keyframe-animation.md)「AI 接口」 |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
-| 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方、混音过 0 dBFS 的封顶与提示 | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音；写 f32 在 −1 dBFS 封顶、峰值报出去）、[过 0 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
+| 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方、**限幅器（`ExportPeakLimiter`）、整段响度（`ExportLoudnessMeter`、`AudioKWeighting`）、面板和 `get_job` 里的响度 / 峰值 / 压了多少** | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音；写 f32 之前过真峰值限幅器、上限 −1 dBFS、总长不变，响度只报不归一，预览不限幅是已知差异）、[限幅 + 缓动方案](docs/plans/2026-09-30-export-limiter-and-easing.md)、[过 0 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
 | 波形显示、深度缩放（缩放上限、标尺刻度、缩略图、超宽内容的绘制） | [波形与深度缩放](docs/architecture/audio-waveform.md)、[捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md) §5、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md) |
 | `AVAssetReader` 读采样（`copyNextSampleBuffer`），以及在 async 函数 / `Task` 里做任何会卡住线程的事（等信号量、同步 IO、等子进程） | [阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) |
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表、预览合成里声音怎么排到合成音轨上 | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节第 7 条：一条合成音轨只装一种源格式；第 8 条：tap 给的时间可以比 0 早）、[播放中按 Return 崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
@@ -200,7 +200,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
 - 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），电平表（离线读挂了
-  tap 的真实混音，对账轨道表 / 总表 / 红灯），以及过 0 dBFS 的混音在 −1 dBFS 封顶、峰值报出去、成片响度和混音一致（第 10 组）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
+  tap 的真实混音，对账轨道表 / 总表 / 红灯），以及过 0 dBFS 的混音过真峰值限幅器（没过顶逐采样原样、过顶一个采样不超上限、稳态正弦不削成方波、
+  尖峰时刻不变、总长不变）、整段响度按 BS.1770 且和 ffmpeg 的 `ebur128` 一致、成片响度和混音一致（第 10 组）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
   4 分钟就判红，并说出卡在哪一组；CI 上第 8b 组「换了源格式…60 秒没读完」偶发，认法见
   [推子与电平表](docs/architecture/audio-mixer.md)「已知的偶发」）。
 - 波形数据（多级峰值、原始采样块）逐采样对账，以及**很多文件同时读**必须全部读完、
@@ -349,6 +350,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [剪辑风格：五种预设风格（中文稿）](docs/plans/2026-09-28-mcp-recipes.md) — MCP 第 5 块的剪辑风格内容：怎么用（AI 自己挑、一句话告诉用户、用户的话优先）、
   所有剪辑风格共用的规矩（先摸清素材、先问平台、9:16 安全区、字和声音的口径、不编造、导出前自检）、带货 / 课程推广、电影开头、科幻、纪录片、
   日常 vlog 五张卡（画幅、时长、按秒的结构、镜头、转场、动画、滤镜、字体、字幕、配乐、配音、自检）、配音音色的角色表、要补的零件、给 App 用的 .md 格式。
+- [导出真峰值限幅 + 响度报告，关键帧缓动](docs/plans/2026-09-30-export-limiter-and-easing.md) — 2026-09-30 用户拍板「先做 1 和 2」：
+  写 f32 之前把硬削换成流式真峰值限幅器（−1 dBFS、前瞻 5 ms、释放 80 ms、总长不变）+ BS.1770 整段响度只报不归一（面板一行、`get_job` 四个字段）；
+  关键帧加 `easing`（linear / easeIn / easeOut / easeInOut，AI 默认 ease_in_out、手打默认线性）、预览按帧加密切片；检查器曲线选择器单独一个小 PR；
+  然后出 Beta 0.18.5 让用户真剪。
 - [音效：合成器（给 AI）+ 录音素材库（给用户）](docs/plans/2026-09-30-sound-effects.md) — 2026-09-30 用户拍的板：合成器先在 scratchpad 渲样音试听、点头才写产品代码；
   AI 先搜素材库、没有再合成、真实声音才走 fal；63 个 SouthPole 录音全收进 R2 素材库（默认不随 App 带）、授权加「自有 / 已授权」一类；
   三个 PR 的分刀、`hit_at` 落点、原型里学到的（Freeverb 湿声按干声峰值比例混）、决策门。
