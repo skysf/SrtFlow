@@ -138,31 +138,17 @@ struct BurnInView: View {
                 previewMode: previewMode,
                 onOpenSubtitle: openSubtitleForEditing
             )
-            .frame(minWidth: 252, idealWidth: 320, maxWidth: 460)
+            // ideal 和 min 一样：`HSplitView` 先把前面的栏压到 min、再让最后一栏按 ideal 溢出
+            // （2026-08-12 案例）。默认 1180 宽的窗口里预览 540 + 字幕列 320 放不下，字幕列就被裁掉
+            // 右边六十多点；ideal 收到 252 之后 320 + 252 放得下（docs/bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md）。
+            .frame(minWidth: 252, idealWidth: 252, maxWidth: 460)
         }
     }
 
     /// 预览下面的紧凑素材条：空着时只占一行提示，有文件时也别跟预览抢高度。
     private var fileList: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Videos and subtitles").font(.headline)
-                if queue.items.isEmpty {
-                    Text("Drop a video and its subtitle file here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("Files with matching names are paired automatically.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Button("Add Files…") { chooseFiles() }
-                    .instantHelp("Pick videos to burn subtitles into")
-                    .controlSize(.small)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            BurnInFileListHeader(isEmpty: queue.items.isEmpty, chooseFiles: chooseFiles)
 
             if !queue.items.isEmpty {
                 List {
