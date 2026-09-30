@@ -14,6 +14,7 @@ func runSubtitleSegmentationChecks() {
     checkSourceOverlap()    // SubtitleSourceOverlapChecks.swift
     checkPauseAbsorbedIntoNextWord()
     checkSpeechOnsetEstimates()
+    checkNarrowLinesStayReadable()
 }
 
 private func window(
@@ -333,4 +334,40 @@ private func checkSpeechOnsetEstimates() {
     let chinese = estimate([("剪", 0.0, 1.02), ("辑", 1.02, 1.2), (" ，", 1.2, 1.5)])
     check(near(chinese[0].onset, 1.02 - 0.35), "估开口：中文按字数给宽松词长")
     check(near(chinese[2].onset, 1.2), "估开口：纯标点不估")
+}
+
+
+/// 窄画面（竖屏、大字号）下一行只放得下两个词时，切出来的每一条都还要能读：
+/// 「Darling, just dive right in.」（Perfect 0–32 秒的真实转写）在字号 56 / 9:16（一行约 8 个字号宽）曾切成
+/// 「Darling」「just」「dive right in」，「just」在屏上只留 0.1 秒（docs/bugfixes/2026-09-30-subtitle-piece-on-screen-0.1s.md）。
+private func checkNarrowLinesStayReadable() {
+    let perfect = words([
+        ("I", 3.0, 3.06), (" found", 3.06, 3.42), (" a", 3.42, 3.9), (" love", 3.9, 4.08),
+        (" for", 6.16, 6.54), (" me.", 6.54, 8.04),
+        (" Darling,", 10.6, 11.22), (" just", 11.22, 11.4), (" dive", 11.4, 11.88), (" right", 11.88, 12.18), (" in.", 12.18, 12.54),
+        (" Follow", 14.08, 14.64), (" my", 14.64, 15.06), (" lead.", 15.06, 15.78),
+        (" I", 18.1, 18.36), (" found", 18.36, 18.6), (" a", 18.6, 18.9), (" girl.", 18.9, 19.56),
+        (" Beautiful", 21.88, 22.62), (" and", 22.62, 23.16), (" sweet", 23.16, 23.46),
+        (" I", 25.6, 25.86), (" never", 25.86, 26.1), (" knew", 26.1, 26.58), (" you", 26.58, 27.24), (" were", 27.24, 27.54),
+        (" the", 27.54, 28.2), (" someone", 28.2, 28.5), (" waiting", 28.5, 29.58), (" for", 29.58, 30.12), (" me.", 30.12, 30.96)
+    ])
+    // 一行 8 个字号宽（字号 56 / 9:16）只放得下两个词；12 个（字号 36）放得下三个：都是整句一起挑，每条在屏上都超过 1 秒。
+    for (ems, expected) in [(8.0, ["Darling just", "dive right in"]), (12.0, ["Darling just dive", "right in"])] {
+        let config = SubtitleSegmentationConfig.generation(languageCode: "en", frameDuration: 1.0 / 24, maxLineEms: ems)
+        let out = SubtitleSegmenter.segment(words: perfect, window: window(src: 0...32), config: config)
+        let darling = out.cues.filter { $0.start >= 10 && $0.start < 13 }.map(\.text)
+        checkEqual(darling, expected,
+                   "一行 \(Int(ems)) 个字号宽：「Darling,」并不进整个小句时，整句一起挑切法，不留 0.1 秒的「just」")
+        check(out.cues.allSatisfy { SubtitleLineMeasure.ems($0.text) <= ems + 1e-9 }, "一行 \(Int(ems)) 个字号宽：每条都放得下")
+        // 每条能在屏上留多久（到下一条开口、最多说完再多停半秒）：一个词的条不该短过 0.4 秒。
+        let cues = out.cues
+        for (index, cue) in cues.enumerated() where !cue.text.contains(" ") {
+            let next = index + 1 < cues.count ? cues[index + 1].start : 32
+            let onScreen = min(next, cue.end + config.trailingHold) - cue.start
+            check(onScreen >= 0.4, "一行 \(Int(ems)) 个字号宽：单个词的一条「\(cue.text)」在屏上只留 \(String(format: "%.2f", onScreen)) 秒")
+        }
+    }
+    let wide = SubtitleSegmenter.segment(words: perfect, window: window(src: 0...32),
+                                          config: .generation(languageCode: "en", frameDuration: 1.0 / 24, maxLineEms: 30))
+    checkEqual(texts(wide).filter { $0.contains("Darling") }, ["Darling just dive right in"], "放得下时小句照旧并成一条")
 }
