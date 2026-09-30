@@ -166,15 +166,21 @@ if [ "$(grep -c 'guard always || AISession.shared.viewMode == .visible else { re
 fi
 echo "   ✓ 路由按 AISession 判断一轮的第一步；摆窗口只在 if bringForward 里；后台模式不摆窗口、不跟着选中"
 
-echo "==> 访达选中：Info.plist 里有控制访达的用途说明，中英文都有"
+echo "==> 访达选中：Info.plist 里有控制访达的用途说明，每种界面语言都有"
 # 没有 NSAppleEventsUsageDescription，macOS 不弹「想要控制访达」、直接拒绝，from_finder 永远拿不到东西（方案第 22 条）。
-for file in packaging/Info.plist Sources/SrtFlow/Resources/en.lproj/InfoPlist.strings Sources/SrtFlow/Resources/zh-Hans.lproj/InfoPlist.strings; do
+# InfoPlist.strings 按 Resources/*.lproj/ 现场找（加语言不用改这里）；一张都没找到就是目录搬了，当场红。
+INFOPLIST_TABLES=(Sources/SrtFlow/Resources/*.lproj/InfoPlist.strings)
+if [ "${#INFOPLIST_TABLES[@]}" -lt 2 ] || [ ! -f "${INFOPLIST_TABLES[0]}" ]; then
+  echo "✗ Sources/SrtFlow/Resources/*.lproj/InfoPlist.strings 找到的不到两张：${INFOPLIST_TABLES[*]}" >&2
+  exit 1
+fi
+for file in packaging/Info.plist "${INFOPLIST_TABLES[@]}"; do
   if [ "$(grep -c 'NSAppleEventsUsageDescription' "${file}" || true)" -ne 1 ]; then
     echo "✗ ${file} 里没有（或不止一条）NSAppleEventsUsageDescription：open_folder from_finder 问不了访达" >&2
     exit 1
   fi
 done
-echo "   ✓ Info.plist 和两张 InfoPlist.strings 都有控制访达的用途说明"
+echo "   ✓ Info.plist 和 ${#INFOPLIST_TABLES[@]} 张 InfoPlist.strings 都有控制访达的用途说明"
 
 echo "==> 用户文本文件的编码只走 TextDecoding"
 # .utf16 几乎什么都解得出来，排在 GBK 前面 GBK 就永远轮不到（docs/bugfixes/2026-09-27-gbk-subtitles-read-as-utf16.md）。

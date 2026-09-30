@@ -1,6 +1,11 @@
 import SwiftUI
 
-/// 界面语言。默认跟随系统，也可以强制中文或英文。
+/// 界面语言。默认跟随系统，也可以强制成某一种。
+///
+/// **加一种语言只做两件事**：这里加一个 case（rawValue 就是 `.lproj` 的名字），再补
+/// 一套字符串表（`Sources/SrtFlow/Resources/<code>.lproj/`）。locale、AppKit 的启动
+/// 语言、查表用的 bundle、音频库按语言选标题，都从 rawValue 推出来，不用再改别处。
+/// 流程见 docs/architecture/localization.md「加一种界面语言」。
 enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     case system
     case english = "en"
@@ -8,9 +13,9 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// 菜单里显示的名字。**故意不做本地化**：选项本身要用它代表的那种语言写，
-    /// 这样界面现在是哪一种语言，用户都能认出自己要的那一项。
-    var displayName: String {
+    /// 菜单里显示的名字。**故意不做本地化**（调用处用 `Text(verbatim:)`）：选项本身
+    /// 要用它代表的那种语言写，这样界面现在是哪一种语言，用户都能认出自己要的那一项。
+    var nativeName: String {
         switch self {
         case .system: return "System"
         case .english: return "English"
@@ -20,11 +25,14 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
 
     /// 传给 SwiftUI 环境的 locale。跟随系统时返回 nil，交给系统自己决定。
     var locale: Locale? {
-        switch self {
-        case .system: return nil
-        case .english: return Locale(identifier: "en")
-        case .simplifiedChinese: return Locale(identifier: "zh-Hans")
-        }
+        self == .system ? nil : Locale(identifier: rawValue)
+    }
+
+    /// 实际生效的语言代码：跟随系统时就是系统在 App 的语言里挑中的那个
+    /// （包里没有的语言退回 en）。代码里要「按语言分支」的地方（音频库的中文标题）
+    /// 只看这个，和 `L10n` 的查表口径一致。
+    var resolvedCode: String {
+        self == .system ? (Bundle.main.preferredLocalizations.first ?? "en") : rawValue
     }
 
     /// 查字符串表用的 bundle。
@@ -96,19 +104,18 @@ final class AppLanguageStore: ObservableObject {
     /// 由 AppKit 提供的部分只认启动时的 AppleLanguages。这里把选择写进去，
     /// 下次启动整个 App 就一致了。
     private func applyToAppKit() {
-        switch language {
-        case .system:
+        if language == .system {
             UserDefaults.standard.removeObject(forKey: "AppleLanguages")
-        case .english, .simplifiedChinese:
+        } else {
             UserDefaults.standard.set([language.rawValue], forKey: "AppleLanguages")
         }
     }
 
     /// 菜单栏等 AppKit 部件要重启才会跟着变，界面上据此提示一句。
     var needsRestartForMenus: Bool {
-        guard let chosen = language.locale?.identifier else { return false }
+        guard language != .system else { return false }
         let systemFirst = Bundle.main.preferredLocalizations.first ?? "en"
-        return !systemFirst.hasPrefix(chosen.prefix(2))
+        return !systemFirst.hasPrefix(language.rawValue.prefix(2))
     }
 }
 
@@ -153,7 +160,7 @@ struct AppLanguagePicker: View {
         let _ = PerfCounters.body(Self.self)
         Picker(selection: $store.language) {
             ForEach(AppLanguage.allCases) { option in
-                Text(option.displayName).tag(option)
+                Text(verbatim: option.nativeName).tag(option)
             }
         } label: {
             if showsLabel {
