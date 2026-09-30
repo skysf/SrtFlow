@@ -8,11 +8,12 @@ import NaturalLanguage
 // 2. 句内在逗号类标点（， , ； ; ： :）后面分成小句 —— 一条一个小句，译文也跟着顺。
 //    小句太短（不到 1 秒、或只有一个词 / 不到三个字）就并到旁边：优先并给同样太短的邻居，
 //    其次并给更短的那边（「Even a gym, to me,」并成一条，「Oh,」并进后面那句）。
+//    小句太短又并不进去（并了放不下）时，整句一起挑切法：逗号处算好断点，每条按能在屏上留多久罚（2026-09-30）。
 // 3. 还放不下的（超字数、超画面宽度、超 7 秒）：先找最少切几段能全放下，再在这个段数下挑总代价最小的切法
-//    （动态规划；贪心先切第一刀会把后半截逼进死角）。代价 = 各段长短偏离平均 + 断在不好的地方：
+//    （动态规划；贪心先切第一刀会把后半截逼进死角）。代价 = 各段长短偏离平均 + 太短（在屏上留不到 1 秒的重罚）+ 断在不好的地方：
 //    停顿后面、连词 / 关系词 / 介词前面好断；a / the / to / that 这类词不留在一条末尾；
 //    中文、日文用系统自带的分词（NLTokenizer），不在「如果」「大幅度」中间切，也不让「的」「了」起头。
-// 不管什么：显示时间（`SubtitleCueTiming`）、去标点（`SubtitlePunctuation`，量宽度时按去完的算）。
+// 不管什么：显示时间（`SubtitleCueTiming`）、去标点（`SubtitlePunctuation`，量宽度时按去完的算）、词表本身（`SubtitleBreakWords`）。
 
 enum SubtitleBreaks {
     typealias Word = SubtitleSegmenter.PlacedWord
@@ -59,7 +60,13 @@ enum SubtitleBreaks {
         let merged = mergeShortClauses(
             clauseRanges(sentence), in: sentence, availableEnd: availableEnd, config: config
         )
-        return merged.flatMap { splitToFit($0, in: sentence, allowed: allowed, config: config) }
+        // 太短的小句并不进去（并了放不下）：一条一个小句在这里已经保不住了，整句一起挑切法 —— 逗号处算好断点、
+        // 每条按能在屏上留多久罚，比让那个小句自己成条、旁边的再各切各的好（2026-09-30：「Darling, just dive right in.」
+        // 在一行两个词的宽度下切成「Darling / just / dive right in」，「just」只留 0.1 秒）。
+        if merged.count > 1, merged.contains(where: { isTiny($0, in: sentence, availableEnd: availableEnd, config: config) }) {
+            return splitToFit(0 ..< sentence.count, in: sentence, allowed: allowed, availableEnd: availableEnd, config: config)
+        }
+        return merged.flatMap { splitToFit($0, in: sentence, allowed: allowed, availableEnd: availableEnd, config: config) }
     }
 
     /// 在逗号类标点后面分开的小句。
@@ -113,13 +120,13 @@ enum SubtitleBreaks {
 
     /// 放不下就切开：最少切几段能全放下，就切几段；这个段数下挑总代价最小的切法。
     static func splitToFit(
-        _ range: Range<Int>, in words: [Word], allowed: Set<Int>, config: SubtitleSegmentationConfig
+        _ range: Range<Int>, in words: [Word], allowed: Set<Int>, availableEnd: Double, config: SubtitleSegmentationConfig
     ) -> [Range<Int>] {
         guard range.count > 1, !fits(range, in: words, config: config) else { return [range] }
         let positions = [range.lowerBound]
             + (range.lowerBound + 1 ..< range.upperBound).filter { allowed.contains($0) }
             + [range.upperBound]
-        let table = PieceTable(positions: positions, words: words, config: config)
+        let table = PieceTable(positions: positions, words: words, availableEnd: availableEnd, config: config)
         // 按词边界切到最细都有一段放不下（一个词就超宽）：退到不看词边界的贪心。
         guard (1 ..< positions.count).allSatisfy({ table.fits[$0 - 1][$0] }) else {
             return greedySplit(range, in: words, config: config)
@@ -147,6 +154,20 @@ enum SubtitleBreaks {
     /// 比最少段数多切一段的代价（和一个坏断点的罚分同一个量级的一半）。
     static let extraPieceCost = 0.5
 
+    /// 一段太短的罚分：说了不到 5/6 秒的轻罚（0.5）；**在屏上留不到 1 秒**的按差多少加重（差一半罚 1.5，差九成罚 2.7），
+    /// 只有一个词的至少 1 —— 0.1 秒的一条读不到，不能和「切在停顿上」的 0.35 奖励一个量级。
+    static func shortPenalty(
+        _ piece: Range<Int>, in words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
+    ) -> Double {
+        var penalty = duration(piece, in: words) < config.minCueDuration ? 0.5 : 0
+        if isTiny(piece, in: words, availableEnd: availableEnd, config: config) {
+            let shortfall = max(0, 1 - onScreen(piece, in: words, availableEnd: availableEnd, config: config) / config.minClauseDuration)
+            let singleWord = shownText(piece, in: words).split(whereSeparator: \.isWhitespace).count < 2
+            penalty += singleWord ? max(1, 3 * shortfall) : 3 * shortfall
+        }
+        return penalty
+    }
+
     /// 切法的动态规划：哪些段放得下、每段和每一刀的代价先算好。
     private struct PieceTable {
         let positions: [Int]
@@ -157,7 +178,7 @@ enum SubtitleBreaks {
         /// 在 positions[i] 前面切一刀的代价。
         var cutCost: [Double]
 
-        init(positions: [Int], words: [Word], config: SubtitleSegmentationConfig) {
+        init(positions: [Int], words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig) {
             self.positions = positions
             let count = positions.count
             fits = Array(repeating: Array(repeating: false, count: count), count: count)
@@ -170,7 +191,7 @@ enum SubtitleBreaks {
                     guard SubtitleBreaks.fits(piece, in: words, config: config) else { break }
                     fits[i][j] = true
                     units[i][j] = SubtitleLineMeasure.units(SubtitleBreaks.shownText(piece, in: words))
-                    shortPenalty[i][j] = SubtitleBreaks.duration(piece, in: words) < config.minCueDuration ? 0.5 : 0
+                    shortPenalty[i][j] = SubtitleBreaks.shortPenalty(piece, in: words, availableEnd: availableEnd, config: config)
                 }
             }
             let boundaries = Set(positions)
@@ -275,43 +296,6 @@ enum SubtitleBreaks {
 
     // MARK: ④ 断在哪好
 
-    /// 英文里适合当一条开头的词：连词、关系词，以及不紧贴前面那个词的介词（Netflix：在连词、介词前面断）。
-    /// 「of」「to」不算：「bottom / of the world」「going / to walk」反而拆散了一个意思。
-    static let goodStarts: Set<String> = [
-        "and", "but", "or", "so", "because", "that", "which", "who", "whom", "whose", "when", "where",
-        "while", "if", "unless", "until", "since", "although", "though", "as", "than", "whether",
-        "in", "on", "at", "for", "with", "from", "into", "onto", "about", "after", "before",
-        "between", "through", "during", "without", "like"
-    ]
-    /// 英文里不许留在一条末尾的词：冠词、限定词、介词、连词（含从句连词：「…my box until / it's…」
-    /// 的 until 该起头，不该收尾）、物主代词、助动词、主语代词。
-    static let danglingEnds: Set<String> = [
-        "all", "each", "every", "some", "any", "no", "such",
-        "because", "when", "where", "while", "if", "unless", "until", "since", "although", "though",
-        "whether", "than",
-        "a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "from", "into", "onto", "about",
-        "by", "as", "and", "or", "but", "so", "that", "which", "who", "my", "your", "his", "her", "its",
-        "our", "their", "this", "these", "those", "is", "are", "was", "were", "be", "been", "am", "will",
-        "would", "can", "could", "should", "have", "has", "had", "do", "does", "did", "not", "very",
-        "i", "you", "he", "she", "we", "they", "i'm", "you're", "we're", "they're", "it's", "there's"
-    ]
-    /// 中文里不许起头的字（助词、语气词）。
-    static let particles: Set<Character> = ["的", "了", "吗", "呢", "吧", "啊", "着", "过", "们", "地", "得", "么", "呀", "嘛"]
-    /// 中文的句末语气词：转写常常不给标点，它后面就是句号该在的地方。
-    static let sentenceFinalParticles: Set<Character> = ["呢", "吗", "吧", "啊", "呀", "嘛"]
-    /// 中文里适合当一条开头的词（连词、话题转换的词）。
-    static let chineseGoodStarts = [
-        "如果", "因为", "所以", "但是", "而且", "然后", "虽然", "可是", "不过", "并且", "或者", "于是",
-        "同时", "无论", "只要", "只有", "即使", "就算", "最后", "首先", "其次", "接着", "另外", "其实",
-        "现在", "然而", "因此"
-    ]
-    /// 中文里不许留在一条末尾的词（连词、介词：开了头、话没说完）。只认整词 —— 「现在」不算「在」。
-    static let chineseDanglingEnds = [
-        "如果", "因为", "所以", "但是", "而且", "然后", "虽然", "可是", "不过", "并且", "或者", "于是",
-        "就是", "还是", "只是", "在", "把", "被", "和", "跟", "与", "对", "从", "向", "给", "让", "为", "将", "比",
-        "我", "你", "他", "她", "它", "我们", "你们", "他们", "她们", "这", "那", "这个", "那个", "这些", "那些", "一个"
-    ]
-
     /// 在第 `cut` 个词前面切一刀的代价（负的是奖励）。
     /// - Parameters:
     ///   - boundaries: 能切的位置（中文的词边界）—— 判「整词」用。
@@ -327,11 +311,13 @@ enum SubtitleBreaks {
         } else if fullWidth, previous.end - previous.start >= 0.45 {
             cost -= 0.25
         }
+        // 逗号后面好断（整句一起挑切法时才会切到这里：小句本来就是在这儿分的）。
+        if endsClause(previous.text) { cost -= 0.35 }
         if fullWidth {
             cost += chineseCutCost(at: cut, in: words, boundaries: boundaries)
         } else {
-            if goodStarts.contains(normalized(next.text)) { cost -= 0.3 }
-            if danglingEnds.contains(normalized(previous.text)) { cost += 1 }
+            if SubtitleBreakWords.goodStarts.contains(normalized(next.text)) { cost -= 0.3 }
+            if SubtitleBreakWords.danglingEnds.contains(normalized(previous.text)) { cost += 1 }
             // 专有名词不拆（South Pole、New York；Netflix：姓和名不拆开）：句中两个大写开头的词连着。
             if startsWithCapital(previous.text), startsWithCapital(next.text), normalized(next.text) != "i",
                !normalized(next.text).hasPrefix("i'") {
@@ -350,9 +336,9 @@ enum SubtitleBreaks {
         var cost = 0.0
         let nextShown = SubtitlePunctuation.strip(words[cut].text)
         let previousShown = SubtitlePunctuation.strip(words[cut - 1].text)
-        if let first = nextShown.first, particles.contains(first) { cost += 1 }
+        if let first = nextShown.first, SubtitleBreakWords.particles.contains(first) { cost += 1 }
         if previousShown.last == "的" { cost += 0.4 }
-        if let last = previousShown.last, sentenceFinalParticles.contains(last) { cost -= 0.35 }
+        if let last = previousShown.last, SubtitleBreakWords.sentenceFinalParticles.contains(last) { cost -= 0.35 }
         // 整词：这几个字前后都是词边界（中文一个字一个词）。
         func wholeWord(_ word: String, from start: Int) -> Bool {
             let end = start + word.count
@@ -361,8 +347,8 @@ enum SubtitleBreaks {
             else { return false }
             return SubtitlePunctuation.strip(words[start ..< end].map(\.text).joined()) == word
         }
-        if chineseDanglingEnds.contains(where: { wholeWord($0, from: cut - $0.count) }) { cost += 1 }
-        if chineseGoodStarts.contains(where: { wholeWord($0, from: cut) }) { cost -= 0.3 }
+        if SubtitleBreakWords.chineseDanglingEnds.contains(where: { wholeWord($0, from: cut - $0.count) }) { cost += 1 }
+        if SubtitleBreakWords.chineseGoodStarts.contains(where: { wholeWord($0, from: cut) }) { cost -= 0.3 }
         return cost
     }
 
@@ -399,15 +385,22 @@ enum SubtitleBreaks {
     static func isTiny(
         _ range: Range<Int>, in words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
     ) -> Bool {
-        guard let first = range.first, let last = range.last else { return true }
-        let next = range.upperBound < words.count ? words[range.upperBound].start : availableEnd
-        let onScreen = min(next, words[last].end + config.trailingHold) - words[first].start
-        if onScreen < config.minClauseDuration - 1e-9 { return true }
+        guard !range.isEmpty else { return true }
+        if onScreen(range, in: words, availableEnd: availableEnd, config: config) < config.minClauseDuration - 1e-9 { return true }
         let text = shownText(range, in: words)
         if SubtitleLineMeasure.isMostlyFullWidth(text) {
             return text.filter { !$0.isWhitespace }.count < 3
         }
         return text.split(whereSeparator: \.isWhitespace).count < 2
+    }
+
+    /// 这几个词能在屏上留多久：到下一个词开口（最后一段到 availableEnd），最多说完再多停 trailingHold。
+    static func onScreen(
+        _ range: Range<Int>, in words: [Word], availableEnd: Double, config: SubtitleSegmentationConfig
+    ) -> Double {
+        guard let first = range.first, let last = range.last else { return 0 }
+        let next = range.upperBound < words.count ? words[range.upperBound].start : availableEnd
+        return min(next, words[last].end + config.trailingHold) - words[first].start
     }
 
     static func duration(_ range: Range<Int>, in words: [Word]) -> Double {
