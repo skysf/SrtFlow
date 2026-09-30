@@ -120,15 +120,14 @@ func runProtocolChecks() {
     check(instructions.contains("look") && instructions.contains("listen"), "instructions point the AI at look and listen")
     check(instructions.contains("ffmpeg") && instructions.contains("do not download media"),
           "instructions forbid outside tools and downloads for media")
-    // 配乐从 SrtFlow 的音乐库找（方案第 14 条），用了 CC-BY 的要告诉用户署名句。
-    check(instructions.contains("find_audio") && instructions.contains("music_credits"),
-          "instructions send the AI to the music library and ask it to pass on the credits")
+    // 配乐从 SrtFlow 的音乐库找（方案第 14 条）；署名句在导出那一刻用得上，写在 export_video 的说明里（下面第 2 节查）。
+    check(instructions.contains("find_audio"), "instructions send the AI to the music library")
     check(instructions.contains("compress_videos") && instructions.contains("convert_subtitles"),
           "instructions say compressing and converting files needs no project")
     check(instructions.contains("transcribe") && instructions.contains("cut_speech") && instructions.contains("cut_to_beat"),
           "instructions point the AI at the smart cuts (block 3)")
-    // 套路由 AI 自己挑（方案第 39 条）：剪整片之前先读 recipes、挑一套告诉用户；用户想留下一种风格时用 save_recipe。
-    check(instructions.contains("recipes") && instructions.contains("save_recipe") && instructions.contains("which one you follow"),
+    // 套路由 AI 自己挑（方案第 39 条）：目录里写剪整片之前先读 recipes；「一句话告诉用户按哪套」写在 recipes 的说明里（第 2 节查）。
+    check(instructions.contains("recipes") && instructions.contains("save_recipe"),
           "instructions send the AI to the recipes before editing a whole video (block 5)")
     check(instructions.contains("add_voiceover"), "instructions say narration is spoken with add_voiceover")
 
@@ -146,6 +145,12 @@ func runProtocolChecks() {
             check(properties[required.stringValue ?? ""] != nil, "\(name): required \(required) is a property")
         }
     }
+    // 从总说明挪进工具说明的两条（总说明是目录，docs/architecture/ai-control-mcp.md 第一节第 6 条）。
+    func servedDescription(_ name: String) -> String {
+        tools.first { $0["name"]?.stringValue == name }?["description"]?.stringValue ?? ""
+    }
+    check(servedDescription("export_video").contains("music_credits"), "export_video asks the AI to pass on the music credits")
+    check(servedDescription("recipes").contains("which one you follow"), "recipes asks the AI to tell the user which style it follows")
     // 不按个数卡（2026-09-28 用户拍板，方案第 33 条），卡说明的总长度：工具说明每一轮都进 AI 的上下文，
     // 用户那边还开着别的 MCP。上限约 2 万 token（按 3.6 个字符一个 token 估）；超了先把说明写短、或者并掉长得像的工具。
     // 量的是**每个提供方都配好**时的全清单（最长的那种情况），不是某个用户此刻看到的。

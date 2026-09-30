@@ -198,9 +198,7 @@ public enum MCPSchema {
     }
 
     /// 几个工具都收的「确认令牌」：只有用户在对话里点头之后，才把上一次结果里给的那个令牌带回来。
-    public static let confirmToken = string(
-        "Only after the user agreed to the question in a needs_confirmation result: the confirm_token from that result."
-    )
+    public static let confirmToken = string("The confirm_token of a needs_confirmation result, only after the user agreed.")
 
     /// 轨道名：V1 是主视频轨，V2、V3… 是叠在上面的视频轨，A1、A2… 是音频轨。
     public static let trackDescription =

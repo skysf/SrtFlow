@@ -44,7 +44,7 @@ enum MCPSmartEditTools {
                 .cutSpeech, title: "Cut speech",
                 description: """
                 Tighten a talking clip on V1 in one step: cut out ranges (by text — pass sentence or word times from \
-                transcribe), or keep only some ranges; shorten pauses; remove filler words (um, uh, 嗯, 呃) and words \
+                transcribe), or keep only some ranges; shorten pauses; remove filler words (um, uh and Chinese ones) and words \
                 said twice in a row. Cuts land in the gaps between words, never inside one. The clip becomes pieces \
                 placed back to back and later V1 clips move left; the clip's linked sound is cut with it even when \
                 linking is off. Music, texts and subtitles on other tracks do not move — regenerate subtitles \

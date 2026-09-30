@@ -19,8 +19,8 @@ enum MCPRecipeTools {
                 (preset: product or course promo, cinematic opening, sci-fi, documentary, daily vlog; the user may have \
                 their own). With id: the whole style. Before editing a whole video from the user's footage, pick the one \
                 that fits their goal, tell them in one sentence which one you follow, and follow it; what the user says \
-                always wins over the style. Call them editing styles when talking to the user (剪辑风格 in Chinese; the \
-                built-in ones are preset styles, 预设风格).
+                always wins over the style. If they want a style again later, offer save_recipe. Call them editing \
+                styles when talking to the user (the built-in ones are preset styles).
                 """,
                 input: MCPSchema.object([
                     "id": MCPSchema.string("A style's id or title; leave out to list them all.")

@@ -22,7 +22,7 @@ enum MCPMediaTools {
                 music or sound effects from the internet instead.
                 """,
                 input: MCPSchema.object([
-                    "query": MCPSchema.string("Words to search for, e.g. \"calm piano\", \"epic\" or \"悲伤\"."),
+                    "query": MCPSchema.string("Words to search for, e.g. \"calm piano\" or \"epic\" (Chinese words work too)."),
                     "max_results": MCPSchema.integer("How many tracks to return (default 10).", minimum: 1, maximum: 50)
                 ]),
                 readOnly: true
@@ -40,7 +40,7 @@ enum MCPMediaTools {
                 the user). voice is a role — \(MCPVocabulary.voiceRoles.joined(separator: ", ")) — one of SrtFlow's \
                 voices by name (af_heart, zf_xiaoxiao…), or a Mac voice's name; without it, a warm female voice in the \
                 text's language. clone_from clones a voice with fal.ai: a file (audio or video) of one person speaking \
-                clearly; the lines are spoken in that voice (clone_start / clone_seconds choose 5–30 s of it). The files go into SrtFlow/Voiceovers in the user's folder. subtitles=true also writes the \
+                clearly; the lines are spoken in that voice. The files go into SrtFlow/Voiceovers in the user's folder. subtitles=true also writes the \
                 words as subtitles, timed to the voice (lines over existing subtitles are left out). Pass on the result's \
                 voice note to the user.
                 """,
