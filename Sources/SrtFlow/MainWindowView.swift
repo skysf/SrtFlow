@@ -391,8 +391,13 @@ private struct SidebarToolRow: View {
                     .labelStyle(.iconOnly)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
+                // 宽档最窄 196pt，西班牙语的「Incrustar subtítulos」「Conversión por lotes」
+                // 一行放不下（sidebar 的 List 默认截成「Incrustar subtítu…」）：让它折成两行。
+                // 英文、中文都在一行里，看不出差别。（docs/plans/2026-09-30-ui-languages.md）
                 Label(LocalizedStringKey(section.title), systemImage: section.icon)
                     .labelStyle(.titleAndIcon)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 4)
                 badge
             }
