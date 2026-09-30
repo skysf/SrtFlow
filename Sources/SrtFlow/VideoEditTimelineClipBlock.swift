@@ -135,11 +135,19 @@ struct ClipBlockView: View, Equatable {
         .frame(width: width, height: height)
         .onTapGesture(coordinateSpace: .local) { location in
             if context.activeTool == .split {
-                // 刀片：点哪儿切哪儿。链接组的处理和 ⌘B 一致。
-                project.splitClip(clip.id, at: clip.timelineStart + min(max(0, location.x), width) / pps)
+                // 刀片：点哪儿切哪儿，切完播放头落到刀口（2026-09-30）。链接组的处理和 ⌘B 一致。
+                let cut = clip.timelineStart + min(max(0, location.x), width) / pps
+                project.splitClip(clip.id, at: cut)
+                project.seekFromTimeline(time: cut)
             } else {
+                // 点块 = 选中 + 播放头落到指针底下（2026-09-30 用户拍板，§5f）。⌘ / ⇧ 加选时播放头
+                // 不动 —— 拼一组选择时别让它跳来跳去；按住拖走的是 moveGesture，不经这里，也不动。
                 let flags = NSApp.currentEvent?.modifierFlags ?? []
-                project.select(clip.id, additive: flags.contains(.command) || flags.contains(.shift))
+                let additive = flags.contains(.command) || flags.contains(.shift)
+                project.select(clip.id, additive: additive)
+                if !additive {
+                    project.seekFromTimeline(blockX: location.x, start: clip.timelineStart, end: clip.timelineEnd, pps: pps)
+                }
             }
         }
         // 分割模式下移动手势整个停掉（.subviews 保留上面的点击）：

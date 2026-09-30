@@ -70,6 +70,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineTrim.swift \
   Sources/SrtFlow/VideoEditTimelineTrimSnap.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
+  Sources/SrtFlow/VideoEditTimelineSeek.swift \
   Sources/SrtFlow/VideoEditTimelineSeams.swift \
   Sources/SrtFlow/VideoEditTimelineLaneOrder.swift \
   Sources/SrtFlow/VideoEditTimelineMarquee.swift \
@@ -84,6 +85,7 @@ xcrun swiftc \
   checks/TimelineSnap/Groups.swift \
   checks/TimelineSnap/Guides.swift \
   checks/TimelineSnap/TrimSnap.swift \
+  checks/TimelineSnap/Seek.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

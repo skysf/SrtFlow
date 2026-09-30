@@ -337,6 +337,8 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
    驱动照样可能停住 —— `sample` 看到两条线程停在 `FFmpegRuntime.probe` → `runCapturingOutput` → `read`：
    新签名的 SrtFlowDev 去跑 `SRTFLOW_FFMPEG` 指的那个 ffmpeg，系统弹「想访问下载文件夹」，人不点，探测就一直
    等在读管道上。前几轮没事、重编一次就可能卡。卡住了先 `pkill -P <App 的 pid>`、再杀 App，别让它在后台留着。
+   2026-09-30 又撞上一次：同一轮里点剪辑 / 文字 / 滤镜 / 转场遮罩都正常，**点字幕句那一下**驱动就停在 `click` 上
+   （主线程空闲、两条线程停在同一处 `read`），切回 main 的代码同样复现 —— 是这条，不是块的点击。字幕句的点选靠人工清单。
 16. **有 Touch Bar 的 Mac 上 SrtFlowDev 可能崩**（2026-09-26，同一天两次）：点完之后 AppKit 刷新 Touch Bar
    （`NSTouchBarFinderTouchBarsForProviders`），SwiftUI 给分段选择器量尺寸时在 `DesignLibrary` 里空指针
    （崩溃报告在 `~/Library/Logs/DiagnosticReports/SrtFlowDev-*.ips`）。正式版没报过、原因没查。一次是跑完

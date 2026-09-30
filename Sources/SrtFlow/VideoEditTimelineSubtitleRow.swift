@@ -34,13 +34,15 @@ extension VideoEditTimelineView {
                     isHidden: project.state.isSubtitleCueHidden(cue.id),
                     drag: dragBox,
                     isDragMember: dragMembers.contains(cue.id),
-                    onTap: {
-                        // 点选 = 选中这条 cue（预览出字幕拖框）+ 把播放头
-                        // 带进这条字幕，画面上立刻有字可调。⌘/⇧ 点是加选。
+                    onTap: { x in
+                        // 点选 = 选中这条 cue（预览出字幕拖框）+ 播放头落到指针底下、不出这一句，
+                        // 画面上立刻有字可调（和别的块同一条规矩，§5f）。⌘/⇧ 点是加选，播放头不动。
                         let event = NSApp.currentEvent
                         let flags = event?.modifierFlags ?? []
                         let additive = flags.contains(.command) || flags.contains(.shift)
-                        if !additive { clock.seek(to: cue.start + 0.05) }
+                        if !additive {
+                            project.seekFromTimeline(blockX: x, start: cue.start, end: cue.end, pps: pps)
+                        }
                         project.selectSubtitleCue(cue.id, additive: additive)
                         // 双击 = 就地改这条的文字。用 clickCount 分流，
                         // 不另挂 count: 2 的手势：那会和块自己的拖动抢，

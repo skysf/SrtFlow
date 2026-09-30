@@ -28,7 +28,8 @@ struct SubtitleCueBlockView: View, Equatable {
     /// 是成员才订阅位移，不是就拿一个永远不发的发布者（§0b）。
     let isDragMember: Bool
     /// 单击 / 双击都从这里出去（`NSApp.currentEvent` 的 clickCount 由行来分流）。
-    let onTap: () -> Void
+    /// 参数是指针在块自己坐标系里的 x（点）：行拿它算播放头落到哪一刻。
+    let onTap: (Double) -> Void
     /// (手势总位移, 指针在滚动视口里的位置)。起手（冻结这一轮的输入）也由行在
     /// 这里判 —— 判据要带上「有没有活着的会话」，块里的一个布尔值判不了。
     let onDragChange: (CGSize, CGPoint) -> Void
@@ -79,12 +80,14 @@ struct SubtitleCueBlockView: View, Equatable {
             // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑 / 形状块）。
             .overlay(alignment: .leading) { trimHandle(leading: true) }
             .overlay(alignment: .trailing) { trimHandle(leading: false) }
+            // 点击要读指针在块里的 x（播放头落到那儿），所以挂在 .offset 之前（同把手：几何效果之后
+            // 读到的不是块自己的坐标；剪辑块的刀片也是这么读的）。
+            .onTapGesture(coordinateSpace: .local) { onTap($0.x) }
             .offset(
                 x: (cue.start + (dragOffset ?? 0)) * pps,
                 y: TimelineMarquee.cueTopInset
             )
             .zIndex(dragOffset != nil ? 10 : 0)
-            .onTapGesture(perform: onTap)
             .contextMenu {
                 TimelineClipboardMenu.items(onClipboard)
                 Divider()

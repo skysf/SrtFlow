@@ -26,12 +26,14 @@ extension VideoEditTimelineView {
                     // 边缘自动滚动、松手落一次。块自己从盒子里收位移和框选命中（§0b）。
                     drag: dragBox,
                     isDragMember: dragMembers.contains(shape.id),
-                    onSelect: {
+                    onSelect: { x in
                         let flags = NSApp.currentEvent?.modifierFlags ?? []
-                        project.selectShape(
-                            shape.id,
-                            additive: flags.contains(.command) || flags.contains(.shift)
-                        )
+                        let additive = flags.contains(.command) || flags.contains(.shift)
+                        project.selectShape(shape.id, additive: additive)
+                        // 点块 = 播放头落到指针底下、不出这一块；加选不动（§5f，2026-09-30）。
+                        if !additive {
+                            project.seekFromTimeline(blockX: x, start: shape.timelineStart, end: shape.timelineEnd, pps: pps)
+                        }
                     },
                     onDragBegin: { beginShapeDrag(shape) },
                     onDragChange: { translation, pointerViewport in
@@ -73,7 +75,8 @@ private struct ShapeBlockView: View, Equatable {
     /// 在不在这一轮拖动的成员里（时间线按 `dragMembers` 算好传进来，一轮只变两次）：
     /// 是成员才订阅位移，不是就拿一个永远不发的发布者（§0b）。
     let isDragMember: Bool
-    let onSelect: () -> Void
+    /// 单击。参数是指针在块自己坐标系里的 x（点）：行拿它算播放头落到哪一刻。
+    let onSelect: (Double) -> Void
     let onDragBegin: () -> Void
     /// (手势总位移, 指针在滚动视口里的位置)。与剪辑块同一套语义。
     let onDragChange: (CGSize, CGPoint) -> Void
@@ -143,9 +146,11 @@ private struct ShapeBlockView: View, Equatable {
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑块）。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
+        // 点击要读指针在块里的 x（播放头落到那儿），所以挂在 .offset 之前（同把手：几何效果之后
+        // 读到的不是块自己的坐标；剪辑块的刀片也是这么读的）。
+        .onTapGesture(coordinateSpace: .local) { onSelect($0.x) }
         .offset(x: (shape.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.shapeTopInset)
         .zIndex(dragOffset != nil ? 10 : (markerHovered ? 5 : 0))
-        .onTapGesture(perform: onSelect)
         .contextMenu {
             TimelineClipboardMenu.items(onClipboard)
             Divider()

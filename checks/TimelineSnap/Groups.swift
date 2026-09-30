@@ -8,4 +8,5 @@ func runSplitOutGroups() {
     checkTrim()             // 1b：裁切，一段的范围、一组一起裁（Trim.swift）
     checkAlignmentGuides()  // 1c：对齐点、整组外沿、磁吸也亮线（Guides.swift）
     checkTrimSnap()         // 1d：裁切的吸附与对齐线（TrimSnap.swift）
+    checkSeek()             // 1e：点一下播放头落到哪（Seek.swift）
 }
