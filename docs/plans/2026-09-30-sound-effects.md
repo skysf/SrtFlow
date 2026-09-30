@@ -183,6 +183,21 @@ whoosh 的频率重心先升后降、riser 一路升、suction 升到结尾、do
 
 原型源码搬进 `Sources/SrtFlow/SoundEffects/`（第一个 PR），长期约束写进 [合成音效](../architecture/sound-effect-synth.md)。
 
+### 第一个 PR 的端到端冒烟（2026-09-30，测试版 0.18.3，`scripts/gui-smoke/mcp-client/client.py`）
+
+调用表：open_folder（scratchpad 里 ffmpeg 现做的 20 秒 test.mp4）→ new_project → add_clips 放视频 → add_clips 一批五个音效
+（whoosh / impact / riser 都 `hit_at` 12.0，pop 0.3，suction 0.5）→ get_timeline → listen → 同参数再放一个 whoosh（`hit_at` 15）→
+错的预设名 → undo round=true → get_timeline。结果：
+
+- 开头 = hit_at − 声音里的落点：whoosh 11.446（落点 0.554）、impact 11.995、riser（1.5 秒）10.481、pop 0.298；suction 的落点在结尾、
+  1.2 秒放不进 0.5 秒 → 开头 0、`source_in` 0.714，落点照样在 0.5。段的 `volume_db` −8。
+- 写出来的 .m4a 用 ffmpeg 解回来量峰值：impact 0.014 s、pop 0.002 s、riser 1.505 s（结尾）、suction 1.195 s（结尾）、whoosh 0.532 s ——
+  和渲染时一致，**AAC 的编码延迟被容器补偿了**，落点不用另外扣。
+- `listen` 的 `loudest_at` 是 0.5 秒粒度，验不了 ±20 ms 的落点；验落点看解码后的峰值。
+- 同参数的 whoosh 第二次没再写文件（文件夹里 5 个 .m4a，`whoosh-314d87b8.m4a` 复用）；错的预设名回「preset must be one of: …」；
+  撤销整轮后时间线空。
+- 文件夹名跟 App 语言：测试版是英文，就是 `SrtFlow/Sound Effects/`。
+
 ## 七、检查与回归（AGENTS.md 要求）
 
 - 合成器：`scripts/check-mcp.sh` 加一块（结构自检，见第四节）；接线守卫：写文件只经一处（同配音）、渲染不在并发线程池里阻塞。
