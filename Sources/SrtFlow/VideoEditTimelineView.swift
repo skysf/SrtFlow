@@ -8,7 +8,7 @@ import SrtFlowCore
 // MARK: - 时间线这一族文件的分工
 //
 // 这个文件只留「骨架」：行的排列（`rows` / `rowLayouts`）、轨道头列、滚动容器、
-// 轨道行、播放头的落点入口。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
+// 轨道行。其余各自成文件（2026-09-18 拆分，拆分前这一个文件 2101 行）：
 //
 // - `VideoEditTimelineRowSpec.swift`        一行的描述（`TimelineRowSpec`，纯值）
 // - `VideoEditTimelineMarqueeGesture.swift` 框选接线
@@ -30,6 +30,8 @@ import SrtFlowCore
 // - `VideoEditTimelineDragOverlay.swift`    拖动中画的覆盖层（对齐线、占位框、框选矩形；订阅盒子）
 // - `VideoEditTimelineEmptyState.swift`     工程为空时那块虚线提示
 // - `VideoEditTimelinePlayhead.swift`       播放头竖线、影子指针、跟随滚动（滚动内容里只有它订阅时钟）
+// - `VideoEditProject+Seek.swift`           播放头的落点入口 `seekFromTimeline`（标尺 / 空白 / 每一种块都走它，夹紧只有这一处）
+// - `VideoEditTimelineSeek.swift`           落点的纯值规则 `TimelineSeek`（全局夹紧、点在块上不出这一块）
 //
 // 手势与落点的长期约束在 docs/architecture/timeline-drag-gestures.md，
 // 接线守卫 `checks/timeline-drag-wiring.sh` 按上面这批文件逐个扫描。
@@ -383,7 +385,7 @@ struct VideoEditTimelineView: View {
         // SwiftUI 里子视图的手势优先，所以能落到这儿的**只有**谁都不认领的空白。
         .onTapGesture(coordinateSpace: .local) { location in
             project.clearSelection()
-            seekFromTimeline(time: location.x / pps, precise: true)
+            project.seekFromTimeline(time: location.x / pps)
         }
         // 空白处按下拖动 = 拉框选。挂在容器上而不是各行上：SwiftUI 里子视图的
         // 手势优先，所以块本体的移动手势、标尺的 scrub 都照旧归它们自己，只有
@@ -414,7 +416,7 @@ struct VideoEditTimelineView: View {
                 onSeek: { time, precise in
                     // 点 / 拖标尺 = 选中标尺：块的选择一起清掉，之后按 M 打在标尺上（2026-09-30 用户拍板）。
                     project.selectRuler()
-                    seekFromTimeline(time: time, precise: precise)
+                    project.seekFromTimeline(time: time, precise: precise)
                 },
                 onMarkerPeek: { markerPeek($0) }
             )
@@ -516,17 +518,6 @@ struct VideoEditTimelineView: View {
     }
 
     // MARK: - 播放头
-
-    /// 时间线上所有「把播放头挪过去」的落点：标尺的点 / 拖，和空白处的点击。
-    ///
-    /// **夹紧只能有这一处。** 两个调用点各写一份 `min(max(0, t), duration)` 迟早
-    /// 会分叉：标尺夹到片尾、点空白不夹的话，点右边那一大片空白就会把播放头送到
-    /// 工程之外 —— 那里根本没有帧，画面停在最后一帧，而播放头却在几十秒开外，
-    /// 工具栏上所有「播放头得落在片段内」才可用的按钮（分割、冻结、标记、删左、
-    /// 删右）随即全部变灰。
-    func seekFromTimeline(time: Double, precise: Bool) {
-        clock.seek(to: min(max(0, time), project.duration), precise: precise)
-    }
 
     /// 鼠标扫过时间线**任何地方**，画面就滚到指的那一帧看一眼（peek）：真播放头
     /// 原地不动，时间线上另画一根影子指针，指针离开时间线就把画面滚回播放头。

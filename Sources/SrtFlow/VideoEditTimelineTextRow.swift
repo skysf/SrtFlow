@@ -18,7 +18,8 @@ struct TextBlockView: View, Equatable {
     /// 在不在这一轮拖动的成员里（时间线按 `dragMembers` 算好传进来，一轮只变两次）：
     /// 是成员才订阅位移，不是就拿一个永远不发的发布者（§0b）。
     let isDragMember: Bool
-    let onSelect: () -> Void
+    /// 单击。参数是指针在块自己坐标系里的 x（点）：行拿它算播放头落到哪一刻。
+    let onSelect: (Double) -> Void
     /// 双击：跳到这段文字的起点并请求就地编辑。
     let onEdit: () -> Void
     let onDragBegin: () -> Void
@@ -89,11 +90,13 @@ struct TextBlockView: View, Equatable {
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑块）。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
+        // 双击在前：单击手势要让出双击，否则 SwiftUI 会先吃掉第一下。
+        // 两个点击都挂在 .offset 之前：单击要读指针在块里的 x（播放头落到那儿），几何效果之后
+        // 读到的不是块自己的坐标（同把手；剪辑块的刀片也是这么读的）。
+        .onTapGesture(count: 2, perform: onEdit)
+        .onTapGesture(coordinateSpace: .local) { onSelect($0.x) }
         .offset(x: (overlay.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.textTopInset)
         .zIndex(dragOffset != nil ? 10 : (markerHovered ? 5 : 0))
-        // 双击在前：单击手势要让出双击，否则 SwiftUI 会先吃掉第一下。
-        .onTapGesture(count: 2, perform: onEdit)
-        .onTapGesture(perform: onSelect)
         .contextMenu {
             TimelineClipboardMenu.items(onClipboard)
             Divider()
@@ -197,18 +200,20 @@ extension VideoEditTimelineView {
                     // 边缘自动滚动、松手落一次），理由同形状块；块自己从盒子里收位移（§0b）。
                     drag: dragBox,
                     isDragMember: dragMembers.contains(overlay.id),
-                    onSelect: {
+                    onSelect: { x in
                         let flags = NSApp.currentEvent?.modifierFlags ?? []
-                        project.selectText(
-                            overlay.id,
-                            additive: flags.contains(.command) || flags.contains(.shift)
-                        )
+                        let additive = flags.contains(.command) || flags.contains(.shift)
+                        project.selectText(overlay.id, additive: additive)
+                        // 点块 = 播放头落到指针底下、不出这一块；加选不动（§5f，2026-09-30）。
+                        if !additive {
+                            project.seekFromTimeline(blockX: x, start: overlay.timelineStart, end: overlay.timelineEnd, pps: pps)
+                        }
                     },
                     onEdit: {
                         // 播放头先落进这段文字的区间，否则预览里它根本不显示，
-                        // 就地编辑的输入框会浮在一片空白上。
+                        // 就地编辑的输入框会浮在一片空白上。走时间线唯一的 seek 入口（§5f）。
                         project.clock.endPeek()
-                        clock.seek(to: overlay.timelineStart, precise: true)
+                        project.seekFromTimeline(time: overlay.timelineStart)
                         project.selectText(overlay.id, additive: false)
                         // 数字元件不进就地编辑（内容在检查器里调）。
                         if overlay.number == nil { project.textEditingRequest = overlay.id }
