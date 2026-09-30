@@ -550,11 +550,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-30 生成字幕切出 0.1 秒的「just」](docs/bugfixes/2026-09-30-subtitle-piece-on-screen-0.1s.md) — 窄画面下一行两个词，「Darling,」并不进后面的小句就自己成条，剩下的切法里太短只罚固定 0.5、按说了多久算，「just / dive right in」和「just dive / right in」只差 0.002。改成按能在屏上留多久罚、随短的程度加重，小句并不进去时整句一起挑切法（逗号处算好断点）。**罚分要按用户感受到的量算；规则保不住时退到整体最优。**
 - [2026-09-30 成片的声音过了 0 dBFS 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md) — 婚礼工程 17 个音效叠在音乐上，成片峰值 +2.15 dBFS、主推子降 3 dB 成片只降 2 dB；探针把混音和成片各量一级：AVFoundation 的 float 混音完全线性、不削，是 AAC 编码器收了过 0 的信号后RMS 掉 4.5 dB、峰值冒到 +12。写 f32 时在 −1 dBFS 封顶、封顶前的峰值报到导出面板和 AI 的结果里。**两份结果互相比之前先把每一级单独量一遍；有损编码器不是透明的管子。**
 - [2026-09-30 动画行的「In」「Out」、字体目录的「Chinese」「Other」从没进过表](docs/bugfixes/2026-09-30-animation-in-out-labels-never-localized.md) — 经参数转交的文案靠手抄清单守，`help:`、`label:` 各漏过一轮之后 `title:` 和位置参数又漏了一个多月；改成从声明里找 `LocalizedStringKey` 参数、调用点自动纳入。**同一个教训撞第三次就别再补清单，改成机制。**
-<<<<<<< HEAD
-- [2026-10-01 烧录页默认窗口宽度下字幕列被裁掉右边、文件行的提示截成省略号](docs/bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md) — 内层 `HSplitView` 最后一栏的 ideal 和前面各栏的 min 一起放不进可用宽度就被裁；ideal 收到和 min 一样，提示用 `ViewThatFits` 少显示一句。**截图要按用户默认的窗口大小拍，1400 宽看不出。**
-=======
 - [2026-10-01 录屏设置页的「follows the project」、烧录列表的「· N lines」从没进过表](docs/bugfixes/2026-10-01-interpolated-keys-never-localized.md) — 带插值的键是守卫「写明的盲区」，写进文档不等于有人守；改成对每个 `\(…)` 把 `%lld` / `%@` 都试一遍、只看直接调用点。**判不出类型就把几种可能都试一遍，比跳过强。**
->>>>>>> origin/main
+- [2026-10-01 烧录页默认窗口宽度下字幕列被裁掉右边、文件行的提示截成省略号](docs/bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md) — 内层 `HSplitView` 最后一栏的 ideal 和前面各栏的 min 一起放不进可用宽度就被裁；ideal 收到和 min 一样，提示用 `ViewThatFits` 少显示一句。**截图要按用户默认的窗口大小拍，1400 宽看不出。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
