@@ -42,7 +42,7 @@
 1. **机制**（PR #108，已合并）：`AppLanguage` 的 locale / AppKit 语言 / 有效语言代码都从 rawValue 推出来，音频库按语言选标题改看 `resolvedCode`；
    覆盖守卫按 `Resources/*.lproj/` 现场找表、每张译文表都和 en 对账（键集、空值、占位符、重复键），`InfoPlist.strings` 一并对账；
    `check-mcp.sh` 的访达用途说明扫每一张 `InfoPlist.strings`；架构文档补「加一种界面语言」。
-2. **西班牙语**（第二个 PR）：`es.lproj` 两张表 + `case spanish = "es"`；系统语言设成英文、App 切西班牙语，逐面板看一遍排版，撞出来的按
+2. **西班牙语**（PR #109，已合并）：`es.lproj` 两张表 + `case spanish = "es"`；系统语言设成英文、App 切西班牙语，逐面板看一遍排版，撞出来的按
    [检查器的排版](../architecture/inspector-layout.md) 的规矩修；结果报给用户。
 3. **法语、土耳其语**：按第 2 步的结果定。
 
@@ -53,3 +53,18 @@
 - **排版**：没有自动检查能抓文字撑破或截断（`checks/inspector-fits-width.sh` 只抓 Picker 的 `.fixedSize()`）。
   每种语言都要在真窗口里逐面板看；要在**系统语言是英文时**做（见本地化文档第五节）。
 - **以后每个 PR 的本地化成本**：守卫要求每张表键集完全一致，新加一句文案就得同时给出每种语言的译文。这是永久的税，写 PR 的人（多半是代理）当场翻。
+
+## 六、西班牙语在真窗口里看到的（2026-09-30）
+
+系统语言英文、App 切 Español，进程内冒烟起 `SrtFlowDev` 拍四页 + 剪辑页选中一段的检查器（上下两屏）：
+
+| 看到的 | 原因 | 处理 |
+| --- | --- | --- |
+| 侧栏「Incrustar subtítu…」「Conversión por l…」截断 | 宽档最窄 196pt，sidebar 的 List 把标签截成一行 | 标签允许折两行（`SidebarToolRow`，本 PR） |
+| 转场卡片「Empuje a la izqui…」等三张截断 | 卡片宽度只放得下约 17 个字 | 译文改短：Empuje izquierda / Barrido abajo 这一类（#109） |
+| 压缩页 CRF 滑杆右端「Archivo más pequeño」折成两行 | 英文「Smaller file」很短 | 译文改成「Menor tamaño」（#109） |
+| 检查器动画两行标签「In」「Out」是英文，字体目录分组「Chinese」「Other」是英文 | 从没进过表：经参数转交的文案，守卫的手抄清单没有 `title:` 和位置参数 | [案例](../bugfixes/2026-09-30-animation-in-out-labels-never-localized.md)，守卫改成从声明推 |
+| 烧录页文件行的两句提示被截断、字幕列空状态文字和按钮被裁掉右边 | **英文同尺寸（1180 宽）一样**，是内层 `HSplitView` 的 ideal 之和放不下时最后一栏溢出（[2026-08-12 案例](../bugfixes/2026-08-12-subtitle-editing-surfaces-smoke-fixes.md)的老问题） | 与语言无关，没在这一轮修；记在这里等拍板 |
+
+放得下的：检查器的速度 / 音量 / 声音场景 / 转场 / Transform / 裁切四个缩写（Izq Der Sup Inf）/ 动画；压缩页、烧录页的样式编辑、批量转换页；
+时间线工具栏。法语、土耳其语照这个流程再看一遍。
