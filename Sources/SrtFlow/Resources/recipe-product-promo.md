@@ -58,9 +58,14 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Footage with "WaterMark" in its name may be used unless the user says otherwise. No prices, no invented student counts or
   ratings.
 
+## Sound effects
+
+- Transition sounds come from add_clips sound_effect, made on this Mac (no download, no fal): a whoosh on a push,
+  a pop when a keyword appears, a shutter on a photo. Give hit_at = the cut or the moment the word appears; SrtFlow places
+  the start.
+
 ## Generated media (only if generate_media is among your tools)
 
-- Transition sounds (whoosh on a push, a pop when a keyword appears, a shutter): generate_media kind sound_effect.
 - When find_audio has nothing bright, generate_media kind music ("upbeat, bright, electronic, no vocals") before asking the
   user for a track. Never generate pictures of the product.
 

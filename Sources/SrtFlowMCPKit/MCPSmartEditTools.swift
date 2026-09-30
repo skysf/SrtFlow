@@ -13,13 +13,13 @@ enum MCPSmartEditTools {
             return MCPToolDefinition(
                 .transcribe, title: "Transcribe speech",
                 description: """
-                What is said where, with timings: sentences (start, end, text) and, with words=true, every word. For \
-                clips on the timeline (default: every video-track clip with sound; audio-only clips such as music only \
-                when named in clip_ids) times are timeline seconds; for a file they are seconds in the file. Media that \
-                was never transcribed is transcribed on this Mac first: the result is then a job id — wait with get_job, \
-                then call transcribe again with the same arguments (it reads the cache instantly; subtitles generated \
-                in SrtFlow earlier count too). Long transcripts come in pieces: call again with from = next_from. Use it \
-                to pick what to keep for a promo, or to find mistakes and filler words, then cut with cut_speech.
+                What is said where, with timings: sentences (start, end, text) and, with words=true, every word. For clips on \
+                the timeline (default: every video-track clip with sound; audio-only clips such as music only when named in \
+                clip_ids) times are timeline seconds; for a file, seconds in the file. Media never transcribed is transcribed on \
+                this Mac first: the result is then a job id — wait with get_job, then call transcribe again with the same \
+                arguments (the cache answers instantly; subtitles generated in SrtFlow earlier count too). Long transcripts come \
+                in pieces: call again with from = next_from. Use it to pick what to keep for a promo, or to find mistakes and \
+                filler words, then cut with cut_speech.
                 """,
                 input: MCPSchema.object([
                     "clip_ids": MCPSchema.array(of: MCPSchema.string("Clip id."), "Clips to transcribe (default: video-track clips with sound)."),
@@ -45,11 +45,11 @@ enum MCPSmartEditTools {
                 description: """
                 Tighten a talking clip on V1 in one step: cut out ranges (by text — pass sentence or word times from \
                 transcribe), or keep only some ranges; shorten pauses; remove filler words (um, uh and Chinese ones) and words \
-                said twice in a row. Cuts land in the gaps between words, never inside one. The clip becomes pieces \
-                placed back to back and later V1 clips move left; the clip's linked sound is cut with it even when \
-                linking is off. Music, texts and subtitles on other tracks do not move — regenerate subtitles \
-                afterwards (the transcript is cached, so it is quick). Filler words and repeats need transcribe first. \
-                One undo step. Returns what was removed (times before the cut) and the new pieces.
+                said twice in a row. Cuts land in the gaps between words, never inside one. The clip becomes pieces placed back \
+                to back and later V1 clips move left; its linked sound is cut with it even when linking is off. Music, texts and \
+                subtitles on other tracks do not move — regenerate subtitles afterwards (the transcript is cached, so it is \
+                quick). Filler words and repeats need transcribe first. One undo step. Returns what was removed (times before \
+                the cut) and the new pieces.
                 """,
                 input: MCPSchema.object([
                     "clip_id": MCPSchema.string("The talking clip on V1."),
@@ -67,12 +67,12 @@ enum MCPSmartEditTools {
             return MCPToolDefinition(
                 .cutToBeat, title: "Cut to the beat",
                 description: """
-                Re-time a run of V1 clips so every cut lands on a beat of a music clip. The first clip keeps its start; \
-                each clip keeps its in point and gets a new out point on a beat — the beat nearest to where it ends now, \
-                or exactly beats_per_clip beats (fewer when the media is too short). on=downbeats cuts only on the first \
-                beat of each bar. Clips stay at least 0.4 s long; a clip that cannot reach a beat keeps its length. Later \
-                V1 clips move with the change and the clips' linked sound follows; the music does not move. Needs music \
-                with a steady beat (listen with beats=true shows it). One undo step.
+                Re-time a run of V1 clips so every cut lands on a beat of a music clip. The first clip keeps its start; each \
+                clip keeps its in point and gets a new out point on a beat — the nearest to where it ends now, or exactly \
+                beats_per_clip beats (fewer when the media is too short). on=downbeats cuts only on the first beat of each bar. \
+                Clips stay at least 0.4 s long; one that cannot reach a beat keeps its length. Later V1 clips move with the \
+                change and linked sound follows; the music does not move. Needs music with a steady beat (listen beats=true \
+                shows it). One undo step.
                 """,
                 input: MCPSchema.object([
                     "music_clip_id": MCPSchema.string("The music clip whose beats to cut on."),

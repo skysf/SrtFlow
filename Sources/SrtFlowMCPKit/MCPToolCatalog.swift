@@ -202,6 +202,5 @@ public enum MCPSchema {
 
     /// 轨道名：V1 是主视频轨，V2、V3… 是叠在上面的视频轨，A1、A2… 是音频轨。
     public static let trackDescription =
-        "Track name: V1 is the main video track, V2, V3… are video tracks drawn above it, A1, A2… are audio tracks. "
-        + "new_video / new_audio opens a new track."
+        "V1 is the main video track, V2, V3… video tracks above it, A1, A2… audio tracks; new_video / new_audio opens a new one."
 }

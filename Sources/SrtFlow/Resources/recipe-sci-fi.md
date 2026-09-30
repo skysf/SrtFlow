@@ -40,10 +40,15 @@ use_for: Tech products, AI and future topics, space, cyberpunk cities, game prom
 - Voice: add_voiceover with zh_male or en_male (or zh_female_warm / en_female_warm) at speed 1.0, subtitles
   true. For an on-board-computer feel, give the voice clips the radio sound scene (edit_clip sound_scene kind radio).
 
+## Sound effects
+
+- UI beeps (beep, click, tick), whooshes and glitches come from add_clips sound_effect with hit_at on the cut or the
+  on-screen event; made on this Mac.
+
 ## Generated media (only if generate_media is among your tools)
 
 - Space, city or cockpit shots the footage lacks: generate_media kind text_to_video (cold colours, slow push), 480p first.
-- UI beeps, a boot-up hum, whooshes: kind sound_effect. Music: kind music ("dark synth, tense, pulsing").
+- Music: kind music ("dark synth, tense, pulsing"). A boot-up hum or another real-world sound: kind sound_effect.
 
 ## Checklist before export
 

@@ -15,12 +15,12 @@ enum MCPRecipeTools {
                 .recipes, title: "Read editing styles",
                 description: """
                 SrtFlow's editing styles: how to cut a whole video in a style — structure by the second, shot lengths, \
-                transitions, filters, fonts, music, voice and a checklist. Without id: every style with when to use it \
-                (preset: product or course promo, cinematic opening, sci-fi, documentary, daily vlog; the user may have \
-                their own). With id: the whole style. Before editing a whole video from the user's footage, pick the one \
-                that fits their goal, tell them in one sentence which one you follow, and follow it; what the user says \
-                always wins over the style. If they want a style again later, offer save_recipe. Call them editing \
-                styles when talking to the user (the built-in ones are preset styles).
+                transitions, filters, fonts, music, voice and a checklist. Without id: every style with when to use it (preset: \
+                product or course promo, cinematic opening, sci-fi, documentary, daily vlog; the user may have their own). With \
+                id: the whole style. Before editing a whole video from the user's footage, pick the one that fits their goal, \
+                tell them in one sentence which one you follow, and follow it; what the user says always wins. If they want a \
+                style again later, offer save_recipe. Call them editing styles when talking to the user (the built-in ones are \
+                preset styles).
                 """,
                 input: MCPSchema.object([
                     "id": MCPSchema.string("A style's id or title; leave out to list them all.")
@@ -31,10 +31,10 @@ enum MCPRecipeTools {
             return MCPToolDefinition(
                 .saveRecipe, title: "Save an editing style",
                 description: """
-                Save an editing style of the user's own, only when they ask (e.g. "save this as a style"). text is the \
-                whole style in Markdown, written like the preset ones (read one with recipes first). The name of one of \
-                their styles replaces it (the old file goes to the Trash); a preset style's name makes their own version \
-                of it. Styles live in SrtFlow's own folder (Settings → AI lists them), not in the project folder.
+                Save an editing style of the user's own, only when they ask (e.g. "save this as a style"). text is the whole \
+                style in Markdown, written like the preset ones (read one with recipes first). The name of one of their styles \
+                replaces it (the old file goes to the Trash); a preset style's name makes their own version of it. Styles live \
+                in SrtFlow's own folder (Settings → AI lists them), not in the project.
                 """,
                 input: MCPSchema.object([
                     "name": MCPSchema.string("The style's name, e.g. \"Course promo\"."),

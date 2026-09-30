@@ -42,6 +42,7 @@ runSpeechCutChecks()
 runBeatCutChecks()
 runFalVoiceChecks()
 runProviderChecks()
+runSoundEffectChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) MCP checks failed.")

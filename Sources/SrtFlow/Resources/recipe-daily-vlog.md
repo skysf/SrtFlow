@@ -37,10 +37,14 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and caf√
 - Voice: usually none (the real sound is the charm of a vlog). For a voiceover, add_voiceover with zh_female_warm or
   en_female_warm at speed 1.05, subtitles true.
 
+## Sound effects
+
+- A pop when text appears and a whoosh on a push: add_clips sound_effect with hit_at on that moment, made on this Mac;
+  nothing to download or pay for.
+
 ## Generated media (only if generate_media is among your tools)
 
-- Sound effects only (a pop for text, a whoosh on a push: kind sound_effect) and, when find_audio has nothing light, kind
-  music. Never generated pictures.
+- Only music when find_audio has nothing light (kind music). Never generated pictures.
 
 ## Checklist before export
 

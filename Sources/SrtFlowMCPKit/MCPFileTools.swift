@@ -11,11 +11,10 @@ public enum MCPFileTools {
             return MCPToolDefinition(
                 .readDocument, title: "Read a document",
                 description: """
-                Read the text of a document the user gave you: a script, an outline, notes, a list of selling \
-                points. Works for PDF, Word (.doc, .docx), RTF, ODT, .txt and .md; not for Pages files (ask the user \
-                to export PDF or Word) or scanned PDFs (pictures of text). Long documents come in pieces of \
-                max_chars characters; call again with from_char = next_from_char for the rest. Files outside the \
-                opened folder need the user's OK (the result asks).
+                Read the text of a document the user gave you: a script, an outline, notes, selling points. PDF, Word (.doc, \
+                .docx), RTF, ODT, .txt and .md; not Pages files (ask for PDF or Word) or scanned PDFs (pictures of text). Long \
+                documents come in pieces of max_chars characters; call again with from_char = next_from_char for the rest. Files \
+                outside the opened folder need the user's OK.
                 """,
                 input: MCPSchema.object([
                     "file": MCPSchema.string("Path of the document (absolute, or relative to the opened folder)."),
@@ -29,11 +28,11 @@ public enum MCPFileTools {
             return MCPToolDefinition(
                 .manageFiles, title: "Organise files",
                 description: """
-                Move, rename, make folders or put files in the Trash, only inside folders the user named with \
-                open_folder. Only do this when the user asked you to organise or clean up their files; never touch the \
-                originals on your own. Nothing is overwritten: a name that is taken fails and you pick another. trash \
-                always asks first (needs_confirmation). Media used in the open project follows its moved files. \
-                These changes are not undone by Command-Z or undo, so tell the user what you did.
+                Move, rename, make folders or put files in the Trash, only inside folders the user named with open_folder, and \
+                only when the user asked you to organise or clean up; never touch the originals on your own. Nothing is \
+                overwritten: a taken name fails and you pick another. trash always asks first (needs_confirmation). Media used \
+                in the open project follows its moved files. Command-Z and undo do not revert these, so tell the user what you \
+                did.
                 """,
                 input: MCPSchema.object([
                     "action": MCPSchema.string("What to do.", oneOf: ["move", "rename", "make_folder", "trash"]),

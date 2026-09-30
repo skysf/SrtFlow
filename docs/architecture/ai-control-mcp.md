@@ -533,6 +533,13 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
     ③ **每个改动的结果把连带发生的事说清楚**，意图用参数说而不是靠拖拽的惯例（`edit_clip keyframes` = keep_frames / stretch / clear，
     结果里 `keyframes_note`；`split_clip` 的结果给两半各自的关键帧）。以后每个工具都照这三条审。
 
+43. **合成音效（`add_clips` 的 `sound_effect` 条目 + `hit_at`，2026-09-30；合同全在 [合成音效](sound-effect-synth.md)）**：不另开工具
+    （第一节第 5 条：先看加参数行不行），条目和 `file` / `library_id` 并列，三个只给一个；预设名走词表 `MCPVocabulary.soundEffectPresets`
+    （和 App 的 `SoundEffectPreset` 对账）；`hit_at` 是时间线秒，工具按声音自己的落点反算开头（负了从声音中间放），没给 `hit_at` 也没给
+    `start` 就放在播放头，结果里报出 `hit_at`；文件放 `<起点>/SrtFlow/音效`、同参数同文件不重写（不算覆盖、不问）；写文件只经
+    `AIAudioFileWriter`、渲染在 `MediaReadQueue.analysis` 上；段默认 −8 dB。**AI 的顺序（用户定）**：先 `find_audio` 找录音（音效库做完后）、
+    没有合适的用 `sound_effect`、真实声音都没有才 `generate_media` —— `find_audio` 和 `generate_media` 的说明、风格卡都这么写；总说明目录
+    Sound 那一行带着它。清单预算：加它之前 71,612 / 72,000，把二十几个工具的说明各收了一截才放进去（71,813）。
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
@@ -624,6 +631,7 @@ edit_clip 2,074 字超长、清单里有汉字）。
 Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`（本机手动）、`scripts/fal-models/refresh.sh`（联网手动）。细节见
 [fal.ai 生成](fal-generation.md) 第十一节。
 
+合成音效（第 43 条，`SoundEffectChecks`）：16 个预设渲得出、峰值 −1 dBFS / 响度 −9 LUFS 封顶、落点在声音里且实测峰值离它不远、末尾淡完、同参数逐采样一致、换 variation 就不同、同参数同文件名、频谱走向（whoosh 先升后降、riser / suction 升、downlifter 降）、参数范围、`sound_effect` 条目怎么读、落点怎么算开头、词表对账、总说明提到它；扫描：合成器和工具不碰 `AVAudioFile`、渲染在 `MediaReadQueue.analysis` 上。
 ## 八、人工回归清单（发版前在真机上走一遍）
 
 - [ ] 设置里连接 Claude 桌面版 → 重启 Claude → 工具列表里有 srtflow 的全部工具（个数 = `MCPToolName` 的条数）。
@@ -719,6 +727,7 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
       再配几句只有一两个字的（「Go!」「好。」「我们开始吧。」），听着是正常的字、没有杂音。
 
 - [ ] fal.ai 生成、fal 的声音、克隆：整套人工回归清单在 [fal.ai 生成](fal-generation.md) 第十一节（要真 Key）。
+- [ ] 让 AI 「在 12.0 秒的切点上放一个 whoosh」：时间线上块的最响处压在 12.0 秒、块开头在它前面约 0.55 秒，结果里 `hit_at` = 12.0；同参数再放一次，`SrtFlow/音效` 里不多出文件（第 43 条）。
 
 ## 九、已知不足（第一期）
 
