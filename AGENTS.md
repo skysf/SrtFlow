@@ -150,7 +150,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 - 构建与打包的 Rosetta / arm64 要求、常用命令、打包和验收：
   [docs/build/build-and-packaging.md](docs/build/build-and-packaging.md)。
-- 音频库素材的制备与上传（选曲 → 规格化 → manifest → R2）：
+- 音频库素材的制备与上传（音乐：选曲 → 规格化 → manifest → R2；音效：手写目录 → 峰值归一 + 落点 → manifest → R2）：
   [docs/build/audio-library-pipeline.md](docs/build/audio-library-pipeline.md)。
 - 本机配音模型（Kokoro）的整理与上传（钉版本的来源 → 整理 + 清单 → R2，密钥放仓库外）：
   [docs/build/voice-model-pipeline.md](docs/build/voice-model-pipeline.md)。脚本在 `scripts/voice-models/`，R2 签名只有 `scripts/r2.py` 一份，
@@ -269,6 +269,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」）：
   `scripts/check-audio-library.sh`。
+- 音效目录（`scripts/audio-library/sfx-catalog.tsv`：id 连号永不改、来源唯一、中英标题、tag 都在词表里、来源方）：
+  `checks/sfx-catalog.sh`。
 - 压缩 / 烧录记住的设置和字幕样式在队列创建时读回来（不挂在页面的 `onAppear` 上），剪辑页和 AI 的字幕样式都经
   `subtitleStyle(appWide:)`（工程自己的样式优先）：`checks/encode-settings-memory.sh`。
 - 构建日志不得被吞：`checks/no-swallowed-build-output.sh`。

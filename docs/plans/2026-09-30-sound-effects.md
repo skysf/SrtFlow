@@ -1,8 +1,10 @@
 # 音效：合成器（给 AI）+ 录音素材库（给用户）
 
 > 2026-09-30 方案。用户在讨论窗口逐条拍的板见第二节，执行分三个 PR（第五节）。
-> **合成器 2026-09-30 三轮试听后定稿**（第六节），第一个 PR（合成器 + 接 MCP）随本文档提交；长期约束在
-> [合成音效](../architecture/sound-effect-synth.md)，**当前状态以那份文档和代码为准**。
+> **合成器 2026-09-30 三轮试听后定稿**（第六节），第一个 PR（合成器 + 接 MCP，#98）已合并；长期约束在
+> [合成音效](../architecture/sound-effect-synth.md)。第二个 PR（素材库清单 + R2）：63 条已在
+> `https://downloads.skylu.ai/Audio/SoundEffects/`，管线见 [音频库素材管线](../build/audio-library-pipeline.md) 第八节。
+> **当前状态以那些文档和代码为准**。
 > 相关：[音频库（音乐 / 音效）](2026-09-22-audio-library.md)、[音频库素材管线](../build/audio-library-pipeline.md)、
 > [AI 接口（MCP）](../architecture/ai-control-mcp.md)、[fal.ai 生成](../architecture/fal-generation.md)、
 > [声音场景](../architecture/sound-scenes.md)、[阻塞的媒体读取](../architecture/blocking-media-reads.md)、
@@ -122,8 +124,10 @@
 1. **合成器 + 接 MCP**：`Sources/SrtFlow/SoundEffects/`（DSP 地基、预设分文件，每个 ≤ 400 行）、`add_clips` 的 `sound_effect` 条目、
    `AIWorkspace` 加音效文件夹、总说明 Sound 那一行、ai-control-mcp.md 第四节加一条、风格卡改指向本地音效（先改中文稿）、
    `scripts/check-mcp.sh` 里的结构自检。本方案文档跟这个 PR 一起提。
-2. **素材库清单 + 上传 R2**：管线加音效一路、63 个转好、manifest、上传；授权政策进两份文档。
-3. **面板 + find_audio**：第二个 store、筛选、试听、拖入；`find_audio kind`；`get_timeline` 的音效段写 `library_id`。
+2. **素材库清单 + 上传 R2**（2026-09-30 做完）：`sfx-catalog.tsv` + `sfx_normalize.py` + `sfx_build_manifest.py`、63 条转好上传、
+   `checks/sfx-catalog.sh`；授权政策进两份文档。清单里多了 `hit`、`title_zh`、`provenance`、`owned`，App 还没接。
+3. **面板 + find_audio**：第二个 store、筛选、试听、拖入；`find_audio kind`；`get_timeline` 的音效段写 `library_id`；
+   App 解析 `hit` / `title_zh`、`owned` 不署名（`AIMusicCredits`、署名页、`scripts/check-audio-library.sh` 各加一条）。
 
 ## 六、试听原型（2026-09-30 渲出，等拍板）
 

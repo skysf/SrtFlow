@@ -84,3 +84,4 @@ AGENTS.local.md
 
 # 随 App 分发的第三方二进制（用 scripts/vendor-ffmpeg.sh 获取，不入库）
 vendor/
+__pycache__/

@@ -50,6 +50,10 @@ https://mp3d.jamendo.com/download/track/<id>/mp32/   →  200 audio/mpeg
 署名句由 manifest 的 `license.text` 给出（源站的现成句子，改一个字都可能不再
 满足条款）。
 
+**2026-09-30 音效一路加一类 `owned`**（[音效方案](../plans/2026-09-30-sound-effects.md) 第二节，用户拍板）：作者自己生成
+（ElevenLabs 付费账号）或买来、有权分发的素材，**不用署名**，署名页和 `music_credits` 都不列（App 侧在面板那个 PR 里接）；
+`provenance` 记着是生成的还是买来的，只给人看。只有用户自己的素材能标这一类，网上下的照旧只收 CC-BY / CC0。
+
 ## 三、筛选漏斗（第一批实测）
 
 ```
@@ -162,3 +166,32 @@ s3://skylu-downloads/Audio/Music/manifest.json
 2. **`id` 绝不能改。** 工程文件存的就是它。
 3. 加 tag 只动 `build_manifest.py` 顶上的 `TAGS` 表（双语放数据里，不进
    `Localizable.strings` —— tag 会随 manifest 增长，不该每加一个就发一次 App）。
+
+## 八、音效一路（2026-09-30）
+
+素材：用户 SouthPole 项目里的 63 个音效（44 个 ElevenLabs 付费账号生成的 WAV，19 个从音乐圈朋友买来的 mp3 / wav / 纯音频 mp4），
+全收（[音效方案](../plans/2026-09-30-sound-effects.md) 第二节）。源头是**手写的目录** `scripts/audio-library/sfx-catalog.tsv`
+（id、来源文件、英文和中文标题、来源方、tag），**id 从 sfx_0001 连号、永不改**，`checks/sfx-catalog.sh` 钉着
+（唯一、连号、来源唯一、标题都有、每条至少一个种类 tag、tag 都在词表里）。
+
+```
+FFMPEG=vendor/ffmpeg scripts/audio-library/sfx_normalize.py scripts/audio-library/sfx-catalog.tsv <素材根目录> <产物目录>
+scripts/audio-library/sfx_build_manifest.py scripts/audio-library/sfx-catalog.tsv <产物目录> manifest.json
+scripts/audio-library/upload.py <产物目录> manifest.json --prefix Audio/SoundEffects
+```
+
+- **峰值归一到 −1 dBFS，不做响度归一**：音效的动态就是它的全部（一声撞击前后差 40 dB 是设计），按 LUFS 拉平会把安静的铺底抬成
+  噪声、把撞击压扁；峰值归一只让「最响的一下」一样响。放上时间线的默认音量由 App 定（合成音效是 −8 dB）。
+  峰值**在真正的声道上量**：第一版按单声道混下来量，两边相位不同时混出来的峰值偏低、增益给多了，sfx_0031 的产物顶到 +0.3 dBFS。
+  AAC 有损编码的采样峰值控不到 0.3 dB（同一条换个增益重编能跳 0.7 dB），所以量产物补增益、最后要在 ±1 dB 内且不许高过 −0.2 dBFS。
+- **落点 `hit`**：50 ms 均方根最大的那一刻（每 10 ms 一步，取窗中心），写进清单；AI 按它把声音压在切点上，和合成音效的 `hit_at` 同一个口径。
+  铺底、长的 drone 也有一个数，没意义但无害。
+- 清单：`kind: sfx`；`title` 英文、`title_zh` 中文（App 目前只认 `title`，多的字段照忍）；`hit`；`provenance`；`license.code = owned`；
+  `intensity` 按整段 LUFS 分五档（峰值都在 −1 dBFS 时，整段越响 = 越满）。tag 词表 = 音乐的 `TAGS` + `sfx_build_manifest.py` 的
+  `SFX_TAGS`（type 一组是种类：whoosh / impact / riser / … / wind / animal / mechanical，另加 scifi / cinematic 两个场景），
+  两张表不许重名。
+- 落点：`Audio/SoundEffects/sfx_<n>.m4a` + `Audio/SoundEffects/manifest.json`（缓存策略同音乐：素材 immutable、清单 5 分钟），
+  App 的 `AudioLibrarySource.soundEffects` 从 2026-09-22 起就指着这个地址。
+- 第一批实测（2026-09-30）：63 条 / 11 MB，零失败，峰值 −1.67 … −0.23 dBFS；公网核对 200、`Accept-Ranges: bytes`、清单 36 KB、
+  没漏 `_why`。
+- 扩库：目录里加行（新 id 接着编，旧行一个字都别动）、三步照跑（规格化跳过已有的产物）；**manifest 整份覆盖**同第七节。

@@ -108,6 +108,7 @@ run_check "blocking-media-reads（扫描守卫）" checks/blocking-media-reads.s
 run_check "export-audio-single-pipeline（扫描守卫：成片的声音就是预览那份混音）" checks/export-audio-single-pipeline.sh
 run_check "check-script-source-lists（扫描守卫）" checks/check-script-source-lists.sh
 run_check "docs-index-drift（扫描守卫）" checks/docs-index-drift.sh
+run_check "sfx-catalog（扫描守卫：音效目录 id 连号不改、tag 在词表里）" checks/sfx-catalog.sh
 run_check "source-file-size（扫描守卫：代码文件行数上限，老文件只许降）" checks/source-file-size.sh
 run_check "timeline-drag-wiring（扫描守卫）" checks/timeline-drag-wiring.sh
 run_check "timeline-clipboard-wiring（扫描守卫：复制粘贴的接线、落点鼠标优先）" checks/timeline-clipboard-wiring.sh
