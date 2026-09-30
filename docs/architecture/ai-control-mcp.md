@@ -38,8 +38,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      `checks/MCP/ProtocolChecks.swift` 钉着。
 6. **按客户端怎么读来写：总说明是目录**（2026-09-30 用户拍板，[案例](../bugfixes/2026-09-30-mcp-text-truncated-at-2048.md)）：
    - **Claude Code**（默认开 tool search）会话开始只加载**工具名 + 总说明**，每个工具的完整定义用到才搜出来加载（一次最多 5 个）。
-     它**只保留总说明和每个工具说明的前 2,048 个字符**（JavaScript 的字符串长度，超了静默截掉、末尾加「… [truncated]」；
-     参数的说明目前不截）。**Codex** 要求总说明的前 512 个字符自成一体。Codex 和 Claude 桌面版没有按需加载，整份清单每轮都进上下文。
+     它**只保留总说明和每个工具说明的前 2,048 个字符**（JavaScript 的字符串长度，超了截掉、末尾加「… [truncated]」，对模型和用户都不提示，
+     只在它的 MCP 日志里记一行；参数的说明目前不截）。**Codex** 要求总说明的前 512 个字符自成一体。Codex 和 Claude 桌面版没有按需加载，整份清单每轮都进上下文。
    - 所以给 AI 的文字分三层，各管一件事：
      ① **总说明 = 目录**：SrtFlow 是什么、平常的顺序、几条要 AI **主动**做的规矩（开头问一次看着剪还是后台、只用 SrtFlow 的工具、
      只用给的文件、没存过的工程存在哪要告诉用户），和按需求分组的工具名（带上用户会说的词：9:16、水印、配乐……）。
@@ -627,9 +627,11 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
 ## 八、人工回归清单（发版前在真机上走一遍）
 
 - [ ] 设置里连接 Claude 桌面版 → 重启 Claude → 工具列表里有 srtflow 的全部工具（个数 = `MCPToolName` 的条数）。
-- [ ] 装上这一版、新开一个 Claude Code 会话：系统提示里 srtflow 的说明完整、结尾**不是**「… [truncated]」；让它用 ToolSearch
-      加载 edit_clip、generate_media（配了 fal 时），说明结尾也不是。Claude Code 改了这个上限（它的 MCP 客户端里写死的 2048）
-      就要跟着改 `CatalogTextChecks` 的 `claudeCodeTextLimit`。
+- [ ] 装上这一版、新开一个 Claude Code 会话（`claude -p` 就行，可以 `--strict-mcp-config --mcp-config` 只挂 srtflow），看它的 MCP 日志
+      `~/Library/Caches/claude-cli-nodejs/<会话所在目录，/ 换成 ->/mcp-logs-srtflow/` 里最新的 .jsonl：服务器版本是这一版、**没有**
+      「truncated」（截了会写「Server instructions truncated from … to 2048 chars」「Tool "…" description truncated from …」）。
+      再让模型照抄总说明的最后两行、用 ToolSearch 加载 edit_clip 照抄说明结尾，都不是「… [truncated]」。配了 fal 的机器上多看一眼 generate_media。
+      Claude Code 改了这个上限（它的 MCP 客户端里写死的 2048）就要跟着改 `CatalogTextChecks` 的 `claudeCodeTextLimit`。
 - [ ] SrtFlow 没开时让 AI 调一个工具：SrtFlow 在后台启动，对话窗口不被挤下去，调用成功。
 - [ ] 让 AI 打开一个文件夹、放几段素材：剪辑页被摆到最前面但键盘还在对话框里；每一步时间线滚过去、选中、
       预览跳到那一刻；顶上横幅「Claude 正在剪辑这个工程」。
