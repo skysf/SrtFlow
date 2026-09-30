@@ -125,6 +125,10 @@ enum SmokeDriver {
             note(try await SmokeTimelineSteps.zoom(step, project: project, window: window))
         case .copy, .cut, .paste:
             note(try SmokeTimelineSteps.clipboard(step, project: project, window: window))
+        case .add:
+            note(try SmokeUISteps.add(step, project: project))
+        case .show:
+            note(try SmokeUISteps.show(step, project: project))
         case .toggles:
             // 三个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨。
             if let magnet = step.magnet { project.magnetEnabled = magnet }
@@ -159,7 +163,7 @@ enum SmokeDriver {
         case .state:
             states[step.label ?? "state\(states.count + 1)"] = SmokeStateDump.make(project)
         case .snapshot:
-            try await requestSnapshot(step.name ?? "snapshot", window: window, output: output)
+            try await requestSnapshot(step.name ?? "snapshot", window: try SmokeUISteps.window(for: step, main: window), output: output)
         case .quit:
             return true
         }

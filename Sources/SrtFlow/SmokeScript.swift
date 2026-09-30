@@ -25,6 +25,10 @@ import Foundation
 //   {"do": "perfReset"} / {"do": "perf", "label": "拖动"}   计数清零 / 记一份快照
 //   {"do": "state", "label": "拖完"}                 记下工程此刻的样子（选择、各段位置）
 //   {"do": "snapshot", "name": "after-drag"}         请外面拍一张窗口截图（见 SmokeDriver）
+//   {"do": "snapshot", "name": "export", "target": "sheet"}   拍主窗口上的 sheet；"other" 拍别的窗口（设置）
+//   {"do": "add", "kind": "text"}                    往时间线上加东西：text / shape / blur / filter / transition（SmokeUISteps）
+//   {"do": "show", "panel": "export"}                摆出面板：export / subtitles / record / settings / subtitleList /
+//                                                    library:filters … / dismiss（收回导出、字幕、录屏面板）
 //   {"do": "quit"}
 //
 // 坐标一律是**窗口的点、左上原点**（按窗口 ID 截的图除以 2 就是）。
@@ -32,7 +36,7 @@ import Foundation
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
         case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles, open, menu, zoom
-        case copy, cut, paste
+        case copy, cut, paste, add, show
         case perfReset, perf, state, snapshot, quit
     }
 
@@ -62,11 +66,15 @@ struct SmokeStep: Decodable {
     var path: SmokeStepPath?
     var factor: Double?
     var vertical: Bool?
+    var kind: String?
+    var panel: String?
+    var target: String?
 
     private enum CodingKeys: String, CodingKey {
         case action = "do"
         case seconds, quiet, timeout, width, height, time, at, from, to, count, steps, hold
         case dx, dy, code, chars, flags, label, name, magnet, snapping, linkage, path, factor, vertical
+        case kind, panel, target
     }
 
     static func load(from url: URL) throws -> [SmokeStep] {
