@@ -37,6 +37,8 @@ enum AITimelineTools {
         var url: URL?
         var libraryID: String?
         var soundEffect: AISoundEffectRequest?
+        /// 落点要压在时间线的哪一秒：合成音效和有落点的音效库素材认，别的报错。
+        var hitAt: Double?
         var sourceIn: Double?
         var sourceOut: Double?
         var track: String?
@@ -51,7 +53,7 @@ enum AITimelineTools {
         let requests = try items.enumerated().map { index, item -> ClipRequest in
             let entry = AIToolArguments(item)
             var request = ClipRequest(
-                sourceIn: try entry.double("source_in"), sourceOut: try entry.double("source_out"),
+                hitAt: try entry.double("hit_at"), sourceIn: try entry.double("source_in"), sourceOut: try entry.double("source_out"),
                 track: try entry.string("track"), start: try entry.double("start")
             )
             switch (try entry.string("file"), try entry.string("library_id"), try AISoundEffectRequest.parse(entry, index: index)) {
@@ -61,6 +63,7 @@ enum AITimelineTools {
                     throw AIToolError("clips[\(index)]: \(path) does not exist.")
                 }
                 request.url = url
+                if request.hitAt != nil { throw AIToolError("clips[\(index)]: hit_at works with sound_effect and library sound effects; place a file with start.") }
             case (nil, let id?, nil):
                 request.libraryID = id
             case (nil, nil, let effect?):
@@ -90,6 +93,15 @@ enum AITimelineTools {
                 let found = try await AIAudioLibraryTools.libraryClip(id: id)
                 (clip, name) = (found.clip, found.item.title)
                 library[clip.id] = found.item
+                if let hit = request.hitAt {
+                    // 音效库的素材入库时量了落点：和合成音效一样按它反算开头。
+                    guard let itemHit = found.item.hit else {
+                        throw AIToolError("clips[\(index)]: \(found.item.title) has no hit point; place it with start.")
+                    }
+                    let placement = AISoundEffectRequest.placement(hitAt: hit, renderedHit: itemHit)
+                    request.start = placement.start
+                    request.sourceIn = placement.sourceIn
+                }
                 try trim(&clip, duration: found.item.duration, name: name, request: request, index: index)
             } else if let effect = request.soundEffect {
                 // 合成的音效：落点压在 hit_at 上（开头 = hit_at − 声音里的落点）；没给 hit_at 也没给 start 就放在播放头。
@@ -162,6 +174,7 @@ enum AITimelineTools {
             if let item = library[clip.id] {
                 entry["library_id"] = .string(item.id)
                 entry["title"] = .string(item.title)
+                if let hit = item.hit { entry["hit_at"] = AIFormat.seconds(clip.timelineStart + hit - clip.sourceStart) }
             } else {
                 entry["file"] = .string(AIWorkspace.shared.display(clip.stillImageURL ?? clip.sourceURL))
             }

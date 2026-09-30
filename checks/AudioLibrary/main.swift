@@ -154,6 +154,36 @@ func parsing() {
     let q = try? AudioLibraryManifest.parse(wrap(quiet))
     checkEqual(q?.items.first?.loudness, -21.27, "响度要存真值而不是 -16")
     checkEqual(q?.items.first?.peakLimited, true, "峰值顶住的标记要透出来")
+
+    // ── 音效清单（2026-09-30）：kind sfx、中文标题、落点、owned 不署名
+    let sfx = """
+    {"manifest_version": 1, "kind": "sfx", "items": [
+      {"id": "sfx_0001", "title": "Abyssal Blast", "title_zh": "深渊爆响", "duration": 3.0, "hit": 0.165,
+       "url": "https://downloads.skylu.ai/Audio/SoundEffects/sfx_0001.m4a", "provenance": "elevenlabs",
+       "tags": [{"zh": "撞击", "en": "impact", "group": "type"}],
+       "license": {"code": "owned", "by": "Sky Studio", "src": null, "text": "Sky Studio (owned)"}},
+      {"id": "sfx_0002", "title": "Late Hit", "duration": 2.0, "hit": 9.5,
+       "url": "https://x/sfx_0002.m4a", "license": {"code": "owned"}}
+    ]}
+    """
+    guard let e = try? AudioLibraryManifest.parse(json(sfx)), e.items.count == 2 else {
+        check(false, "音效清单应当解析成两条"); return
+    }
+    checkEqual(e.kind, .sfx, "清单的 kind 是 sfx")
+    checkEqual(e.items[0].kind, .sfx, "条目没写 kind 时跟随清单")
+    checkEqual(e.items[0].titleZh, "深渊爆响", "中文标题读进来")
+    checkEqual(e.items[0].title(chinese: true), "深渊爆响", "界面是中文时显示中文标题")
+    checkEqual(e.items[0].title(chinese: false), "Abyssal Blast", "界面是英文时显示英文标题")
+    checkEqual(it.title(chinese: true), "Distant Shore", "音乐没有中文标题，中文界面也显示原标题")
+    checkEqual(e.items[0].hit, 0.165, "落点读进来")
+    check(e.items[1].hit == nil, "落点超出时长的不认（当没有）")
+    checkEqual(e.items[0].license.needsCredit, false, "owned 不用署名")
+    checkEqual(it.license.needsCredit, true, "CC-BY 要署名")
+    check(AudioLibraryLicense(code: "CC0-1.0", by: "", src: nil, text: "x").needsCredit == false, "CC0 不用署名")
+    checkEqual(e.items[0].defaultClipGainDB, SoundEffectClipGain.defaultDB, "音效放上时间线默认压 -8 dB")
+    checkEqual(it.defaultClipGainDB, 0, "音乐原样放")
+    checkEqual(AudioLibraryManifest.filter(e.items, query: "深渊").map(\.id), ["sfx_0001"], "按中文标题也能搜到")
+    checkEqual(AudioLibraryManifest.filter(e.items, query: "撞击").map(\.id), ["sfx_0001"], "音效的种类 tag 中文能搜")
 }
 
 // MARK: - 二、双语搜索

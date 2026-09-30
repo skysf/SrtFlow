@@ -18,8 +18,9 @@ struct AudioLibraryCreditsView: View {
     let usedIDs: Set<String>
     @Environment(\.dismiss) private var dismiss
 
+    /// 只列要署名的（CC0 和用户自己的 `owned` 不列：列出来反而像要署）。
     private var sorted: [AudioLibraryItem] {
-        items.sorted {
+        items.filter(\.license.needsCredit).sorted {
             (usedIDs.contains($0.id) ? 0 : 1, $0.artist, $0.title)
                 < (usedIDs.contains($1.id) ? 0 : 1, $1.artist, $1.title)
         }

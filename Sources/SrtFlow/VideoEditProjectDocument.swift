@@ -224,17 +224,11 @@ extension VideoEditProject {
         let generation = documentGeneration
         trackImportTask(Task { [weak self] in
             guard let self else { return }
-            let store = AudioLibraryStore.music
-            store.loadIfNeeded()
-            // 等清单到手（它可能正好在拉）。拉不到就算了 —— 那几条会留在
+            // 两个库（音乐、音效）的清单都等到手（它们可能正好在拉）。拉不到就算了 —— 那几条会留在
             // missingMedia 里，用户还有手动重链接那条路。
-            for _ in 0..<60 where store.state.items.isEmpty {
-                try? await Task.sleep(for: .milliseconds(250))
-                if Task.isCancelled { return }
-            }
-            let byID = Dictionary(
-                store.state.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }
-            )
+            let loaded = await AudioLibraryLookup.load(AudioLibraryStore.all)
+            if Task.isCancelled { return }
+            let byID = Dictionary(loaded.items.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
             for key in Set(wanted) {
                 guard isCurrentGeneration(generation), !Task.isCancelled else { return }
                 guard let item = byID[key] else { continue }

@@ -389,6 +389,7 @@ xcrun swiftc \
   Sources/SrtFlow/SoundEffects/SoundEffectBuffer.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectReverb.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectPreset.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectClipGain.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectAirPresets.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectHitPresets.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectTonePresets.swift \

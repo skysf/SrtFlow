@@ -45,9 +45,10 @@
     **自带声音**，配乐 / 配音时把它压低或静音（`edit_clip volume_db` / `muted`）；视频先用最便宜的 `resolution 480p` 出草稿，
     留下的镜头再用 `1080p` 重做；生成内容的使用条款看各家服务商，SrtFlow 没替用户核对，署名句（`music_credits`）只管音乐库
     的音乐；不把生成的画面说成用户拍的。
-12. **音效先用 SrtFlow 自己合成的**（2026-09-30，[音效方案](2026-09-30-sound-effects.md)）：转场的 whoosh / riser / impact、出字的 pop / ding、
-    快门、提示音都用 `add_clips` 的 `sound_effect`（本机合成、不下载、不花钱），落点用 `hit_at` 压在切点或出字那一刻；
-    `generate_media kind sound_effect` 只留给真实的声音（环境声、人群、动物），而且仍是条件句。
+12. **音效按这个顺序**（2026-09-30 用户定，[音效方案](2026-09-30-sound-effects.md)）：先 `find_audio kind=sound_effect` 在音效库里找录音 / 制作好的
+    （whoosh、撞击、riser、风、冰、水、机械……，用 `add_clips` 的 `library_id` + `hit_at` 放）；没有合适的再用 `add_clips` 的 `sound_effect`
+    本机合成（转场的 whoosh / riser / impact、出字的 pop / ding、快门、提示音），落点用 `hit_at` 压在切点或出字那一刻；两种都默认 −8 dB 压在人声下面。
+    `generate_media kind sound_effect` 只留给两边都没有的真实声音（环境声、人群、动物），而且仍是条件句。
 
 ## 三、五张卡
 

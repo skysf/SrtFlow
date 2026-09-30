@@ -28,6 +28,10 @@ struct AudioLibrarySource: Sendable {
 @MainActor
 final class AudioLibraryStore: ObservableObject {
     static let music = AudioLibraryStore(source: .music)
+    /// 音效库（2026-09-30，docs/plans/2026-09-30-sound-effects.md）：另一份清单、同一套缓存和面板。
+    static let soundEffects = AudioLibraryStore(source: .soundEffects)
+    /// 按 id 找素材（重链接、add_clips 的 library_id、署名）要两个库都看：App 不按 id 前缀猜哪个库（AudioLibraryLookup）。
+    static let all = [music, soundEffects]
 
     @Published private(set) var state: State = .idle
     /// 这份清单是从本地缓存读的（拉取失败时的退路），界面要标出来。

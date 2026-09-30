@@ -38,9 +38,22 @@ struct AudioLibraryItem: Identifiable, Hashable, Sendable {
     var intensity: Int
     var tags: [AudioLibraryTag]
     var license: AudioLibraryLicense
+    /// 中文标题（音效那份清单有；音乐没有，界面上照旧显示 `title`）。
+    var titleZh: String?
+    /// 落点：最响的那一刻在第几秒（音效清单入库时量的）；AI 按它把声音压在切点上，和合成音效的 hit_at 同一个口径。
+    var hit: Double?
 
     enum Kind: String, Sendable {
         case music, sfx
+    }
+
+    /// 放上时间线时段的默认音量（dB）：音效峰值归一到 −1 dBFS，原样放会盖过人声，同合成音效；音乐按响度规格化过，原样。
+    var defaultClipGainDB: Double { kind == .sfx ? SoundEffectClipGain.defaultDB : 0 }
+
+    /// 按界面语言显示的标题：有中文标题且界面是中文就用它。
+    func title(chinese: Bool) -> String {
+        if chinese, let zh = titleZh, !zh.isEmpty { return zh }
+        return title
     }
 }
 
@@ -65,6 +78,12 @@ struct AudioLibraryLicense: Hashable, Sendable {
     var code: String
     var by: String
     var src: URL?
+    /// 要不要署名：CC0 不用；`owned`（用户自己生成或买来、有权分发的，2026-09-30 音效那批）不用；其余（CC-BY）都要。
+    /// 署名页、add_clips 的结果、get_timeline 的 music_credits 都只问这一处。
+    var needsCredit: Bool {
+        let upper = code.uppercased()
+        return !(upper.hasPrefix("CC0") || upper == "OWNED")
+    }
     /// 现成的署名句，直接显示在署名页上。
     var text: String
 }
@@ -150,7 +169,9 @@ extension AudioLibraryManifest {
             hasVocals: (d["has_vocals"] as? Bool) ?? false,
             intensity: min(5, max(1, (d["intensity"] as? Int) ?? 3)),
             tags: (d["tags"] as? [[String: Any]] ?? []).compactMap(tag(from:)),
-            license: license
+            license: license,
+            titleZh: d["title_zh"] as? String,
+            hit: (d["hit"] as? Double).flatMap { $0 >= 0 && $0 <= duration ? $0 : nil }
         )
     }
 
@@ -194,6 +215,7 @@ extension AudioLibraryManifest {
         return items.filter { item in
             needles.allSatisfy { needle in
                 item.title.localizedCaseInsensitiveContains(needle)
+                    || (item.titleZh ?? "").localizedCaseInsensitiveContains(needle)
                     || item.artist.localizedCaseInsensitiveContains(needle)
                     || item.tags.contains { $0.matches(needle) }
             }

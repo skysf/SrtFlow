@@ -7,12 +7,17 @@ import SwiftUI
 // 滤镜和转场用网格是因为卡片本身要看（小样就是内容），而一首曲子的封面看不出
 // 任何有用信息 —— 用户要读的是曲名、时长和标签，那是文字，文字排成一列才好读。
 //
-// **音乐和音效不做内层分段**（plan 第九节）：它们本来就是两个 tag，靠筛选区分，
-// 省下一层控件。196pt 里已经有分段切换 + 搜索框 + 筛选条了。
+// **音乐 / 音效是两份清单、两个 store**（2026-09-30 音效库上线，docs/plans/2026-09-30-sound-effects.md）：顶上一个分段切换，
+// 搜索框、筛选条、列表、试听、拖入都是同一套；plan 第九节「不做内层分段」说的是一份清单里靠 tag 分，现在清单分开了。
+// 音效那份的 tag 多一组「种类」（type），排在最前。
 
 struct AudioLibraryPanel: View {
     let project: VideoEditProject
-    @ObservedObject private var store = AudioLibraryStore.music
+    @ObservedObject private var music = AudioLibraryStore.music
+    @ObservedObject private var effects = AudioLibraryStore.soundEffects
+    /// 看哪个库。
+    @State private var kind: AudioLibraryItem.Kind = .music
+    private var store: AudioLibraryStore { kind == .sfx ? effects : music }
     @ObservedObject private var cache = AudioLibraryCache.shared
     @ObservedObject private var audition = AudioLibraryAudition.shared
     // 这个视图用 L10n(...) 拼字符串，光靠环境 locale 变化不会重新求值 body，
@@ -41,6 +46,7 @@ struct AudioLibraryPanel: View {
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         VStack(alignment: .leading, spacing: 0) {
+            libraryPicker
             searchField
             if !allTags.isEmpty { tagFilter }
             Divider()
@@ -49,9 +55,13 @@ struct AudioLibraryPanel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .sheet(isPresented: $showsCredits) {
-            AudioLibraryCreditsView(items: store.state.items, usedIDs: usedRemoteKeys).appLanguage()
+            AudioLibraryCreditsView(items: music.state.items + effects.state.items, usedIDs: usedRemoteKeys).appLanguage()
         }
         .onAppear { store.loadIfNeeded() }
+        .onChange(of: kind) { _, _ in
+            store.loadIfNeeded()
+            activeTags = []
+        }
         .onDisappear {
             // 切走这一页就停试听 —— 声音还在响而界面已经不见了，用户找不到从哪停。
             audition.stop(timelinePlayer: project.clock.player)
@@ -60,12 +70,24 @@ struct AudioLibraryPanel: View {
 
     // MARK: - 搜索与筛选
 
+    private var libraryPicker: some View {
+        Picker("", selection: $kind) {
+            Text(L10n("Music")).tag(AudioLibraryItem.Kind.music)
+            Text(L10n("Sound Effects")).tag(AudioLibraryItem.Kind.sfx)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .controlSize(.small)
+        .padding(.horizontal, 8)
+        .padding(.top, 6)
+    }
+
     private var searchField: some View {
         HStack(spacing: 4) {
             Image(systemName: "magnifyingglass")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField(L10n("Search music"), text: $query)
+            TextField(kind == .sfx ? L10n("Search sound effects") : L10n("Search music"), text: $query)
                 .textFieldStyle(.plain)
                 .font(.caption)
             if !query.isEmpty {
@@ -89,7 +111,7 @@ struct AudioLibraryPanel: View {
         for item in store.state.items {
             for tag in item.tags where seen[tag.en] == nil { seen[tag.en] = tag }
         }
-        let order = ["mood": 0, "scene": 1, "texture": 2]
+        let order = ["type": 0, "mood": 1, "scene": 2, "texture": 3]
         return seen.values.sorted {
             (order[$0.group] ?? 9, $0.en) < (order[$1.group] ?? 9, $1.en)
         }
@@ -153,7 +175,7 @@ struct AudioLibraryPanel: View {
         case .loaded:
             if visibleItems.isEmpty {
                 centered {
-                    Text(L10n("No music matches."))
+                    Text(kind == .sfx ? L10n("No sound effects match.") : L10n("No music matches."))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -213,6 +235,8 @@ struct AudioLibraryPanel: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 4) {
+                // 音效是用户自己的（owned），不用署名：这个库里一条要署的都没有时，署名入口不出现。
+                if store.state.items.contains(where: \.license.needsCredit) {
                 Button {
                     showsCredits = true
                 } label: {
@@ -230,6 +254,7 @@ struct AudioLibraryPanel: View {
                 }
                 .buttonStyle(.plain)
                 .instantHelp("Where this music comes from, and how to credit it")
+                }
 
                 Spacer(minLength: 0)
 
@@ -254,7 +279,7 @@ struct AudioLibraryPanel: View {
             .padding(.vertical, 6)
         }
         .confirmationDialog(
-            L10n("Remove downloaded music?"),
+            L10n("Remove downloaded audio?"),
             isPresented: $showsClearConfirm, titleVisibility: .visible
         ) {
             Button(L10n("Remove"), role: .destructive) {
@@ -282,109 +307,10 @@ struct AudioLibraryPanel: View {
         Task {
             do {
                 let url = try await AudioLibraryCache.shared.download(item)
-                project.addLibraryAudio(url: url, remoteKey: item.id, duration: item.duration)
+                project.addLibraryAudio(url: url, remoteKey: item.id, duration: item.duration, gainDB: item.defaultClipGainDB)
             } catch {
                 project.notice = error.localizedDescription
             }
-        }
-    }
-}
-
-// MARK: - 一行
-
-private struct AudioLibraryRow: View {
-    let item: AudioLibraryItem
-    let isChinese: Bool
-    let onAudition: () -> Void
-    let onAdd: () -> Void
-
-    @ObservedObject private var cache = AudioLibraryCache.shared
-    @ObservedObject private var audition = AudioLibraryAudition.shared
-    @State private var hovering = false
-
-    private var isPlaying: Bool { audition.playingID == item.id }
-    private var isDownloading: Bool { cache.isDownloading(item.id) }
-
-    var body: some View {
-        let _ = PerfCounters.body(Self.self)
-        HStack(alignment: .top, spacing: 8) {
-            auditionButton
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.caption)
-                    .lineLimit(1)
-                HStack(spacing: 4) {
-                    Text(MediaFormatting.duration(item.duration))
-                        .monospacedDigit()
-                    if cache.cachedIDs.contains(item.id) {
-                        Image(systemName: "arrow.down.circle.fill")
-                    }
-                    Text(item.artist).lineLimit(1)
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                tagLine
-            }
-            Spacer(minLength: 0)
-            if hovering || isDownloading { addButton }
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .contentShape(Rectangle())
-        .background(isPlaying ? AnyShapeStyle(.tint.opacity(0.12)) : AnyShapeStyle(.clear))
-        .onHover { hovering = $0 }
-        // **verbatim，不是 LocalizedStringKey**：署名句是 manifest 里的数据，
-        // 不是界面文案 —— 拿它当 key 去查表永远查不到（只是碰巧原样显示），
-        // 而且会让本地化守卫跑去解析所有叫 `text` 的属性（实测会误报到
-        // EncodeSettingsView / FFmpegProcess 上）。
-        .instantHelp(verbatim: item.license.text)
-        .onDrag { AudioLibraryDrag.itemProvider(for: item) }
-    }
-
-    private var auditionButton: some View {
-        Button(action: onAudition) {
-            ZStack {
-                Circle().fill(.quaternary).frame(width: 28, height: 28)
-                if isPlaying && audition.isBuffering {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                        .font(.caption2)
-                }
-                if isPlaying && !audition.isBuffering {
-                    Circle()
-                        .trim(from: 0, to: audition.progress)
-                        .stroke(.tint, lineWidth: 2)
-                        .rotationEffect(.degrees(-90))
-                        .frame(width: 28, height: 28)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private var tagLine: some View {
-        let names = item.tags.prefix(3).map { $0.label(chinese: isChinese) }
-        if !names.isEmpty {
-            Text(names.joined(separator: " · "))
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-        }
-    }
-
-    @ViewBuilder
-    private var addButton: some View {
-        if isDownloading {
-            ProgressView().controlSize(.mini)
-        } else {
-            Button(action: onAdd) {
-                Image(systemName: "plus.circle.fill")
-                    .font(.body)
-                    .symbolRenderingMode(.hierarchical)
-            }
-            .buttonStyle(.plain)
         }
     }
 }

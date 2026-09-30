@@ -264,8 +264,14 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    声音比画面长时 add_clips 的结果里带一句（到哪、画面到哪、用 edit_clip 裁短淡出），不然 AI 过几步才发现片尾全黑（2026-09-29 验收：130 秒的曲子把片长拖到 130 秒）。
    署名和署名页同一个口径：句子原样用清单给的 `license.text`，CC0 以外都要署（纯值的 `AIMusicCredits`）；add_clips 的结果、
    get_timeline 的 `music_credits` 都带着，总说明要求 AI 做完告诉用户。get_timeline 里音乐库的段写 `library_id`、不写缓存里的
-   路径。清单读失败过就再读一次（`loadIfNeeded` 失败后不会自己重试）；断网用上次的清单并说明。**音效库还没做**：工具说明
-   照实说，并叫 AI 别去网上下载。
+   路径。清单读失败过就再读一次（`loadIfNeeded` 失败后不会自己重试）；断网用上次的清单并说明。
+   **音效库（2026-09-30，[音效方案](../plans/2026-09-30-sound-effects.md)）**：第二份清单 `Audio/SoundEffects/manifest.json`
+   （`AudioLibraryStore.soundEffects`），`find_audio kind=music|sound_effect|any`（默认 any，两个库一起搜，同一个 `filter`）；
+   按 id 找素材（library_id、重链接、署名）**两个库都看、不按 id 前缀猜**（`AudioLibraryLookup`：一个库读失败不拖累另一个，
+   失败写进结果的 `warning`）；音效条目带 `hit`（入库时量的落点），`add_clips {library_id, hit_at}` 按它反算开头（同合成音效那条
+   `AISoundEffectRequest.placement`，没落点的报错叫用 start）；音效段默认 −8 dB（`SoundEffectClipGain`，面板拖进来也一样）；
+   授权 `owned` 不署名（只问 `AudioLibraryLicense.needsCredit`）。**AI 的顺序（用户定）**：先 find_audio 找录音、没有合适的用
+   sound_effect 合成、真实声音都没有才 generate_media；工具说明、总说明、风格卡都这么写；别去网上下载。
 
 24. **压缩、烧录字幕文件、转字幕格式（compress_videos、burn_subtitles、convert_subtitles）**：不开工程，直接处理文件。
    - 压缩和烧录**排进 App 里现成的那两个队列**（`EncodeQueue.compress` / `.burnIn`，和页面上点「开始」跑的是同一条管线），
@@ -539,7 +545,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
     `start` 就放在播放头，结果里报出 `hit_at`；文件放 `<起点>/SrtFlow/音效`、同参数同文件不重写（不算覆盖、不问）；写文件只经
     `AIAudioFileWriter`、渲染在 `MediaReadQueue.analysis` 上；段默认 −8 dB。**AI 的顺序（用户定）**：先 `find_audio` 找录音（音效库做完后）、
     没有合适的用 `sound_effect`、真实声音都没有才 `generate_media` —— `find_audio` 和 `generate_media` 的说明、风格卡都这么写；总说明目录
-    Sound 那一行带着它。清单预算：加它之前 71,612 / 72,000，把二十几个工具的说明各收了一截才放进去（71,813）。
+    Sound 那一行带着它。清单预算：加它之前 71,612 / 72,000，把二十几个工具的说明各收了一截才放进去（71,813；音效库的 kind 加上后又收了
+    find_audio 的说明）。音效库那一半在第 23 条。
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
