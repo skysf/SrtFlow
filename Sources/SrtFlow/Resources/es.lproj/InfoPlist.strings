@@ -1,0 +1,8 @@
+/* 系统权限弹窗里显示的用途说明。
+   这些键必须放 InfoPlist.strings（不是 Localizable.strings）——
+   系统读 Info.plist 的本地化只认这个文件名。 */
+
+"NSScreenCaptureUsageDescription" = "SrtFlow graba la pantalla, la ventana o la región que elijas en una pista de video. Todo se queda en este Mac: no se sube nada.";
+"NSAudioCaptureUsageDescription" = "SrtFlow graba en el video el sonido que está reproduciendo el ordenador. Todo se queda en este Mac: no se sube nada.";
+"NSMicrophoneUsageDescription" = "SrtFlow graba tu narración en una pista de audio aparte mientras graba la pantalla. Está desactivado por defecto y solo funciona cuando lo activas.";
+"NSAppleEventsUsageDescription" = "Cuando le pides a tu asistente de IA que edite los archivos seleccionados en el Finder, SrtFlow le pregunta al Finder cuáles son. No cambia nada en el Finder.";

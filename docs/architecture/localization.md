@@ -1,6 +1,6 @@
 # 本地化（一张原文表 + 每种语言一张译文表 + 应用内语言切换）
 
-界面语言：跟随系统，或强制成 `AppLanguage` 里列的某一种（目前 English、简体中文）。
+界面语言：跟随系统，或强制成 `AppLanguage` 里列的某一种（目前 English、简体中文、Español）。
 文案是一张原文表 `Sources/SrtFlow/Resources/en.lproj/Localizable.strings`，加每种语言
 一张译文表 `<code>.lproj/Localizable.strings`；系统权限弹窗的用途说明另在每个目录的
 `InfoPlist.strings` 里。**有几张表不写死**：守卫和脚本都按 `Resources/*.lproj/` 现场找，
