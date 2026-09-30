@@ -195,6 +195,7 @@
 /* 烧录页的字幕编辑列 */
 "Subtitles" = "Subtítulos";
 "%d lines" = "%d líneas";
+"· %lld lines" = "· %lld líneas";
 "Unsaved changes" = "Cambios sin guardar";
 "Save or close %@ before opening another subtitle file." = "Guarda o cierra %@ antes de abrir otro archivo de subtítulos.";
 "Save the changes first, or export a copy." = "Guarda los cambios primero o exporta una copia.";
@@ -807,7 +808,7 @@
 "Add this filter at the playhead" = "Añadir este filtro en el cabezal";
 "Add a clip to the main track to see each filter on your own footage." = "Añade un clip a la pista principal para ver cada filtro sobre tu propio material.";
 "Move the playhead over a clip to see each filter on your own footage." = "Mueve el cabezal sobre un clip para ver cada filtro sobre tu propio material.";
-"Teal & Orange" = "Verde azulado y naranja";
+"Teal & Orange" = "Cian y naranja";
 "Warm Sun" = "Sol cálido";
 "Flat Grey" = "Gris plano";
 "Night Gold" = "Oro nocturno";
@@ -863,6 +864,7 @@
 "%@ (%d×%d)" = "%@ (%d×%d)";
 "%d fps" = "%d fps";
 "The frame rate follows the project" = "Los fotogramas por segundo siguen al proyecto";
+"%lld fps  ·  follows the project" = "%lld fps  ·  sigue al proyecto";
 "Advanced" = "Avanzado";
 "Show the advanced settings" = "Mostrar los ajustes avanzados";
 "Hide the advanced settings" = "Ocultar los ajustes avanzados";
@@ -874,6 +876,7 @@
 "Restore Defaults" = "Restablecer valores";
 "Put every advanced setting back to its default" = "Devolver todos los ajustes avanzados a su valor por defecto";
 "AAC bitrate" = "Tasa de bits AAC";
+"%lld kbps" = "%lld kbps";
 "The timeline’s sound is mixed, so it is always encoded as AAC." = "El sonido de la línea de tiempo se mezcla, así que siempre se codifica como AAC.";
 "Saved into the export folder above, named after the title." = "Se guardan en la carpeta de exportación de arriba, con el nombre del título.";
 "Export Subtitle Files" = "Exportar archivos de subtítulos";

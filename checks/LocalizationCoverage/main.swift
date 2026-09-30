@@ -315,10 +315,26 @@ failures += tableFailures
 // 少一张，那种语言的用户在权限弹窗里看到的就是英文。
 failures += verifyTables(named: "InfoPlist.strings", languages: languages, resources: resources).failures
 
-let occurrences = scan(swiftFiles(under: sources)) + dynamicKeys(in: swiftFiles(under: sources))
-// 插值键（`Text("已选 \(n) 段")`）的真实键要到运行期才成形，静态扫描认不出，
-// 这是本守卫**已知的盲区**，不是漏网 —— 这类文案仍要人工确认进表。
+let direct = scan(swiftFiles(under: sources))
+let occurrences = direct + dynamicKeys(in: swiftFiles(under: sources))
 let scannable = occurrences.filter { !$0.key.contains("\\(") && !exempt.contains($0.key) }
+
+// 带插值的键（`Text("· \(n) lines")`）：真实键要到运行期才成形，这里把每个 `\(…)` 换成
+// %lld / %@ 各试一遍，有一种在表里就算过（Interpolations.swift）。只看**直接调用点**：
+// `var label: String { "\(rawValue) fps" }` 这种计算属性是先格式化成「24 fps」再拿去查表的，
+// 键是格式化后的那一条（表里的 "24 fps"），不是 %lld 的形状。
+var reportedInterpolations = Set<String>()
+for occurrence in direct where occurrence.key.contains("\\(") {
+    guard let candidates = interpolationCandidates(occurrence.key), !reportedInterpolations.contains(occurrence.key) else { continue }
+    reportedInterpolations.insert(occurrence.key)
+    for lang in languages {
+        guard let dict = loaded[lang], !candidates.contains(where: { dict[$0] != nil }) else { continue }
+        let file = occurrence.file.replacingOccurrences(of: root + "/", with: "")
+        print("FAIL \(lang) 表里没有带插值的键：\"\(occurrence.key)\"  ← \(file):\(occurrence.line)")
+        print("     （按插值的类型写成 \(candidates.prefix(2).map { "\"\($0)\"" }.joined(separator: " 或 "))，Int 是 %lld、String 是 %@）")
+        failures += 1
+    }
+}
 let distinct = Set(scannable.map(\.key))
 
 // 一条都没扫到 / 扫得异常少 = 提取规则失效，宁可当场红。

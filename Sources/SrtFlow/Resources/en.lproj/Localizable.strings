@@ -195,6 +195,7 @@
 /* 烧录页的字幕编辑列 */
 "Subtitles" = "Subtitles";
 "%d lines" = "%d lines";
+"· %lld lines" = "· %lld lines";
 "Unsaved changes" = "Unsaved changes";
 "Save or close %@ before opening another subtitle file." = "Save or close %@ before opening another subtitle file.";
 "Save the changes first, or export a copy." = "Save the changes first, or export a copy.";
@@ -863,6 +864,7 @@
 "%@ (%d×%d)" = "%@ (%d×%d)";
 "%d fps" = "%d fps";
 "The frame rate follows the project" = "The frame rate follows the project";
+"%lld fps  ·  follows the project" = "%lld fps  ·  follows the project";
 "Advanced" = "Advanced";
 "Show the advanced settings" = "Show the advanced settings";
 "Hide the advanced settings" = "Hide the advanced settings";
@@ -874,6 +876,7 @@
 "Restore Defaults" = "Restore Defaults";
 "Put every advanced setting back to its default" = "Put every advanced setting back to its default";
 "AAC bitrate" = "AAC bitrate";
+"%lld kbps" = "%lld kbps";
 "The timeline’s sound is mixed, so it is always encoded as AAC." = "The timeline’s sound is mixed, so it is always encoded as AAC.";
 "Saved into the export folder above, named after the title." = "Saved into the export folder above, named after the title.";
 "Export Subtitle Files" = "Export Subtitle Files";
