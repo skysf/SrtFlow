@@ -7,9 +7,10 @@ import SrtFlowCore
 /// 「编辑字幕」不再单列：字幕表就在烧录那一栏的预览旁边，改完立刻能看到
 /// 烧出来的样子，也能存回原文件。
 enum ToolSection: String, CaseIterable, Identifiable {
+    // 顺序就是侧边栏的顺序（2026-10-01 用户定：剪辑排第一，打开 App 默认进它）。
+    case videoEdit
     case compress
     case burnIn
-    case videoEdit
     case batchConvert
 
     var id: String { rawValue }
@@ -52,18 +53,18 @@ final class MainWindowState: ObservableObject {
 
     private static let sectionKey = "mainWindowSection"
 
-    /// 记住上次用的那一栏，下次打开直接进去。
-    @Published var section: ToolSection {
-        didSet { UserDefaults.standard.set(section.rawValue, forKey: Self.sectionKey) }
-    }
+    /// 打开 App 总是进剪辑页（2026-10-01 用户定），不再记上次停在哪一栏。
+    /// 冒烟 / 性能测试要直接起到别的页，用启动参数 `-mainWindowSection burnIn`（只认参数域，
+    /// 不再往 defaults 里写）。
+    @Published var section: ToolSection
 
     /// 侧边栏显示状态。放在这里是因为放大预览时要临时把它收起来 ——
     /// 那时候整个窗口都该让给画面。
     @Published var sidebarVisibility: NavigationSplitViewVisibility = .all
 
     private init() {
-        let stored = UserDefaults.standard.string(forKey: Self.sectionKey)
-        section = stored.flatMap(ToolSection.init(rawValue:)) ?? .compress
+        let argument = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)[Self.sectionKey] as? String
+        section = argument.flatMap(ToolSection.init(rawValue:)) ?? .videoEdit
     }
 }
 
@@ -202,23 +203,27 @@ struct MainWindowView: View {
             // 60pt 宽里只会挤成一坨看不懂的碎词。压缩和烧字幕两屏的底部各自
             // 完整显示着同一条提示，信息不会丢。
             if !isSidebarCompact { engineStatus }
-            HStack(spacing: 4) {
-                if !isSidebarCompact {
+            if isSidebarCompact {
+                // 窄档：只画当前语言的旗子（2026-10-01 用户定），展开按钮在它下面。
+                AppLanguageFlagMenu().frame(maxWidth: .infinity)
+                expandToggle.frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                HStack(spacing: 4) {
                     AppLanguagePicker(showsLabel: false)
                         .labelsHidden()
                         .pickerStyle(.menu)
                         .controlSize(.small)
+                    Spacer(minLength: 0)
+                    expandToggle
                 }
-                Spacer(minLength: 0)
-                expandToggle
             }
         }
         .padding(.horizontal, isSidebarCompact ? 4 : 10)
         .padding(.bottom, 8)
     }
 
-    /// 展开 / 收起侧边栏。窄档里语言选择器也藏起来（菜单式 Picker 有固有宽度，
-    /// 60pt 里放不下），所以那时这个按钮是栏底唯一的控件。
+    /// 展开 / 收起侧边栏。窄档里带文字的语言菜单放不下（菜单式 Picker 有固有宽度），
+    /// 换成只画旗子的 `AppLanguageFlagMenu`，这个按钮排在它下面。
     private var expandToggle: some View {
         Button {
             sidebarExpanded.toggle()
