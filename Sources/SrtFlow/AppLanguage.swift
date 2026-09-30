@@ -2,9 +2,9 @@ import SwiftUI
 
 /// 界面语言。默认跟随系统，也可以强制成某一种。
 ///
-/// **加一种语言只做两件事**：这里加一个 case（rawValue 就是 `.lproj` 的名字），再补
-/// 一套字符串表（`Sources/SrtFlow/Resources/<code>.lproj/`）。locale、AppKit 的启动
-/// 语言、查表用的 bundle、音频库按语言选标题，都从 rawValue 推出来，不用再改别处。
+/// **加一种语言只做两件事**：这里加一个 case（rawValue 就是 `.lproj` 的名字，`nativeName`
+/// 和 `flag` 各补一行），再补一套字符串表（`Sources/SrtFlow/Resources/<code>.lproj/`）。
+/// locale、AppKit 的启动语言、查表用的 bundle、音频库按语言选标题，都从 rawValue 推出来，不用再改别处。
 /// 流程见 docs/architecture/localization.md「加一种界面语言」。
 enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     case system
@@ -22,6 +22,18 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         case .english: return "English"
         case .simplifiedChinese: return "简体中文"
         case .spanish: return "Español"
+        }
+    }
+
+    /// 侧边栏收成图标条时画的旗子（2026-10-01 用户定：收起时只显示国旗、不显示文字）。
+    /// 国旗代表的是国家不是语言（英语用哪面旗都有人觉得不对），用户知道这一点仍要国旗；
+    /// 「跟随系统」没有国旗，画地球。
+    var flag: String {
+        switch self {
+        case .system: return "🌐"
+        case .english: return "🇺🇸"
+        case .simplifiedChinese: return "🇨🇳"
+        case .spanish: return "🇪🇸"
         }
     }
 

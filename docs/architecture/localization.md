@@ -136,13 +136,14 @@
 
 ## 五、加一种界面语言
 
-只做两件事，别处不用改（2026-09-30 起，[方案](../plans/2026-09-30-ui-languages.md)）：
+只做两件事，别处不用改（2026-09-30 起；case 里 `nativeName` 和 `flag` 各一行，[方案](../plans/2026-09-30-ui-languages.md)）：
 
 1. 新建 `Sources/SrtFlow/Resources/<code>.lproj/`，放 `Localizable.strings` 和 `InfoPlist.strings`，
    键集和 `en.lproj` 的完全相同（守卫钉着，少一条就红）。`<code>` 用泛化的语言码（`es`、`fr`、`tr`），
    不分地区：macOS 会把 `es-MX` 这类变体匹配到 `es.lproj`。
 2. `AppLanguage` 加一个 case，rawValue 就是目录名；`nativeName` 用那种语言自己写（`Español`），
-   不标 Beta（用户 2026-09-30 定：AI 的译文直接算正式，不做母语审校）。
+   不标 Beta（用户 2026-09-30 定：AI 的译文直接算正式，不做母语审校）。`flag` 给一面旗（侧边栏收成图标条时只画旗子，
+   2026-10-01 用户定；国旗代表国家不是语言，用户知道仍要国旗，「跟随系统」画地球）。
 
 locale、AppKit 的启动语言（`AppleLanguages`）、查表用的 bundle、音频库按语言选标题
 （`resolvedCode`）都从 rawValue 推出来；覆盖守卫和 `check-mcp.sh` 按目录现场找表。

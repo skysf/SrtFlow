@@ -171,11 +171,12 @@ struct SrtFlowApp: App {
             CommandGroup(after: .newItem) {
                 ProjectCommands()
                 Divider()
-                SectionButton(title: "Compress Video", section: .compress)
-                    .keyboardShortcut("1", modifiers: [.command])
-                SectionButton(title: "Burn In Subtitles", section: .burnIn)
-                    .keyboardShortcut("2", modifiers: [.command])
+                // 顺序和 ⌘1–4 跟侧边栏一致（剪辑第一，2026-10-01 用户定）。
                 SectionButton(title: "Edit Video", section: .videoEdit)
+                    .keyboardShortcut("1", modifiers: [.command])
+                SectionButton(title: "Compress Video", section: .compress)
+                    .keyboardShortcut("2", modifiers: [.command])
+                SectionButton(title: "Burn In Subtitles", section: .burnIn)
                     .keyboardShortcut("3", modifiers: [.command])
                 SectionButton(title: "Batch Convert", section: .batchConvert)
                     .keyboardShortcut("4", modifiers: [.command])
