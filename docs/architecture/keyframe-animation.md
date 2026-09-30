@@ -28,7 +28,8 @@
   easeOut / easeInOut（最后一帧的没用）。曲线函数只有 `TextEasing` 一份（easeIn → easeInCubic、easeOut → easeOutCubic、
   easeInOut → easeInOutCubic），这里只是挑。`value(atSourceTime:)` 先算 t 再过曲线；**linear 那条式子和以前逐位一致**（自检钉着）。
 - **默认值分两头**：检查器手打的帧默认线性（同 CapCut，老行为不变）；AI 的 `set_keyframes` 没给 `easing` 时一律 easeInOut
-  （推镜、位移像人手做的）。`KeyframeTrack.set` 只在给了 `easing` 时才换已有帧的曲线，`setEasing` 只换曲线。
+  （推镜、位移像人手做的）。`KeyframeTrack.set` 只在给了 `easing` 时才换已有帧的曲线，`setEasing(atSourceTime:)` 只换某一帧的曲线，
+  `setEasing(forSegmentAtSourceTime:)` 换播放头所在那一段的（检查器的菜单）。
 - `clipped` 补出来的头帧接着用被切开那段的曲线、`stretched` 带着曲线走（形状尽量保住；分割、`edit_clip keyframes` 都靠它们）。
 - 存盘：linear **不落键**（老工程存一轮 diff 是空的）、不认识的值回落 linear（`LenientCodableEnum`）；任一关键帧 easing ≠ linear 才抬
   **v27**（`requiresFormatVersion27`：旧版打开会退回直线，画面节奏当场不一样）。
@@ -47,6 +48,9 @@
   livePlace / setRotation / setClipOpacity 里的分支）；播放头不在段内则
   落回静态字段。
 - 删掉某行最后一帧时，把此刻的插值**固化回静态字段** —— 画面不跳。
+- **曲线**（2026-09-30，PR 3）：四行下面一行「曲线」菜单（线性 / 缓入 / 缓出 / 缓入缓出），只在有两帧以上的轨时显示；
+  显示的是**播放头所在那一段**的曲线（四行里第一条有段的轨说了算），改的是那一段（六条轨一起，`KeyframeTrack.setEasing(forSegmentAtSourceTime:)`，
+  首帧之前算第一段、末帧之后算最后一段）。菜单 Picker 不锁宽度（[检查器的排版](inspector-layout.md)）。
 - 时间线块底边画菱形（全轨并集），只展示不交互（拖动改帧是下期）。
 
 ## AI 接口（2026-09-29，用户拍板：按机器的习惯设计）

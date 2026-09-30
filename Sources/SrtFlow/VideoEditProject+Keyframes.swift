@@ -96,6 +96,32 @@ extension VideoEditProject {
         }
     }
 
+    /// 检查器的曲线菜单显示的值：播放头所在那一段的曲线，四行里第一条有两帧以上的轨说了算；一条都没有是 nil（菜单不显示）。
+    func keyframeEasing(_ clip: EditClip) -> KeyframeEasing? {
+        guard let live = state.clip(with: clip.id), let animation = live.animation else { return nil }
+        let source = live.sourceTime(atTimeline: clock.time)
+        return animation.tracks.lazy.compactMap { $0.easing(atSourceTime: source) }.first
+    }
+
+    /// 检查器的曲线菜单：把播放头所在那一段的曲线换成 `easing`，六条轨一起（有两帧以上的才动）。一步撤销。
+    func setKeyframeEasing(_ id: UUID, _ easing: KeyframeEasing) {
+        guard let clip = state.clip(with: id), let animation = clip.animation else { return }
+        let source = clip.sourceTime(atTimeline: clock.time)
+        guard animation.tracks.contains(where: { $0.easing(atSourceTime: source) != nil }) else { return }
+        perform { state in
+            state.update(id) { c in
+                guard var animation = c.animation else { return }
+                animation.centerX.setEasing(easing, forSegmentAtSourceTime: source)
+                animation.centerY.setEasing(easing, forSegmentAtSourceTime: source)
+                animation.width.setEasing(easing, forSegmentAtSourceTime: source)
+                animation.height.setEasing(easing, forSegmentAtSourceTime: source)
+                animation.rotation.setEasing(easing, forSegmentAtSourceTime: source)
+                animation.opacity.setEasing(easing, forSegmentAtSourceTime: source)
+                c.animation = animation
+            }
+        }
+    }
+
     /// 行复原：清掉这一行的关键帧轨，并把静态字段回到默认。
     func clearKeyframes(_ id: UUID, _ property: KeyframeProperty) {
         guard let clip = state.clip(with: id) else { return }

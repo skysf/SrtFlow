@@ -47,8 +47,11 @@ func checkKeyframeEasing(root: URL) throws {
     checkEqual(eased.value(atSourceTime: 9), 30, "末帧之后夹紧")
     checkEqual(eased.easing(atSourceTime: 2), .easeInOut, "播到中间：处在缓动那一段")
     checkEqual(eased.easing(atSourceTime: 0.5), .easeInOut, "首帧之前算第一段")
-    checkEqual(eased.easing(atSourceTime: 3.5), .linear, "末帧之后是末帧自己的（没用）")
+    checkEqual(eased.easing(atSourceTime: 3.5), .easeInOut, "末帧之后算最后一段（不是末帧自己那个没用的）")
     check(KeyframeTrack().easing(atSourceTime: 1) == nil, "空轨 nil")
+    var single = KeyframeTrack()
+    single.set(1, atSourceTime: 1, tolerance: tol, easing: .easeIn)
+    check(single.easing(atSourceTime: 1) == nil && single.segmentIndex(atSourceTime: 1) == nil, "只有一帧没有「段」")
 
     // ---- set 的规矩 ----
     eased.set(11, atSourceTime: 1.001, tolerance: tol)
@@ -62,6 +65,15 @@ func checkKeyframeEasing(root: URL) throws {
     checkEqual(eased.keys[1].easing, .easeIn, "setEasing 只换曲线")
     eased.setEasing(.easeIn, atSourceTime: 7, tolerance: tol)
     checkEqual(eased.keys.count, 3, "setEasing 在没有帧的地方不加帧")
+    // 检查器的菜单按「段」改：播放头在哪一段就改那一段的起点那帧
+    eased.setEasing(.easeOut, forSegmentAtSourceTime: 2.5)
+    checkEqual(eased.keys.map(\.easing), [.easeOut, .easeOut, .linear], "播放头在第二段：改第二段（keys[1]）")
+    eased.setEasing(.easeInOut, forSegmentAtSourceTime: 9)
+    checkEqual(eased.keys.map(\.easing), [.easeOut, .easeInOut, .linear], "末帧之后：改最后一段")
+    eased.setEasing(.linear, forSegmentAtSourceTime: -1)
+    checkEqual(eased.keys.map(\.easing), [.linear, .easeInOut, .linear], "首帧之前：改第一段")
+    single.setEasing(.linear, forSegmentAtSourceTime: 1)
+    checkEqual(single.keys.first?.easing, .easeIn, "只有一帧：不动")
 
     // ---- clipped / stretched 带着曲线走 ----
     var shape = KeyframeTrack()

@@ -66,10 +66,22 @@ struct KeyframeTrack: Hashable, Sendable {
     /// 有没有哪一段不是线性（存盘要抬版本：VideoEditFormatVersion 的 v27）。
     var hasEasing: Bool { keys.contains { $0.easing != .linear } }
 
-    /// 播到 `time` 正处在哪一段：那一段起点那帧的曲线（首帧之前算第一段的）；空轨 nil。
+    /// 播到 `time` 正处在哪一段（首帧之前算第一段、末帧之后算最后一段）的起点那帧的下标；不到两帧没有段。
+    func segmentIndex(atSourceTime time: Double) -> Int? {
+        guard keys.count >= 2 else { return nil }
+        let index = keys.lastIndex { $0.time <= time } ?? 0
+        return min(index, keys.count - 2)
+    }
+
+    /// 播到 `time` 正处在的那一段的曲线；不到两帧 nil。
     func easing(atSourceTime time: Double) -> KeyframeEasing? {
-        guard let first = keys.first else { return nil }
-        return (keys.last { $0.time <= time } ?? first).easing
+        segmentIndex(atSourceTime: time).map { keys[$0].easing }
+    }
+
+    /// 换播到 `time` 正处在的那一段的曲线（检查器的曲线菜单）；不到两帧不动。
+    mutating func setEasing(_ easing: KeyframeEasing, forSegmentAtSourceTime time: Double) {
+        guard let index = segmentIndex(atSourceTime: time) else { return }
+        keys[index].easing = easing
     }
 
     func key(atSourceTime time: Double, tolerance: Double) -> Keyframe? {

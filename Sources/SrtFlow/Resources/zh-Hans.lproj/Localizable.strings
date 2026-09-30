@@ -1039,3 +1039,11 @@
 /* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
 "Mosaic" = "马赛克";
 "Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "把它下面的画面模糊或打上马赛克，文字、形状和字幕不受影响。在预览里拖它的框来摆位置。";
+
+/* 关键帧的曲线菜单（2026-09-30） */
+"Easing" = "曲线";
+"Linear" = "线性";
+"Ease in" = "缓入";
+"Ease out" = "缓出";
+"Ease in and out" = "缓入缓出";
+"How the values move from the keyframe before the playhead to the next one" = "从播放头前面那一帧到下一帧，数值怎么走";
