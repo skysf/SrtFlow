@@ -20,6 +20,7 @@ func runSplitOutGroups(root: URL) {
         ("工程自己的字幕样式与逐词高亮", checkSubtitleLook),  // 37：SubtitleLook.swift
         ("盖一块（模糊 / 马赛克）", checkCoverShapes),   // 38：CoverShapes.swift
         ("关键帧的缓动", checkKeyframeEasing),          // 39：KeyframeEasing.swift
+        ("标记：所有块 + 标尺", checkMarkersEverywhere),  // 40：Markers.swift
     ]
     for group in groups {
         do {

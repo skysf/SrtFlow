@@ -96,7 +96,25 @@ require "canAddMarker 与打标记共用同一份落点判据" \
   Sources/SrtFlow/VideoEditProject+Markers.swift \
   'var canAddMarker: Bool \{ !markerTargetsAtPlayhead\(\)\.isEmpty \}'
 require "剪辑块要真的画出标记条" \
-  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'ClipMarkerStrip\('
+  Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'MarkerStrip\('
+# 2026-09-30 用户拍板：轨道里所有块都能打标记，标尺也能（docs/architecture/clip-markers.md 第一、十一节）。
+require "文字块要画出标记条" Sources/SrtFlow/VideoEditTimelineTextRow.swift 'MarkerStrip\('
+require "形状块要画出标记条" Sources/SrtFlow/VideoEditTimelineShapeRow.swift 'MarkerStrip\('
+require "滤镜块要画出标记条" Sources/SrtFlow/VideoEditTimelineFilterRow.swift 'MarkerStrip\('
+require "标尺要画出标记（小旗）" Sources/SrtFlow/VideoEditTimelineRuler.swift 'owner: \.ruler'
+require "标尺右键能打标记（落在右键按下的那一处）" \
+  Sources/SrtFlow/VideoEditTimelineRuler.swift 'onAddMarkerHere: \{ project\.addRulerMarkerAtContextClick\(\) \}'
+require "点 / 拖标尺 = 选中标尺（之后 M 打在标尺上）" \
+  Sources/SrtFlow/VideoEditTimelineView.swift 'project\.selectRuler\(\)'
+require "标尺选中着要看得见（播放头把手描边）" \
+  Sources/SrtFlow/VideoEditTimelineRuler.swift 'TimelinePlayheadHandle\(clock: clock, pps: pps, selected: rulerSelected\)'
+require "M 的落点只有 MarkerTargets 一份（按钮置灰和动作同源）" \
+  Sources/SrtFlow/VideoEditProject+Markers.swift 'MarkerTargets\.atPlayhead\(clock\.time, selection: selection, state: state\)'
+# 叠层类的块裁头：起点挪了，标记要留在时间线上的同一刻。三种块各一处。
+for kind in shape overlay filter; do
+  require "裁头不挪标记（${kind}）" \
+    Sources/SrtFlow/VideoEditTimelineTrim.swift "${kind}\.keepMarkersInPlace\(afterLeadingTrim: delta\)"
+done
 # 标记的点击语义（2026-09-24 用户拍板）：单击只选中、双击才弹面板、右键有菜单。
 # **单击不许弹面板**：面板一开，里面的备注框就成了第一响应者，⌫ 全进了输入框，标记怎么都
 # 删不掉（docs/bugfixes/2026-09-24-marker-delete-key-eaten-by-note-field.md）。
@@ -119,6 +137,11 @@ require "扫帧 peek 要给标记让位" \
 # 块自己不许写 peek：两处都写 = 谁后到谁赢的竞态。它只把「悬着哪一枚」报上去。
 require "剪辑块把标记悬停上报给容器" \
   Sources/SrtFlow/VideoEditTimelineClipBlock.swift 'onMarkerPeek\(time\)'
+for row in TextRow ShapeRow FilterRow; do
+  require "${row} 的块把标记悬停上报给容器" "Sources/SrtFlow/VideoEditTimeline${row}.swift" 'onMarkerPeek\(time\)'
+  forbid "${row} 的块不许自己写 peek（所有者是时间线容器）" "Sources/SrtFlow/VideoEditTimeline${row}.swift" '^[^/]*clock\.peek\(at:'
+done
+require "标尺把标记悬停上报给容器" Sources/SrtFlow/VideoEditTimelineRuler.swift 'onHoverMarker: onMarkerPeek'
 # 只禁「写」：`endPeek()` 是合法的 —— 裁切起手要把已经画出来的影子收掉，
 # 容器那边的 guard 只能拦住「继续扫帧」，拦不住「已经亮着的那根线」。
 forbid "剪辑块不许自己写 peek（所有者是时间线容器）" \

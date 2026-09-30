@@ -138,6 +138,17 @@ enum TimelineSnap {
         for clip in state.allClips where !movingIDs.contains(clip.id) {
             result.append(contentsOf: clip.visibleMarkers.map { clip.timelineTime(of: $0) })
         }
+        // 文字 / 形状 / 滤镜段上的标记同理；标尺上的标记锚在时间线上，永远是参考点。
+        for text in state.textOverlays where !movingIDs.contains(text.id) {
+            result.append(contentsOf: text.visibleMarkers.map { text.timelineTime(of: $0) })
+        }
+        for shape in state.shapes where !movingIDs.contains(shape.id) {
+            result.append(contentsOf: shape.visibleMarkers.map { shape.timelineTime(of: $0) })
+        }
+        for filter in state.filters where !movingIDs.contains(filter.id) {
+            result.append(contentsOf: filter.visibleMarkers.map { filter.timelineTime(of: $0) })
+        }
+        result.append(contentsOf: state.rulerMarkers.map(\.sourceTime))
         result.append(end)
         return result
     }

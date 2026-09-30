@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
@@ -70,6 +71,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditKeyframeEasing.swift \
   Sources/SrtFlow/VideoEditKeyframeSlices.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
+  Sources/SrtFlow/VideoEditMarkerTargets.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
@@ -106,6 +108,7 @@ xcrun swiftc \
   checks/ProjectFile/CoverShapes.swift \
   checks/ProjectFile/KeyframeEasing.swift \
   checks/ProjectFile/SubtitleLook.swift \
+  checks/ProjectFile/Markers.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----

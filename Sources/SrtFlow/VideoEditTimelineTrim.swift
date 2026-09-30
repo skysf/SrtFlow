@@ -145,17 +145,28 @@ extension TimelineState {
                     clip.sourceDuration += delta * clip.speed
                 }
             }
+        // 叠层类的块裁头：起点挪了，标记要留在时间线上的同一刻（`keepMarkersInPlace`，
+        // 和素材段「贴在同一帧画面」同一个语义；docs/architecture/clip-markers.md 第一节）。
         case .shape:
             updateShape(member.id) { shape in
-                if leading { shape.timelineStart += delta; shape.duration -= delta } else { shape.duration += delta }
+                if leading {
+                    shape.timelineStart += delta; shape.duration -= delta
+                    shape.keepMarkersInPlace(afterLeadingTrim: delta)
+                } else { shape.duration += delta }
             }
         case .text:
             updateTextOverlay(member.id) { overlay in
-                if leading { overlay.timelineStart += delta; overlay.duration -= delta } else { overlay.duration += delta }
+                if leading {
+                    overlay.timelineStart += delta; overlay.duration -= delta
+                    overlay.keepMarkersInPlace(afterLeadingTrim: delta)
+                } else { overlay.duration += delta }
             }
         case .filter:
             updateFilter(member.id) { filter in
-                if leading { filter.timelineStart += delta; filter.duration -= delta } else { filter.duration += delta }
+                if leading {
+                    filter.timelineStart += delta; filter.duration -= delta
+                    filter.keepMarkersInPlace(afterLeadingTrim: delta)
+                } else { filter.duration += delta }
             }
         case .cue:
             guard let cue = subtitleCue(member.id) else { return }

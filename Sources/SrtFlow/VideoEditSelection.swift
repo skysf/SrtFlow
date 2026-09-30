@@ -35,7 +35,7 @@ struct EditSelection: Equatable {
     private(set) var shapeIDs: Set<UUID> = []
     private(set) var textIDs: Set<UUID> = []
     private(set) var subtitleCueIDs: Set<UUID> = []
-    private(set) var markerRef: ClipMarkerRef?
+    private(set) var markerRef: MarkerRef?
     /// 选中的转场，存**出场段的 UUID**（转场写在它身上）。
     ///
     /// **不存缝下标**：拖动中磁吸会重排片段，下标当场就失效 —— 和
@@ -47,6 +47,9 @@ struct EditSelection: Equatable {
     /// 在时间线上是上下相邻的两行，点滤镜之前多半刚点过某一段素材；两个都留着
     /// 的话按 ⌫ 删掉的会是整段素材。框选和 ⌘A 是明确的「重新指定一片」，可以混。
     private(set) var filterIDs: Set<UUID> = []
+    /// 标尺选中着（点过标尺、还没点别的东西）：这时按 M 打在标尺上（2026-09-30 用户拍板）。
+    /// 不算「有东西可删」—— 标尺删不掉，`isEmpty` 不看它，⌫ 和垃圾桶照旧不理。
+    private(set) var rulerSelected = false
 
     /// 只选中了一段滤镜时才有主角（检查器的滤镜区、库面板「点卡片 = 换种类」都认它）。
     var soleFilterID: UUID? { filterIDs.count == 1 ? filterIDs.first : nil }
@@ -79,6 +82,7 @@ struct EditSelection: Equatable {
         markerRef = nil
         transitionSeamID = nil
         filterIDs = []
+        rulerSelected = false
     }
 
     /// 选剪辑：非空就清掉其余各类。
@@ -129,10 +133,16 @@ struct EditSelection: Equatable {
     ///
     /// 尤其要清掉**标记所在那一段**的剪辑选择：点标记之前多半刚点过那一段，
     /// 两个都留着的话 ⌫ 到底删谁全看 `deleteSelected` 的分支顺序，是纯运气。
-    mutating func selectMarker(_ ref: ClipMarkerRef?) {
+    mutating func selectMarker(_ ref: MarkerRef?) {
         guard let ref else { markerRef = nil; return }
         clearAll()
         markerRef = ref
+    }
+
+    /// 选中标尺：其余各类一起清掉（选中什么就只有它；之后 M 打在标尺上）。
+    mutating func selectRuler() {
+        clearAll()
+        rulerSelected = true
     }
 
     /// 选中一条缝上的转场：非 nil 就清掉其余各类。
@@ -176,6 +186,7 @@ struct EditSelection: Equatable {
         filterIDs = filters
         markerRef = nil
         transitionSeamID = nil
+        rulerSelected = false
     }
 
     /// 七类一起清（点预览空白、切工程）。
@@ -214,7 +225,7 @@ struct EditSelection: Equatable {
     /// 触发面同样比想象的宽：删掉整段、撤销掉「加标记」那一步、把标记裁出窗口，
     /// 都会让引用悬空。留着的话界面上没有任何标记是高亮的，⌫ 却还会删掉一枚
     /// 看不见的标记 —— 用户只会看到「按了删除键，什么都没发生」。
-    mutating func pruneMarker(isValid: (ClipMarkerRef) -> Bool) {
+    mutating func pruneMarker(isValid: (MarkerRef) -> Bool) {
         guard let ref = markerRef, !isValid(ref) else { return }
         markerRef = nil
     }

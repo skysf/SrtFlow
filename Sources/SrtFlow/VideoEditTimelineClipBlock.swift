@@ -325,11 +325,11 @@ struct ClipBlockView: View, Equatable {
     @ViewBuilder
     private var markerStrip: some View {
         if !clip.markers.isEmpty {
-            ClipMarkerStrip(
-                clip: clip,
-                width: width,
+            MarkerStrip(
+                owner: .clip(clip.id),
+                pins: clip.markerPins(pps: pps),
                 height: height,
-                pps: pps,
+                look: .cap,
                 project: project,
                 onHoverMarker: markerHover
             )
@@ -395,7 +395,7 @@ struct ClipBlockView: View, Equatable {
         // 右键这一项和 M 是同一个动作，只是把「先选中这一段」替用户做了 ——
         // 快捷键得能被发现，藏在文档里的快捷键等于没有。
         Button("Add Marker at Playhead") {
-            project.addMarker(toClip: clip.id, atTimeline: project.clock.time)
+            project.addMarker(to: .clip(clip.id), atTimeline: project.clock.time)
         }
         .disabled(!clip.contains(time: project.clock.time))
         // 右键点在音量线上也落到这份菜单（线只接管拖动和点击）。

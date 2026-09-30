@@ -111,7 +111,7 @@ func checkKeyframeEasing(root: URL) throws {
     var plain = state
     plain.mainClips[0].animation?.width = linear
     check(!plain.requiresFormatVersion27, "都是线性：不是 v27 数据（按需）")
-    checkEqual(VideoEditProjectFile.latestFormatVersion, 27, "reader 认到 v27")
+    checkEqual(VideoEditProjectFile.latestFormatVersion, 28, "reader 认到 v28")
 
     let file = root.appendingPathComponent("eased.srtflowproj")
     try VideoEditProjectIO.save(state, to: file)

@@ -1,8 +1,8 @@
 import AppKit
 import SwiftUI
 
-// 轨道块上标记的画法与交互。数据模型在 VideoEditClipMarker.swift，
-// 长期约束见 docs/architecture/clip-markers.md。
+// 标记的画法与交互（块顶上的帽子、标尺上的小旗、备注气泡、编辑面板）。数据模型在
+// VideoEditClipMarker.swift，长期约束见 docs/architecture/clip-markers.md。
 
 extension MarkerColor {
     /// 用系统语义色，不写死 RGB：深色/浅色外观、增强对比度都由系统跟着变。
@@ -29,24 +29,50 @@ extension MarkerColor {
     }
 }
 
-/// 一段素材上的全部标记。挂在剪辑块的 overlay 上。
+/// 画在时间线上的一枚标记：在宿主上的横坐标（宿主起点算 0、已乘 pps）和时间线时刻。
+/// 由块 / 标尺按值算好传进来（`MarkerHost.markerPins`），条本身不做换算。
+struct MarkerPin: Hashable {
+    var marker: ClipMarker
+    var x: Double
+    var time: Double
+}
+
+extension MarkerHost {
+    func markerPins(pps: Double) -> [MarkerPin] {
+        visibleMarkers.map { marker in
+            let time = timelineTime(of: marker)
+            return MarkerPin(marker: marker, x: (time - timelineStart) * pps, time: time)
+        }
+    }
+}
+
+/// 一个宿主（素材段 / 文字 / 形状 / 滤镜段 / 标尺）上的全部标记。挂在块或标尺的 overlay 上。
 ///
-/// 一枚标记就是块顶上那顶小帽子（2026-09-24 用户拍板去掉了贯穿块的竖线）。
+/// 一枚标记就是块顶上那顶小帽子（2026-09-24 用户拍板去掉了贯穿块的竖线）；标尺上是一面小旗
+/// （帽子 + 一根到标尺底的细杆，2026-09-30 用户拍板不画贯穿所有轨的竖线）。
 /// **命中区只有帽子**：标记若整条竖着吃事件，一段素材上打几枚标记就等于在块上凿出
 /// 几道拖不动的死缝 —— 从那儿按下去既拖不走整段，也扫不了帧。
 ///
-/// 点击语义（docs/architecture/clip-markers.md 第十一节）：
-/// - 单击 = 只选中（⌫ 删、检查器跟着走）。**单击不弹面板** —— 面板一开，里面的备注框
+/// 点击语义（docs/architecture/clip-markers.md 第十节）：
+/// - 单击 = 只选中（⌫ 删）。**单击不弹面板** —— 面板一开，里面的备注框
 ///   就成了第一响应者，⌫ 全进了输入框，标记怎么都删不掉（2026-09-24 案例）。
 /// - 双击 = 选中 + 弹面板（换色 / 写备注 / 删除）。
 /// - 右键 = 菜单：删除、换色、编辑备注。
-struct ClipMarkerStrip: View {
-    let clip: EditClip
-    let width: Double
+struct MarkerStrip: View {
+    enum Look {
+        /// 块顶上的帽子。
+        case cap
+        /// 标尺上的小旗：帽子 + 一根到标尺底的细杆。
+        case flag
+    }
+
+    let owner: MarkerOwner
+    let pins: [MarkerPin]
+    /// 宿主多高：帽子钉在顶上，备注气泡和小旗的杆按它摆。
     let height: Double
-    let pps: Double
+    let look: Look
     let project: VideoEditProject
-    /// 指针进出标记时报一声（带上标记所在的时间线时刻）。块拿它接管扫帧 peek，
+    /// 指针进出标记时报一声（带上标记所在的时间线时刻）。宿主拿它接管扫帧 peek，
     /// 见 `ClipBlockView.markerHover`。
     let onHoverMarker: (Double?) -> Void
 
@@ -63,31 +89,43 @@ struct ClipMarkerStrip: View {
         let _ = PerfCounters.body(Self.self)
         ZStack(alignment: .topLeading) {
             Color.clear
-            ForEach(clip.visibleMarkers) { marker in
-                pin(marker)
+            ForEach(pins, id: \.marker.id) { pin in
+                self.pin(pin)
             }
         }
-        .frame(width: width, height: height, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private func ref(_ marker: ClipMarker) -> ClipMarkerRef {
-        ClipMarkerRef(clipID: clip.id, markerID: marker.id)
+    private func ref(_ marker: ClipMarker) -> MarkerRef {
+        MarkerRef(owner: owner, markerID: marker.id)
     }
 
     @ViewBuilder
-    private func pin(_ marker: ClipMarker) -> some View {
-        let x = (clip.timelineTime(of: marker) - clip.timelineStart) * pps
-        let isSelected = project.selectedMarkerRef == ref(marker)
-        cap(marker, isSelected: isSelected)
+    private func pin(_ pin: MarkerPin) -> some View {
+        let isSelected = project.selectedMarkerRef == ref(pin.marker)
+        cap(pin, isSelected: isSelected)
             .frame(width: hitWidth, height: height, alignment: .top)
-            .overlay(alignment: .top) { bubble(marker) }
-            .offset(x: x - hitWidth / 2)
+            // 小旗的杆画在帽子底下、不吃事件：标尺上的 scrub 手势照样能从它旁边按下去。
+            .background(alignment: .top) { pole(pin.marker) }
+            .overlay(alignment: .top) { bubble(pin.marker) }
+            .offset(x: pin.x - hitWidth / 2)
             // 帽子之外的区域必须让路：`.contentShape` 只画在帽子上（见 cap）。
-            .zIndex(hovered == marker.id || editing == marker.id ? 2 : 1)
+            .zIndex(hovered == pin.marker.id || editing == pin.marker.id ? 2 : 1)
     }
 
-    private func cap(_ marker: ClipMarker, isSelected: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 2)
+    @ViewBuilder
+    private func pole(_ marker: ClipMarker) -> some View {
+        if look == .flag {
+            Rectangle()
+                .fill(marker.color.swiftUIColor.opacity(0.85))
+                .frame(width: 1, height: height)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func cap(_ pin: MarkerPin, isSelected: Bool) -> some View {
+        let marker = pin.marker
+        return RoundedRectangle(cornerRadius: 2)
             .fill(marker.color.swiftUIColor)
             .overlay {
                 RoundedRectangle(cornerRadius: 2)
@@ -140,7 +178,7 @@ struct ClipMarkerStrip: View {
             .onHover { inside in
                 if inside {
                     hovered = marker.id
-                    onHoverMarker(clip.timelineTime(of: marker))
+                    onHoverMarker(pin.time)
                 } else if hovered == marker.id {
                     hovered = nil
                     onHoverMarker(nil)

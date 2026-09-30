@@ -92,6 +92,8 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v24 | `ShapeAnnotation.isFilled` —— 实心的长方形 / 正方形（电影遮幅、色块底；2026-09-28 MCP 第 5 块补的零件，**按需写入**：描边的不落键） | **直接决定成片**：只认 v23 的旧版不认识这个键，实心的遮幅、色块退回成一圈描边，随手编辑触发自动保存即永久丢失。预览和导出都问同一个 `drawsFilled`（线条永远是线），导出的画法在 `ShapePNGRenderer`（VideoEditShapePNGRenderer.swift） |
 | v25 | `projectSubtitleStyle` —— 这个工程自己的字幕样式（AI 改样式只改这一份，方案第 54 条）；`subtitleHighlight` —— 逐词高亮（颜色、放大多少）；`SubtitleCue.words` —— 字幕每个词什么时候说（生成、配音的字幕才有）（三样都**按需写入**） | **直接决定成片**：只认 v24 的旧版不认识这些键，字幕退回全 App 的样式、不再高亮，随手编辑触发自动保存即永久丢失；词的时间丢了之后再打开高亮也亮不起来。用样式都问 `TimelineState.subtitleStyle(appWide:)`，合同见 [字幕轨可见性与布局](subtitle-track-visibility-and-layout.md)「工程自己的样式与逐词高亮」 |
 | v26 | `ShapeKind.blur` / `.mosaic`（盖一块，2026-09-29）与 `ShapeAnnotation.coverAmount`（力度；**按需写入**：只有盖一块落键） | **直接决定成片**：只认 v25 的旧版把不认识的种类宽容回落成长方形，该糊的地方变成一圈描边、水印 / 旧字幕重新露出来，随手编辑触发自动保存即永久丢失。合同见 [盖一块](cover-blur-mosaic.md) |
+| v27 | `Keyframe.easing` —— 关键帧的缓动（2026-09-30；**按需写入**：linear 不落键） | **直接决定成片**：只认 v26 的旧版不认识这个键，缓入缓出的推镜、位移退回直线，画面的节奏当场不一样；随手编辑触发自动保存即永久丢失。合同见 [关键帧动画](keyframe-animation.md)「缓动」 |
+| v28 | `TextOverlay.markers` / `ShapeAnnotation.markers` / `FilterClip.markers` —— 文字、形状、滤镜段上的标记；`TimelineState.rulerMarkers` —— 标尺上的标记（2026-09-30；都**按需写入**：一枚都没有的不落键） | 理由同 v8：成片一帧不变，但这是纯手工输入的标注和备注，只认 v27 的旧版随手编辑触发自动保存就把它们抹掉，丢了只能重标一遍。合同见 [标记](clip-markers.md) |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是
