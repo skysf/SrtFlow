@@ -195,6 +195,7 @@
 /* 烧录页的字幕编辑列 */
 "Subtitles" = "字幕";
 "%d lines" = "%d 行";
+"· %lld lines" = "· %lld 行";
 "Unsaved changes" = "有未保存的改动";
 "Save or close %@ before opening another subtitle file." = "先保存或关闭 %@，再打开别的字幕文件。";
 "Save the changes first, or export a copy." = "先保存改动，或者导出一份副本。";
@@ -863,6 +864,7 @@
 "%@ (%d×%d)" = "%@（%d×%d）";
 "%d fps" = "%d fps";
 "The frame rate follows the project" = "帧率跟随工程设置";
+"%lld fps  ·  follows the project" = "%lld fps  ·  跟随工程";
 "Advanced" = "高级";
 "Show the advanced settings" = "展开高级设置";
 "Hide the advanced settings" = "收起高级设置";
@@ -874,6 +876,7 @@
 "Restore Defaults" = "恢复默认设置";
 "Put every advanced setting back to its default" = "把高级设置全部恢复成默认值";
 "AAC bitrate" = "AAC 码率";
+"%lld kbps" = "%lld kbps";
 "The timeline’s sound is mixed, so it is always encoded as AAC." = "时间线上的声音要重新混音，所以总是编码成 AAC。";
 "Saved into the export folder above, named after the title." = "存进上面的导出文件夹，按标题命名。";
 "Export Subtitle Files" = "导出字幕文件";
