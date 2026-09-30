@@ -144,6 +144,27 @@ extension VideoEditInspectorView {
                 Text("%").font(.caption2).foregroundStyle(.tertiary)
             }
 
+            // 曲线：播放头所在那一段（四行一起）从这一帧到下一帧怎么走。有两帧以上才有「段」，才显示。
+            if let easing = project.keyframeEasing(live) {
+                transformRow("Easing", isDefault: easing == .linear, reset: {
+                    project.setKeyframeEasing(clip.id, .linear)
+                }) {
+                    Picker("", selection: Binding(
+                        get: { project.keyframeEasing(live) ?? .linear },
+                        set: { project.setKeyframeEasing(clip.id, $0) }
+                    )) {
+                        Text("Linear").tag(KeyframeEasing.linear)
+                        Text("Ease in").tag(KeyframeEasing.easeIn)
+                        Text("Ease out").tag(KeyframeEasing.easeOut)
+                        Text("Ease in and out").tag(KeyframeEasing.easeInOut)
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.small)
+                    .instantHelp("How the values move from the keyframe before the playhead to the next one")
+                }
+            }
+
             transformRow("Flip", isDefault: !live.flippedHorizontally && !live.flippedVertically, reset: {
                 project.setFlip(clip.id, horizontal: false, vertical: false)
             }) {
