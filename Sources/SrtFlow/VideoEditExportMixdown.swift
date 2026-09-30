@@ -12,7 +12,8 @@ import AVFoundation
 // 在 atempo 之后、增益必须在 adelay 之前……）。现在成片听到的就是预览听到的那一份。
 // 方案与实测：docs/plans/2026-09-24-sound-scenes.md；长期约束：docs/architecture/export-audio-mixdown.md。
 //
-// 这个文件只管「读出来、写成文件」；滤镜图怎么接这个文件在 VideoEditExportGraph。
+// 这个文件只管「读出来、在 −1 dBFS 封顶、写成文件、量电平」；滤镜图怎么接这个文件在 VideoEditExportGraph，
+// 电平怎么告诉用户在 VideoEditExporter / VideoEditExportSheet（面板）和 AIExportTools（AI 的结果）。
 
 enum ExportAudioMixdown {
     /// 和以前导出链末尾的 `aresample=48000,aformat=…stereo` 同一个规格。
@@ -24,9 +25,29 @@ enum ExportAudioMixdown {
         ["-f", "f32le", "-ar", String(sampleRate), "-ac", String(channels), "-i", file.path]
     }
 
+    /// 混音的电平（写 f32 时量的）：封顶前的峰值、削了多少帧。导出结果和导出面板拿它告诉用户。
+    struct Levels: Equatable {
+        /// 封顶前的采样峰值（线性）。
+        var peak: Float
+        /// 有多少帧被削到了封顶（任一声道超过就算）。
+        var clippedFrames: Int
+
+        var peakDBFS: Double { 20 * log10(Double(max(peak, 1e-9))) }
+        var clippedSeconds: Double { Double(clippedFrames) / Double(ExportAudioMixdown.sampleRate) }
+        var isClipped: Bool { clippedFrames > 0 }
+        /// 主推子至少降多少才不削（封顶前的峰值到 −1 dBFS 的差）。
+        var suggestedReductionDB: Double { max(0, peakDBFS + 1) }
+    }
+
+    /// 写进 f32 的上限：−1 dBFS。混音本身是线性的、和可以过 0 dBFS（AVFoundation 的 float 不削），但交给 AAC 编码器的信号
+    /// 过了 0 就不可预期：2026-09-30 探针实测两轨各 +6 dB 叠加，成片 RMS 比混音掉 4.5 dB、峰值却冒到 +12 dBFS，主推子降 3 dB
+    /// 成片只降 2 dB（docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md）。所以在这儿削平、留 1 dB 给编码器的过冲，
+    /// 封顶前的峰值和削了多久记在 Levels 里报给用户，叫他把主推子压下去。
+    static let peakCeiling: Float = 0.891
+
     enum Outcome: Equatable {
         /// 写好了，正好是要的长度。
-        case written
+        case written(Levels)
         /// 这条时间线一个出声的段都没有：调用方给成片垫静音。
         case silent
     }
@@ -60,7 +81,7 @@ enum ExportAudioMixdown {
             read(composition, tracks: audioTracks, mix: mix, frames: frames, to: file, cancellation: cancellation)
         }
         switch result {
-        case .success: return .written
+        case .success(let levels): return .written(levels)
         case .failure(let error): throw error
         }
     }
@@ -74,7 +95,7 @@ enum ExportAudioMixdown {
         frames: Int,
         to file: URL,
         cancellation: ExportCancellationToken?
-    ) -> Result<Void, Error> {
+    ) -> Result<Levels, Error> {
         let reader: AVAssetReader
         do { reader = try AVAssetReader(asset: composition) } catch { return .failure(error) }
         let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: outputSettings)
@@ -99,7 +120,7 @@ enum ExportAudioMixdown {
             return .failure(ReadError(detail: file.lastPathComponent))
         }
         defer { try? handle.close() }
-        var sink = FrameSink(handle: handle, limit: frames, channels: channels)
+        var sink = FrameSink(handle: handle, limit: frames, channels: channels, ceiling: peakCeiling)
 
         while sink.written < frames, let buffer = output.copyNextSampleBuffer() {
             if cancellation?.isCancelled == true {
@@ -119,7 +140,7 @@ enum ExportAudioMixdown {
         }
         // 读得比画面短（最后一截没有声音）：补静音补到正好 `frames`。
         sink.padSilence(upTo: frames)
-        return sink.failure.map { .failure($0) } ?? .success(())
+        return sink.failure.map { .failure($0) } ?? .success(sink.levels)
     }
 
     /// interleaved f32 立体声 48kHz。
@@ -139,19 +160,25 @@ enum ExportAudioMixdown {
     }
 }
 
-/// 往 raw 文件里按帧写：记着写到第几帧，超过上限的截掉。
+/// 往 raw 文件里按帧写：记着写到第几帧，超过上限的截掉；每个采样在 ±ceiling 封顶，记下封顶前的峰值和削了多少帧。
 private struct FrameSink {
     let handle: FileHandle
     let limit: Int
     let channels: Int
+    let ceiling: Float
     private(set) var written = 0
     private(set) var failure: Error?
+    private var peak: Float = 0
+    private var clippedFrames = 0
 
-    init(handle: FileHandle, limit: Int, channels: Int) {
+    init(handle: FileHandle, limit: Int, channels: Int, ceiling: Float) {
         self.handle = handle
         self.limit = limit
         self.channels = channels
+        self.ceiling = ceiling
     }
+
+    var levels: ExportAudioMixdown.Levels { .init(peak: peak, clippedFrames: clippedFrames) }
 
     private var bytesPerFrame: Int { channels * MemoryLayout<Float>.size }
 
@@ -177,7 +204,34 @@ private struct FrameSink {
             )
         }
         guard status == kCMBlockBufferNoErr else { return }
+        clamp(&data, frames: frames)
         write(data, frames: frames)
+    }
+
+    /// 量峰值、在 ±ceiling 封顶。
+    private mutating func clamp(_ data: inout Data, frames: Int) {
+        var peak = self.peak
+        var clipped = 0
+        let channels = self.channels, ceiling = self.ceiling
+        data.withUnsafeMutableBytes { raw in
+            let floats = raw.bindMemory(to: Float.self)
+            for frame in 0 ..< frames {
+                var over = false
+                for channel in 0 ..< channels {
+                    let index = frame * channels + channel
+                    let value = floats[index]
+                    let magnitude = abs(value)
+                    if magnitude > peak { peak = magnitude }
+                    if magnitude > ceiling {
+                        floats[index] = value < 0 ? -ceiling : ceiling
+                        over = true
+                    }
+                }
+                if over { clipped += 1 }
+            }
+        }
+        self.peak = peak
+        clippedFrames += clipped
     }
 
     private mutating func write(_ data: Data, frames: Int) {

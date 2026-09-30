@@ -75,6 +75,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
+  Sources/SrtFlow/VideoEditExportPlan.swift \
   Sources/SrtFlow/VideoEditGradeExport.swift \
   Sources/SrtFlow/VideoEditCoverExport.swift \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \

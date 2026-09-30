@@ -123,7 +123,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 工程帧率、关键帧容差、**AI 读写关键帧（报出来的永远在片段范围里、`edit_clip keyframes` 策略、`relative` 时间）** | [工程帧率](docs/architecture/project-frame-rate.md)、[关键帧动画](docs/architecture/keyframe-animation.md)「AI 接口」 |
 | 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
-| 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方 | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音）、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
+| 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方、混音过 0 dBFS 的封顶与提示 | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音；写 f32 在 −1 dBFS 封顶、峰值报出去）、[过 0 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
 | 波形显示、深度缩放（缩放上限、标尺刻度、缩略图、超宽内容的绘制） | [波形与深度缩放](docs/architecture/audio-waveform.md)、[捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md) §5、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md) |
 | `AVAssetReader` 读采样（`copyNextSampleBuffer`），以及在 async 函数 / `Task` 里做任何会卡住线程的事（等信号量、同步 IO、等子进程） | [阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[缩略图和波形全空](docs/bugfixes/2026-09-23-waveform-decode-deadlocks-thread-pool.md) |
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表、预览合成里声音怎么排到合成音轨上 | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节第 7 条：一条合成音轨只装一种源格式；第 8 条：tap 给的时间可以比 0 早）、[播放中按 Return 崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
@@ -199,8 +199,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 预览上的盖一块真的盖上了（生产的 `CoverHostView` 放进真窗口、拍屏数像素：块里糊成混色块外还是硬的、改动的行正好是块的上下沿、调色带上了、马赛克格线从块的左上角起算、两块同时盖、撤掉之后回到参照）：`scripts/check-cover-preview-attach.sh`。**要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditCoverPreview.swift` / `VideoEditCoverFilters.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
-- 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），以及电平表（离线读挂了
-  tap 的真实混音，对账轨道表 / 总表 / 红灯）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
+- 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），电平表（离线读挂了
+  tap 的真实混音，对账轨道表 / 总表 / 红灯），以及过 0 dBFS 的混音在 −1 dBFS 封顶、峰值报出去、成片响度和混音一致（第 10 组）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
   4 分钟就判红，并说出卡在哪一组；CI 上第 8b 组「换了源格式…60 秒没读完」偶发，认法见
   [推子与电平表](docs/architecture/audio-mixer.md)「已知的偶发」）。
 - 波形数据（多级峰值、原始采样块）逐采样对账，以及**很多文件同时读**必须全部读完、
@@ -537,6 +537,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-29 AI 改了入点、分割之后关键帧跑到片段外面](docs/bugfixes/2026-09-29-keyframes-outside-clip-after-ai-edits.md) — 关键帧锚在素材帧上是对的（主流剪辑软件都这样），错的是把「关键帧留在看不见的地方」这种给真人的惯例原样交给 AI。不换模型，接口按机器设计：报出来的永远在片段范围里、分割两半各留自己的、`edit_clip keyframes` 用参数说意图（keep_frames / stretch / clear）、`set_keyframes relative=true` 用片段比例。**给 AI 的接口不能照搬给真人的惯例；模型和接口分开判断；机器面前不留隐藏状态。**
 - [2026-09-30 Claude Code 只读到总说明的前一半，edit_clip 的说明也被截了一截](docs/bugfixes/2026-09-30-mcp-text-truncated-at-2048.md) — Claude Code 对 MCP 的总说明和每个工具说明都只留前 2,048 个字符、静默截掉（官方文档没写）：总说明 4,433 字，后半截的约定和全部规矩（要用户点头怎么问、等用户操作要转告、只用 SrtFlow 的工具……）它从来没读到过；edit_clip 2,074 字，声音场景和标记那几句也没读到。我们只有「整份清单 ≤ 72,000 字」一条预算，没有一条量的是模型真正拿到的那一份。总说明改成目录（是什么、平常的顺序、五条要 AI 主动做的规矩、按需求分组的工具名），某个工具的事进它的说明、出结果才用得上的进结果；清单里 12 个汉字换成英文。**客户端怎么读是接口的一部分；一条总预算照不到单个的上限，每种上限各要一条守卫。**
 - [2026-09-30 生成字幕切出 0.1 秒的「just」](docs/bugfixes/2026-09-30-subtitle-piece-on-screen-0.1s.md) — 窄画面下一行两个词，「Darling,」并不进后面的小句就自己成条，剩下的切法里太短只罚固定 0.5、按说了多久算，「just / dive right in」和「just dive / right in」只差 0.002。改成按能在屏上留多久罚、随短的程度加重，小句并不进去时整句一起挑切法（逗号处算好断点）。**罚分要按用户感受到的量算；规则保不住时退到整体最优。**
+- [2026-09-30 成片的声音过了 0 dBFS 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md) — 婚礼工程 17 个音效叠在音乐上，成片峰值 +2.15 dBFS、主推子降 3 dB 成片只降 2 dB；探针把混音和成片各量一级：AVFoundation 的 float 混音完全线性、不削，是 AAC 编码器收了过 0 的信号后RMS 掉 4.5 dB、峰值冒到 +12。写 f32 时在 −1 dBFS 封顶、封顶前的峰值报到导出面板和 AI 的结果里。**两份结果互相比之前先把每一级单独量一遍；有损编码器不是透明的管子。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
