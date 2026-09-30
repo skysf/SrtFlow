@@ -31,13 +31,9 @@ struct AudioLibraryPanel: View {
 
     /// tag 是**数据**（双语对照在 manifest 里，不进 Localizable.strings），所以
     /// 得自己判当前该显示哪一种语言 —— `Text(LocalizedStringKey)` 那条路不适用。
-    /// `.system` 要解析成系统实际选的那个，和 `L10n` 的查表口径一致。
+    /// `.system` 要解析成系统实际选的那个，和 `L10n` 的查表口径一致（`resolvedCode`）。
     private var isChinese: Bool {
-        switch languageStore.language {
-        case .simplifiedChinese: return true
-        case .english: return false
-        case .system: return (Bundle.main.preferredLocalizations.first ?? "en").hasPrefix("zh")
-        }
+        languageStore.language.resolvedCode.hasPrefix("zh")
     }
 
     @State private var showsCredits = false
