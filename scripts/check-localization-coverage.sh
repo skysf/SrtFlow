@@ -22,7 +22,7 @@ trap 'rm -rf "$(dirname "$OUT")"' EXIT
 echo "==> 编译自检二进制"
 # 诊断走 stdout：静默成功可以，失败必须倾倒完整输出
 #（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
-xcrun swiftc -target "$TRIPLE" -o "$OUT" checks/LocalizationCoverage/main.swift checks/LocalizationCoverage/Tables.swift checks/LocalizationCoverage/KeyParameters.swift
+xcrun swiftc -target "$TRIPLE" -o "$OUT" checks/LocalizationCoverage/main.swift checks/LocalizationCoverage/Tables.swift checks/LocalizationCoverage/KeyParameters.swift checks/LocalizationCoverage/Interpolations.swift
 
 echo "==> 运行"
 "$OUT"
