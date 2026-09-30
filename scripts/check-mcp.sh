@@ -387,6 +387,7 @@ xcrun swiftc \
   Sources/SrtFlow/AIAudioFileWriter.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectDSP.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectBuffer.swift \
+  Sources/SrtFlow/AudioKWeighting.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectReverb.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectPreset.swift \
   Sources/SrtFlow/SoundEffects/SoundEffectClipGain.swift \

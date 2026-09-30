@@ -2,8 +2,8 @@ import Foundation
 
 // MARK: - 导出图算出来的一份计划（纯值）
 //
-// 管什么：ffmpeg 的参数、工作目录、成片先落哪、是不是纯音频，以及混音的电平（封顶前的峰值、削了多久，
-// ExportAudioMixdown.Levels）—— 导出面板和 AI 的导出结果拿它告诉用户「过 0 了，把主推子压下去」。
+// 管什么：ffmpeg 的参数、工作目录、成片先落哪、是不是纯音频，以及混音的电平（限幅前的峰值、压了多久多深、整段响度，
+// ExportAudioMixdown.Levels）—— 导出面板和 AI 的导出结果拿它告诉用户成片多响、压得深了就把主推子降下来。
 // 2026-09-30 从 VideoEditExportGraph 拆出来（那个文件只许降）。
 // 不管什么：怎么算出来（VideoEditExportGraph.plan）、怎么跑（VideoEditExporter）。
 

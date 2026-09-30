@@ -81,6 +81,9 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
   Sources/SrtFlow/VideoEditExportFilterScript.swift \
   Sources/SrtFlow/VideoEditExportMixdown.swift \
+  Sources/SrtFlow/ExportPeakLimiter.swift \
+  Sources/SrtFlow/ExportLoudnessMeter.swift \
+  Sources/SrtFlow/AudioKWeighting.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
   Sources/SrtFlow/CompositionTime.swift \
@@ -105,6 +108,7 @@ xcrun swiftc \
   checks/AudioFade/MeterRing.swift \
   checks/AudioFade/LiveMix.swift \
   checks/AudioFade/SoundScene.swift \
+  checks/AudioFade/Limiter.swift \
   checks/AudioFade/Ceiling.swift \
   checks/AudioFade/Watchdog.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o

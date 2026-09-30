@@ -314,6 +314,28 @@ struct VideoEditExportSheet: View {
         return parts.joined(separator: " · ")
     }
 
+    // MARK: - 成片的声音（docs/architecture/export-audio-mixdown.md 第二节第 3 条）
+
+    /// 总是一行「响度 · 峰值」；限幅器压过的再加一句橙字：压了多久多深，压得超过 3 dB 就建议把主音量降下来。
+    @ViewBuilder
+    private func audioLevelsRows(_ levels: ExportAudioMixdown.Levels) -> some View {
+        let peak = String(format: "%.1f", levels.outputPeakDBFS)
+        Text(levels.loudnessLUFS.map { String(format: L10n("Loudness %@ LUFS · Peak %@ dBFS"), String(format: "%.1f", $0), peak) }
+             ?? String(format: L10n("Peak %@ dBFS"), peak))
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        if levels.isLimited {
+            let seconds = String(format: "%.2f", levels.limitedSeconds), depth = String(format: "%.1f", levels.maxReductionDB)
+            Text(levels.needsAttention
+                 ? String(format: L10n("The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB. Lowering the master volume by %@ dB would be cleaner."),
+                          seconds, depth, String(format: "%.1f", levels.suggestedReductionDB))
+                 : String(format: L10n("The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB."), seconds, depth))
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     // MARK: - 底栏
 
     private var footer: some View {
@@ -342,14 +364,8 @@ struct VideoEditExportSheet: View {
                         .instantHelp("Reveal the exported file in Finder")
                         .controlSize(.small)
                 }
-                if let levels = exporter.finishedAudioLevels, levels.isClipped {
-                    // 混音过了 0 dBFS，写进成片前在 −1 dBFS 削平了：说清楚削了多久、主音量至少降多少。
-                    Text(String(format: L10n("The sound peaked at %@ dBFS: %@ s were clipped at -1 dBFS. Lower the master volume by at least %@ dB."),
-                                String(format: "%+.1f", levels.peakDBFS), String(format: "%.2f", levels.clippedSeconds),
-                                String(format: "%.1f", levels.suggestedReductionDB)))
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
+                if let levels = exporter.finishedAudioLevels {
+                    audioLevelsRows(levels)
                 }
             }
 

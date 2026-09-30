@@ -75,17 +75,23 @@ enum AIExportTools {
         ])
     }
 
-    /// 成品的路径，加混音的电平：过了 0 dBFS 的说明削了多久、主推子至少降多少（docs/architecture/export-audio-mixdown.md 第二节第 3 条）。
+    /// 成品的路径，加混音的电平和响度：限幅器压过的说明压了多久多深，压得超过 3 dB 的再叫 AI 把主推子降下来
+    /// （docs/architecture/export-audio-mixdown.md 第二节第 3 条）。
     static func finishedDetail(_ output: URL, levels: ExportAudioMixdown.Levels?) -> [String: JSONValue] {
         var detail: [String: JSONValue] = ["path": .string(output.path)]
         guard let levels else { return detail }
-        detail["audio_peak_dbfs"] = .number((levels.peakDBFS * 10).rounded() / 10)
-        if levels.isClipped {
-            detail["audio_clipped_seconds"] = .number((levels.clippedSeconds * 100).rounded() / 100)
+        func tenths(_ value: Double) -> JSONValue { .number((value * 10).rounded() / 10) }
+        if let loudness = levels.loudnessLUFS { detail["audio_loudness_lufs"] = tenths(loudness) }
+        detail["audio_peak_dbfs"] = tenths(levels.peakDBFS)
+        if levels.isLimited {
+            detail["audio_limited_seconds"] = .number((levels.limitedSeconds * 100).rounded() / 100)
+            detail["audio_max_reduction_db"] = tenths(levels.maxReductionDB)
+        }
+        if levels.needsAttention {
             detail["note"] = .string(String(
-                format: "The mix peaked at %+.1f dBFS, so %.2f s were clipped at -1 dBFS. Lower the master fader "
-                    + "(set_track master volume_db) by at least %.1f dB, or the loud clips, and export again.",
-                levels.peakDBFS, levels.clippedSeconds, levels.suggestedReductionDB
+                format: "The mix went over -1 dBFS for %.2f s and the limiter pushed it down by up to %.1f dB. Lower the master fader "
+                    + "(set_track master volume_db) by about %.1f dB, or the loud clips, and export again for a cleaner mix.",
+                levels.limitedSeconds, levels.maxReductionDB, levels.suggestedReductionDB
             ))
         }
         return detail

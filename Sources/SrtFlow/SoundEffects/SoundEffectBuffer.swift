@@ -132,16 +132,12 @@ struct SFXBuffer: Sendable {
         }
     }
 
-    /// BS.1770 的 K 加权（48 kHz 的系数），400 ms 窗、100 ms 步的最大瞬时响度（LUFS）。不够 400 ms 的按整段算。
+    /// BS.1770 的 K 加权（AudioKWeighting，48 kHz 的系数），400 ms 窗、100 ms 步的最大瞬时响度（LUFS）。不够 400 ms 的按整段算。
     var maxMomentaryLoudness: Double {
-        var shelfL = SFXBiquad(b0: 1.53512485958697, b1: -2.69169618940638, b2: 1.19839281085285,
-                               a1: -1.69065929318241, a2: 0.73248077421585)
-        var shelfR = shelfL
-        var highL = SFXBiquad(b0: 1, b1: -2, b2: 1, a1: -1.99004745483398, a2: 0.99007225036621)
-        var highR = highL
+        var weightL = AudioKWeighting(), weightR = AudioKWeighting()
         var power = [Double](repeating: 0, count: count)
         for i in 0..<count {
-            let l = highL.process(shelfL.process(left[i])), r = highR.process(shelfR.process(right[i]))
+            let l = weightL.process(left[i]), r = weightR.process(right[i])
             power[i] = l * l + r * r
         }
         let window = min(Int(0.4 * SFX.sampleRate), count), hop = max(1, Int(0.1 * SFX.sampleRate))
@@ -151,7 +147,7 @@ struct SFXBuffer: Sendable {
         while start + window <= count {
             var sum = 0.0
             for i in start..<start + window { sum += power[i] }
-            best = max(best, -0.691 + 10 * log10(sum / Double(window) + 1e-20))
+            best = max(best, AudioKWeighting.offsetLU + 10 * log10(sum / Double(window) + 1e-20))
             if window == count { break }
             start += hop
         }
