@@ -14,9 +14,12 @@
 
 ## 根因
 
-1. **Claude Code 对 MCP 的 `instructions` 和每个工具的 `description` 都只留前 2,048 个字符**（JavaScript 的字符串长度），多了静默截掉、
-   末尾加「… [truncated]」。截总说明时只在它自己的调试日志里写一行，截工具说明什么都不记；官方文档没写这个上限；上游
-   [anthropics/claude-code#87650](https://github.com/anthropics/claude-code/issues/87650) 按 not planned 关了。
+1. **Claude Code 对 MCP 的 `instructions` 和每个工具的 `description` 都只留前 2,048 个字符**（JavaScript 的字符串长度），多了截掉、
+   末尾加「… [truncated]」，对模型和用户都不提示。只在它自己按服务器分的 MCP 日志里各记一行：
+   `~/Library/Caches/claude-cli-nodejs/<会话所在目录，/ 换成 ->/mcp-logs-srtflow/<时间>.jsonl`，这台机器上 2026-09-29 起的每个会话都有
+   「Server instructions truncated from 4433 to 2048 chars」和「Tool "edit_clip" description truncated from 2120 to 2048 chars」（0.18.0 的
+   edit_clip 是 2,120 字）。官方文档没写这个上限；上游 [anthropics/claude-code#87650](https://github.com/anthropics/claude-code/issues/87650)
+   按 not planned 关了（它在 2.1.234 上说截工具说明不记日志，本机的 2.1.285 记）。
    它还默认开着 tool search：会话开始时模型只看得到**工具名和总说明**，每个工具的完整定义用到才搜出来加载。
 2. **总说明写成了一本手册**：五步流程、约定、九条规矩、配了 fal 再加一段，4,433 字（配了 fal 4,775）。前提是「客户端会把它放进模型的
    上下文」—— 对，但只放一截。写的时候以为越全越好，每加一条功能就往后面加一句。
@@ -58,8 +61,12 @@
   get_timeline / look / export_video（两种样子各 3 条）、目录缺 13 个工具名（两种样子各 13 条）、`edit_clip` 2,074 字超长、清单里有汉字；
   恢复修复后 144 项全绿，改动和换回之前逐字一致。
 - `scripts/check-mcp.sh` 本机跑通：1,375 项全过。
-- 人工（要装包、新开会话，这次没做）：装上这一版后新开一个 Claude Code 会话，系统提示里 srtflow 的说明结尾不是「… [truncated]」，
-  ToolSearch 加载 `edit_clip` 也不是 —— 写进了架构文档第八节的人工回归清单。
+- **真客户端**（合并之后，用户让装）：main 20fa7e6 打成 SrtFlow Beta 0.18.2 装进「应用程序」，新开一个 Claude Code 会话
+  （2.1.285，`claude -p`，只挂 srtflow、指向 Beta 里的小程序）：
+  - 它的 MCP 日志：服务器版本 0.18.2，**「truncated」出现 0 次**（装之前同一台机器、同样连 Beta 的会话里是上面那两行）；
+  - 让模型照抄总说明的最后两行：「- Output: export_video; …」「- View: set_view, seek」，正是目录的最后两行；用 ToolSearch 加载
+    `edit_clip`，说明结尾是「…keyframes (what a trim does to them); see each field.」，都没有「[truncated]」。
+  以后照这个办法验，写进了架构文档第八节的人工回归清单。
 
 ## 教训 / 防回归
 
@@ -68,4 +75,5 @@
 - **在按需加载的客户端里，总说明不是「所有规矩的家」**：它是目录。规矩按「要 AI 主动做 / 某个工具的事 / 某个结果出来那一刻」分三层放；
   往总说明里加一句之前先问它是不是第一种（[AI 接口（MCP）](../architecture/ai-control-mcp.md) 第一节第 6 条）。
 - **一条总预算照不到单个的上限**：整份清单 ≤ 72,000 管不了「一个工具的说明 ≤ 2,048」，也管不了总说明。每一种上限各要一条守卫。
-- 截断不报错、不留痕迹，所以守卫只能放在我们这边；上限变了（Claude Code 改了那个 2048）要跟着改 `claudeCodeTextLimit`。
+- 截断不报错，只在客户端自己的 MCP 日志里留一行（平时没人去看），所以守卫只能放在我们这边；上限变了（Claude Code 改了那个 2048）
+  要跟着改 `claudeCodeTextLimit`。验真客户端时看那份日志最准：是 Claude Code 自己记的截了没有，不靠模型自述。
