@@ -1,79 +1,52 @@
 import Foundation
 
-// MARK: - 给 AI 的总说明（MCP 的 `instructions`）
+// MARK: - 给 AI 的总说明（MCP 的 `instructions`）：一份目录
 //
-// 客户端会把它放进模型的上下文，所以写的是**所有工具共用的规矩**：怎么开始、时间和轨道怎么说、
-// 什么时候必须回头问用户、用户按了停止怎么办。某一个工具自己的事写在它自己的说明里。
-// 这些规矩背后的产品决定见 docs/plans/2026-09-27-mcp.md。
+// 管什么：所有工具共用的东西 —— SrtFlow 是什么、平常的顺序、几条必须**主动**做的规矩，和一份按需求分组的工具目录。
+// 不管什么：某一个工具怎么用（写在它自己的说明里，Claude Code 用到那个工具才加载）；出结果那一刻才用得上的规矩
+// （要用户点头、等用户操作、用户按了停止……写在那个结果里）。三层怎么分见 docs/architecture/ai-control-mcp.md 第一节第 6 条。
+//
+// **Claude Code 只读前 2,048 个字符**（JavaScript 的字符串长度，超了静默截掉、末尾加「… [truncated]」），Codex 要求前
+// 512 个字符自成一体：所以开头一段就是完整的最短用法，配了 fal 拼上那一行也不许超 2,048。Claude Code 会话开始时只看得到
+// 工具名和这份说明，目录是它知道「该去加载哪个工具」的依据，所以清单里的每个工具名都要在这里出现（checks/MCP/CatalogTextChecks.swift）。
+// 只用英文。产品决定见 docs/plans/2026-09-27-mcp.md；为什么写成目录见 docs/bugfixes/2026-09-30-mcp-text-truncated-at-2048.md。
 
 public enum MCPInstructions {
-    /// 配好了 fal 才有的一段（没配就不提它：客户端清单里也没有 generate_media）。
-    static let falParagraph = """
-
-    The user has a fal.ai account connected, so generate_media can make new images, video clips, music and sound \
-    effects (it costs the user money: they set a daily limit; tell them the estimated cost before several expensive \
-    calls). Narration through add_voiceover then uses fal.ai's voices first. Do not use it for footage the user \
-    already has.
-    """
+    /// 配好了 fal 才有的那一行，接在目录最后（没配就不提它：客户端清单里也没有 generate_media）。
+    /// 花钱怎么问、每日上限写在 generate_media 自己的说明里：AI 调它之前一定会读到。
+    static let falLine = "\n- New media: generate_media (images, video, music, sound effects; paid, with the user's fal.ai account)"
 
     public static func text(providers: Set<MCPProvider>) -> String {
-        providers.contains(.fal) ? text + falParagraph : text
+        providers.contains(.fal) ? text + falLine : text
     }
 
     public static let text = """
-    SrtFlow is a video editor running on the user's Mac. These tools edit the project that is open in \
-    SrtFlow's window, and the user watches each step happen there (the edited clip is selected and the \
-    preview jumps to it).
-
-    How to work:
-    1. Start with open_folder on the folder the user named (it lists the media inside; from_finder=true uses \
-    what they selected in Finder), or open_project / new_project. Call get_status first if unsure what is open. \
-    Documents they give you (scripts, outlines) are read with read_document.
-    2. Call get_timeline to see tracks, clips and their ids. Ids can be shortened as they are shown. \
-    To edit a whole video from the user's footage (a promo, an opening, a documentary, a vlog…), call recipes, \
-    pick the editing style that fits their goal, tell them in one sentence which one you follow, and follow it; \
-    what the user says always wins over the style. If they want a style again later, offer save_recipe.
-    3. You cannot see or hear the media any other way: use look to see frames (of a media file to choose shots, \
-    of many files at once with files, of a video split into its shots with shots=true, or of the timeline to check \
-    your edits), listen to measure the sound (levels, silences, and with beats=true \
-    the tempo and beats), and transcribe to know what is said where.
-    4. Edit with add_clips, edit_clip, split_clip, delete_items, set_transition, set_text, set_filter, \
-    set_canvas and the subtitle tools. To reframe for another shape (for example 9:16), set_canvas and then \
-    edit_clip fit=fill on each clip. Background music comes from SrtFlow's library: find_audio, then add_clips \
-    with its library_id. Narration is spoken with add_voiceover. To edit talk by its words, transcribe it, then \
-    cut_speech (it also shortens pauses and removes filler words); to cut on the music, cut_to_beat.
-    5. export_video, then wait with get_job. If the video uses library music, give the user the credit lines \
-    (music_credits in get_timeline) for the video's description.
-
-    Files that need no editing do not need a project: compress_videos, burn_subtitles (a subtitle file into a \
-    video) and convert_subtitles work on the files directly.
-
-    Conventions: times are seconds on the timeline, except source_in/source_out which are seconds inside the \
-    media file. V1 is the main video track, V2 and up are video tracks drawn above it, A1 and up are audio \
-    tracks. x/y positions are fractions of the frame.
+    SrtFlow is a video editor on the user's Mac. These tools edit the project open in its window while the user \
+    watches. Usual order: open_folder (the folder the user named), open_project or new_project; get_timeline for ids; \
+    look, listen and transcribe to see, hear and read the media (there is no other way); edit; export_video, then \
+    get_job. Each tool's description has the details, and results say what to do next.
 
     Rules:
-    - Unless the user already said, ask once per conversation whether they want to watch the edits happen in \
-    SrtFlow (the default) or have them done in the background, and call set_view with the answer.
-    - Every edit is one undo step in SrtFlow; the user can press Command-Z or ask you to call undo \
-    (round=true undoes everything from this round of edits).
-    - Subtitle generation, translation and export are jobs: they return a job id; call get_job with \
-    wait_seconds instead of starting them again.
-    - If a result has "status": "needs_confirmation", ask the user its question in your own words and only \
-    call again with its confirm_token after the user agrees. Never guess or reuse a token. SrtFlow asks only before \
-    moving files to the Trash, and once per folder before reading files outside the folder the user named (then it \
-    remembers that folder). It never replaces a file: a name that is taken gets a number, and the result has the real path.
-    - If a result or a job carries "waiting_for_user", SrtFlow is waiting for the user to do something (for example \
-    click Download in a macOS dialog). Tell the user exactly what it says right away, then keep waiting with get_job; \
-    never just wait silently.
-    - A project that was never saved is saved by SrtFlow right after your first change, into SrtFlow/Projects \
-    inside the folder the user named (Downloads when there is none); that result carries project_saved_to. \
-    Tell the user where their project is.
-    - If a call fails because the user pressed Stop in SrtFlow, stop calling tools and ask the user what to do next.
-    - Only use folders and files the user gave you or that these tools returned.
-    - Do all of the work with these tools. Do not use other programs (ffmpeg, scripts, a terminal) to crop, \
-    re-encode, copy or convert media, and do not download media from the internet: those programs may not be \
-    installed, the user's chat app may have no terminal, and work done outside SrtFlow skips undo and the user's \
-    view. If SrtFlow cannot do something, tell the user instead of working around it.
+    - Unless the user said, ask once whether to show the edits in SrtFlow or do them in the background; call set_view.
+    - Edits need no OK: each is one undo step (undo round=true reverts the whole round).
+    - Tell the user where a never-saved project was saved (project_saved_to).
+    - Only use files the user gave you or these tools returned.
+    - Do all the work with these tools: no ffmpeg, scripts or terminal on media, and do not download media. If \
+    SrtFlow cannot do it, say so.
+
+    Tools by need:
+    - Files: get_status, open_folder (or the Finder selection), read_document (scripts), manage_files, open_project, \
+    new_project, save_project
+    - Whole video: recipes first, then follow the style that fits (the user's words win); save_recipe
+    - Clips: add_clips, edit_clip (trim, speed, volume, fill 9:16, crop, animation), split_clip, delete_items, \
+    duplicate_items, freeze_frame, set_keyframes
+    - Talk and beat cuts: transcribe, cut_speech, listen beats=true, cut_to_beat
+    - Picture: set_canvas (for 9:16, then edit_clip fit=fill each clip), set_transition, set_filter, set_text, \
+    set_shape (also blur or mosaic, e.g. a watermark)
+    - Sound: find_audio (music library), add_voiceover (narration), set_track
+    - Subtitles: generate_subtitles, translate_subtitles, get_subtitles, edit_subtitles
+    - Output: export_video; compress_videos, burn_subtitles, convert_subtitles (files, no project needed); get_job, \
+    cancel_job
+    - View: set_view, seek
     """
 }

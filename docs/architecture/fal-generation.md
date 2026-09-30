@@ -101,7 +101,9 @@
 - 工具清单由小程序（`srtflow-mcp`）当场回（Claude 一启动就要，不能为此拉起 App），而 Key 在 App 的钥匙串里，所以 App 在 Key 添加 / 删除时、以及每次启动时，
   写一个**只有提供方名字**的小文件 `mcp-providers.json`（`{"providers":["fal"]}`，和 socket 同目录、按 bundle id 分开），小程序每回一次清单 / 握手都重读它。
   文件里没有 Key、没有别的机密；读得宽（不在 / 坏了 / 有不认识的名字都当没有）。
-- 没配：`generate_media` 不列出来、总说明里也不提它（`MCPInstructions.text(providers:)`）。配了：列出来、总说明多一段（花钱、每日上限、先告诉用户估价）。
+- 没配：`generate_media` 不列出来、总说明里也不提它（`MCPInstructions.text(providers:)`）。配了：列出来、总说明的目录末尾多一行（只指路：
+  生成什么、要花钱）；花钱怎么问、每日上限、先告诉用户估价写在 `generate_media` 自己的说明里 —— AI 调它之前一定读得到，而总说明在
+  Claude Code 里只读前 2,048 字（[AI 接口（MCP）](ai-control-mcp.md) 第一节第 6 条）。
 - 清单会变，所以：握手声明 `tools.listChanged = true`，小程序每 2 秒看一眼那个文件，变了就给**握过手的老一代客户端**发 `notifications/tools/list_changed`；
   新一代（2026-07-28）没有会话，靠清单的缓存时间 —— `tools/list` 的 `ttlMs` 从一小时降到一分钟（`MCPServerCore.toolListTTLms`）。
 - 说明总长度的上限（72,000 字符）量的是**每个提供方都配好**时的全清单：2026-09-29 配齐时 70,377（没配 fal 时 67,208；`generate_media` 整条 3,169、说明 1,685）。

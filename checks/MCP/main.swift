@@ -4,6 +4,7 @@ import Foundation
 // 规则的出处见 docs/architecture/ai-control-mcp.md。
 
 runProtocolChecks()
+runCatalogTextChecks()
 runTimelineChecks()
 runConfigChecks()
 runReadGrantChecks()

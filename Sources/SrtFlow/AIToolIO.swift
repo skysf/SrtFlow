@@ -117,7 +117,7 @@ struct AIToolResult {
             "status": "needs_confirmation",
             "question": .string(question),
             "confirm_token": .string(token),
-            "next_step": "Ask the user this question. Only if they agree, call the same tool again with the same arguments plus this confirm_token."
+            "next_step": "Ask the user this question. Only if they agree, call the same tool again with the same arguments plus this confirm_token. Never guess or reuse a token."
         ])
     }
 

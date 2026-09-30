@@ -65,8 +65,9 @@ public enum MCPSubtitleExportTools {
             return MCPToolDefinition(
                 .getJob, title: "Job progress",
                 description: """
-                Progress and result of a long job (export, subtitle generation, translation). \
-                wait_seconds (up to 30) waits for the job to finish before answering, so you do not have to poll fast.
+                Progress and result of a long job (any call that returned a job id). wait_seconds (up to 30) waits for \
+                it to finish before answering; keep waiting instead of starting it again. If it shows waiting_for_user, \
+                tell the user what it says right away.
                 """,
                 input: MCPSchema.object([
                     "job_id": MCPSchema.string("Job id."),
@@ -147,7 +148,8 @@ public enum MCPSubtitleExportTools {
             after the project and goes into SrtFlow/Exports inside the folder the user named (otherwise the \
             project's folder, or Downloads). Subtitles that are visible on \
             the timeline are burned in unless burn_subtitles is false. A name that is taken gets a number (the \
-            result has the real path); SrtFlow never replaces a file. Returns a job id; wait for it with get_job.
+            result has the real path); SrtFlow never replaces a file. Returns a job id; wait for it with get_job. \
+            Then give the user the music_credits (get_timeline) for the video's description.
             """,
             input: MCPSchema.object([
                 "path": MCPSchema.string("Full output path. Leave out to use name and the default folder."),

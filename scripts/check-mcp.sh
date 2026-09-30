@@ -45,6 +45,9 @@
 #      fal 报的词时间换成字幕认的词、克隆参考音频的 WAV（真去调 fal 在 scripts/check-fal.sh）。
 #  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
 #      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
+#  26. 给 AI 的文字按客户端怎么读来守：总说明和每个工具说明都在 Claude Code 的 2,048 字以内（它多了就静默截掉）、
+#      总说明前 512 字自成一体（Codex）、目录里有清单的每个工具名、全部只用英文
+#      （2026-09-30，docs/bugfixes/2026-09-30-mcp-text-truncated-at-2048.md）。
 #
 # 用法：
 #   scripts/check-mcp.sh
@@ -424,6 +427,7 @@ xcrun swiftc \
   checks/MCP/main.swift \
   checks/MCP/Harness.swift \
   checks/MCP/ProtocolChecks.swift \
+  checks/MCP/CatalogTextChecks.swift \
   checks/MCP/TimelineChecks.swift \
   checks/MCP/ConfigChecks.swift \
   checks/MCP/ReadGrantChecks.swift \
