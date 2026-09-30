@@ -264,6 +264,10 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
   所以从捏合处理器的下一层进）、`copy` / `cut` / `paste`（⌘C ⌘V 这类菜单快捷键在驱动里按不动（第 14 条）、
   右键菜单也驱不动，所以直接调工程的动作；`paste` 带 `at` 时按右键菜单那条路走 —— 把那一点记成右键按下的地方，
   日志里写出那一点换算成第几秒、哪一行，落在哪看后面的 `state`）。
+  还有 `add`（往时间线上加文字 / 形状 / 盖一块 / 滤镜 / 转场，直接调工程动作 —— 工具栏的「添加」是菜单，点不开）、
+  `show`（把导出面板、字幕生成面板、录屏设置页、设置窗口摆出来，切素材库的页、开字幕列表；`dismiss` 收回去）、
+  `snapshot` 的 `target`（`sheet` 拍主窗口上挂着的 sheet、`other` 拍设置窗口这类别的窗口：按窗口号截图只拍那一个窗口，
+  sheet 是另一个窗口）。2026-09-30 验西班牙语排版时加的，格式在 `Sources/SrtFlow/SmokeUISteps.swift` 文件头。
   坐标是**窗口的点、左上原点**（按窗口 ID 截的图除以 2）。**菜单只能读、不能点**；`menu` 读之前先让菜单的
   代理更新一遍（`menuNeedsUpdate`，AppKit 在菜单要打开时做的就是这个）—— SwiftUI 的 `Commands` 那时才把
   内容填进 `NSMenu`，直接读拿到的是上一次打开时的样子。

@@ -105,9 +105,8 @@ struct VideoEditView: View {
             guard project.subtitleDraft == nil else { return }
             project.deleteSelected()
         }
-        .sheet(isPresented: $showsExportSheet) {
-            VideoEditExportSheet(project: project, exporter: exporter).appLanguage()
-        }
+        .smokeUIRequests(export: $showsExportSheet, subtitles: $showsSubtitlePanel)
+        .sheet(isPresented: $showsExportSheet) { VideoEditExportSheet(project: project, exporter: exporter).appLanguage() }
         .sheet(isPresented: $showsSubtitlePanel) {
             SubtitleGenPanel(project: project).appLanguage()
         }
