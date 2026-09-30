@@ -102,6 +102,9 @@ public enum MCPVocabulary {
     /// edit_clip 改素材窗口时关键帧怎么办（`AIKeyframePolicy`）。
     public static let keyframePolicies = ["keep_frames", "stretch", "clear"]
 
+    /// = `KeyframeEasing.allCases` 的原始值（set_keyframes 的 easing：从一帧到下一帧那一段的曲线；AI 没给时 easeInOut）。
+    public static let keyframeEasings = ["linear", "easeIn", "easeOut", "easeInOut"]
+
     public static var filterPresetIDs: [String] { filterPresets.map(\.id) }
 
     /// 滤镜说明里那一串「名字: 样子」。

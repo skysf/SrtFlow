@@ -70,6 +70,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
+  Sources/SrtFlow/VideoEditKeyframeEasing.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/FreezeSliver.swift \

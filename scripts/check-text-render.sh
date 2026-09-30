@@ -78,6 +78,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
+  Sources/SrtFlow/VideoEditKeyframeEasing.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
@@ -94,6 +95,7 @@ xcrun swiftc \
   Sources/SrtFlow/AudioKWeighting.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/VideoEditKeyframeSlices.swift \
   Sources/SrtFlow/CompositionTime.swift \
   Sources/SrtFlow/CompositionSlices.swift \
   Sources/SrtFlow/CompositionHold.swift \

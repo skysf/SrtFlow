@@ -26,7 +26,7 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Transitions: mostly hard cuts; between parts now and then pushLeft or pushUp (at most 0.3 s); a whiteFade flash (0.15 s)
   for revealing the finished product.
 - Picture animation: key product shots enter with pop or zoom (0.3 s); a still product photo slowly grows with set_keyframes
-  (scale 1 → 1.08 over the shot).
+  (scale 1 → 1.08 over the shot, the default easeInOut easing).
 - Filter: products, interiors, clean looks → coldWhite; everyday life → warmSun. Strength 0.5–0.7, one filter for the whole video.
 
 ## Text

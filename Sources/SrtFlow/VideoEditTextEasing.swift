@@ -37,6 +37,13 @@ enum TextEasing {
         return 1 + c3 * pow(x - 1, 3) + c1 * pow(x - 1, 2)
     }
 
+    /// 两头慢中间快（三次）：起步和收尾都从容。关键帧的缓入缓出（KeyframeEasing.easeInOut）用它 ——
+    /// 推镜、位移都是「人手」的节奏；比正弦版两头更钝、中间更快。
+    static func easeInOutCubic(_ t: Double) -> Double {
+        let x = clamp(t)
+        return x < 0.5 ? 4 * x * x * x : 1 - pow(-2 * x + 2, 3) / 2
+    }
+
     /// 两头慢中间快，首尾斜率为 0。循环类（呼吸）用它才不会在折返处磕一下。
     static func easeInOutSine(_ t: Double) -> Double {
         let x = clamp(t)

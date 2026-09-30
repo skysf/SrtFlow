@@ -218,32 +218,8 @@ Task {
             }
         }
 
-        // B. 缩放关键帧：白块从 0.2 长到满幅，画面平均亮度就是面积占比曲线
-        //    （验证 setTransformRamp 的端点取值和切片）。
-        do {
-            var state = TimelineState()
-            let info = MediaInfo(
-                duration: 4, displaySize: CGSize(width: 64, height: 36), frameRate: 10,
-                videoCodec: "h264", audioCodec: nil, hasAudio: false,
-                audioCanCopyToMP4: false, fileBytes: 1
-            )
-            var clip = EditClip(sourceURL: white1, sourceDuration: 4, timelineStart: 0, info: info)
-            var animation = ClipAnimation()
-            animation.width.set(0.2, atSourceTime: 0, tolerance: kfTol)
-            animation.width.set(1.0, atSourceTime: 4, tolerance: kfTol)
-            animation.height.set(0.2, atSourceTime: 0, tolerance: kfTol)
-            animation.height.set(1.0, atSourceTime: 4, tolerance: kfTol)
-            clip.animation = animation
-            state.mainClips = [clip]
-            if let built = await VideoEditCompositionBuilder.build(from: state) {
-                let mid = await averageBrightness(built, at: 2)
-                check(mid > 0.26 && mid < 0.46, "缩放动画中点面积占比应≈0.36，实测 \(mid)")
-                let tail = await averageBrightness(built, at: 3.9)
-                check(tail > 0.85, "缩放动画结尾应近满幅，实测 \(tail)")
-            } else {
-                check(false, "缩放动画场景合成失败")
-            }
-        }
+        // B. 缩放关键帧（线性 + 缓动）：checks/PreviewComposition/ScaleKeyframes.swift
+        await checkScaleKeyframes(white1: white1)
 
         // C. 旋转关键帧要按 ≤6°/片加密（矩阵插值走弦，不加密就是缩水变形）。
         do {

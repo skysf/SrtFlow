@@ -21,7 +21,7 @@ use_for: Travel, nature, culture, expeditions, interview stories, stories about 
 
 - Shots 3–6 s; let the pictures breathe. Let movements of animals and people finish.
 - Transitions: hard cuts; crossFade (1 s) between parts; blackFade at the start and the end.
-- Picture animation: no entrance animations. Photos and still shots slowly push in with set_keyframes (scale 1 → 1.05).
+- Picture animation: no entrance animations. Photos and still shots slowly push in with set_keyframes (scale 1 → 1.05, the default easeInOut easing).
 - Filter: realistic flatGrey or none; cold places mistBlue or coldWhite; warm light warmSun. Strength 0.3–0.5, gently.
 
 ## Text

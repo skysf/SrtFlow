@@ -28,30 +28,31 @@ public enum MCPTimelineTools {
                 Animate a video or image clip over time: position (x/y = centre on the frame, 0–1), scale (1 = the whole picture \
                 just fits the frame, as in edit_clip), rotation (degrees) and opacity (0–1). Each list replaces that property's \
                 keyframes; [] removes them (the clip keeps its static values). Times are timeline seconds inside the clip, or \
-                fractions 0–1 of it with relative=true; values move in straight lines between keyframes. A slow zoom: \
+                fractions 0–1 of it with relative=true; each move eases in and out unless easing says otherwise. A slow zoom: \
                 relative=true, scale [{time: 0, value: 1}, {time: 1, value: 1.15}]. Keyframed position or scale blocks \
                 edit_clip's fit/x/y/scale until removed.
                 """,
                 input: MCPSchema.object([
                     "clip_id": MCPSchema.string("Clip id from get_timeline."),
                     "relative": MCPSchema.boolean("Times are fractions 0–1 of the clip instead of seconds."),
+                    "easing": MCPSchema.string("Curve of every move: easeInOut (default), easeIn, easeOut, linear (constant speed).", oneOf: MCPVocabulary.keyframeEasings),
                     "position": MCPSchema.array(of: MCPSchema.object([
-                        "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
-                        "x": MCPSchema.number("Centre across (0–1 on the frame; beyond, down to -2 or up to 3, for a picture bigger than the frame).", minimum: -2, maximum: 3),
-                        "y": MCPSchema.number("Centre down (0–1 on the frame; beyond for a picture bigger than the frame).", minimum: -2, maximum: 3)
-                    ], required: ["time", "x", "y"]), "Position keyframes."),
+                        "time": MCPSchema.number("Timeline seconds.", minimum: 0),
+                        "x": MCPSchema.number("Centre across, 0–1 on the frame (-2…3 for a picture bigger than the frame).", minimum: -2, maximum: 3),
+                        "y": MCPSchema.number("Centre down, same range.", minimum: -2, maximum: 3)
+                    ], required: ["time", "x", "y"]), "Position."),
                     "scale": MCPSchema.array(of: MCPSchema.object([
-                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "time": MCPSchema.number("Timeline seconds.", minimum: 0),
                     "value": MCPSchema.number("Size, 1 = fits the frame.")
-                ], required: ["time", "value"]), "Scale keyframes."),
+                ], required: ["time", "value"]), "Scale."),
                     "rotation": MCPSchema.array(of: MCPSchema.object([
-                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "time": MCPSchema.number("Timeline seconds.", minimum: 0),
                     "degrees": MCPSchema.number("Clockwise degrees.")
-                ], required: ["time", "degrees"]), "Rotation keyframes."),
+                ], required: ["time", "degrees"]), "Rotation."),
                     "opacity": MCPSchema.array(of: MCPSchema.object([
-                    "time": MCPSchema.number("Timeline seconds, inside the clip.", minimum: 0),
+                    "time": MCPSchema.number("Timeline seconds.", minimum: 0),
                     "value": MCPSchema.number("0 = invisible, 1 = solid.")
-                ], required: ["time", "value"]), "Opacity keyframes.")
+                ], required: ["time", "value"]), "Opacity.")
                 ], required: ["clip_id"])
             )
         case .setTrack:

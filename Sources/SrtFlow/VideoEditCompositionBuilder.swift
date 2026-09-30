@@ -801,52 +801,16 @@ enum VideoEditCompositionBuilder {
         return videoComposition
     }
 
-    /// 动画段的额外切片边界：位置/缩放/不透明度的斜坡本身是精确线性，
-    /// 只要在每个关键帧处断片；旋转斜坡是矩阵线性插值（走弦不走弧，角度大了
-    /// 明显缩小变形），相邻帧之间按 ≤6°/片加密；不透明度动画和转场衰减相乘
-    /// 是二次曲线，斜坡只会线性，转场窗口内按 0.1s 加密补齐。
+    /// 动画段的额外切片边界：每个关键帧处断片、旋转按 ≤6°/片加密、带缓动的段按帧加密、不透明度动画在转场窗口里按 0.1s
+    /// 加密 —— 规则和数字都在 KeyframeSliceTimes（纯值），这里只收进段内的开区间。
     private static func addAnimationBoundaries(for item: PlacedClip, frameRate: ProjectFrameRate, into boundaries: inout Set<Double>) {
         guard let animation = item.clip.animation, !animation.isEmpty else { return }
-        let clip = item.clip
-
-        func insert(_ timelineTime: Double) {
-            if timelineTime > item.start + 0.0005, timelineTime < item.end - 0.0005 {
-                boundaries.insert(timelineTime)
-            }
-        }
-
-        // source 空间去重容差含 speed（见 KeyframeTrack.sourceTolerance）
-        let keyTol = KeyframeTrack.sourceTolerance(frameRate: frameRate, speed: clip.speed)
-        for sourceTime in animation.allKeyTimes(tolerance: keyTol) {
-            insert(clip.timelineTime(atSource: sourceTime))
-        }
-
-        let rotationKeys = animation.rotation.keys
-        if rotationKeys.count >= 2 {
-            for index in 1..<rotationKeys.count {
-                let a = rotationKeys[index - 1]
-                let b = rotationKeys[index]
-                // 单段最多 400 片：十几圈的疯转宁可略糙，别把指令表撑爆。
-                let steps = min(400, Int((abs(b.value - a.value) / 6).rounded(.up)))
-                guard steps > 1 else { continue }
-                for step in 1..<steps {
-                    let sourceTime = a.time + (b.time - a.time) * Double(step) / Double(steps)
-                    insert(clip.timelineTime(atSource: sourceTime))
-                }
-            }
-        }
-
-        if !animation.opacity.isEmpty {
-            var windows: [(Double, Double)] = []
-            if let fadeIn = item.fadeIn { windows.append((item.start, item.start + fadeIn.duration)) }
-            if let fadeOut = item.fadeOut { windows.append((item.end - fadeOut.duration, item.end)) }
-            for window in windows {
-                var t = window.0
-                while t < window.1 {
-                    insert(t)
-                    t += 0.1
-                }
-            }
+        var windows: [(start: Double, end: Double)] = []
+        if let fadeIn = item.fadeIn { windows.append((item.start, item.start + fadeIn.duration)) }
+        if let fadeOut = item.fadeOut { windows.append((item.end - fadeOut.duration, item.end)) }
+        for time in KeyframeSliceTimes.times(animation: animation, clip: item.clip, frameRate: frameRate, fadeWindows: windows)
+        where time > item.start + 0.0005 && time < item.end - 0.0005 {
+            boundaries.insert(time)
         }
     }
 
