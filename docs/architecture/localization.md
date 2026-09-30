@@ -28,9 +28,13 @@
 （`LabeledContent` 是 2026-09-24 才补进来的：录屏设置页早就在用，漏掉的那段时间里
 「File」一直没翻译，见 [案例](../bugfixes/2026-09-24-labeledcontent-missing-from-localization-guard.md)。）
 还包括经参数转交的（`ToolbarIcon(help:)`、`LabeledSlider(label:)`）和
-`String(localized:)`。**新增 SwiftUI 控件类型、或新开一个转交文案的参数标签时，
-要往守卫的清单里补一行**，漏一个就是漏一类文案 —— `help:` 和 `label:` 都是这么
-漏过一轮的。
+`String(localized:)`。**新增 SwiftUI 控件类型时要往守卫的清单里补一行**，漏一个就是
+漏一类文案 —— `help:` 和 `label:` 都是这么漏过一轮的。**仓库自己写的函数不用补**：
+参数类型写着 `LocalizedStringKey` 的，守卫从声明里找出来、调用点自动纳入
+（`checks/LocalizationCoverage/KeyParameters.swift`，2026-09-30 起；`title:` 和位置参数的
+`section(_:)` 漏了一个多月才改成机制，[案例](../bugfixes/2026-09-30-animation-in-out-labels-never-localized.md)）。
+守卫扫不到的只剩结构体的成员初始化器（`InspectorSliderRow(title:)` 这类没有 `func`），
+那些仍靠清单。
 
 守卫是用 Swift 写的，不是 grep：调用点经常换行（`Label(\n    "…"`），文档注释里
 又常写着示例代码 —— 行扫描要么漏掉前者，要么把后者当成真文案。

@@ -141,6 +141,8 @@
 "Typeface" = "Typeface";
 "Supports Chinese" = "Supports Chinese";
 "Other fonts" = "Other fonts";
+"Chinese" = "Chinese";
+"Other" = "Other";
 "Search fonts" = "Search fonts";
 "Arrow keys walk the list — the preview follows as you go." = "Arrow keys walk the list — the preview follows as you go.";
 "Font size" = "Size";
@@ -714,6 +716,8 @@
 
 /* 文字动画（2026-09-17） */
 "Animation" = "Animation";
+"In" = "In";
+"Out" = "Out";
 "Emphasis" = "Emphasis";
 "Intensity" = "Intensity";
 "Rise" = "Rise";

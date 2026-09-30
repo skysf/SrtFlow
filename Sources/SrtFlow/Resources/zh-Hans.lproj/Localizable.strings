@@ -141,6 +141,8 @@
 "Typeface" = "字体";
 "Supports Chinese" = "支持中文";
 "Other fonts" = "其他字体";
+"Chinese" = "中文";
+"Other" = "其他";
 "Search fonts" = "搜索字体";
 "Arrow keys walk the list — the preview follows as you go." = "用上下方向键逐个试，预览会实时跟着变。";
 "Font size" = "字号";
@@ -714,6 +716,8 @@
 
 /* 文字动画（2026-09-17） */
 "Animation" = "动画";
+"In" = "入场";
+"Out" = "出场";
 "Emphasis" = "强调";
 "Intensity" = "强度";
 "Rise" = "上浮";
