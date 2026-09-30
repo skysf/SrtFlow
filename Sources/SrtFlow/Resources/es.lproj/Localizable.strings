@@ -1,0 +1,1050 @@
+/* Subtitle editing and batch conversion */
+"Batch Convert" = "Conversión por lotes";
+"Add Cue" = "Añadir línea";
+"Delete" = "Eliminar";
+"Export As" = "Exportar como";
+"Export Failed" = "Error al exportar";
+"OK" = "Aceptar";
+"Link Video" = "Vincular video";
+"Choose File…" = "Elegir archivo…";
+"Remove Video" = "Quitar video";
+"#" = "N.º";
+"Start" = "Inicio";
+"End" = "Fin";
+"Style" = "Estilo";
+"Text" = "Texto";
+"Add Files…" = "Añadir archivos…";
+"Clear" = "Vaciar";
+"Target Format" = "Formato de destino";
+"Output Folder…" = "Carpeta de salida…";
+"Same as source" = "Igual que el original";
+"Convert" = "Convertir";
+"Drop subtitle files here, or click Add Files…" = "Arrastra aquí archivos de subtítulos o haz clic en Añadir archivos…";
+
+/* Main window sidebar */
+"Compress Video" = "Comprimir video";
+"Make files much smaller without visible quality loss." = "Reduce mucho el tamaño de los archivos sin pérdida visible de calidad.";
+"Burn In Subtitles" = "Incrustar subtítulos";
+"Render subtitles permanently into the picture." = "Graba los subtítulos de forma permanente en la imagen.";
+"Convert many subtitle files at once." = "Convierte muchos archivos de subtítulos a la vez.";
+"Edit Subtitles" = "Editar subtítulos";
+"Opens a subtitle file in its own editor window." = "Abre un archivo de subtítulos en su propia ventana de edición.";
+"Checking the video engine…" = "Comprobando el motor de video…";
+"Video engine needs attention" = "El motor de video necesita atención";
+"Engine ready · ffmpeg %@" = "Motor listo · ffmpeg %@";
+"Video engine ready — ffmpeg %@ (%@, native Apple silicon)" = "Motor de video listo: ffmpeg %@ (%@, nativo para Apple silicon)";
+
+/* Engine status and errors */
+"Bundled with SrtFlow" = "Incluido con SrtFlow";
+"Repository vendor/ directory" = "Carpeta vendor/ del repositorio";
+"SRTFLOW_FFMPEG override" = "Variable SRTFLOW_FFMPEG";
+"ffmpeg was not found. Rebuild the app with scripts/build-app.sh, or install it with: brew install ffmpeg" = "No se encontró ffmpeg. Vuelve a compilar la app con scripts/build-app.sh o instálalo con: brew install ffmpeg";
+"This ffmpeg build has no libass, so subtitles cannot be burned in. Compression still works." = "Esta versión de ffmpeg no tiene libass, así que no se pueden incrustar subtítulos. La compresión sí funciona.";
+"This ffmpeg is not a native arm64 build, so it runs under Rosetta translation and encodes roughly twice as slowly." = "Este ffmpeg no es nativo para arm64, así que corre bajo Rosetta y codifica más o menos al doble de lento.";
+"Could not start ffmpeg: %@" = "No se pudo iniciar ffmpeg: %@";
+"ffmpeg exited with code %d." = "ffmpeg terminó con el código %d.";
+"Cancelled." = "Cancelado.";
+"macOS blocked this app because it was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then open SrtFlow again. If compression still fails immediately, paste this line into Terminal instead:\n%@" = "macOS bloqueó esta app porque se descargó de internet. Abre Ajustes del Sistema → Privacidad y seguridad, haz clic en “Abrir igualmente” para SrtFlow y vuelve a abrir SrtFlow. Si la compresión sigue fallando al instante, pega esta línea en Terminal:\n%@";
+"macOS stopped the bundled ffmpeg because the app was downloaded from the internet. Open System Settings → Privacy & Security, click “Open Anyway” for SrtFlow, then reopen it. If it still fails, paste this line into Terminal:\n%@" = "macOS detuvo el ffmpeg incluido porque la app se descargó de internet. Abre Ajustes del Sistema → Privacidad y seguridad, haz clic en “Abrir igualmente” para SrtFlow y vuelve a abrirla. Si sigue fallando, pega esta línea en Terminal:\n%@";
+"Open System Settings" = "Abrir Ajustes del Sistema";
+"ffmpeg was stopped by the system (signal %d)." = "El sistema detuvo ffmpeg (señal %d).";
+"This file has no video track." = "Este archivo no tiene pista de video.";
+"Could not read video information from %@." = "No se pudo leer la información de video de %@.";
+"Could not render the preview frame." = "No se pudo renderizar el fotograma de previsualización.";
+"No subtitle lines found in %@." = "No se encontraron líneas de subtítulos en %@.";
+
+/* Queue */
+"Waiting" = "En espera";
+"Cancelled" = "Cancelado";
+"Save to" = "Guardar en";
+"Same folder as source" = "La misma carpeta que el original";
+"Choose…" = "Elegir…";
+"Reset" = "Restablecer";
+"Show in Finder" = "Mostrar en el Finder";
+"Cancel" = "Cancelar";
+"Remove from list" = "Quitar de la lista";
+"Stop All" = "Detener todo";
+"Clear Finished" = "Quitar terminados";
+"Compress" = "Comprimir";
+"Compress %lld Videos" = "Comprimir %lld videos";
+"Burn In %lld Videos" = "Incrustar en %lld videos";
+"Drop videos here to compress them.\nEach one keeps its own progress and size saving." = "Arrastra aquí videos para comprimirlos.\nCada uno muestra su propio progreso y cuánto espacio ahorra.";
+"%d done · %@ → %@ · %@" = "%d listos · %@ → %@ · %@";
+"%d s left" = "Quedan %d s";
+"%d min left" = "Quedan %d min";
+"%.0f%% smaller" = "%.0f%% más pequeño";
+"%.0f%% larger" = "%.0f%% más grande";
+
+/* Export settings */
+"Video" = "Video";
+"Encoder" = "Codificador";
+"H.264 CRF — best size" = "H.264 CRF: menor tamaño";
+"Hardware — fastest" = "Hardware: el más rápido";
+"H.264 CRF (best size)" = "H.264 CRF (menor tamaño)";
+"Hardware (fastest)" = "Hardware (el más rápido)";
+"Quality (CRF)" = "Calidad (CRF)";
+"Quality" = "Calidad";
+"Better quality" = "Mejor calidad";
+"Smaller file" = "Archivo más pequeño";
+"Preset" = "Preajuste";
+"Slower presets spend more time looking for savings — same quality, smaller file. On an M-series chip, slow runs faster than real time for 1080p." = "Los preajustes más lentos dedican más tiempo a buscar ahorro: misma calidad, archivo más pequeño. En un chip de la serie M, «slow» va más rápido que el tiempo real a 1080p.";
+"Resolution" = "Resolución";
+"Frame rate" = "Fotogramas por segundo";
+"Resolution and frame rate are only ever lowered, never raised." = "La resolución y los fotogramas por segundo solo se reducen, nunca se aumentan.";
+"Original" = "Original";
+"Audio" = "Audio";
+"Copy (original quality)" = "Copiar (calidad original)";
+"Re-encode AAC" = "Recodificar a AAC";
+"Bitrate" = "Tasa de bits";
+"Audio is copied untouched, so nothing is lost. Sources that mp4 cannot carry (PCM, AC-3) fall back to AAC automatically." = "El audio se copia sin tocar, así que no se pierde nada. Los formatos que mp4 no admite (PCM, AC-3) pasan a AAC automáticamente.";
+"Output" = "Salida";
+"Optimise for web streaming" = "Optimizar para reproducción web";
+"Moves the index to the front of the file so it can start playing before it finishes downloading." = "Mueve el índice al principio del archivo para que empiece a reproducirse antes de terminar de descargarse.";
+"Strip source metadata" = "Quitar los metadatos del original";
+"Adds -movflags +faststart. Leave this on for anything you upload; it changes nothing about the picture or sound." = "Añade -movflags +faststart. Déjalo activado para todo lo que subas; no cambia nada de la imagen ni del sonido.";
+"Adds -map_metadata -1. Useful before sharing a file; the picture and sound are untouched." = "Añade -map_metadata -1. Útil antes de compartir un archivo; la imagen y el sonido no cambian.";
+"Drops the tags the source file carries — camera model, shooting date, location, chapters." = "Elimina las etiquetas del archivo original: modelo de cámara, fecha de grabación, ubicación, capítulos.";
+"Equivalent ffmpeg command" = "Comando ffmpeg equivalente";
+"Copy command" = "Copiar comando";
+"Near-lossless, larger file" = "Casi sin pérdida, archivo más grande";
+"High quality" = "Alta calidad";
+"Visually lossless (recommended)" = "Sin pérdida visible (recomendado)";
+"Smaller file, slight quality loss" = "Archivo más pequeño, ligera pérdida de calidad";
+"Smallest file, visible quality loss" = "El archivo más pequeño, pérdida visible de calidad";
+"Uses the media engine built into the M-series chip: about ten times faster and barely touches the battery. At the same file size it looks slightly worse than the CRF encoder." = "Usa el motor multimedia integrado en el chip de la serie M: unas diez veces más rápido y casi no gasta batería. Con el mismo tamaño de archivo se ve algo peor que el codificador CRF.";
+
+/* Burn-in window */
+"Videos and subtitles" = "Videos y subtítulos";
+"Drop a video and its subtitle file here." = "Arrastra aquí un video y su archivo de subtítulos.";
+"Files with matching names are paired automatically." = "Los archivos con el mismo nombre se emparejan automáticamente.";
+"Add a video with subtitles to see a preview." = "Añade un video con subtítulos para ver la previsualización.";
+"Rendering preview…" = "Renderizando la previsualización…";
+"Preview line" = "Línea de muestra";
+"Preview" = "Previsualización";
+
+/* Preview: playback / exact frame */
+"Play" = "Reproducir";
+"Pause" = "Pausar";
+"Exact frame" = "Fotograma exacto";
+"Fill the window with the preview" = "Llenar la ventana con la previsualización";
+"Shrink the preview (Esc)" = "Reducir la previsualización (Esc)";
+"Esc to shrink · ⌃⌘F for full screen" = "Esc para reducir · ⌃⌘F para pantalla completa";
+"Playback draws the subtitles itself: the timing is exact, the look is close but not final. Switch to Exact frame to judge the look." = "En la reproducción los subtítulos los dibuja la app: el tiempo es exacto, el aspecto es parecido pero no el definitivo. Cambia a Fotograma exacto para juzgar el aspecto.";
+"The exact frame is rendered by ffmpeg with the export settings, so it matches the result exactly." = "El fotograma exacto lo renderiza ffmpeg con los ajustes de exportación, así que coincide con el resultado.";
+"No subtitle file yet" = "Aún no hay archivo de subtítulos";
+"Export" = "Exportar";
+"Also attach a switchable subtitle track" = "Añadir también una pista de subtítulos activable";
+"Adds the subtitles as an mp4 text track on top of the burned-in copy, so players that support it can toggle a selectable version too." = "Añade los subtítulos como pista de texto mp4 además de la copia incrustada, para que los reproductores compatibles puedan activar también una versión seleccionable.";
+
+/* Style editor */
+"Font" = "Fuente";
+"Typeface" = "Tipografía";
+"Supports Chinese" = "Admite chino";
+"Other fonts" = "Otras fuentes";
+"Search fonts" = "Buscar fuentes";
+"Arrow keys walk the list — the preview follows as you go." = "Las flechas recorren la lista y la previsualización va siguiendo.";
+"Font size" = "Tamaño";
+"Sizes are relative to a 1080p frame, so the same style looks identical on 720p and 4K exports." = "Los tamaños son relativos a un fotograma de 1080p, así que el mismo estilo se ve igual en exportaciones a 720p y 4K.";
+"Bold" = "Negrita";
+"Italic" = "Cursiva";
+"Letter spacing" = "Espaciado entre letras";
+"Colours" = "Colores";
+"Background" = "Fondo";
+"Outline" = "Contorno";
+"Solid bar" = "Franja sólida";
+"Outline width" = "Grosor del contorno";
+"Shadow" = "Sombra";
+"Shadow offset" = "Desplazamiento de la sombra";
+"Bar colour" = "Color de la franja";
+"Bar padding" = "Margen de la franja";
+"A solid bar behind the text stays readable over busy footage." = "Una franja sólida detrás del texto se sigue leyendo bien sobre imágenes recargadas.";
+"Position" = "Posición";
+"Distance from edge" = "Distancia al borde";
+"Vertical offset" = "Desplazamiento vertical";
+"Side margins" = "Márgenes laterales";
+"Side margins also decide where long lines wrap. Guide lines appear on the preview while you drag." = "Los márgenes laterales también deciden dónde se parten las líneas largas. Mientras arrastras aparecen guías en la previsualización.";
+"Custom" = "Personalizado";
+"Preset name" = "Nombre del preajuste";
+"Save" = "Guardar";
+"Save as preset" = "Guardar como preajuste";
+"Delete preset" = "Eliminar preajuste";
+"Top left" = "Arriba a la izquierda";
+"Top centre" = "Arriba al centro";
+"Top right" = "Arriba a la derecha";
+"Middle left" = "Centro a la izquierda";
+"Centre" = "Centro";
+"Middle right" = "Centro a la derecha";
+"Bottom left" = "Abajo a la izquierda";
+"Bottom centre" = "Abajo al centro";
+"Bottom right" = "Abajo a la derecha";
+
+/* Built-in style presets */
+"White text, black outline" = "Texto blanco, contorno negro";
+"Black text, white outline" = "Texto negro, contorno blanco";
+"Yellow text, black outline" = "Texto amarillo, contorno negro";
+"White text, drop shadow" = "Texto blanco con sombra";
+"White text on translucent bar" = "Texto blanco sobre franja translúcida";
+
+/* Language */
+"Language" = "Idioma";
+"Appearance" = "Apariencia";
+"The app’s own text switches right away. The menu bar and system dialogs follow after you quit and reopen SrtFlow." = "Los textos de la app cambian al momento. La barra de menús y los diálogos del sistema cambian cuando sales y vuelves a abrir SrtFlow.";
+
+/* 烧录页的字幕编辑列 */
+"Subtitles" = "Subtítulos";
+"%d lines" = "%d líneas";
+"Unsaved changes" = "Cambios sin guardar";
+"Save or close %@ before opening another subtitle file." = "Guarda o cierra %@ antes de abrir otro archivo de subtítulos.";
+"Save the changes first, or export a copy." = "Guarda los cambios primero o exporta una copia.";
+"Close this subtitle file" = "Cerrar este archivo de subtítulos";
+"Add a line below the selection" = "Añadir una línea debajo de la selección";
+"Delete the selected lines" = "Eliminar las líneas seleccionadas";
+"Scroll to the line being spoken during playback" = "Ir a la línea que se está diciendo durante la reproducción";
+"Editing the subtitle file on its own. Add a video to see it on the picture." = "Editando el archivo de subtítulos por sí solo. Añade un video para verlo sobre la imagen.";
+"The subtitle lines show up here, in step with playback." = "Las líneas de subtítulos aparecen aquí, al ritmo de la reproducción.";
+"Open Subtitle File…" = "Abrir archivo de subtítulos…";
+"Could Not Save" = "No se pudo guardar";
+
+/* 视频编辑 */
+"Edit Video" = "Editar video";
+"Cut, arrange, and retime clips on a timeline." = "Corta, ordena y ajusta el tiempo de los clips en una línea de tiempo.";
+"Drag material here and start to create" = "Arrastra material aquí y empieza a crear";
+"Add clips to start editing." = "Añade clips para empezar a editar.";
+"Add" = "Añadir";
+"Add Media…" = "Añadir medios…";
+"Add Subtitle File…" = "Añadir archivo de subtítulos…";
+"Undo" = "Deshacer";
+"Redo" = "Rehacer";
+"Could not read the frame at the playhead from %@." = "No se pudo leer el fotograma del cabezal de reproducción de %@.";
+"Could not save the freeze frame to %@." = "No se pudo guardar el fotograma congelado en %@.";
+"The clip changed while the freeze frame was being prepared. Try again." = "El clip cambió mientras se preparaba el fotograma congelado. Inténtalo de nuevo.";
+"This clip has no frame exactly at the playhead, so the nearest one was used." = "Este clip no tiene un fotograma justo en el cabezal, así que se usó el más cercano.";
+"Delete everything left of the playhead in this clip" = "Eliminar todo lo que queda a la izquierda del cabezal en este clip";
+"Delete everything right of the playhead in this clip" = "Eliminar todo lo que queda a la derecha del cabezal en este clip";
+"Delete the selection" = "Eliminar la selección";
+"Detach the audio onto its own track" = "Separar el audio a su propia pista";
+"Main track magnet (auto close gaps)" = "Imán de la pista principal (cierra los huecos)";
+"Auto snapping while dragging" = "Ajuste automático al arrastrar";
+"Linkage: detached audio moves with its video" = "Vínculo: el audio separado se mueve con su video";
+"Zoom out" = "Alejar";
+"Zoom in" = "Acercar";
+"Split at Playhead" = "Dividir en el cabezal";
+"Hide Clip" = "Ocultar clip";
+"Show Clip" = "Mostrar clip";
+"Detach Audio" = "Separar audio";
+"Move to Upper Track" = "Mover a la pista superior";
+"Move to Main Track" = "Mover a la pista principal";
+"Speed" = "Velocidad";
+"Duration" = "Duración";
+"Volume" = "Volumen";
+"Mute" = "Silenciar";
+"Transition to next clip" = "Transición al clip siguiente";
+"None" = "Ninguna";
+"Black fade" = "Fundido a negro";
+"Cross dissolve" = "Disolución cruzada";
+"White fade" = "Fundido a blanco";
+"Push left" = "Empuje a la izquierda";
+"Push right" = "Empuje a la derecha";
+"Push up" = "Empuje hacia arriba";
+"Push down" = "Empuje hacia abajo";
+"Wipe left" = "Barrido a la izquierda";
+"Wipe right" = "Barrido a la derecha";
+"Wipe up" = "Barrido hacia arriba";
+"Wipe down" = "Barrido hacia abajo";
+"Basic" = "Básicas";
+"Push" = "Empuje";
+"Wipe" = "Barrido";
+"Pick a transition — hover a card to preview it" = "Elige una transición; pasa el ratón por una tarjeta para previsualizarla";
+"Transitions overlap the two clips, so the total length gets shorter by the transition time." = "Las transiciones solapan los dos clips, así que la duración total se acorta lo que dura la transición.";
+"Size" = "Tamaño";
+"Split" = "Dividir";
+"Select" = "Seleccionar";
+"Apply to All" = "Aplicar a todas";
+"Clear All" = "Quitar todas";
+"Transform" = "Transformar";
+"Scale" = "Escala";
+"Rotation" = "Rotación";
+"Opacity" = "Opacidad";
+"Crop" = "Recorte";
+"Flip" = "Voltear";
+"Left" = "Izq";
+"Right" = "Der";
+"Top" = "Sup";
+"Bottom" = "Inf";
+"Flip horizontally" = "Voltear horizontalmente";
+"Flip vertically" = "Voltear verticalmente";
+"Reset all transform adjustments" = "Restablecer todos los ajustes de transformación";
+"Add or remove a keyframe at the playhead" = "Añadir o quitar un fotograma clave en el cabezal";
+"Previous keyframe" = "Fotograma clave anterior";
+"Next keyframe" = "Fotograma clave siguiente";
+"Increase by 1" = "Aumentar en 1";
+"Decrease by 1" = "Reducir en 1";
+"Could not prepare the animated clip %@ for export." = "No se pudo preparar el clip animado %@ para exportar.";
+"Could not mix the timeline’s sound for export." = "No se pudo mezclar el sonido de la línea de tiempo para exportar.";
+"Line" = "Línea";
+"Rectangle" = "Rectángulo";
+"Square" = "Cuadrado";
+"Line width" = "Grosor de línea";
+"Length" = "Longitud";
+"File" = "Archivo";
+"Angle" = "Ángulo";
+"Side length" = "Longitud del lado";
+"Width" = "Ancho";
+"Height" = "Alto";
+"Shows for" = "Se muestra durante";
+"Drag the shape on the preview to place it; drag its block on the timeline to retime it." = "Arrastra la forma en la previsualización para colocarla; arrastra su bloque en la línea de tiempo para cambiar su tiempo.";
+"Delete Shape" = "Eliminar forma";
+"Filled" = "Rellena";
+"Fill the whole shape with its colour instead of drawing an outline" = "Rellenar toda la forma con su color en vez de dibujar un contorno";
+"Project" = "Proyecto";
+"Total length" = "Duración total";
+"Main track clips" = "Clips de la pista principal";
+"Audio clips" = "Clips de audio";
+"Shapes" = "Formas";
+"Output size" = "Tamaño de salida";
+"Burned in on export, using the style from the Burn In Subtitles tool." = "Se incrustan al exportar, con el estilo de la herramienta Incrustar subtítulos.";
+"Add a subtitle file to burn it into the exported video." = "Añade un archivo de subtítulos para incrustarlo en el video exportado.";
+"Select a clip on the timeline to adjust its speed, volume, and transition. Select a shape to recolor and resize it." = "Selecciona un clip en la línea de tiempo para ajustar su velocidad, volumen y transición. Selecciona una forma para cambiar su color y tamaño.";
+"Export…" = "Exportar…";
+"Export Video" = "Exportar video";
+"Subtitles are burned in with the Burn In tool's current style." = "Los subtítulos se incrustan con el estilo actual de la herramienta Incrustar.";
+"Exporting… %@" = "Exportando… %@";
+"Loudness %@ LUFS · Peak %@ dBFS" = "Sonoridad %@ LUFS · Pico %@ dBFS";
+"Peak %@ dBFS" = "Pico %@ dBFS";
+"The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB." = "El sonido superó -1 dBFS durante %@ s y se bajó hasta %@ dB.";
+"The sound went over -1 dBFS for %@ s and was pushed down by up to %@ dB. Lowering the master volume by %@ dB would be cleaner." = "El sonido superó -1 dBFS durante %@ s y se bajó hasta %@ dB. Quedaría más limpio bajando el volumen maestro %@ dB.";
+"Close" = "Cerrar";
+"Stop" = "Detener";
+"The video engine is not ready yet." = "El motor de video aún no está listo.";
+"Add at least one clip to the main track first." = "Añade primero al menos un clip a la pista principal.";
+"Could not use %@ as a clip." = "No se pudo usar %@ como clip.";
+"Could not read %@." = "No se pudo leer %@.";
+"Could not use %d of the dropped files as clips." = "No se pudieron usar %d de los archivos arrastrados como clips.";
+"Edit Timeline" = "Editar línea de tiempo";
+
+"Adding…" = "Añadiendo…";
+"Freezing…" = "Congelando…";
+"Drag up or down to resize this track" = "Arrastra arriba o abajo para cambiar la altura de esta pista";
+"Drag up or down to move this track" = "Arrastra arriba o abajo para mover esta pista";
+
+"Hide or show subtitles" = "Ocultar o mostrar los subtítulos";
+"Subtitle track is hidden — nothing will be burned." = "La pista de subtítulos está oculta: no se incrustará nada.";
+"%d clips selected" = "%d clips seleccionados";
+"Drag any selected clip to move them together. Export can render just the selection." = "Arrastra cualquier clip seleccionado para moverlos juntos. Al exportar puedes renderizar solo la selección.";
+"Full timeline" = "Toda la línea de tiempo";
+"Selected only (%d)" = "Solo la selección (%d)";
+"Only audio is selected, so this exports an audio file (.m4a)." = "Solo hay audio seleccionado, así que se exporta un archivo de audio (.m4a).";
+"Export the timeline or the selected clips" = "Exportar la línea de tiempo o los clips seleccionados";
+"Render the timeline to a video file" = "Renderizar la línea de tiempo a un archivo de video";
+
+"Auto" = "Auto";
+"Canvas aspect ratio" = "Proporción del lienzo";
+
+/* 视频剪辑的字幕列与就地编辑（三个入口：这一列、时间线双击 cue、预览双击字幕） */
+"Show or hide the subtitle list" = "Mostrar u ocultar la lista de subtítulos";
+"Close the subtitle list and show the inspector" = "Cerrar la lista de subtítulos y mostrar el inspector";
+"Generate or translate subtitle tracks" = "Generar o traducir pistas de subtítulos";
+"Every subtitle track is hidden — turn an eye back on to edit." = "Todas las pistas de subtítulos están ocultas: vuelve a activar un ojo para editar.";
+"Write One Line" = "Escribir una línea";
+"Start a subtitle track by hand, at the playhead" = "Empezar una pista de subtítulos a mano, en el cabezal";
+"Hide or show the original subtitle track" = "Ocultar o mostrar la pista de subtítulos original";
+"Hide or show the translated subtitle track" = "Ocultar o mostrar la pista de subtítulos traducida";
+"Done" = "Listo";
+"Finish editing this line" = "Terminar de editar esta línea";
+
+/* 原生字幕生成：面板、双轨编辑器、导出矩阵、阶段与错误 */
+"Generate, translate, and edit subtitle tracks" = "Generar, traducir y editar pistas de subtítulos";
+"Subtitle translation needs macOS 15 or later; speech transcription needs macOS 26 or later." = "Traducir subtítulos requiere macOS 15 o posterior; transcribir voz requiere macOS 26 o posterior.";
+"Preview track" = "Pista en la previsualización";
+"Original text" = "Texto original";
+"Translated text" = "Texto traducido";
+"Bilingual" = "Bilingüe";
+"Edit Subtitles…" = "Editar subtítulos…";
+"Translate" = "Traducir";
+"Target language" = "Idioma de destino";
+"%@ (needs download)" = "%@ (requiere descarga)";
+"Translate All" = "Traducir todo";
+"Translate Missing & Stale" = "Traducir faltantes y desactualizadas";
+"Translation runs entirely on this Mac. The system may download language models first." = "La traducción se hace por completo en este Mac. Puede que el sistema descargue antes los modelos de idioma.";
+"Translated %d cues." = "Se tradujeron %d líneas.";
+"Another translation is still running." = "Todavía hay otra traducción en marcha.";
+"Translation failed for an unknown reason." = "La traducción falló por un motivo desconocido.";
+"The subtitles are already in %@ — nothing to translate." = "Los subtítulos ya están en %@: no hay nada que traducir.";
+"Translation from %1$@ to %2$@ isn't supported on this Mac." = "Este Mac no admite traducir de %1$@ a %2$@.";
+"Subtitles are already in %@ — translation skipped." = "Los subtítulos ya están en %@: se omitió la traducción.";
+"The translation model isn't installed. Try again and approve the model download when it appears." = "El modelo de traducción no está instalado. Inténtalo de nuevo y acepta la descarga del modelo cuando aparezca.";
+"Translation between these two languages isn't supported on this Mac." = "Este Mac no admite traducir entre estos dos idiomas.";
+"Couldn't identify the subtitle language, so it can't be translated automatically." = "No se pudo identificar el idioma de los subtítulos, así que no se pueden traducir automáticamente.";
+"Generate from audio" = "Generar a partir del audio";
+"Speech transcription needs macOS 26 or later." = "Transcribir voz requiere macOS 26 o posterior.";
+"Speech transcription isn't available on this Mac." = "La transcripción de voz no está disponible en este Mac.";
+"Source language" = "Idioma de origen";
+"Auto-detect" = "Detectar automáticamente";
+"Detecting spoken language…" = "Detectando el idioma hablado…";
+"Couldn't confidently detect the spoken language. Pick it in the panel and generate again." = "No se pudo detectar con seguridad el idioma hablado. Elígelo en el panel y genera de nuevo.";
+"Couldn't detect the spoken language — no speech model is installed. Pick the language manually so its model can be downloaded." = "No se pudo detectar el idioma hablado: no hay ningún modelo de voz instalado. Elige el idioma a mano para que se descargue su modelo.";
+"Translate after generating" = "Traducir después de generar";
+"Only the selected clips (%d)" = "Solo los clips seleccionados (%d)";
+"Generate Subtitles" = "Generar subtítulos";
+"Replace the current subtitle track?" = "¿Reemplazar la pista de subtítulos actual?";
+"Replace" = "Reemplazar";
+"Generating replaces the current subtitles and clears their translation. This is one undo step." = "Al generar se reemplazan los subtítulos actuales y se borra su traducción. Es un solo paso de deshacer.";
+"Preparing speech model…" = "Preparando el modelo de voz…";
+"Reading audio of “%@”…" = "Leyendo el audio de “%@”…";
+"Transcribing “%@”…" = "Transcribiendo “%@”…";
+"Building subtitle cues…" = "Construyendo las líneas de subtítulos…";
+"Translating…" = "Traduciendo…";
+"Generated %d cues." = "Se generaron %d líneas.";
+"Skipped unreadable sources: %@" = "Se omitieron fuentes ilegibles: %@";
+"Subtitle Tracks" = "Pistas de subtítulos";
+"Merge" = "Combinar";
+"No subtitle track." = "No hay pista de subtítulos.";
+"Translation is out of date — retranslate this cue." = "La traducción está desactualizada: vuelve a traducir esta línea.";
+"Too fast to read at this clip speed." = "Demasiado rápido para leerlo a la velocidad de este clip.";
+"Low recognition confidence — double-check this cue." = "Reconocimiento poco fiable: revisa esta línea.";
+"Burn in" = "Incrustar";
+"No subtitles" = "Sin subtítulos";
+"Burned with the Burn In tool's current style." = "Incrustados con el estilo actual de la herramienta Incrustar.";
+"Subtitle files" = "Archivos de subtítulos";
+"Original SRT" = "SRT original";
+"Original VTT" = "VTT original";
+"Translated SRT" = "SRT traducido";
+"Translated VTT" = "VTT traducido";
+"Speech transcription doesn't support “%@” on this Mac." = "La transcripción de voz no admite “%@” en este Mac.";
+"No audible clips to transcribe." = "No hay clips audibles que transcribir.";
+"“%@” has no audio track." = "“%@” no tiene pista de audio.";
+"None of the audio sources could be read. Relink the missing media and try again." = "No se pudo leer ninguna fuente de audio. Revincula los medios que faltan e inténtalo de nuevo.";
+"The timeline changed while generating. Generate again — cached transcription makes rerunning fast." = "La línea de tiempo cambió durante la generación. Genera de nuevo: la transcripción en caché hace que repetirlo sea rápido.";
+"No speech was recognized. Try another source language." = "No se reconoció ninguna voz. Prueba con otro idioma de origen.";
+"Subtitles were generated, but translation failed: %@" = "Los subtítulos se generaron, pero la traducción falló: %@";
+
+/* 按钮提示（instantHelp）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
+/* 引擎状态与授权 */
+"What is wrong with the video engine, and how to fix it" = "Qué le pasa al motor de video y cómo arreglarlo";
+"Open Privacy & Security so the engine can be allowed to run" = "Abrir Privacidad y seguridad para permitir que el motor se ejecute";
+"Copy the un-quarantine command to the clipboard" = "Copiar al portapapeles el comando que quita la cuarentena";
+
+/* 压缩与编码队列 */
+"Pick videos to compress" = "Elegir videos para comprimir";
+"Start encoding everything in the queue" = "Empezar a codificar todo lo que hay en la cola";
+"Cancel everything still running" = "Cancelar todo lo que sigue en marcha";
+"Remove finished items from the list" = "Quitar de la lista los elementos terminados";
+"Add more files to the queue" = "Añadir más archivos a la cola";
+"Where finished files are written" = "Dónde se guardan los archivos terminados";
+"Go back to writing next to each source file" = "Volver a guardar junto a cada archivo original";
+"Copy the ffmpeg command to the clipboard" = "Copiar el comando ffmpeg al portapapeles";
+
+/* 批量转换 */
+"Pick subtitle files to convert" = "Elegir archivos de subtítulos para convertir";
+"Empty the list" = "Vaciar la lista";
+"Where converted files are written; defaults to next to the source" = "Dónde se guardan los archivos convertidos; por defecto, junto al original";
+"Convert every file in the list" = "Convertir todos los archivos de la lista";
+
+/* 烧字幕、样式预设与字体 */
+"Pick videos to burn subtitles into" = "Elegir videos en los que incrustar subtítulos";
+"Pick the subtitle file to burn in" = "Elegir el archivo de subtítulos que se incrusta";
+"Pick the typeface for burned-in subtitles" = "Elegir la tipografía de los subtítulos incrustados";
+"Clear the search" = "Borrar la búsqueda";
+"Save the preset under this name" = "Guardar el preajuste con este nombre";
+"Discard the name and keep the style unsaved" = "Descartar el nombre y dejar el estilo sin guardar";
+"Remember this style so it can be reused" = "Recordar este estilo para poder reutilizarlo";
+"Delete the saved preset that matches this style" = "Eliminar el preajuste guardado que coincide con este estilo";
+
+/* 字幕编辑面板 */
+"Open an .srt or .vtt file to edit" = "Abrir un archivo .srt o .vtt para editarlo";
+"Write the changes back to the subtitle file" = "Guardar los cambios en el archivo de subtítulos";
+
+/* 视频编辑：工程栏、工具栏与检查器 */
+"Add video, audio or images to the timeline" = "Añadir video, audio o imágenes a la línea de tiempo";
+"Open an existing .srtflowproj file" = "Abrir un archivo .srtflowproj existente";
+"Mouse tool: Select or Split" = "Herramienta del ratón: Seleccionar o Dividir";
+"Project frame rate — preview, export and keyframes all follow it" = "Fotogramas por segundo del proyecto: la previsualización, la exportación y los fotogramas clave lo siguen";
+"Record the screen into this project" = "Grabar la pantalla en este proyecto";
+"Dismiss this message" = "Cerrar este mensaje";
+"Hide or show this track" = "Ocultar o mostrar esta pista";
+"Remove this marker" = "Quitar este marcador";
+"Render just the selected clips to a video file" = "Renderizar solo los clips seleccionados a un archivo de video";
+"Remove the selected clips from the timeline" = "Quitar de la línea de tiempo los clips seleccionados";
+"Put this transition on every seam of the main track" = "Poner esta transición en cada unión de la pista principal";
+"Remove every transition on the main track" = "Quitar todas las transiciones de la pista principal";
+"Back to 0 dB (original level)" = "Volver a 0 dB (nivel original)";
+"Cut this clip in two at the playhead" = "Cortar este clip en dos en el cabezal";
+"Remove this clip from the timeline" = "Quitar este clip de la línea de tiempo";
+"Remove this shape from the timeline" = "Quitar esta forma de la línea de tiempo";
+"Unlink this subtitle file from the project" = "Desvincular este archivo de subtítulos del proyecto";
+"Split at playhead" = "Dividir en el cabezal";
+"Freeze the frame at the playhead" = "Congelar el fotograma del cabezal";
+"Add a marker at the playhead" = "Añadir un marcador en el cabezal";
+"Seconds to ramp the sound up from silence" = "Segundos para subir el sonido desde el silencio";
+"Seconds to ramp the sound down to silence" = "Segundos para bajar el sonido hasta el silencio";
+
+/* 视频编辑：导出 */
+"Cancel the export" = "Cancelar la exportación";
+"Close the export panel" = "Cerrar el panel de exportación";
+"Reveal the exported file in Finder" = "Mostrar el archivo exportado en el Finder";
+
+/* 录屏 */
+"Close without recording" = "Cerrar sin grabar";
+"Where the recording is written" = "Dónde se guarda la grabación";
+"Start recording with these settings" = "Empezar a grabar con estos ajustes";
+"Stop recording and finish writing the file" = "Detener la grabación y terminar de escribir el archivo";
+"Leave the recording on disk without adding it to the timeline" = "Dejar la grabación en el disco sin añadirla a la línea de tiempo";
+"Put the recording on the timeline" = "Poner la grabación en la línea de tiempo";
+"Delete the recovered file" = "Eliminar el archivo recuperado";
+"Leave the recovered file on disk without adding it to the timeline" = "Dejar el archivo recuperado en el disco sin añadirlo a la línea de tiempo";
+"Put the recovered recording on the timeline" = "Poner la grabación recuperada en la línea de tiempo";
+
+/* 字幕生成、翻译与双轨编辑器 */
+"Close this panel" = "Cerrar este panel";
+"Edit the text and timing of every line" = "Editar el texto y el tiempo de cada línea";
+"Cancel the translation" = "Cancelar la traducción";
+"Retranslate every line, replacing what is already there" = "Volver a traducir todas las líneas, reemplazando lo que ya hay";
+"Only translate lines with no translation, or whose source text changed" = "Traducir solo las líneas sin traducción o cuyo texto original cambió";
+"Cancel subtitle generation" = "Cancelar la generación de subtítulos";
+"Transcribe the audio on the timeline into a subtitle track" = "Transcribir el audio de la línea de tiempo a una pista de subtítulos";
+"Transcribe only the selected clips, for example just the voiceover, leaving out a screen recording's own sound or background music" = "Transcribir solo los clips seleccionados, por ejemplo solo la voz en off, dejando fuera el sonido de una grabación de pantalla o la música de fondo";
+"Break the selected line in two" = "Partir en dos la línea seleccionada";
+"Delete the selected lines from every track" = "Eliminar las líneas seleccionadas de todas las pistas";
+"Close the subtitle editor" = "Cerrar el editor de subtítulos";
+
+/* 界面文案补齐（2026-08-12）—— scripts/check-localization-coverage.sh 盯着两张表要配齐 */
+/* 录屏：设置面板与控制条 */
+"Record Screen" = "Grabar pantalla";
+"Source" = "Fuente";
+"Aspect ratio" = "Proporción";
+"Drag a region on any one display. Return confirms, Escape cancels." = "Dibuja una región en una sola pantalla. Retorno confirma, Escape cancela.";
+"Includes sound SrtFlow itself is playing." = "Incluye el sonido que reproduce el propio SrtFlow.";
+"Microphone" = "Micrófono";
+"Device" = "Dispositivo";
+"No microphone found. The screen recording will still work." = "No se encontró ningún micrófono. La grabación de pantalla funcionará igual.";
+"Recorded to its own track. If computer audio is on too, use headphones to avoid echo — SrtFlow doesn’t cancel echo." = "Se graba en su propia pista. Si el audio del ordenador también está activado, usa auriculares para evitar el eco: SrtFlow no cancela el eco.";
+"Pointer" = "Puntero";
+"Show pointer" = "Mostrar el puntero";
+"Show clicks" = "Mostrar los clics";
+"Start Recording" = "Empezar a grabar";
+"Record" = "Grabar";
+"Choose where to save this screen recording." = "Elige dónde guardar esta grabación de pantalla.";
+"Starting…" = "Iniciando…";
+"Finalizing…" = "Finalizando…";
+"Low disk space — stopping soon." = "Queda poco espacio en disco: se detendrá pronto.";
+"%d × %d pt  ·  %d × %d px" = "%d × %d pt  ·  %d × %d px";
+"Too small — at least %d × %d pt" = "Demasiado pequeño: al menos %d × %d pt";
+
+/* 录屏：结果、部分成功与恢复 */
+"Recording is incomplete" = "La grabación está incompleta";
+"The file is already saved where you chose. Adding it to the timeline is optional." = "El archivo ya está guardado donde elegiste. Añadirlo a la línea de tiempo es opcional.";
+"Keep file only" = "Conservar solo el archivo";
+"Add to timeline" = "Añadir a la línea de tiempo";
+"Discard" = "Descartar";
+"A partial recording was added to the timeline." = "Se añadió una grabación parcial a la línea de tiempo.";
+"That recording is already in the timeline." = "Esa grabación ya está en la línea de tiempo.";
+"The recording couldn’t be read, so it wasn’t added to the timeline." = "No se pudo leer la grabación, así que no se añadió a la línea de tiempo.";
+"The screen recording was added, but the microphone track couldn’t be read and was left out." = "Se añadió la grabación de pantalla, pero la pista del micrófono no se pudo leer y se dejó fuera.";
+"That recovered recording couldn’t be read." = "No se pudo leer esa grabación recuperada.";
+"The recovered recording was added, but its microphone track couldn’t be read." = "Se añadió la grabación recuperada, pero su pista de micrófono no se pudo leer.";
+"The recovered recording was saved as %@." = "La grabación recuperada se guardó como %@.";
+"The recovered recording wasn’t added to the timeline." = "La grabación recuperada no se añadió a la línea de tiempo.";
+"That recovered recording couldn’t be saved: %@" = "No se pudo guardar esa grabación recuperada: %@";
+"A recording from the last session is no longer where it was saved: %@" = "Una grabación de la última sesión ya no está donde se guardó: %@";
+"This recording was saved but never added to the timeline." = "Esta grabación se guardó pero nunca se añadió a la línea de tiempo.";
+"This recording was saved but never added to the timeline. Its microphone track is missing." = "Esta grabación se guardó pero nunca se añadió a la línea de tiempo. Falta su pista de micrófono.";
+"SrtFlow found a damaged screen-recording record from the last session and left it untouched." = "SrtFlow encontró un registro de grabación de pantalla dañado de la última sesión y lo dejó sin tocar.";
+"SrtFlow quit while this recording was still being written." = "SrtFlow se cerró mientras esta grabación aún se estaba escribiendo.";
+"Only the microphone audio from the interrupted recording could be recovered — the screen recording itself is unusable." = "De la grabación interrumpida solo se pudo recuperar el audio del micrófono: la grabación de pantalla en sí no sirve.";
+"These files couldn’t be deleted, so the recording is still on record: %@" = "Estos archivos no se pudieron eliminar, así que la grabación sigue registrada: %@";
+"The project changed, so the recording wasn’t added to the timeline. It’s saved as %@." = "El proyecto cambió, así que la grabación no se añadió a la línea de tiempo. Está guardada como %@.";
+"The recording is saved as %@, but it couldn’t be added to the timeline." = "La grabación está guardada como %@, pero no se pudo añadir a la línea de tiempo.";
+"The recording file disappeared before it could be saved." = "El archivo de la grabación desapareció antes de poder guardarse.";
+
+/* 录屏：失败原因与音轨抱怨 */
+"There’s still an unfinished recording from earlier. Deal with it first." = "Todavía hay una grabación anterior sin terminar. Resuélvela primero.";
+"A source picker is already open." = "Ya hay un selector de fuente abierto.";
+"Source selection was cancelled." = "Se canceló la selección de la fuente.";
+"That source is no longer available." = "Esa fuente ya no está disponible.";
+"That folder can’t be written to. Pick another location." = "No se puede escribir en esa carpeta. Elige otra ubicación.";
+"Not enough free space: %@ needed, %@ available." = "No hay espacio suficiente: se necesitan %@ y hay %@ disponibles.";
+"The disk ran out of space while recording." = "El disco se quedó sin espacio durante la grabación.";
+"The disk ran out of space, so the recording is incomplete." = "El disco se quedó sin espacio, así que la grabación está incompleta.";
+"SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again." = "SrtFlow aún no tiene permiso para grabar la pantalla. Actívalo en Ajustes del Sistema ▸ Privacidad y seguridad ▸ Grabación de pantalla y audio del sistema. Si el interruptor ya está activado, desactívalo y vuelve a activarlo.";
+"SrtFlow doesn’t have microphone permission, so narration wasn’t recorded. The screen recording itself is fine." = "SrtFlow no tiene permiso para usar el micrófono, así que la narración no se grabó. La grabación de pantalla está bien.";
+"SrtFlow couldn’t hide its own recording controls from the capture, so it didn’t start. Try again." = "SrtFlow no pudo ocultar sus propios controles de grabación de la captura, así que no empezó. Inténtalo de nuevo.";
+"SrtFlow couldn’t tell which display you picked (two look identical). Record a window or a custom region instead, or update to macOS 15.2 or later." = "SrtFlow no pudo saber qué pantalla elegiste (dos son idénticas). Graba una ventana o una región personalizada, o actualiza a macOS 15.2 o posterior.";
+"The recording could not be finished." = "No se pudo terminar la grabación.";
+"The recording has no usable video." = "La grabación no tiene video utilizable.";
+"The end of the recording has no picture, so the recording is incomplete." = "El final de la grabación no tiene imagen, así que la grabación está incompleta.";
+"Some audio could not be written in time, so the recording is incomplete." = "Parte del audio no se pudo escribir a tiempo, así que la grabación está incompleta.";
+"The end of the audio couldn’t be written in time, so the recording is incomplete." = "El final del audio no se pudo escribir a tiempo, así que la grabación está incompleta.";
+"The microphone track could not be finished, so only the screen was recorded." = "No se pudo terminar la pista del micrófono, así que solo se grabó la pantalla.";
+"The microphone stopped working, so only the screen and computer audio were recorded." = "El micrófono dejó de funcionar, así que solo se grabaron la pantalla y el audio del ordenador.";
+"The microphone couldn’t be used, so only the screen was recorded: %@" = "No se pudo usar el micrófono, así que solo se grabó la pantalla: %@";
+"The microphone stopped partway through: %@" = "El micrófono se detuvo a mitad de camino: %@";
+"The microphone track wasn’t written." = "La pista del micrófono no se escribió.";
+"The microphone track can’t be read." = "La pista del micrófono no se puede leer.";
+"The saved recording can’t be read back." = "La grabación guardada no se puede volver a leer.";
+"The saved microphone track can’t be read back." = "La pista de micrófono guardada no se puede volver a leer.";
+"Computer audio" = "Audio del ordenador";
+"Computer audio was on, but nothing was recorded on the audio track." = "El audio del ordenador estaba activado, pero no se grabó nada en la pista de audio.";
+"The microphone" = "El micrófono";
+"%1$@ starts %2$@ after the recording begins." = "%1$@ empieza %2$@ después del inicio de la grabación.";
+"%1$@ stops %2$@ before the end of the recording." = "%1$@ se detiene %2$@ antes del final de la grabación.";
+"Screen Recording %@" = "Grabación de pantalla %@";
+
+/* 工程：菜单、最近工程与文档 */
+"New Project" = "Nuevo proyecto";
+"Open Project…" = "Abrir proyecto…";
+"Open Recent" = "Abrir reciente";
+"Save As…" = "Guardar como…";
+"Recent Projects" = "Proyectos recientes";
+"No Recent Projects" = "No hay proyectos recientes";
+"Drop video, audio, images, or subtitles here to start editing." = "Arrastra aquí video, audio, imágenes o subtítulos para empezar a editar.";
+"This project hasn’t been saved yet" = "Este proyecto aún no se ha guardado";
+"Untitled" = "Sin título";
+"Save this project before closing it?" = "¿Guardar este proyecto antes de cerrarlo?";
+"It has never been saved, so the edits will be lost." = "Nunca se ha guardado, así que los cambios se perderán.";
+"Save…" = "Guardar…";
+"Open" = "Abrir";
+"Could not save the project: %@" = "No se pudo guardar el proyecto: %@";
+"Stop the screen recording first." = "Detén primero la grabación de pantalla.";
+"The frame rate is locked while recording." = "Los fotogramas por segundo están bloqueados durante la grabación.";
+"The video engine isn’t available, so image clips couldn’t be prepared." = "El motor de video no está disponible, así que no se pudieron preparar los clips de imagen.";
+"Relink" = "Revincular";
+"Relink…" = "Revincular…";
+"Where is “%@”?" = "¿Dónde está “%@”?";
+"“%@” could not be found." = "No se encontró “%@”.";
+"%d media files could not be found." = "No se encontraron %d archivos de medios.";
+"“%@” isn’t a SrtFlow project file." = "“%@” no es un archivo de proyecto de SrtFlow.";
+"“%@” was made by a newer version of SrtFlow." = "“%@” se creó con una versión más reciente de SrtFlow.";
+
+/* 时间线标记、字幕与导出 */
+"Add Marker at Playhead" = "Añadir marcador en el cabezal";
+"Add Marker Here" = "Añadir marcador aquí";
+"Delete Marker" = "Eliminar marcador";
+"Colour" = "Color";
+"Edit Note…" = "Editar nota…";
+"Note" = "Nota";
+"Burn subtitles into the video" = "Incrustar los subtítulos en el video";
+"Every subtitle track is hidden — nothing will be burned." = "Todas las pistas de subtítulos están ocultas: no se incrustará nada.";
+"Translation didn’t start. Close the panel and try again." = "La traducción no empezó. Cierra el panel e inténtalo de nuevo.";
+"ffmpeg finished but produced no output file." = "ffmpeg terminó pero no generó ningún archivo.";
+"These image clips aren’t ready yet: %@. Wait for them to finish, or relink them if the images are missing." = "Estos clips de imagen aún no están listos: %@. Espera a que terminen o revincúlalos si faltan las imágenes.";
+
+/* 运行期才成形的 key（L10n(x.title) 这类）—— scripts/check-localization-coverage.sh 会顺着属性找过来 */
+/* 时间线标记的颜色 */
+"Red" = "Rojo";
+"Orange" = "Naranja";
+"Yellow" = "Amarillo";
+"Green" = "Verde";
+"Blue" = "Azul";
+"Purple" = "Morado";
+
+/* 录屏来源与画面比例 */
+"Entire display" = "Toda la pantalla";
+"A window" = "Una ventana";
+"Custom region" = "Región personalizada";
+"Free" = "Libre";
+
+/* 字幕导出：烧录范围说明 */
+"Burning both subtitle tracks, with the Burn In tool's style." = "Se incrustan las dos pistas de subtítulos, con el estilo de la herramienta Incrustar.";
+"Burning the translated track, with the Burn In tool's style." = "Se incrusta la pista traducida, con el estilo de la herramienta Incrustar.";
+"Burning the original track, with the Burn In tool's style." = "Se incrusta la pista original, con el estilo de la herramienta Incrustar.";
+
+/* 比例、分辨率、帧率 */
+"16:9" = "16:9";
+"9:16" = "9:16";
+"4:3" = "4:3";
+"3:4" = "3:4";
+"1:1" = "1:1";
+"2160p" = "2160p";
+"1440p" = "1440p";
+"1080p" = "1080p";
+"720p" = "720p";
+"480p" = "480p";
+"24 fps" = "24 fps";
+"30 fps" = "30 fps";
+"60 fps" = "60 fps";
+
+/* 字幕格式与 x264 预设（技术标识，两种语言相同） */
+"SRT" = "SRT";
+"VTT" = "VTT";
+"ASS" = "ASS";
+"SSA" = "SSA";
+"veryfast" = "veryfast";
+"faster" = "faster";
+"fast" = "fast";
+"medium" = "medium";
+"slow" = "slow";
+"slower" = "slower";
+"veryslow" = "veryslow";
+
+/* 视频编辑：上层视频轨与画面渐变（2026-09-17） */
+"Add to Upper Track…" = "Añadir a la pista superior…";
+"Upper track clips" = "Clips de las pistas superiores";
+"Fade" = "Fundido";
+"Fade in" = "Fundido de entrada";
+"Fade out" = "Fundido de salida";
+"On an upper track the clip fades to and from whatever is on the track below, not to black." = "En una pista superior el clip se funde con lo que haya en la pista de abajo, no con negro.";
+"On the bottom track the clip fades to and from black." = "En la pista inferior el clip se funde desde y hacia negro.";
+"Click again with Option held to select the clip underneath" = "Haz clic otra vez con Opción pulsada para seleccionar el clip de debajo";
+
+/* 画面文字标注（2026-09-17） */
+"Empty text" = "Texto vacío";
+"Edit this text on the preview" = "Editar este texto en la previsualización";
+"Finish editing this text" = "Terminar de editar este texto";
+"Pick the typeface for this text" = "Elegir la tipografía de este texto";
+"Search" = "Buscar";
+"Center" = "Centro";
+"How lines line up inside the text box" = "Cómo se alinean las líneas dentro de la caja de texto";
+"Box width" = "Ancho de caja";
+"Line height" = "Interlineado";
+"Tracking" = "Espaciado";
+"Fill" = "Relleno";
+"Solid" = "Sólido";
+"Gradient" = "Degradado";
+"Draw an outline around the letters" = "Dibujar un contorno alrededor de las letras";
+"Drop a soft shadow behind the letters" = "Poner una sombra suave detrás de las letras";
+"Offset X" = "Desplaz. X";
+"Offset Y" = "Desplaz. Y";
+"Blur" = "Desenfoque";
+"Backdrop" = "Placa";
+"Put a coloured plate behind the text" = "Poner una placa de color detrás del texto";
+"Corner" = "Esquina";
+"Pad X" = "Margen X";
+"Pad Y" = "Margen Y";
+"Drag the text on the preview to place it, or its block on the timeline to retime it. Double-click the text to edit the words." = "Arrastra el texto en la previsualización para colocarlo, o su bloque en la línea de tiempo para cambiar su tiempo. Haz doble clic en el texto para editar las palabras.";
+
+/* 文字动画（2026-09-17） */
+"Animation" = "Animación";
+"Emphasis" = "Énfasis";
+"Intensity" = "Intensidad";
+"Rise" = "Ascenso";
+"Pop" = "Pop";
+"Typewriter" = "Máquina de escribir";
+"Cascade" = "Cascada";
+"Draw on" = "Trazado";
+"Breathe" = "Respiración";
+"Runs the whole time the text is on screen" = "Se repite todo el tiempo que el texto está en pantalla";
+"Draw on needs an outline — turn on Outline above." = "Trazado necesita un contorno: activa Contorno arriba.";
+"In and out are longer than this text lasts, so both were shortened to fit." = "La entrada y la salida duran más que este texto, así que se acortaron las dos para que quepan.";
+"A looping animation on a long text makes exporting slower." = "Una animación en bucle sobre un texto largo hace más lenta la exportación.";
+"A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "Una transición ya funde el sonido en esa unión, así que el fundido de ese lado se omite.";
+
+/* 数字元件（2026-09-17） */
+"Number" = "Número";
+"Count up" = "Contador";
+"Odometer" = "Odómetro";
+"Count up changes the whole number; Odometer rolls each digit on its own wheel" = "Contador cambia el número entero; Odómetro gira cada dígito en su propia rueda";
+"Roll for" = "Gira durante";
+"Delay" = "Retardo";
+"Wait this long after the clip starts before the number begins to roll; it shows the From value while waiting" = "Cuánto esperar desde que empieza el clip hasta que el número empieza a girar; mientras tanto muestra el valor inicial";
+"Decimals" = "Decimales";
+"Thousands" = "Millares";
+"Group thousands with commas" = "Separar los millares con comas";
+"Prefix" = "Prefijo";
+"Suffix" = "Sufijo";
+"Numbers always use a comma for thousands and a period for the decimal point, so the same project renders identically on any machine." = "Los números usan siempre coma para los millares y punto para los decimales, así que el mismo proyecto se renderiza igual en cualquier equipo.";
+"Drag the number on the preview to place it, or its block on the timeline to retime it." = "Arrastra el número en la previsualización para colocarlo, o su bloque en la línea de tiempo para cambiar su tiempo.";
+
+/* 对焦动画（2026-09-18） */
+"Focus" = "Enfoque";
+"Start at" = "Empieza en";
+"Focus starts fully opaque — like a camera pulling into focus." = "Enfoque empieza totalmente opaco, como una cámara que enfoca.";
+"Focus fades in from nothing, so the camera-focus feel is gone." = "Enfoque aparece desde la nada, así que se pierde la sensación de enfoque de cámara.";
+
+/* 画面段的入场 / 出场动画（2026-09-18，接管原「画面渐变」两行） */
+"Zoom" = "Zoom";
+"How this clip comes in" = "Cómo entra este clip";
+"How this clip goes out" = "Cómo sale este clip";
+"On an upper track the clip animates over whatever is on the track below." = "En una pista superior el clip se anima sobre lo que haya en la pista de abajo.";
+"On the bottom track the clip animates over black." = "En la pista inferior el clip se anima sobre negro.";
+"In and out are longer than this clip, so both were shortened to fit." = "La entrada y la salida duran más que este clip, así que se acortaron las dos para que quepan.";
+"A transition already covers that seam, so the in or out on that side is skipped." = "Una transición ya cubre esa unión, así que la entrada o la salida de ese lado se omite.";
+"Animating a long clip makes exporting slower — the whole clip is re-rendered first." = "Animar un clip largo hace más lenta la exportación: primero se vuelve a renderizar el clip entero.";
+
+/* 批量套用入场 / 出场动画（2026-09-18） */
+"Mixed" = "Varios";
+"Applies to all %d picture clips selected" = "Se aplica a los %d clips de imagen seleccionados";
+"How these clips come in" = "Cómo entran estos clips";
+"How these clips go out" = "Cómo salen estos clips";
+
+/* 侧边栏转场库（2026-09-20） */
+"Transitions" = "Transiciones";
+"Click a card to put that transition on the current seam" = "Haz clic en una tarjeta para poner esa transición en la unión actual";
+"Show or hide the transition library" = "Mostrar u ocultar la biblioteca de transiciones";
+"Add a second clip to the main track to put a transition between them." = "Añade un segundo clip a la pista principal para poner una transición entre los dos.";
+"Select just one clip — a transition goes on one seam at a time." = "Selecciona un solo clip: una transición va en una unión cada vez.";
+
+/* 转场借余料（2026-09-20） */
+"No continuous footage here — a transition needs two clips that touch." = "Aquí no hay material continuo: una transición necesita dos clips que se toquen.";
+"These clips have no spare footage left for a transition. Trim one of them back a little." = "A estos clips no les queda material sobrante para una transición. Recorta un poco uno de ellos.";
+"The transition borrows trimmed-off footage from both sides, so the clips stay put and the total length does not change." = "La transición toma prestado material recortado de los dos lados, así que los clips no se mueven y la duración total no cambia.";
+
+/* 压黑走原地斜坡（2026-09-20） */
+"These clips are too short to blend, so only Black fade works here." = "Estos clips son demasiado cortos para mezclarse, así que aquí solo funciona Fundido a negro.";
+"The transition leaves the clips where they are — the total length does not change." = "La transición deja los clips donde están: la duración total no cambia.";
+
+/* 时间线转场遮罩（2026-09-20） */
+"Remove Transition" = "Quitar transición";
+"Between %@ and %@" = "Entre %@ y %@";
+"Remove this transition" = "Quitar esta transición";
+"%@ · %.1fs — drag either edge to change the length" = "%@ · %.1fs — arrastra cualquiera de los bordes para cambiar la duración";
+
+/* 时间轴上的滤镜（调色，2026-09-21） */
+"Filter" = "Filtro";
+"Name" = "Nombre";
+"Strength" = "Intensidad";
+"Cold Iron" = "Hierro frío";
+"This filter grades every picture under it — text, shapes and subtitles stay untouched." = "Este filtro colorea toda la imagen que hay debajo; el texto, las formas y los subtítulos no cambian.";
+"Remove this filter from the timeline" = "Quitar este filtro de la línea de tiempo";
+
+/* 滤镜库与十款预设（2026-09-21，刀 2） */
+"Library" = "Biblioteca";
+"Filters" = "Filtros";
+"Show or hide the transition, filter and audio library" = "Mostrar u ocultar la biblioteca de transiciones, filtros y audio";
+"Add this filter at the playhead" = "Añadir este filtro en el cabezal";
+"Add a clip to the main track to see each filter on your own footage." = "Añade un clip a la pista principal para ver cada filtro sobre tu propio material.";
+"Move the playhead over a clip to see each filter on your own footage." = "Mueve el cabezal sobre un clip para ver cada filtro sobre tu propio material.";
+"Teal & Orange" = "Verde azulado y naranja";
+"Warm Sun" = "Sol cálido";
+"Flat Grey" = "Gris plano";
+"Night Gold" = "Oro nocturno";
+"Faded Film" = "Película desvaída";
+"Cold White" = "Blanco frío";
+"Mist Blue" = "Azul bruma";
+"Ink & Shadow" = "Tinta y sombra";
+"Neon" = "Neón";
+
+/* 音频库 */
+"Search music" = "Buscar música";
+"Try again" = "Reintentar";
+"No music matches." = "Ninguna música coincide.";
+"Offline — showing the last known list." = "Sin conexión: se muestra la última lista conocida.";
+"The audio library list is damaged." = "La lista de la biblioteca de audio está dañada.";
+"This audio library needs a newer version of the app (list format v%d, this app reads up to v%d)." = "Esta biblioteca de audio necesita una versión más reciente de la app (formato de lista v%d; esta app lee hasta v%d).";
+"Could not download this track (server said %d)." = "No se pudo descargar esta pista (el servidor respondió %d).";
+"Music credits" = "Créditos de la música";
+"Every track below is licensed under Creative Commons Attribution. If you publish a video that uses one, credit it as shown." = "Todas las pistas de abajo tienen licencia Creative Commons Atribución. Si publicas un video que use alguna, acredítala como se indica.";
+"Used in this project" = "Usadas en este proyecto";
+"Copy credits" = "Copiar créditos";
+"Copy the credit lines for the tracks used in this project" = "Copiar las líneas de crédito de las pistas usadas en este proyecto";
+"Credits" = "Créditos";
+"Where this music comes from, and how to credit it" = "De dónde viene esta música y cómo acreditarla";
+"Downloaded tracks — click to free the space" = "Pistas descargadas: haz clic para liberar el espacio";
+"Remove downloaded music?" = "¿Quitar la música descargada?";
+"Search sound effects" = "Buscar efectos de sonido";
+"No sound effects match." = "Ningún efecto de sonido coincide.";
+"Remove downloaded audio?" = "¿Quitar el audio descargado?";
+"Remove" = "Quitar";
+"Projects that use these tracks will download them again when you open them." = "Los proyectos que usan estas pistas las descargarán de nuevo al abrirlos.";
+"Collapse the sidebar" = "Contraer la barra lateral";
+"Expand the sidebar" = "Expandir la barra lateral";
+
+/* 音量曲线（2026-09-23） */
+"Drag to change the volume. ⌥-click the line to add a point, ⌥-click a point to remove it." = "Arrastra para cambiar el volumen. ⌥-clic en la línea añade un punto; ⌥-clic en un punto lo quita.";
+"Remove Volume Curve" = "Quitar curva de volumen";
+"Remove the volume curve and go back to 0 dB" = "Quitar la curva de volumen y volver a 0 dB";
+"Volume curve with %d points. The slider raises or lowers the whole curve." = "Curva de volumen con %d puntos. El control sube o baja toda la curva.";
+
+/* 轨道头推子（2026-09-23） */
+"Master volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Volumen maestro. Arrastra para ajustar (⇧ para pasos finos); ⌥-clic o doble clic para 0 dB.";
+"Track volume. Drag to adjust (⇧ for fine steps); ⌥-click or double-click for 0 dB." = "Volumen de la pista. Arrastra para ajustar (⇧ para pasos finos); ⌥-clic o doble clic para 0 dB.";
+
+/* 导出面板改版（2026-09-24）：标题 / 导出至 / 分辨率 + 高级 */
+"Title" = "Título";
+"Export to" = "Exportar a";
+"Choose the folder to export into" = "Elegir la carpeta a la que exportar";
+"“%@” is already in this folder. Exporting will replace it." = "“%@” ya está en esta carpeta. Al exportar se reemplazará.";
+"Replace “%@”?" = "¿Reemplazar “%@”?";
+"A file with this name is already in “%@”. Replacing it overwrites its contents." = "Ya hay un archivo con este nombre en “%@”. Reemplazarlo sobrescribe su contenido.";
+"Same as project (%d×%d)" = "Igual que el proyecto (%d×%d)";
+"%@ (%d×%d)" = "%@ (%d×%d)";
+"%d fps" = "%d fps";
+"The frame rate follows the project" = "Los fotogramas por segundo siguen al proyecto";
+"Advanced" = "Avanzado";
+"Show the advanced settings" = "Mostrar los ajustes avanzados";
+"Hide the advanced settings" = "Ocultar los ajustes avanzados";
+"H.264 CRF %d" = "H.264 CRF %d";
+"Hardware, quality %d" = "Hardware, calidad %d";
+"AAC %d kbps" = "AAC %d kbps";
+"Not optimised for web" = "Sin optimizar para web";
+"Metadata stripped" = "Metadatos eliminados";
+"Restore Defaults" = "Restablecer valores";
+"Put every advanced setting back to its default" = "Devolver todos los ajustes avanzados a su valor por defecto";
+"AAC bitrate" = "Tasa de bits AAC";
+"The timeline’s sound is mixed, so it is always encoded as AAC." = "El sonido de la línea de tiempo se mezcla, así que siempre se codifica como AAC.";
+"Saved into the export folder above, named after the title." = "Se guardan en la carpeta de exportación de arriba, con el nombre del título.";
+"Export Subtitle Files" = "Exportar archivos de subtítulos";
+"Write the checked subtitle files into the export folder" = "Guardar los archivos de subtítulos marcados en la carpeta de exportación";
+"%d of these files are already in this folder. Exporting will replace them." = "%d de estos archivos ya están en esta carpeta. Al exportar se reemplazarán.";
+"Replace %d subtitle files?" = "¿Reemplazar %d archivos de subtítulos?";
+
+/* 声音场景（VideoEditSoundScene.swift / VideoEditInspector+Sound.swift） */
+"Sound scene" = "Escena de sonido";
+"Speaker" = "Altavoz";
+"Indoor" = "Interior";
+"Outdoor" = "Exterior";
+"Telephone" = "Teléfono";
+"Megaphone" = "Megáfono";
+"Radio" = "Radio";
+"Room" = "Habitación";
+"Bathroom" = "Baño";
+"Hall" = "Sala grande";
+"Open air" = "Aire libre";
+"Forest" = "Bosque";
+"Valley echo" = "Eco de valle";
+"Distortion" = "Distorsión";
+"Tone" = "Tono";
+"Room size" = "Tamaño de la sala";
+"Distance" = "Distancia";
+"Make the sound seem to come through a speaker, or from a room or outdoors. It adds space; it can’t remove echo that is already in the recording." = "Hace que el sonido parezca salir de un altavoz, de una habitación o del exterior. Añade espacio; no puede quitar el eco que ya tiene la grabación.";
+"Put this scene’s sliders back to their defaults" = "Devolver los controles de esta escena a sus valores por defecto";
+"Applies to all %d clips with sound selected" = "Se aplica a los %d clips con sonido seleccionados";
+
+/* 播放键的提示：回到开头（Return / Home）没有自己的按钮 */
+"Pause (Return goes back to the start)" = "Pausar (Retorno vuelve al principio)";
+"Play (Return goes back to the start)" = "Reproducir (Retorno vuelve al principio)";
+
+/* 文字 / 形状 / 滤镜块的右键：和 V 同一个动作（2026-09-26） */
+"Hide Text" = "Ocultar texto";
+"Show Text" = "Mostrar texto";
+"Hide Shape" = "Ocultar forma";
+"Show Shape" = "Mostrar forma";
+"Hide Filter" = "Ocultar filtro";
+"Show Filter" = "Mostrar filtro";
+
+/* 字幕拆成两条独立轨（2026-09-26） */
+"Original track" = "Pista original";
+"Translated track" = "Pista traducida";
+"Add a line at the playhead, on the selected line’s track" = "Añadir una línea en el cabezal, en la pista de la línea seleccionada";
+"Join the selected lines into one (on the same track)" = "Unir las líneas seleccionadas en una (en la misma pista)";
+"Put the translation back under the original on the video" = "Volver a poner la traducción debajo del original en el video";
+"Retranslate every line?" = "¿Volver a traducir todas las líneas?";
+"Retranslate All" = "Retraducir todo";
+"The translated track is rebuilt from scratch. Lines you edited, moved, split or added by hand are replaced." = "La pista traducida se reconstruye desde cero. Las líneas que editaste, moviste, dividiste o añadiste a mano se reemplazan.";
+"Hide Line" = "Ocultar línea";
+"Show Line" = "Mostrar línea";
+"Hidden line — not shown, burned in or exported" = "Línea oculta: no se muestra, ni se incrusta, ni se exporta";
+
+/* 时间线右键菜单：剪切 / 拷贝 / 粘贴（2026-09-26） */
+"Cut" = "Cortar";
+"Copy" = "Copiar";
+"Paste" = "Pegar";
+
+/* AI 剪辑（MCP，2026-09-27）：顶上的提示条、设置里的「AI」一节、AI 做出来的文件夹名 */
+"%@ is editing this project…" = "%@ está editando este proyecto…";
+"%@ made %d changes." = "%@ hizo %d cambios.";
+"You stopped the AI." = "Detuviste a la IA.";
+"The AI" = "La IA";
+"Stop the AI and cancel its exports and subtitle jobs" = "Detener a la IA y cancelar sus exportaciones y tareas de subtítulos";
+"Undo This Round" = "Deshacer esta ronda";
+"Put the project back to how it was before the AI started this round" = "Dejar el proyecto como estaba antes de que la IA empezara esta ronda";
+"Hide this bar" = "Ocultar esta barra";
+"Exports" = "Exportaciones";
+"Projects" = "Proyectos";
+"Voiceovers" = "Voces en off";
+"Sound Effects" = "Efectos de sonido";
+"AI" = "IA";
+"Let AI apps such as Claude and Codex edit videos in SrtFlow. You watch every step in the editor, and Command-Z undoes any of it." = "Permite que apps de IA como Claude y Codex editen videos en SrtFlow. Ves cada paso en el editor y Comando-Z deshace cualquiera de ellos.";
+"This copy of SrtFlow has no AI helper inside, so AI apps cannot connect to it." = "Esta copia de SrtFlow no incluye el ayudante de IA, así que las apps de IA no pueden conectarse.";
+"Copy Setup for Other Apps" = "Copiar configuración para otras apps";
+"Copy the MCP configuration (JSON) for apps such as Cursor or Cherry Studio" = "Copiar la configuración MCP (JSON) para apps como Cursor o Cherry Studio";
+"Copied the configuration." = "Configuración copiada.";
+"Claude Desktop" = "Claude Desktop";
+"Claude Code" = "Claude Code";
+"Codex" = "Codex";
+"Copy Prompt" = "Copiar mensaje";
+"Copied. Paste it into %@." = "Copiado. Pégalo en %@.";
+"Copy a message you can paste into this app so it connects SrtFlow itself" = "Copiar un mensaje que puedes pegar en esta app para que conecte SrtFlow por sí misma";
+"Connect" = "Conectar";
+"Disconnect" = "Desconectar";
+"Remove SrtFlow from this app's MCP settings" = "Quitar SrtFlow de los ajustes MCP de esta app";
+"Connected · asks each time" = "Conectado · pregunta cada vez";
+"Add SrtFlow to this app's MCP settings and let it use SrtFlow's tools without asking" = "Añadir SrtFlow a los ajustes MCP de esta app y dejar que use las herramientas de SrtFlow sin preguntar";
+"AI may also read these places without asking, because you allowed it once:" = "La IA también puede leer estos lugares sin preguntar, porque lo permitiste una vez:";
+"Forget" = "Olvidar";
+"SrtFlow voices" = "Voces de SrtFlow";
+"Natural voices for AI voiceovers, made on this Mac, in English, Chinese and 6 more languages. About 333 MB." = "Voces naturales para las voces en off de la IA, generadas en este Mac, en inglés, chino y 6 idiomas más. Unos 333 MB.";
+"Downloaded" = "Descargado";
+"Download failed" = "Error en la descarga";
+"Not downloaded" = "Sin descargar";
+"Delete SrtFlow's voices from this Mac; AI voiceovers use the Mac's voices until you download them again" = "Eliminar las voces de SrtFlow de este Mac; las voces en off de la IA usarán las voces del Mac hasta que las vuelvas a descargar";
+"Stop the download; downloading again continues where it stopped" = "Detener la descarga; al descargar de nuevo continúa donde se detuvo";
+"Try Again" = "Reintentar";
+"Download" = "Descargar";
+"Download SrtFlow's voices (about 333 MB) so AI voiceovers sound natural" = "Descargar las voces de SrtFlow (unos 333 MB) para que las voces en off de la IA suenen naturales";
+"Editing styles" = "Estilos de edición";
+"Open Folder" = "Abrir carpeta";
+"Show the folder with your own editing styles in Finder" = "Mostrar en el Finder la carpeta con tus propios estilos de edición";
+"When AI edits a whole video it follows one of SrtFlow's preset editing styles (promo, cinematic opening, sci-fi, documentary, vlog). Ask it to save a style you like as your own and it shows up here." = "Cuando la IA edita un video entero sigue uno de los estilos de edición predefinidos de SrtFlow (promoción, apertura cinematográfica, ciencia ficción, documental, vlog). Pídele que guarde un estilo que te guste como tuyo y aparecerá aquí.";
+"Replaces the preset style" = "Reemplaza el estilo predefinido";
+"Open this style's file in Finder; any text editor can change it" = "Abrir el archivo de este estilo en el Finder; cualquier editor de texto puede cambiarlo";
+"Move this style to the Trash" = "Mover este estilo a la Papelera";
+"Ask again before AI reads files here" = "Volver a preguntar antes de que la IA lea archivos aquí";
+"Connected. Restart Claude Desktop so it picks up SrtFlow. It asks before each SrtFlow tool until you choose Always allow, in the prompt or for all of srtflow's tools at once in Claude's Connectors settings." = "Conectado. Reinicia Claude Desktop para que detecte SrtFlow. Preguntará antes de cada herramienta de SrtFlow hasta que elijas Permitir siempre, en el aviso o para todas las herramientas de srtflow a la vez en los ajustes de Conectores de Claude.";
+"Connected. Restart %@ so it picks up SrtFlow. It will use SrtFlow's tools without asking; SrtFlow itself asks before moving files to the Trash." = "Conectado. Reinicia %@ para que detecte SrtFlow. Usará las herramientas de SrtFlow sin preguntar; SrtFlow sí pregunta antes de mover archivos a la Papelera.";
+"Please connect the SrtFlow video editor to Claude Code: run this command in the terminal, add \"mcp__srtflow\" to permissions.allow in ~/.claude/settings.json so its tools run without asking, then tell me to start a new session.\n\nclaude mcp add --scope user srtflow -- \"%@\"" = "Conecta el editor de video SrtFlow a Claude Code: ejecuta este comando en la terminal, añade \"mcp__srtflow\" a permissions.allow en ~/.claude/settings.json para que sus herramientas se ejecuten sin preguntar y luego dime que inicie una sesión nueva.\n\nclaude mcp add --scope user srtflow -- \"%@\"";
+"Please connect the SrtFlow video editor to Codex: run this command in the terminal, add the line default_tools_approval_mode = \"approve\" under [mcp_servers.srtflow] in ~/.codex/config.toml so its tools run without asking, then tell me to start a new session.\n\ncodex mcp add srtflow -- \"%@\"" = "Conecta el editor de video SrtFlow a Codex: ejecuta este comando en la terminal, añade la línea default_tools_approval_mode = \"approve\" bajo [mcp_servers.srtflow] en ~/.codex/config.toml para que sus herramientas se ejecuten sin preguntar y luego dime que inicie una sesión nueva.\n\ncodex mcp add srtflow -- \"%@\"";
+"Connected" = "Conectado";
+"Connected to another copy" = "Conectado a otra copia";
+"Not connected" = "Sin conectar";
+"Not installed" = "No instalado";
+"Claude Code's command-line tool was not found. Copy the prompt and paste it into Claude Code instead." = "No se encontró la herramienta de línea de comandos de Claude Code. Copia el mensaje y pégalo en Claude Code.";
+"Disconnected. Restart %@ to finish." = "Desconectado. Reinicia %@ para terminar.";
+"Could not update %@: %@" = "No se pudo actualizar %@: %@";
+"Downloading the translation languages. In the window that opened, click Download next to each language if you haven't yet. Its progress bar can lag: System Settings › General › Language & Region › Translation Languages shows the real progress." = "Descargando los idiomas de traducción. En la ventana que se abrió, haz clic en Descargar junto a cada idioma si aún no lo has hecho. Su barra de progreso puede ir con retraso: Ajustes del Sistema › General › Idioma y región › Idiomas de traducción muestra el progreso real.";
+"The translation languages are downloaded. If the download window is still open, click Done and translating starts." = "Los idiomas de traducción están descargados. Si la ventana de descarga sigue abierta, haz clic en Aceptar y empieza la traducción.";
+"Highlight each word" = "Resaltar cada palabra";
+"The word being spoken changes colour, in the preview and in the exported video. Only subtitles SrtFlow made (from speech or a voiceover) know when each word is said" = "La palabra que se está diciendo cambia de color, en la previsualización y en el video exportado. Solo los subtítulos creados por SrtFlow (a partir de la voz o de una voz en off) saben cuándo se dice cada palabra";
+"Colour of the word being spoken" = "Color de la palabra que se está diciendo";
+"This project has its own subtitle style." = "Este proyecto tiene su propio estilo de subtítulos.";
+"Use Burn In style" = "Usar el estilo de Incrustar";
+"Use the subtitle style from the Burn In Subtitles page again" = "Volver a usar el estilo de subtítulos de la página Incrustar subtítulos";
+
+// fal.ai（设置里的一节、横幅上问用户花钱、配旁白）
+"Generated" = "Generado";
+"Allow" = "Permitir";
+"Not Now" = "Ahora no";
+"fal.ai · %@ — SrtFlow does not know this model's price, so it asks each time. Allow?" = "fal.ai · %@ — SrtFlow no conoce el precio de este modelo, así que pregunta cada vez. ¿Permitir?";
+"fal.ai · %@ — estimated cost %@. Today's spending would reach %@, over your %@ daily limit. Allow?" = "fal.ai · %@ — coste estimado %@. El gasto de hoy llegaría a %@, por encima de tu límite diario de %@. ¿Permitir?";
+"macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow." = "macOS va a preguntar si SrtFlow puede usar tu clave de fal.ai. Haz clic en Permitir siempre.";
+"That is not a fal.ai endpoint id. It looks like owner/model-name." = "Eso no es un id de endpoint de fal.ai. Tiene la forma propietario/nombre-del-modelo.";
+"The price must be a number." = "El precio debe ser un número.";
+"That does not look like a fal.ai API key. Copy the whole key from fal.ai/dashboard/keys." = "Eso no parece una clave API de fal.ai. Copia la clave completa desde fal.ai/dashboard/keys.";
+"Lets AI apps make images, video clips, music and sound effects, and speak narration with fal.ai's voices, using your own fal.ai account. It costs money on that account: SrtFlow stays within the daily limit below and asks you before going over it." = "Permite que las apps de IA generen imágenes, clips de video, música y efectos de sonido, y narren con las voces de fal.ai, usando tu propia cuenta de fal.ai. Cuesta dinero en esa cuenta: SrtFlow se mantiene dentro del límite diario de abajo y te pregunta antes de superarlo.";
+"fal.ai models" = "Modelos de fal.ai";
+"Key saved in the keychain" = "Clave guardada en el llavero";
+"Remove Key" = "Quitar clave";
+"Remove the fal.ai key from the macOS keychain; AI apps then lose the fal.ai tools" = "Quitar la clave de fal.ai del llavero de macOS; las apps de IA pierden entonces las herramientas de fal.ai";
+"fal.ai API key" = "Clave API de fal.ai";
+"Save Key" = "Guardar clave";
+"Store the key in the macOS keychain (fal.ai/dashboard/keys)" = "Guardar la clave en el llavero de macOS (fal.ai/dashboard/keys)";
+"Daily limit" = "Límite diario";
+"Spent today %@" = "Gastado hoy %@";
+"SrtFlow asks before AI spends more than this in one day (an estimate from each model's price, not fal.ai's bill)" = "SrtFlow pregunta antes de que la IA gaste más que esto en un día (una estimación según el precio de cada modelo, no la factura de fal.ai)";
+"Go back to the model SrtFlow picked for this" = "Volver al modelo que SrtFlow eligió para esto";
+"owner/model-name" = "propietario/nombre-del-modelo";
+"price" = "precio";
+"Image" = "Imagen";
+"Video from a picture" = "Video a partir de una imagen";
+"Video from text" = "Video a partir de texto";
+"Narration voice" = "Voz de narración";
+"Voice cloning" = "Clonación de voz";
+"Music" = "Música";
+"Sound effects" = "Efectos de sonido";
+"USD per image" = "USD por imagen";
+"USD per second of video at 768p (the built-in model has its own prices for 480p and 1080p)" = "USD por segundo de video a 768p (el modelo integrado tiene sus propios precios para 480p y 1080p)";
+"USD per second of video" = "USD por segundo de video";
+"USD per 1000 characters" = "USD por 1000 caracteres";
+"USD per second of sound" = "USD por segundo de sonido";
+"USD per minute of sound (a started minute counts as a whole one)" = "USD por minuto de sonido (un minuto empezado cuenta entero)";
+
+/* 盖一块（模糊 / 马赛克；"Blur" 早就有） */
+"Mosaic" = "Mosaico";
+"Blurs or pixelates the picture under it — text, shapes and subtitles stay sharp. Drag its frame on the preview to place it." = "Desenfoca o pixela la imagen que hay debajo; el texto, las formas y los subtítulos siguen nítidos. Arrastra su marco en la previsualización para colocarlo.";
+
+/* 关键帧的曲线菜单（2026-09-30） */
+"Easing" = "Suavizado";
+"Linear" = "Lineal";
+"Ease in" = "Entrada suave";
+"Ease out" = "Salida suave";
+"Ease in and out" = "Entrada y salida suaves";
+"How the values move from the keyframe before the playhead to the next one" = "Cómo pasan los valores del fotograma clave anterior al cabezal al siguiente";

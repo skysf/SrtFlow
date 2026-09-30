@@ -10,6 +10,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
     case system
     case english = "en"
     case simplifiedChinese = "zh-Hans"
+    case spanish = "es"
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
         case .system: return "System"
         case .english: return "English"
         case .simplifiedChinese: return "简体中文"
+        case .spanish: return "Español"
         }
     }
 

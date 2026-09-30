@@ -39,10 +39,10 @@
 
 ## 四、分刀
 
-1. **机制**（本 PR）：`AppLanguage` 的 locale / AppKit 语言 / 有效语言代码都从 rawValue 推出来，音频库按语言选标题改看 `resolvedCode`；
+1. **机制**（PR #108，已合并）：`AppLanguage` 的 locale / AppKit 语言 / 有效语言代码都从 rawValue 推出来，音频库按语言选标题改看 `resolvedCode`；
    覆盖守卫按 `Resources/*.lproj/` 现场找表、每张译文表都和 en 对账（键集、空值、占位符、重复键），`InfoPlist.strings` 一并对账；
    `check-mcp.sh` 的访达用途说明扫每一张 `InfoPlist.strings`；架构文档补「加一种界面语言」。
-2. **西班牙语**：`es.lproj` 两张表 + `case spanish = "es"`；系统语言设成英文、App 切西班牙语，逐面板看一遍排版，撞出来的按
+2. **西班牙语**（第二个 PR）：`es.lproj` 两张表 + `case spanish = "es"`；系统语言设成英文、App 切西班牙语，逐面板看一遍排版，撞出来的按
    [检查器的排版](../architecture/inspector-layout.md) 的规矩修；结果报给用户。
 3. **法语、土耳其语**：按第 2 步的结果定。
 
