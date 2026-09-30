@@ -16,6 +16,8 @@ import Foundation
 
 /// 第一个实参是 `LocalizedStringKey`（或走 `L10n` 查表）的调用。
 /// 加新的 SwiftUI 控件时记得往这里补，漏一个就是漏一类文案。
+/// 仓库自己写的函数**不用往这里补**：参数类型写着 `LocalizedStringKey` 的都由
+/// KeyParameters.swift 从声明里找出来（2026-09-30 起，In / Out 那个案例）。
 private let localizedCalls = [
     "Text", "L10n", "Label", "Button", "Toggle", "Picker", "TextField",
     "Section", "Stepper", "Menu", "Link", "LocalizedStringKey",
@@ -155,6 +157,9 @@ func scan(_ files: [String]) -> [Occurrence] {
         // String(localized: "…")。
         "\\b(?:\(localizedLabelledCalls.joined(separator: "|"))):\\s*\(literal)",
     ].map { try! NSRegularExpression(pattern: $0, options: [.dotMatchesLineSeparators]) }
+        // 自家收 LocalizedStringKey 的函数：从声明里找出来，调用点自动纳入（KeyParameters.swift）。
+        // 上面手抄的清单只剩结构体的成员初始化器这类 `func` 扫不到的还用得着。
+        + keyParameterPatterns(keyParameters(in: files), literal: literal)
 
     var found: [Occurrence] = []
     for path in files {

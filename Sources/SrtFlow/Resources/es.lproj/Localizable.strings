@@ -141,6 +141,8 @@
 "Typeface" = "Tipografía";
 "Supports Chinese" = "Admite chino";
 "Other fonts" = "Otras fuentes";
+"Chinese" = "Chino";
+"Other" = "Otras";
 "Search fonts" = "Buscar fuentes";
 "Arrow keys walk the list — the preview follows as you go." = "Las flechas recorren la lista y la previsualización va siguiendo.";
 "Font size" = "Tamaño";
@@ -714,6 +716,8 @@
 
 /* 文字动画（2026-09-17） */
 "Animation" = "Animación";
+"In" = "Entrada";
+"Out" = "Salida";
 "Emphasis" = "Énfasis";
 "Intensity" = "Intensidad";
 "Rise" = "Ascenso";
