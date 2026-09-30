@@ -39,6 +39,7 @@ xcrun swiftc \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \
   Sources/SrtFlow/AppLanguage.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectClipGain.swift \
   checks/AudioLibrary/main.swift
 
 echo "==> 跑自检"

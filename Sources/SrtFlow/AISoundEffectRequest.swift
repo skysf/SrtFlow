@@ -14,7 +14,7 @@ struct AISoundEffectRequest: Equatable {
     /// 段的音量（dB）。默认 −8：文件是 −1 dBFS / −9 LUFS 的，原样放会盖过人声。
     var volumeDB: Double
 
-    static let defaultVolumeDB = -8.0
+    static let defaultVolumeDB = SoundEffectClipGain.defaultDB
 
     /// clips[i] 里没有 sound_effect 就 nil。
     static func parse(_ entry: AIToolArguments, index: Int) throws -> AISoundEffectRequest? {

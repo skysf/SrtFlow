@@ -212,7 +212,7 @@ public enum MCPTimelineTools {
         let soundEffect = MCPSchema.object([
             "preset": MCPSchema.string(
                 "whoosh (hit at 60%), swoosh (short, bright), suction (rises, stops dead: hit = end), riser (builds: hit = end), " +
-                    "downlifter (low swell, falls), impact (long tail), boom (deep), hit (short thud), pop, click, tick, ding, " +
+                    "downlifter (low swell, falls), impact (long tail), boom (deep), hit, pop, click, tick, ding, " +
                     "sparkle (hit = first twinkle), beep, glitch, shutter.",
                 oneOf: MCPVocabulary.soundEffectPresets
             ),
@@ -228,8 +228,8 @@ public enum MCPTimelineTools {
             "library_id": MCPSchema.string("Instead of file: a music track id from find_audio (SrtFlow downloads it if needed)."),
             "sound_effect": soundEffect,
             "hit_at": MCPSchema.number(
-                "sound_effect only: the timeline second its loudest moment lands on (a cut, a word appearing); SrtFlow sets " +
-                    "the start from it (overrides start). Default: the playhead.",
+                "For sound_effect or a library sound effect: the timeline second its loudest moment lands on (a cut, a word " +
+                    "appearing); SrtFlow sets the start (overrides start). Default for sound_effect: the playhead.",
                 minimum: 0
             ),
             "source_in": MCPSchema.number("Where to start in the file, seconds (default 0).", minimum: 0),
@@ -240,15 +240,14 @@ public enum MCPTimelineTools {
         return MCPToolDefinition(
             .addClips, title: "Add clips",
             description: """
-            Put media files, music from find_audio, or sound effects SrtFlow makes (sound_effect: whoosh, riser, impact, \
-            pop, ding…) on the timeline, in the given order. Each item is a file, a library_id or a sound_effect, with the \
-            part to use (source_in/source_out), the track and the start; a sound_effect takes hit_at instead so its hit \
-            lands on a cut. Without a start, video and images are appended after the last clip of their track (V1 by \
-            default) and audio starts at 0 on the first free audio track. If the spot is taken, a video clip goes up to the \
-            next free video track; insert=true instead pushes the later V1 clips right to make room. A subtitle file (.srt, \
-            .vtt, .ass) becomes the subtitle track, replacing the current one. Files outside the opened folder need the \
-            user's OK. Returns the new clip ids (hit_at for sound effects) and credit lines for library \
-            music.
+            Put media files, library audio (find_audio) or sound effects SrtFlow makes (sound_effect) on the timeline, in \
+            the given order. Each item is a file, a library_id or a sound_effect, with the part to use \
+            (source_in/source_out), the track and the start; a sound effect takes hit_at instead so its hit lands on a cut. \
+            Without a start, video and images are appended after the last clip of their track (V1 by default) and audio \
+            starts at 0 on the first free audio track. If the spot is taken, a video clip goes up to the next free video \
+            track; insert=true instead pushes the later V1 clips right to make room. A subtitle file (.srt, .vtt, .ass) \
+            becomes the subtitle track, replacing the current one. Files outside the opened folder need the user's OK. \
+            Returns the new clip ids (hit_at for sound effects) and credit lines for library music.
             """,
             input: MCPSchema.object([
                 "clips": MCPSchema.array(of: item, "Clips to add, in timeline order.", minItems: 1),
@@ -281,8 +280,7 @@ public enum MCPTimelineTools {
             looks at a few frames and cuts off letterbox / pillarbox bars. Without fit, x/y/scale place the picture yourself \
             (x/y: its centre as fractions of the frame; scale 1 = the whole picture just fits), e.g. a small picture in a \
             corner. The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file. \
-            Also: rotation, opacity, flips, entrance / exit animations, volume_curve, sound_scene, markers and keyframes \
-            (what a trim does to them); see each field.
+            Also: rotation, opacity, flips, entrance / exit animations, volume_curve, sound_scene, markers, keyframes; see each field.
             """,
             input: MCPSchema.object([
                 "clip_id": MCPSchema.string("Clip id from get_timeline."),

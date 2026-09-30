@@ -126,8 +126,11 @@
    `scripts/check-mcp.sh` 里的结构自检。本方案文档跟这个 PR 一起提。
 2. **素材库清单 + 上传 R2**（2026-09-30 做完）：`sfx-catalog.tsv` + `sfx_normalize.py` + `sfx_build_manifest.py`、63 条转好上传、
    `checks/sfx-catalog.sh`；授权政策进两份文档。清单里多了 `hit`、`title_zh`、`provenance`、`owned`，App 还没接。
-3. **面板 + find_audio**：第二个 store、筛选、试听、拖入；`find_audio kind`；`get_timeline` 的音效段写 `library_id`；
-   App 解析 `hit` / `title_zh`、`owned` 不署名（`AIMusicCredits`、署名页、`scripts/check-audio-library.sh` 各加一条）。
+3. **面板 + find_audio**（2026-09-30 做完）：`AudioLibraryStore.soundEffects` + 面板顶上「音乐 / 音效」分段（同一套搜索、筛选、试听、
+   拖入；音效的 tag 多一组「种类」排最前；一行拆成 `AudioLibraryRow`）；`AudioLibraryLookup` 两个库一起找（重链接、library_id、署名）；
+   `find_audio kind`、结果带 `hit` / `title_zh`；`add_clips {library_id, hit_at}`；音效段默认 −8 dB（`SoundEffectClipGain`，面板和 AI 同一个数）；
+   App 解析 `hit` / `title_zh`、`owned` 不署名（`AudioLibraryLicense.needsCredit` 一处，署名页、music_credits 都问它）；
+   风格卡共用规矩第 12 条改成「先搜库、再合成、再 fal」。
 
 ## 六、试听原型（2026-09-30 渲出，等拍板）
 
@@ -201,6 +204,17 @@ whoosh 的频率重心先升后降、riser 一路升、suction 升到结尾、do
 - 同参数的 whoosh 第二次没再写文件（文件夹里 5 个 .m4a，`whoosh-314d87b8.m4a` 复用）；错的预设名回「preset must be one of: …」；
   撤销整轮后时间线空。
 - 文件夹名跟 App 语言：测试版是英文，就是 `SrtFlow/Sound Effects/`。
+
+### 第三个 PR 的端到端冒烟（2026-09-30，测试版 0.18.4，`calls-library.json`）
+
+- `find_audio {query: impact, kind: sound_effect}`：10 条命中，每条带 `kind: sound_effect`、`hit`、`title_zh`、`license: owned`、没有署名句；
+  `{query: "撞击 黑暗"}`（不给 kind）按中文 tag 命中 8 条；`{query: piano, kind: music}` 只回音乐、带署名句。
+- `add_clips [{library_id: sfx_0009, hit_at: 12}, {library_id: sfx_0027, hit_at: 12, track: new_audio}, {library_id: sfx_0051, start: 2}]`：
+  Cinematic Slam（落点 0.045）开头 11.955、Kinetic Lift（落点 3.955）开头 8.045（从 R2 现下，一批 4.3 秒）、企鹅按 start 放且结果报 `hit_at` 9.565；
+  三段 `volume_db` −8；`get_timeline` 里写 `library_id`。
+- 给普通文件带 `hit_at` → 「hit_at works with sound_effect and library sound effects; place a file with start.」
+- `undo round=true` 一步清空。
+- 面板那一半（分段切换、音效列表、tag 排序）自动化够不着，看真窗口（进程内驱动点不了分段控件，第 12 条）。
 
 ## 七、检查与回归（AGENTS.md 要求）
 

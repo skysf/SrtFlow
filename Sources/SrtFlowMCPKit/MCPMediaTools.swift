@@ -11,18 +11,20 @@ enum MCPMediaTools {
         switch name {
         case .findAudio:
             return MCPToolDefinition(
-                .findAudio, title: "Find music",
+                .findAudio, title: "Find audio",
                 description: """
-                Search SrtFlow's built-in music library (every track may be used in videos: CC-BY or CC0). query matches titles, \
-                artists and tags in English or Chinese; all words must match; an empty query lists everything. Each track comes \
-                with its length, tags (mood, genre, use), intensity 1–5, vocals, loudness and credit line. Put one on the \
-                timeline with add_clips {library_id}. CC-BY music must be credited: when the video is done, give the user the \
-                credit lines (get_timeline lists them as music_credits) for the video's description. Sound effects (whoosh, \
-                riser, impact, pop…) come from add_clips sound_effect, made on this Mac; never download music or sound effects \
-                from the internet.
+                Search SrtFlow's libraries: music (CC-BY or CC0) and sound effects the user owns (no credit: whooshes, impacts, \
+                risers, wind, ice, water, creaks, mechanical…). query matches titles, artists and tags in English or Chinese; \
+                all words must match; empty lists everything; kind picks one library. Each result has length, tags, intensity \
+                1–5 and licence; music also vocals, loudness and credit line; a sound effect has hit (the second of its loudest \
+                moment). Put one on the timeline with add_clips {library_id}, a sound effect with hit_at so its hit lands on a \
+                cut. CC-BY music must be credited: give the user the credit lines when the video is done (get_timeline: \
+                music_credits). Nothing fits? add_clips sound_effect makes one; never download music or sound effects from the \
+                internet.
                 """,
                 input: MCPSchema.object([
-                    "query": MCPSchema.string("Words to search for, e.g. \"calm piano\" or \"epic\" (Chinese words work too)."),
+                    "query": MCPSchema.string("Words to search for, e.g. \"calm piano\", \"whoosh\" or \"epic\" (Chinese words work too)."),
+                    "kind": MCPSchema.string("any (default), music or sound_effect.", oneOf: MCPVocabulary.audioKinds),
                     "max_results": MCPSchema.integer("How many tracks to return (default 10).", minimum: 1, maximum: 50)
                 ]),
                 readOnly: true

@@ -76,6 +76,8 @@ public enum MCPVocabulary {
     public static let clipAnimations = ["none", "fade", "rise", "pop", "zoom", "wipe"]
 
     /// = `SoundSceneKind.allCases` 的原始值，前面加一个 "none"（去掉场景）。
+    /// find_audio 搜哪个库（App 里的 AIAudioLibraryTools 直接用这张表）。
+    public static let audioKinds = ["any", "music", "sound_effect"]
     /// add_clips 的 sound_effect 能合成的预设（App 里的 SoundEffectPreset，对账在 checks/MCP/SoundEffectChecks.swift）。
     public static let soundEffectPresets = [
         "whoosh", "swoosh", "suction", "riser", "downlifter", "impact", "boom", "hit", "pop", "click", "tick",

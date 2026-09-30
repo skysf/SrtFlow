@@ -30,7 +30,9 @@
     muted). Make video drafts at resolution 480p and remake only the shots you keep at 1080p. The terms of use for
     generated content are the provider's, not SrtFlow's; music_credits covers only library music. Never present
     generated pictures as the user's own footage.
-12. Sound effects come from add_clips sound_effect, made on this Mac (whoosh, swoosh, suction, riser, downlifter, impact,
-    boom, hit, pop, click, tick, ding, sparkle, beep, glitch, shutter): give hit_at = the timeline second the hit must
-    land on (a cut, a word appearing) and SrtFlow sets the start. They sit at -8 dB under speech; change volume_db if
-    needed. Use them before generate_media; find_audio is for music.
+12. Sound effects, in this order: first find_audio kind=sound_effect for a recorded or produced one (whooshes, impacts,
+    risers, wind, ice, water, mechanical…; place it with add_clips library_id and hit_at); when nothing fits, add_clips
+    sound_effect makes one on this Mac (whoosh, swoosh, suction, riser, downlifter, impact, boom, hit, pop, click, tick,
+    ding, sparkle, beep, glitch, shutter): give hit_at = the timeline second the hit must land on (a cut, a word
+    appearing) and SrtFlow sets the start. Both sit at -8 dB under speech; change volume_db if needed. generate_media is
+    only for real-world sounds neither has; find_audio is also where music comes from.

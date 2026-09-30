@@ -9,7 +9,9 @@ import SrtFlowMCPKit
 func runMusicLibraryChecks() {
     checkCreditLines()
     checkTrackDescription()
+    checkSoundEffectDescription()
     checkLibraryClipInTimeline()
+    checkEqual(MCPVocabulary.audioKinds, ["any", "music", "sound_effect"], "find_audio's kind vocabulary")
 }
 
 private func track(_ id: String, artist: String, title: String, code: String = "CC-BY-4.0") -> AudioLibraryItem {
@@ -31,6 +33,22 @@ private func checkCreditLines() {
     checkEqual(lines, ["Morning by Amy (CC-BY-4.0)", "Night by Zed (CC-BY-4.0)"],
                "CC0 needs no credit, the same line appears once, sorted by artist then title")
     checkEqual(AIMusicCredits.lines([]), [], "no music, no credits")
+    checkEqual(AIMusicCredits.lines([track("s", artist: "", title: "Whoosh", code: "owned")]), [],
+               "the user's own sound effects (owned) need no credit")
+}
+
+private func checkSoundEffectDescription() {
+    var effect = track("sfx_0001", artist: "", title: "Abyssal Blast", code: "owned")
+    effect.kind = .sfx
+    effect.titleZh = "深渊爆响"
+    effect.hit = 0.165
+    let described = AIMusicCredits.describe(effect, downloaded: false)
+    checkEqual(described["kind"]?.stringValue, "sound_effect", "a library sound effect says so")
+    checkEqual(described["hit"]?.doubleValue, 0.165, "its hit point is reported")
+    checkEqual(described["title_zh"]?.stringValue, "深渊爆响", "the Chinese title comes along")
+    check(described["credit"] == nil && described["artist"] == nil, "no credit line and no empty artist for an owned effect")
+    checkEqual(AIMusicCredits.describe(track("m1", artist: "Amy", title: "Morning"), downloaded: false)["kind"]?.stringValue, "music",
+               "a music track says music")
 }
 
 private func checkTrackDescription() {

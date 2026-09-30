@@ -76,12 +76,12 @@ extension VideoEditProject {
     /// `insertAt`：拖放时指针在拉开的插入缝里，在那个位置新开一条（§5h）。
     /// 落哪条的规则在纯值的 `TimelineState.placeLibraryAudio`（自检够得着）。
     func addLibraryAudio(
-        url: URL, remoteKey: String, duration: Double,
+        url: URL, remoteKey: String, duration: Double, gainDB: Double = 0,
         at start: Double? = nil, laneIndex: Int? = nil, insertAt: Int? = nil
     ) {
         let where_ = start ?? clock.time
         perform { state in
-            let clip = EditClip(
+            var clip = EditClip(
                 sourceURL: url,
                 isAudioOnly: true,
                 sourceDuration: duration,
@@ -89,6 +89,7 @@ extension VideoEditProject {
                 audioAssetDuration: duration,
                 remoteKey: remoteKey
             )
+            if gainDB != 0 { clip.volume = AudioGain.linear(fromDecibels: gainDB) }
             state.placeLibraryAudio(clip, laneIndex: laneIndex, insertAt: insertAt)
         }
     }
@@ -98,7 +99,7 @@ extension VideoEditProject {
     /// 下载期间**不放占位块**（理由见文件头）。进度在库面板那一行看得见。
     func dropLibraryAudio(_ item: AudioLibraryItem, plan: AudioLibraryDropPlan) {
         if let local = AudioLibraryCache.shared.localURL(for: item.id) {
-            addLibraryAudio(url: local, remoteKey: item.id, duration: item.duration,
+            addLibraryAudio(url: local, remoteKey: item.id, duration: item.duration, gainDB: item.defaultClipGainDB,
                             at: plan.start, laneIndex: plan.laneIndex, insertAt: plan.insertAt)
             return
         }
@@ -110,7 +111,7 @@ extension VideoEditProject {
                 // 下载期间用户可能已经换了工程：这份素材是上一个工程的，别往新的里塞
                 //（同 addVideos 那条代号守卫）。
                 guard self.isCurrentGeneration(generation) else { return }
-                self.addLibraryAudio(url: url, remoteKey: item.id, duration: item.duration,
+                self.addLibraryAudio(url: url, remoteKey: item.id, duration: item.duration, gainDB: item.defaultClipGainDB,
                                      at: plan.start, laneIndex: plan.laneIndex, insertAt: plan.insertAt)
             } catch {
                 if self.isCurrentGeneration(generation) {

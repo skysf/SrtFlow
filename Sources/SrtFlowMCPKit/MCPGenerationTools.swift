@@ -15,7 +15,7 @@ enum MCPGenerationTools {
                 description: """
                 Makes a new image, video clip, music or sound effect with the user's fal.ai account (paid; listed only because \
                 the user added a fal.ai key in SrtFlow's settings). Not for subtitles (generate_subtitles), narration \
-                (add_voiceover), short effects add_clips sound_effect can make, or footage the user already has. One result per \
+                (add_voiceover), effects add_clips sound_effect can make, or footage the user already has. One result per \
                 call. It returns a job_id at once: wait with get_job (an image takes about 10 s, a sound effect 5 s, music 30 s, \
                 a video 1–3 minutes). The finished job has file (a path in the user's SrtFlow folder; put it on the timeline \
                 with add_clips) and cost_usd. kind: image | text_to_video | image_to_video | music | sound_effect. Video: \

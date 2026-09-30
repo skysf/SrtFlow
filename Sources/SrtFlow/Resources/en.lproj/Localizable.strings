@@ -825,6 +825,9 @@
 "Where this music comes from, and how to credit it" = "Where this music comes from, and how to credit it";
 "Downloaded tracks — click to free the space" = "Downloaded tracks — click to free the space";
 "Remove downloaded music?" = "Remove downloaded music?";
+"Search sound effects" = "Search sound effects";
+"No sound effects match." = "No sound effects match.";
+"Remove downloaded audio?" = "Remove downloaded audio?";
 "Remove" = "Remove";
 "Projects that use these tracks will download them again when you open them." = "Projects that use these tracks will download them again when you open them.";
 "Collapse the sidebar" = "Collapse the sidebar";

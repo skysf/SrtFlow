@@ -80,6 +80,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditMediaBookmarkCache.swift \
   Sources/SrtFlow/AudioLibraryCache.swift \
   Sources/SrtFlow/AudioLibraryManifest.swift \
+  Sources/SrtFlow/SoundEffects/SoundEffectClipGain.swift \
   Sources/SrtFlow/VideoEditSelection.swift \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift \
   Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift \

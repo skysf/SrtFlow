@@ -23,8 +23,8 @@ public enum MCPInstructions {
     public static let text = """
     SrtFlow is a video editor on the user's Mac. These tools edit the project open in its window while the user \
     watches. Usual order: open_folder (the folder the user named), open_project or new_project; get_timeline for ids; \
-    look, listen and transcribe to see, hear and read the media (there is no other way); edit; export_video, then \
-    get_job. Each tool's description has the details, and results say what to do next.
+    look, listen and transcribe to see, hear and read the media (the only way); edit; export_video, then \
+    get_job. Tool descriptions have the details; results say what to do next.
 
     Rules:
     - Unless the user said, ask once whether to show the edits in SrtFlow or do them in the background; call set_view.
@@ -43,8 +43,8 @@ public enum MCPInstructions {
     - Talk and beat cuts: transcribe, cut_speech, listen beats=true, cut_to_beat
     - Picture: set_canvas (for 9:16, then edit_clip fit=fill each clip), set_transition, set_filter, set_text, \
     set_shape (also blur or mosaic, e.g. a watermark)
-    - Sound: find_audio (music library), add_clips sound_effect (whoosh, riser, impact, pop, ding… made on this Mac), \
-    add_voiceover (narration), set_track
+    - Sound: find_audio (music and sound-effect libraries), add_clips sound_effect (whoosh, riser, impact, pop, ding… made on \
+    this Mac), add_voiceover (narration), set_track
     - Subtitles: generate_subtitles, translate_subtitles, get_subtitles, edit_subtitles
     - Output: export_video; compress_videos, burn_subtitles, convert_subtitles (files, no project needed); get_job, \
     cancel_job
