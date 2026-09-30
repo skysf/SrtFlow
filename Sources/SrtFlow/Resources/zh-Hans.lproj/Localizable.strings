@@ -617,6 +617,7 @@
 
 /* 时间线标记、字幕与导出 */
 "Add Marker at Playhead" = "在播放头处添加标记";
+"Add Marker Here" = "在此处添加标记";
 "Delete Marker" = "删除标记";
 "Colour" = "颜色";
 "Edit Note…" = "编辑备注…";

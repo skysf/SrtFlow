@@ -78,6 +78,9 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     var isFilled = false
     /// 盖一块的力度（模糊的半径 / 马赛克每格的边长，1080p 基准像素）。只对 blur / mosaic 有意义，别的种类不写。v26 字段。
     var coverAmount = 28.0
+    /// 用户打在这一块上的标记（离块起点多少秒；裁头时留在原来的时间线时刻）。只影响编辑期的显示，
+    /// 不进合成和导出。类型与读写见 VideoEditClipMarker.swift。v28 字段，按需写键。
+    var markers: [ClipMarker] = []
 
     /// 这一个真的画成实心（线条永远是线）。预览和导出都问它，不各判一份。
     var drawsFilled: Bool { isFilled && kind != .line }
@@ -150,7 +153,7 @@ extension ShapeKind: LenientCodableEnum {
 extension ShapeAnnotation: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, timelineStart, duration, color, lineWidth
-        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount
+        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount, markers
     }
 
     init(from decoder: Decoder) throws {
@@ -174,6 +177,8 @@ extension ShapeAnnotation: Codable {
         isFilled = try c.decodeIfPresent(Bool.self, forKey: .isFilled) ?? false
         // 缺键 = 这个种类的默认力度（v25 及更早没有盖一块）。
         coverAmount = try c.decodeIfPresent(Double.self, forKey: .coverAmount) ?? kind.defaultCoverAmount
+        // 缺键 = 没打过标记（v27 及更早形状上打不了）。
+        markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -195,5 +200,7 @@ extension ShapeAnnotation: Codable {
         if isFilled { try c.encode(isFilled, forKey: .isFilled) }
         // 同上：只有盖一块才落键，两处（这里和 requiresFormatVersion26）同源。
         if kind.isCover { try c.encode(coverAmount, forKey: .coverAmount) }
+        // 同上：一枚标记都没有的不落键，免得被抬进 v28。
+        if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
     }
 }

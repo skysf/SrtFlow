@@ -10,6 +10,7 @@ import SrtFlowCore
 //    不许改变插空的结果。
 
 func checkAlignmentGuides() {
+    checkTrimKeepsMarkersInPlace()
     // ---- 1. 对齐点 ----
     var state = TimelineState()
     var still = clip(start: 20, duration: 10)
@@ -18,17 +19,23 @@ func checkAlignmentGuides() {
     var moving = clip(start: 40, duration: 10)
     moving.markers = [ClipMarker(sourceTime: 2)]     // 在动的那段上：42 秒不许出现
     state.mainClips = [still, moving]
+    var stillText = TextOverlay(text: "t", timelineStart: 70, duration: 5)
+    stillText.markers = [ClipMarker(sourceTime: 1)]       // 离起点 1 秒 → 71
+    var movingText = TextOverlay(text: "m", timelineStart: 90, duration: 5)
+    movingText.markers = [ClipMarker(sourceTime: 1)]      // 在动的那块上：91 不许出现
+    state.textOverlays = [stillText, movingText]
+    state.rulerMarkers = [ClipMarker(sourceTime: 80.5)]   // 标尺标记锚在时间线上：80.5
     let fixedCue = SubtitleCue(start: 31.5, end: 33.25, text: "a")
     let movingCue = SubtitleCue(start: 60, end: 61, text: "b")
     state.subtitle = SubtitleDocumentModel(cues: [fixedCue, movingCue])
     var companion = SubtitleCompanion()
     companion.translation = SubtitleDocumentModel(cues: [SubtitleCue(start: 35.75, end: 36.5, text: "c")])
     state.subtitleCompanion = companion
-    let candidates = TimelineSnap.candidates(in: state, moving: [moving.id, movingCue.id], playhead: 0)
-    for time in [20.0, 30, 23, 31.5, 33.25, 35.75, 36.5] {
-        check(candidates.contains(time), "\(time) 应当是对齐点（剪辑 / 标记 / 原文 cue / 译文 cue），实得 \(candidates)")
+    let candidates = TimelineSnap.candidates(in: state, moving: [moving.id, movingCue.id, movingText.id], playhead: 0)
+    for time in [20.0, 30, 23, 31.5, 33.25, 35.75, 36.5, 71, 80.5] {
+        check(candidates.contains(time), "\(time) 应当是对齐点（剪辑 / 标记 / 原文 cue / 译文 cue / 文字块上的标记 / 标尺标记），实得 \(candidates)")
     }
-    for time in [42.0, 60, 61, 40, 50] {
+    for time in [42.0, 60, 61, 40, 50, 91] {
         check(!candidates.contains(time), "\(time) 属于在动的东西，不许当自己的参考点")
     }
 
@@ -67,4 +74,45 @@ func checkAlignmentGuides() {
     check(snappedMagnet.guides == [2], "磁吸开着也亮线（线跟手上的块走），实得 \(snappedMagnet.guides)")
     checkEqual(snappedMagnet.mainInsertion, rawMagnet.mainInsertion, "吸附不许改变插进哪条缝")
     check(rawMagnet.guides.isEmpty, "没有候选就不亮线（吸附关掉时调用方给的就是空候选）")
+}
+
+// 裁头不挪标记（2026-09-30）：叠层类的块（文字 / 形状 / 滤镜段）裁起点端，标记要留在时间线上的
+// 同一刻（和素材段「贴在同一帧画面」同一个语义）；裁过头了藏不删，拉回来再画。`TimelineState.trim`
+// 只在这个自检里编，所以钉在这儿（纯值那半边在 checks/ProjectFile/Markers.swift）。
+func checkTrimKeepsMarkersInPlace() {
+    var state = TimelineState()
+    var text = TextOverlay(text: "t", timelineStart: 10, duration: 6)
+    text.markers = [ClipMarker(sourceTime: 2)]   // 时间线 12 秒
+    var shape = ShapeAnnotation(kind: .rectangle, timelineStart: 10, duration: 6)
+    shape.markers = [ClipMarker(sourceTime: 2)]
+    var filter = FilterClip(preset: .coldIron, timelineStart: 10, duration: 6)
+    filter.markers = [ClipMarker(sourceTime: 2)]
+    state.textOverlays = [text]; state.shapes = [shape]; state.filters = [filter]
+    let members = [
+        TimelineTrim.Member(id: text.id, kind: .text), TimelineTrim.Member(id: shape.id, kind: .shape),
+        TimelineTrim.Member(id: filter.id, kind: .filter),
+    ]
+    for member in members { state.trim(member, leading: true, by: 1) }
+    func hosts(_ state: TimelineState) -> [(String, any MarkerHost)] {
+        [("文字", state.textOverlays[0]), ("形状", state.shapes[0]), ("滤镜", state.filters[0])]
+    }
+    for (name, host) in hosts(state) {
+        check(abs(host.timelineStart - 11) < 1e-9, "\(name)裁头 1 秒后从 11 秒起")
+        check(abs((host.markers.first?.sourceTime ?? -1) - 1) < 1e-9, "\(name)的标记离起点 1 秒")
+        check(host.visibleMarkers.count == 1 && abs(host.timelineTime(of: host.visibleMarkers[0]) - 12) < 1e-9,
+              "\(name)的标记还在时间线 12 秒（裁头不挪标记）")
+    }
+    for member in members { state.trim(member, leading: true, by: 2) }
+    for (name, host) in hosts(state) {
+        check(host.visibleMarkers.isEmpty && host.markers.count == 1, "\(name)裁过头：标记藏起来、不删")
+    }
+    for member in members { state.trim(member, leading: true, by: -2) }
+    for (name, host) in hosts(state) {
+        check(host.visibleMarkers.count == 1 && abs(host.timelineTime(of: host.visibleMarkers[0]) - 12) < 1e-9,
+              "\(name)拉回来：标记又在 12 秒画出来")
+    }
+    for member in members { state.trim(member, leading: false, by: -3) }
+    for (name, host) in hosts(state) {
+        check(abs((host.markers.first?.sourceTime ?? -1) - 1) < 1e-9, "\(name)裁尾不动标记")
+    }
 }

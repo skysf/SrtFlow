@@ -126,7 +126,8 @@ do {
     check(renewed != nil && renewed?.id != source.id, "剪辑换了新身份")
     checkEqual(renewed.flatMap(withoutID), withoutID(source), "剪辑除了 id 每个字段都照抄（标记、隐藏、音频库的键……）")
 
-    let text = TextOverlay(text: "Title", timelineStart: 2, duration: 3, row: 2)
+    var text = TextOverlay(text: "Title", timelineStart: 2, duration: 3, row: 2)
+    text.markers = [ClipMarker(sourceTime: 1, color: .blue, text: "cue")]   // 2026-09-30：文字上也有标记了
     let renewedText = ClipboardIdentity.renewed(text)
     check(renewedText != nil && renewedText?.id != text.id, "文字换了新身份")
     checkEqual(renewedText.flatMap(withoutID), withoutID(text), "文字除了 id 都照抄")

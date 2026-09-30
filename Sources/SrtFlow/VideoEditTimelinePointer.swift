@@ -54,6 +54,14 @@ enum TimelinePointer {
         let time = max(0, Double(location.content.x)) / max(project.pixelsPerSecond, 1)
         return TimelinePointerHit(time: time, row: row)
     }
+
+    /// 右键按下的那一刻在时间线的哪一秒，**不管落在哪一行**（标尺右键菜单的「Add Marker Here」用：
+    /// `hit` 故意不认标尺）。读不到就是 nil，由调用方退回播放头。
+    static func contextClickTime(project: VideoEditProject) -> Double? {
+        guard let geometry = TimelineScrollGeometry.live, let click = TimelineContextClick.last,
+              let location = geometry.location(ofWindowPoint: click.point, in: click.window) else { return nil }
+        return max(0, Double(location.content.x)) / max(project.pixelsPerSecond, 1)
+    }
 }
 
 /// 右键（或 ⌃ 点）按在时间线的哪儿。由时间线的事件监视器（`TimelineMagnificationBridge`）记，

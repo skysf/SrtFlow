@@ -14,7 +14,7 @@ func checkSelectAll(root: URL) throws {
     let clip = UUID(), shape = UUID(), text = UUID(), cue = UUID()
     let f1 = UUID(), f2 = UUID()
     var s = EditSelection()
-    s.selectMarker(ClipMarkerRef(clipID: clip, markerID: UUID()))
+    s.selectMarker(MarkerRef(owner: .clip(clip), markerID: UUID()))
     s.selectBox(clips: [clip], shapes: [shape], texts: [text], cues: [cue], filters: [f1, f2])
     checkEqual(s.clipIDs, [clip], "全选：剪辑")
     checkEqual(s.filterIDs, [f1, f2], "全选：滤镜段也在")

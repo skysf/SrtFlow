@@ -80,6 +80,9 @@ struct TextOverlay: Identifiable, Hashable, Sendable {
     /// 预览和成片里都没有。和剪辑的 `EditClip.isHidden` 同一条语义（docs/architecture/clip-visibility.md）。
     /// v22 字段，按需写键。
     var isHidden = false
+    /// 用户打在这一块上的标记（离块起点多少秒；裁头时留在原来的时间线时刻）。只影响编辑期的显示，
+    /// 不进合成和导出。类型与读写见 VideoEditClipMarker.swift。v28 字段，按需写键。
+    var markers: [ClipMarker] = []
 
     /// 新建时的时长，与形状一致（3 秒）。
     static let defaultDuration = 3.0
@@ -205,7 +208,7 @@ extension TextStyle {
 extension TextOverlay: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, text, timelineStart, duration
-        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number, row, isHidden
+        case centerX, centerY, boxWidth, rotationDegrees, style, animation, number, row, isHidden, markers
     }
 
     init(from decoder: Decoder) throws {
@@ -226,6 +229,8 @@ extension TextOverlay: Codable {
         )
         // 缺键 = 没藏（v21 及更早没有这个概念）。
         isHidden = try c.decodeIfPresent(Bool.self, forKey: .isHidden) ?? false
+        // 缺键 = 没打过标记（v27 及更早文字上打不了）。
+        markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
     }
 
     func encode(to encoder: Encoder) throws {
@@ -248,6 +253,8 @@ extension TextOverlay: Codable {
         try c.encode(row, forKey: .row)
         // 按需写键：没藏过的文字不落它，免得被抬进 v22。
         if isHidden { try c.encode(isHidden, forKey: .isHidden) }
+        // 同上：一枚标记都没有的不落键，免得被抬进 v28。
+        if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
     }
 }
 

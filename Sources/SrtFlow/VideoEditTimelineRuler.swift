@@ -31,7 +31,14 @@ struct TimelinePinnedRuler: View, Equatable {
     /// 标尺本身不随播放一跳一跳重算（preview-perf-ratchet.md 第十二节）。
     let clock: PlayerClock
     @ObservedObject var geometry: TimelineScrollGeometry
+    /// 标尺上的标记和「标尺选中着」：时间线按值算好传进来（这一层不读工程，同 `ClipBlockContext`）。
+    let rulerMarkers: [ClipMarker]
+    let rulerSelected: Bool
+    /// 只拿来**调动作**（标记的选中 / 删除 / 改色、右键打标记），不订阅。
+    let project: VideoEditProject
     let onSeek: (Double, Bool) -> Void
+    /// 指针进出标尺上的标记：只往上报，扫帧 peek 的所有者是时间线容器（同剪辑块）。
+    let onMarkerPeek: (Double?) -> Void
 
     /// 按值比较（调用方套 `.equatable()`）：输入里有 `onSeek` 这个闭包，比不出「没变」的话
     /// 拖动每动一下时间线一重算，标尺就跟着重算、重画一遍（2026-09-24 实测）。闭包不用比：
@@ -39,18 +46,39 @@ struct TimelinePinnedRuler: View, Equatable {
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.pps == rhs.pps && lhs.duration == rhs.duration && lhs.frameRate == rhs.frameRate
             && lhs.rowSpacing == rhs.rowSpacing && lhs.clock === rhs.clock
-            && lhs.geometry === rhs.geometry
+            && lhs.geometry === rhs.geometry && lhs.rulerMarkers == rhs.rulerMarkers
+            && lhs.rulerSelected == rhs.rulerSelected
     }
+
+    /// 标尺这一行多高（`TimelineRowList` 里给它的那个数）：小旗的杆画到这儿。
+    static let height: Double = 26
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
-        TimelineRuler(pps: pps, duration: duration, frameRate: frameRate, onSeek: onSeek)
+        TimelineRuler(
+            pps: pps, duration: duration, frameRate: frameRate, onSeek: onSeek,
+            onAddMarkerHere: { project.addRulerMarkerAtContextClick() }
+        )
             // 滚动一帧这一层就重算一次（它订阅滚动量），刻度本身没变就别跟着重画。
             .equatable()
+            // 标尺上的标记：小旗（帽子 + 到标尺底的细杆）。排在把手之前；把手不吃事件，压着也点得到。
+            // 一枚都没有时不建（性能计数不变）。
+            .overlay(alignment: .topLeading) {
+                if !rulerMarkers.isEmpty {
+                    MarkerStrip(
+                        owner: .ruler,
+                        pins: RulerMarkerHost(markers: rulerMarkers).markerPins(pps: pps),
+                        height: Self.height,
+                        look: .flag,
+                        project: project,
+                        onHoverMarker: onMarkerPeek
+                    )
+                }
+            }
             // 播放头的把手：和标尺一起钉住。不吃事件 —— 标尺的 scrub 手势在它
             // 底下，挡住了就点不动播放头了。
             .overlay(alignment: .topLeading) {
-                TimelinePlayheadHandle(clock: clock, pps: pps)
+                TimelinePlayheadHandle(clock: clock, pps: pps, selected: rulerSelected)
             }
             // 自带不透明底：它盖在滚上去的轨道行上面，透明的话会看见块从刻度
             // 底下穿过去。上面 2pt 是内容的 padding，下面一格是行距。
@@ -70,14 +98,23 @@ struct TimelinePinnedRuler: View, Equatable {
 struct TimelinePlayheadHandle: View {
     @ObservedObject var clock: PlayerClock
     let pps: Double
+    /// 标尺选中着（点过标尺、还没点别的）：把手描一圈青边 + 青色光晕，和块的选中同一色 ——
+    /// 这时按 M 打在标尺上，这个状态得看得见（2026-09-30 用户拍板）。
+    let selected: Bool
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
         let playheadX = clock.time * pps
         RoundedRectangle(cornerRadius: 2)
             .fill(.white)
+            .overlay {
+                if selected {
+                    RoundedRectangle(cornerRadius: 2).strokeBorder(.teal, lineWidth: 1.5)
+                }
+            }
             .frame(width: 9, height: 14)
             .shadow(radius: 1)
+            .shadow(color: .teal.opacity(selected ? 0.9 : 0), radius: 3)
             .offset(x: playheadX - 4.5)
             .allowsHitTesting(false)
     }
@@ -96,6 +133,8 @@ struct TimelineRuler: View, Equatable {
     let duration: Double
     let frameRate: ProjectFrameRate
     let onSeek: (Double, Bool) -> Void
+    /// 右键「Add Marker Here」：落在右键按下的那一处（`TimelinePointer.contextClickTime`）。
+    let onAddMarkerHere: () -> Void
 
     /// 刻度只由这三个值决定；闭包比不了也不用比（同 `TimelinePinnedRuler`）。
     nonisolated static func == (lhs: Self, rhs: Self) -> Bool {
@@ -140,5 +179,8 @@ struct TimelineRuler: View, Equatable {
                     onSeek(value.location.x / pps, true)
                 }
         )
+        .contextMenu {
+            Button("Add Marker Here", action: onAddMarkerHere)
+        }
     }
 }

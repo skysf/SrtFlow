@@ -546,6 +546,8 @@ struct TimelineState: Hashable, Sendable {
     /// 见 docs/architecture/filters.md。
     /// 这是 v17-only 字段（见 VideoEditFormatVersion.swift 的登记清单）。
     var filters: [FilterClip] = []
+    /// 标尺上的标记：锚在时间线的绝对时刻，不跟任何块走。读写见 VideoEditClipMarker.swift。v28 字段，按需写键。
+    var rulerMarkers: [ClipMarker] = []
     /// 输出画面比例（预览和导出共用）。
     var canvasRatio: CanvasRatio = .auto
     /// 工程帧率：预览合成、两条导出管线、预渲染、关键帧容差的唯一事实来源。
@@ -952,7 +954,7 @@ extension TimelineState: Codable {
         case mainVolume, masterVolume
         case subtitle, subtitleHidden, translationHidden
         case subtitleLayout, translationLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
-        case frameRate, filters, projectSubtitleStyle, subtitleHighlight
+        case frameRate, filters, projectSubtitleStyle, subtitleHighlight, rulerMarkers
     }
 
     init(from decoder: Decoder) throws {
@@ -979,6 +981,7 @@ extension TimelineState: Codable {
         textOverlays = try c.decodeIfPresent([TextOverlay].self, forKey: .textOverlays) ?? []
         // v17 起才有。缺键 = 这个工程没有调色段，不是出错。
         filters = try c.decodeIfPresent([FilterClip].self, forKey: .filters) ?? []
+        rulerMarkers = try c.decodeIfPresent([ClipMarker].self, forKey: .rulerMarkers) ?? []   // v28 起才有
         canvasRatio = try c.decodeIfPresent(CanvasRatio.self, forKey: .canvasRatio) ?? .auto
         // v1–v4 没有这个字段，缺失即回退 24（与 ProjectFrameRate.fallback 一致）。
         frameRate = try c.decodeIfPresent(ProjectFrameRate.self, forKey: .frameRate) ?? .fallback
@@ -1011,6 +1014,7 @@ extension TimelineState: Codable {
         if !textOverlays.isEmpty { try c.encode(textOverlays, forKey: .textOverlays) }
         // 同上：没用过滤镜的工程不该被抬进 v17，旧版照样能开。
         if !filters.isEmpty { try c.encode(filters, forKey: .filters) }
+        if !rulerMarkers.isEmpty { try c.encode(rulerMarkers, forKey: .rulerMarkers) }   // 同上：v28
         try c.encode(canvasRatio, forKey: .canvasRatio)
         // **无条件**写帧率：旧版把帧率硬编码成 30，省略这个键会让默认 24 的
         // 工程在旧版里按 30 渲染（见 VideoEditFormatVersion 的说明）。
@@ -1058,19 +1062,4 @@ extension TimelineState {
         }
         if subtitleURL == old { subtitleURL = new }
     }
-}
-
-/// 轨道的身份：主轨、第几条上层视频轨、第几条音频轨。
-enum TrackSlot: Hashable, Sendable {
-    case main
-    case overlay(Int)
-    case audio(Int)
-
-    var isMain: Bool { if case .main = self { return true }; return false }
-    var isAudio: Bool { if case .audio = self { return true }; return false }
-}
-
-struct ClipLocation: Hashable, Sendable {
-    var track: TrackSlot
-    var clipIndex: Int
 }

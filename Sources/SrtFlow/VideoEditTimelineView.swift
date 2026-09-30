@@ -408,9 +408,15 @@ struct VideoEditTimelineView: View {
                 rowSpacing: rowSpacing,
                 clock: clock,
                 geometry: scrollGeometry,
+                rulerMarkers: project.state.rulerMarkers,
+                rulerSelected: project.selection.rulerSelected,
+                project: project,
                 onSeek: { time, precise in
+                    // 点 / 拖标尺 = 选中标尺：块的选择一起清掉，之后按 M 打在标尺上（2026-09-30 用户拍板）。
+                    project.selectRuler()
                     seekFromTimeline(time: time, precise: precise)
-                }
+                },
+                onMarkerPeek: { markerPeek($0) }
             )
             .equatable()
         } else {

@@ -34,12 +34,18 @@ struct TextBlockView: View, Equatable {
     let onToggleHidden: () -> Void
     /// 右键「剪切 / 拷贝 / 粘贴」（`VideoEditProject.runClipboardCommand`：右键的这一块在选中集合里就作用于整个选择）。
     let onClipboard: (TimelineClipboardCommand) -> Void
+    /// 只拿来**调动作**（打标记、标记的选中 / 删除 / 改色 / 右键菜单），不订阅 —— 见 `ClipBlockContext`。
+    let project: VideoEditProject
+    /// 指针进出块上的标记帽子：只往上报，扫帧 peek 的所有者是时间线容器（同剪辑块）。
+    let onMarkerPeek: (Double?) -> Void
 
     /// 拖动中的渲染位移（秒）。nil = 没在被拖，按模型里的位置画。从 `drag.$offsets` 收。
     @State private var dragOffset: Double?
     /// 拉框进行中这块在不在框里；nil = 没在拉框、或者和模型里一样，按 `isSelected` 画。
     @State private var marqueeHit: Bool?
     @State private var isMoving = false
+    /// 这块上有没有标记正被悬着：只用来抬 zIndex（备注气泡会铺到邻块上面去）。
+    @State private var markerHovered = false
 
     private var width: Double { max(TimelineMarquee.textMinimumWidth, overlay.duration * pps) }
     private var highlighted: Bool { marqueeHit ?? isSelected }
@@ -78,11 +84,13 @@ struct TextBlockView: View, Equatable {
                 RoundedRectangle(cornerRadius: 4).strokeBorder(.white, lineWidth: 1.5)
             }
         }
+        // 标记必须排在裁切把手**之前**（同剪辑块：排在后面的话贴着两端的标记会盖住把手）。
+        .overlay(alignment: .topLeading) { markerStrip }
         // 把手要在 .offset 之前挂上，不然会留在块没偏移时的位置（同剪辑块）。
         .overlay(alignment: .leading) { trimHandle(leading: true) }
         .overlay(alignment: .trailing) { trimHandle(leading: false) }
         .offset(x: (overlay.timelineStart + (dragOffset ?? 0)) * pps, y: TimelineMarquee.textTopInset)
-        .zIndex(dragOffset != nil ? 10 : 0)
+        .zIndex(dragOffset != nil ? 10 : (markerHovered ? 5 : 0))
         // 双击在前：单击手势要让出双击，否则 SwiftUI 会先吃掉第一下。
         .onTapGesture(count: 2, perform: onEdit)
         .onTapGesture(perform: onSelect)
@@ -90,6 +98,11 @@ struct TextBlockView: View, Equatable {
             TimelineClipboardMenu.items(onClipboard)
             Divider()
             Button(overlay.isHidden ? "Show Text" : "Hide Text", action: onToggleHidden)
+            // 和 M 同一个动作，只是把「先选中这一块」替用户做了（同剪辑块）。
+            Button("Add Marker at Playhead") {
+                project.addMarker(to: .text(overlay.id), atTimeline: project.clock.time)
+            }
+            .disabled(!overlay.contains(time: project.clock.time))
         }
         .gesture(
             // 同剪辑块：块会在手指底下挪窝、自动滚动还会把内容抽走，
@@ -117,6 +130,28 @@ struct TextBlockView: View, Equatable {
             let mine = hit.map { $0.texts.contains(overlay.id) }.flatMap { $0 == isSelected ? nil : $0 }
             if mine != marqueeHit { marqueeHit = mine }
         }
+    }
+
+    /// 块上的标记。刀片模式整条不吃事件（同剪辑块：点哪儿切哪儿优先）。
+    @ViewBuilder
+    private var markerStrip: some View {
+        if !overlay.markers.isEmpty {
+            MarkerStrip(
+                owner: .text(overlay.id),
+                pins: overlay.markerPins(pps: pps),
+                height: TimelineMarquee.textHeight,
+                look: .cap,
+                project: project,
+                onHoverMarker: markerHover
+            )
+            .allowsHitTesting(canTrim)
+        }
+    }
+
+    /// 指针进出标记帽子：只往上报，不自己动 peek（所有者是时间线容器，同剪辑块）。
+    private func markerHover(_ time: Double?) {
+        markerHovered = time != nil
+        onMarkerPeek(time)
     }
 
     /// 与剪辑/形状的裁切把手同款：太窄不给（点不到移动区），手势必须用 .global
@@ -194,7 +229,9 @@ extension VideoEditTimelineView {
                         project.selectText(overlay.id, additive: false)
                         project.toggleHiddenForSelection()
                     },
-                    onClipboard: { project.runClipboardCommand($0, on: .text(overlay.id)) }
+                    onClipboard: { project.runClipboardCommand($0, on: .text(overlay.id)) },
+                    project: project,
+                    onMarkerPeek: { markerPeek($0) }
                 )
                 // 按值比较：拖动每动一下时间线都重算，没变的块别跟着重算（见 `ClipBlockContext`）。
                 .equatable()

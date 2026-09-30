@@ -382,6 +382,17 @@ extension TimelineState {
         allClips.contains { $0.animation?.hasEasing ?? false }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v28-only 持久数据。
+    ///
+    /// **登记清单（新增 v28-only 字段必须同步补进来）：**
+    /// 1. `TextOverlay.markers` / `ShapeAnnotation.markers` / `FilterClip.markers` —— 文字、形状、滤镜段上的标记
+    ///    （2026-09-30；**按需写入**：一枚都没有的不落键）。
+    /// 2. `TimelineState.rulerMarkers` —— 标尺上的标记（同上，按需写入）。
+    ///
+    /// 为什么要抬：理由同 v8。成片一帧不变，但这是纯手工输入的标注和备注：只认 v27 的旧版照常打开，
+    /// 随手编辑触发自动保存就把它们连同备注一起抹掉，丢了只能重标一遍。
+    var requiresFormatVersion28: Bool { hasMarkersBeyondClips }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

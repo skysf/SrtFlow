@@ -35,8 +35,8 @@ final class VideoEditProject {
         selection.pruneSubtitleCues { state.subtitleTrack(of: $0) != nil }
     }
 
-    /// 选中的标记还在不在（段被删、标记被删、撤销、被裁出窗口）。同样收在这个
-    /// 唯一入口，别指望每个会动到剪辑的操作各自记得清一次。
+    /// 选中的标记还在不在（宿主被删、标记被删、撤销、被裁出窗口）。同样收在这个
+    /// 唯一入口，别指望每个会动到块的操作各自记得清一次。
     private func pruneMarkerSelection() {
         guard selection.markerRef != nil else { return }
         selection.pruneMarker { state.isMarkerSelectable($0) }
@@ -172,10 +172,17 @@ final class VideoEditProject {
         get { selection.subtitleCueIDs }
         set { selection.selectSubtitleCues(newValue) }
     }
-    /// 轨道块上选中的标记（高亮它、⌫ 删它）。不持久化。
-    var selectedMarkerRef: ClipMarkerRef? {
+    /// 块 / 标尺上选中的标记（高亮它、⌫ 删它）。不持久化。
+    var selectedMarkerRef: MarkerRef? {
         get { selection.markerRef }
         set { selection.selectMarker(newValue) }
+    }
+    /// 点 / 拖标尺 = 选中标尺（2026-09-30 用户拍板）：块的选择一起清掉，之后按 M 打在标尺上。
+    /// 键盘 seek、播放不动它；点块、点轨道空白、点标记、⌘A 才取消。拖标尺每一拍都会进来，
+    /// 已经选中就不再写（写一次选择整个时间线重算一遍）。
+    func selectRuler() {
+        guard !selection.rulerSelected else { return }
+        selection.selectRuler()
     }
     /// 接缝上选中的转场，存**出场段的 UUID**（高亮遮罩、⌫ 清掉这条缝的转场）。
     /// 不持久化。不支持多选 —— 一次处理一条缝，没有「整排一起删」的场景。
@@ -204,38 +211,17 @@ final class VideoEditProject {
         selection.pruneTexts { $0 != id }
     }
 
-    /// 点选：普通点是单选，⌘/⇧点是加选或取消。
-    func select(_ id: UUID, additive: Bool) {
-        if additive {
-            var ids = selectedClipIDs
-            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-            selectedClipIDs = ids
-        } else {
-            selectedClipIDs = [id]
-        }
+    /// 点选（剪辑 / 形状 / 文字同一套）：普通点是单选，⌘/⇧点是加选或取消。
+    private static func toggled(_ ids: Set<UUID>, _ id: UUID, additive: Bool) -> Set<UUID> {
+        guard additive else { return [id] }
+        var ids = ids
+        if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
+        return ids
     }
 
-    /// 点选形状：普通点是单选，⌘/⇧点是加选或取消。
-    func selectShape(_ id: UUID, additive: Bool) {
-        if additive {
-            var ids = selectedShapeIDs
-            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-            selectedShapeIDs = ids
-        } else {
-            selectedShapeIDs = [id]
-        }
-    }
-
-    /// 点选文字：普通点是单选，⌘/⇧点是加选或取消。
-    func selectText(_ id: UUID, additive: Bool) {
-        if additive {
-            var ids = selectedTextIDs
-            if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-            selectedTextIDs = ids
-        } else {
-            selectedTextIDs = [id]
-        }
-    }
+    func select(_ id: UUID, additive: Bool) { selectedClipIDs = Self.toggled(selectedClipIDs, id, additive: additive) }
+    func selectShape(_ id: UUID, additive: Bool) { selectedShapeIDs = Self.toggled(selectedShapeIDs, id, additive: additive) }
+    func selectText(_ id: UUID, additive: Bool) { selectedTextIDs = Self.toggled(selectedTextIDs, id, additive: additive) }
 
     /// 点选一段滤镜：普通点是单选（和别的选择互斥，理由见 `EditSelection.filterIDs`），
     /// ⌘/⇧点是加选或取消。写在这个文件里，因为 `selection` 是 `private(set)`。

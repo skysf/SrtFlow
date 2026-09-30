@@ -40,11 +40,12 @@ enum SmokeStateDump {
                 "rotation": round3(overlay.rotationDegrees),
                 "fontSize": round3(overlay.style.fontSize),
                 "row": overlay.row,
+                "markers": overlay.markers.count,
             ]
         }
         let filters: [[String: Any]] = state.filters.map { filter in
             ["id": short(filter.id), "start": round3(filter.timelineStart),
-             "duration": round3(filter.duration), "layer": filter.layer]
+             "duration": round3(filter.duration), "layer": filter.layer, "markers": filter.markers.count]
         }
         // 字幕 cue 的起止，两条轨各一份：验「拖了 cue 落在哪」（2026-09-26 起两条轨独立，各是各的 id）。
         func cueTimes(_ document: SubtitleDocumentModel?) -> [[String: Any]] {
@@ -61,7 +62,10 @@ enum SmokeStateDump {
                 "marker": selection.markerRef.map { short($0.markerID) } ?? "",
                 "transition": selection.transitionSeamID.map(short) ?? "",
                 "filters": selection.filterIDs.map(short).sorted(),
+                // 标尺选中着（点过标尺）：这时 M 打在标尺上。
+                "ruler": selection.rulerSelected,
             ],
+            "rulerMarkers": state.rulerMarkers.count,
             "clips": clips,
             "texts": texts,
             "filters": filters,
