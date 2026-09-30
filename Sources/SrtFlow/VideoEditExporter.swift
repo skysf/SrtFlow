@@ -17,6 +17,8 @@ final class VideoEditExporter: ObservableObject {
     @Published private(set) var progress: Double = 0
     @Published var errorMessage: String?
     @Published private(set) var finishedURL: URL?
+    /// 这次导出混音的电平（封顶前的峰值、削了多久）：面板和 AI 的结果用它提醒「过 0 了」。
+    @Published private(set) var finishedAudioLevels: ExportAudioMixdown.Levels?
 
     /// 编码设置（含导出分辨率）。**记住上次的**，下次打开还是它
     /// （docs/plans/2026-09-24-export-panel.md）；设错了用「恢复默认设置」。
@@ -91,6 +93,7 @@ final class VideoEditExporter: ObservableObject {
         }
         errorMessage = nil
         finishedURL = nil
+        finishedAudioLevels = nil
         progress = 0
         isExporting = true
 
@@ -108,6 +111,7 @@ final class VideoEditExporter: ObservableObject {
                     cancellation: token
                 )
                 workspace = plan.workspace
+                finishedAudioLevels = plan.audioLevels
                 // 预渲染和 ffmpeg 起跑之间有条窄缝：Stop 恰好点在这中间也要认。
                 if token.isCancelled { throw CancellationError() }
 

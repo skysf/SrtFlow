@@ -309,6 +309,7 @@
 "Export Video" = "导出视频";
 "Subtitles are burned in with the Burn In tool's current style." = "字幕会按「烧制字幕」页当前的样式烧进画面。";
 "Exporting… %@" = "正在导出… %@";
+"The sound peaked at %@ dBFS: %@ s were clipped at -1 dBFS. Lower the master volume by at least %@ dB." = "声音峰值 %@ dBFS：有 %@ 秒被削到 −1 dBFS。把主音量至少降 %@ dB。";
 "Close" = "关闭";
 "Stop" = "停止";
 "The video engine is not ready yet." = "视频引擎还没就绪。";

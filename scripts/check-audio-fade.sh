@@ -75,6 +75,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
+  Sources/SrtFlow/VideoEditExportPlan.swift \
   Sources/SrtFlow/VideoEditGradeExport.swift \
   Sources/SrtFlow/VideoEditCoverExport.swift \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
@@ -104,6 +105,7 @@ xcrun swiftc \
   checks/AudioFade/MeterRing.swift \
   checks/AudioFade/LiveMix.swift \
   checks/AudioFade/SoundScene.swift \
+  checks/AudioFade/Ceiling.swift \
   checks/AudioFade/Watchdog.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

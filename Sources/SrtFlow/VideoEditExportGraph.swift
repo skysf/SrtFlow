@@ -14,17 +14,6 @@ import SrtFlowCore
 /// 纯函数地把时间线翻译成 ffmpeg 参数。工作目录里放 ASS、字体、形状和文字 PNG。
 enum VideoEditExportGraph {
 
-    struct Plan {
-        var arguments: [String]
-        var workspace: URL
-        var totalDuration: Double
-        /// ffmpeg 实际写入的路径：workspace 里的临时文件，不是用户选的目标——
-        /// 全部成功后才由调用方原子替换过去，失败/取消都不碰用户原有文件。
-        var tempOutput: URL
-        /// 一点画面都没有（只选了音频）：输出纯音频文件。
-        var isAudioOnly = false
-    }
-
     /// 这份时间线导出来是不是纯音频（选中导出时给保存面板挑扩展名用）。
     static func isAudioOnly(_ state: TimelineState) -> Bool {
         let mainVisible = ClipVisibility.visible(state.mainHidden ? [] : state.mainClips)
@@ -36,11 +25,6 @@ enum VideoEditExportGraph {
             state.audioTracks.filter { !$0.isHidden }.flatMap(\.clips)
         ).isEmpty
         return mainVisible.isEmpty && overlayVisible.isEmpty && hasAudio
-    }
-
-    struct PlanError: LocalizedError {
-        var message: String
-        var errorDescription: String? { message }
     }
 
     /// 主轨在时间线上的一节：素材段或需要补的黑场。
@@ -192,11 +176,13 @@ enum VideoEditExportGraph {
         // 推子、转场的交叉淡变、首尾定格的静音都已经在里面了（docs/architecture/export-audio-mixdown.md）。
         // 一个出声的段都没有时垫一路静音：成片照旧总有一条音轨。
         let mixdownFile = workspace.appendingPathComponent("audio-mixdown.f32")
+        var audioLevels: ExportAudioMixdown.Levels?
         switch try await ExportAudioMixdown.render(
             state: requested, duration: total, to: mixdownFile, cancellation: cancellation
         ) {
-        case .written:
+        case .written(let levels):
             inputArguments += ExportAudioMixdown.inputArguments(mixdownFile)
+            audioLevels = levels
         case .silent:
             inputArguments += ["-f", "lavfi", "-t", fmt(total), "-i", "anullsrc=r=48000:cl=stereo"]
         }
@@ -214,7 +200,7 @@ enum VideoEditExportGraph {
             workspaceOwnershipTransferred = true
             return Plan(
                 arguments: args, workspace: workspace, totalDuration: total,
-                tempOutput: tempOutput, isAudioOnly: true
+                tempOutput: tempOutput, isAudioOnly: true, audioLevels: audioLevels
             )
         }
 
@@ -610,7 +596,7 @@ enum VideoEditExportGraph {
         args.append(tempOutput.path)
 
         workspaceOwnershipTransferred = true
-        return Plan(arguments: args, workspace: workspace, totalDuration: total, tempOutput: tempOutput)
+        return Plan(arguments: args, workspace: workspace, totalDuration: total, tempOutput: tempOutput, audioLevels: audioLevels)
     }
 
     // MARK: 小工具

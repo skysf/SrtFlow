@@ -24,8 +24,13 @@
 2. **正好 `duration` 秒。** 离线读在最后一个有声音的采样处就停了（最后一截只有画面时会短），
    重采样的段还会短十几毫秒：读短了补静音、长了截掉，和画面一样长 —— 以前的滤镜链靠 `anullsrc`
    补齐，这条账不能丢。一个出声的段都没有时，导出图垫一路 `anullsrc`，成片照样有一条音轨。
-3. **中间文件是 f32。** 各轨直接相加、不压不限（同以前的 `amix normalize=0`），和可以过 0 dBFS；
-   编码前落成整数就把过载削平了。30 分钟立体声约 675MB，放在导出的工作目录里，导出结束随目录删。
+3. **中间文件是 f32，但在 −1 dBFS 封顶、封顶前的峰值要报出去。** 各轨直接相加、不压不限（同以前的 `amix normalize=0`），
+   和可以过 0 dBFS；`AVFoundation` 读出来的 float 也不削。可是交给 AAC 编码器的信号过了 0 就不可预期（2026-09-30 探针：两轨各 +6 dB
+   叠加，成片 RMS 比混音掉 4.5 dB、峰值冒到 +12 dBFS、主推子降 3 dB 成片只降 2 dB，
+   [案例](../bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)），所以写 f32 时每个采样在 `ExportAudioMixdown.peakCeiling`
+   （−1 dBFS，留 1 dB 给编码器的过冲，同配音文件）封顶，封顶前的峰值和削了多少帧记在 `Levels` 里，经 `Plan.audioLevels` →
+   `VideoEditExporter.finishedAudioLevels` 到导出面板（橙字一句）和 AI 的 `get_job` 结果（`audio_peak_dbfs`、`audio_clipped_seconds`、
+   `note`）。不做限幅器、不做响度目标（用户要的选项，另拍板）。30 分钟立体声约 675MB，放在导出的工作目录里，导出结束随目录删。
 4. **阻塞读取在 `MediaReadQueue.export`**（宽度 1），不进 Swift 并发的线程池
    （[阻塞的媒体读取](blocking-media-reads.md)）。读的途中每拿一块就看一眼取消标记。
 5. **变速的保音调算法只有一个常量**：`VideoEditCompositionBuilder.timePitchAlgorithm`（`.spectral`），
@@ -55,7 +60,7 @@
 
 | 检查 | 守什么 |
 | --- | --- |
-| `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望 |
+| `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望；第 10 组：过 0 dBFS 的混音在 −1 dBFS 封顶、封顶前的峰值和削了多久照实记、成片峰值不冒出 0、成片响度和混音一致、主推子压下来不削且线性 |
 | `checks/export-audio-single-pipeline.sh` | 导出图的真代码里没有声音滤镜；导出图调了混音、接了它的文件；混音读的是 `build` 的合成并挂着它的 audioMix；两边的保音调算法是同一个常量 |
 | `checks/transition-handles-wiring.sh` | `makeAudioMix` 自己展开转场（三个预览入口传的是用户状态） |
 | `scripts/check-export-frame-rate.sh`、`check-video-fade.sh` 等 | 真导出照常跑通（含没有声音的时间线走 `anullsrc`） |

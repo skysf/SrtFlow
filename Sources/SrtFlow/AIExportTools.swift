@@ -58,7 +58,7 @@ enum AIExportTools {
         subscriptions[job.id] = exporter.$isExporting.dropFirst().filter { !$0 }.first().sink { _ in
             MainActor.assumeIsolated {
                 if exporter.finishedURL?.standardizedFileURL.path == output.standardizedFileURL.path {
-                    AIJobs.shared.finish(job, .done, detail: ["path": .string(output.path)])
+                    AIJobs.shared.finish(job, .done, detail: .object(finishedDetail(output, levels: exporter.finishedAudioLevels)))
                 } else if let error = exporter.errorMessage {
                     AIJobs.shared.finish(job, .failed, message: error)
                 } else {
@@ -73,6 +73,22 @@ enum AIExportTools {
             "path": .string(output.path),
             "next_step": "Call get_job with this job_id and wait_seconds 30 until the status is done."
         ])
+    }
+
+    /// 成品的路径，加混音的电平：过了 0 dBFS 的说明削了多久、主推子至少降多少（docs/architecture/export-audio-mixdown.md 第二节第 3 条）。
+    static func finishedDetail(_ output: URL, levels: ExportAudioMixdown.Levels?) -> [String: JSONValue] {
+        var detail: [String: JSONValue] = ["path": .string(output.path)]
+        guard let levels else { return detail }
+        detail["audio_peak_dbfs"] = .number((levels.peakDBFS * 10).rounded() / 10)
+        if levels.isClipped {
+            detail["audio_clipped_seconds"] = .number((levels.clippedSeconds * 100).rounded() / 100)
+            detail["note"] = .string(String(
+                format: "The mix peaked at %+.1f dBFS, so %.2f s were clipped at -1 dBFS. Lower the master fader "
+                    + "(set_track master volume_db) by at least %.1f dB, or the loud clips, and export again.",
+                levels.peakDBFS, levels.clippedSeconds, levels.suggestedReductionDB
+            ))
+        }
+        return detail
     }
 
     /// 给了完整路径就用它（扩展名按这次导出的类型改正）；否则 = 默认文件夹 + 名字（默认工程名）。

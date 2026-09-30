@@ -342,6 +342,15 @@ struct VideoEditExportSheet: View {
                         .instantHelp("Reveal the exported file in Finder")
                         .controlSize(.small)
                 }
+                if let levels = exporter.finishedAudioLevels, levels.isClipped {
+                    // 混音过了 0 dBFS，写进成片前在 −1 dBFS 削平了：说清楚削了多久、主音量至少降多少。
+                    Text(String(format: L10n("The sound peaked at %@ dBFS: %@ s were clipped at -1 dBFS. Lower the master volume by at least %@ dB."),
+                                String(format: "%+.1f", levels.peakDBFS), String(format: "%.2f", levels.clippedSeconds),
+                                String(format: "%.1f", levels.suggestedReductionDB)))
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             HStack {
