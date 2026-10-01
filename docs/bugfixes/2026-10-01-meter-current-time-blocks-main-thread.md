@@ -41,9 +41,8 @@
 - 进程内冒烟（南极工程拷贝，播放 40 秒，`play.out.json` 的 `stalls`）：修前播放中 5 次卡顿、最长 **2443 ms**，
   `currentTime` 的栈四次（2443 / 318 / 213 / 874 ms）；修后播放中 3 次、最长 **129 ms**，电平条和 Now Playing 的栈
   一次都没有了。注意冒烟跑的是 debug 构建，`SampleRing.peak`、malloc 那种百毫秒的栈是没优化的代码，release 没有。
-- **还剩一处**：按下暂停那一拍 AVKit 自己的 `AVPlayerController updateAtMinMaxTime` 在主队列上问了一次 `currentTime`
-  （578 ms，播放器正在拆 22 条轨的音频管线）。`controlsStyle = .none` 也拦不住它，那是 `AVPlayerView` 内部的控制器；
-  要去掉它得把预览画面换成裸的 `AVPlayerLayer`，另开一个 PR（调色和盖一块都挂在这一层上，要连着那两个 GUI 冒烟一起验）。
+- 第一轮还剩一处：按下暂停那一拍 AVKit 自己的 `AVPlayerController updateAtMinMaxTime` 在主队列上问了一次 `currentTime`
+  （578 ms，播放器正在拆 22 条轨的音频管线）。`controlsStyle = .none` 也拦不住它，那是 `AVPlayerView` 内部的控制器 —— 见第二轮。
   音频引擎做完之后播放器里没有音轨、它的队列不再忙，这把锁也就没人抢了。
 
 ## 教训 / 防回归
@@ -54,3 +53,15 @@
 - **平均值看不见的卡顿要逐次抓。** 主线程 40% 忙和 2.4 秒的卡顿并不矛盾；看门狗抓到栈之前，
   「电平条每秒 500 次重绘」这种账上的大头其实是无辜的。
 - **AVKit 的便利功能自带主线程读者。** 用 `AVPlayerView` 时 Now Playing 默认开着，关掉它是一行。
+
+## 第二轮（同日）：预览画面换成裸的 AVPlayerLayer
+
+- **根因**：`AVPlayerView` 自带一个 `AVPlayerController`，rate 一变（按暂停）就在主队列上问一次 `currentTime`；
+  `controlsStyle = .none`、`updatesNowPlayingInfoCenter = false` 都关不掉它。
+- **修复**：`PlayerLayerView`（`Sources/SrtFlow/PlayerLayerView.swift`）—— 一个图层就是 `AVPlayerLayer` 的 NSView，
+  resizeAspect、黑底；`PlayerViewRepresentable` 改用它，`controlsStyle` 参数没了（两个宿主本来都传 `.none`）。
+  调色照旧挂在宿主的 `contentFilters` 上（`FilterStackAttachment` 收的本来就是 `NSView`），盖一块那一层放法一样（resizeAspect）。
+  App 代码里不再 import AVKit；守卫 `checks/player-time-no-sync-read.sh` 第 2 条改成「不许用 AVKit 的 AVPlayerView」。
+- **验证**：`scripts/check-filter-preview-attach.sh`、`scripts/check-cover-preview-attach.sh`（要真窗口，改用生产的 `PlayerLayerView`）；
+  进程内冒烟暂停那一拍的 `currentTime` 栈（见 PR 里贴的数字）。
+- **教训**：想要「只是一块画面」就只拿一块画面；带控制器的便利视图会替你在主线程上做事，而且关不掉。

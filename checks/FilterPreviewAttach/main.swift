@@ -1,11 +1,10 @@
 import AVFoundation
-import AVKit
 import AppKit
 import CoreImage
 import Foundation
 
 // **预览调色真的挂上去了吗**：用生产的 `FilterStack` + `FilterStackAttachment`
-// 把 LUT 挂到真的 AVPlayerView 上，拍窗口，数像素。
+// 把 LUT 挂到真的播放器宿主（PlayerLayerView）上，拍窗口，数像素。
 //
 // 为什么非要真拍屏：`scripts/check-filters.sh` 守的是**表**（LUT 数学、和导出
 // 逐像素对齐），它对「这张表有没有真的被挂到播放器上」一无所知。接线断了那边
@@ -48,14 +47,13 @@ let shotDirectory = URL(fileURLWithPath: arguments[4])
 /// `updateNSView` 调），面板跟着钉在主线程上。
 @MainActor
 final class Panel {
-    let view = AVPlayerView()
+    let view = PlayerLayerView()   // 生产的宿主（裸 AVPlayerLayer），不是 AVKit 的 AVPlayerView
     let attachment = FilterStackAttachment()
     let player: AVPlayer
 
     init(url: URL) {
         player = AVPlayer(url: url)
         view.player = player
-        view.controlsStyle = .none
         view.videoGravity = .resizeAspectFill
     }
 

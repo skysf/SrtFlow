@@ -139,7 +139,7 @@ out = lerp(identity, LUT, s) 查表  ==  lerp(in, LUT(in), s)
 - `checks/ProjectFile/main.swift` 第 25 节 —— 存盘按需写键、往返保真、v17 登记、
   不认识的预设名要宽容回落。
 - `scripts/check-filter-preview-attach.sh` —— **预览那条接线**：用生产的
-  `FilterStack` + `FilterStackAttachment` 挂到真的 `AVPlayerView` 上，拍窗口数像素。
+  `FilterStack` + `FilterStackAttachment` 挂到真的播放器宿主（`PlayerLayerView`，裸 AVPlayerLayer；2026-10-01 前是 AVKit 的 `AVPlayerView`）上，拍窗口数像素。
   上面那两条守的是「表对不对」，它对「表有没有真挂上去」一无所知 —— 接线断了
   那两条照样全绿，用户看到的却是毫无变化的预览。断言比的是**次序**
   （挂了 ≠ 没挂、60% 落在原片和 100% 之间、区间外等于原片、keypath 改强度真重绘），

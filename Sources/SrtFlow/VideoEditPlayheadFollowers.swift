@@ -125,7 +125,7 @@ struct PreviewPlayerSurface: View {
         let grade = FilterStack(in: project.state, at: time)
         let covers = CoverStack(in: project.state, at: time)
         ZStack {
-            PlayerViewRepresentable(player: clock.player, controlsStyle: .none, filterStack: grade)
+            PlayerViewRepresentable(player: clock.player, filterStack: grade)
             if !covers.isEmpty {
                 CoverPreviewLayer(player: clock.player, covers: covers, grade: grade)
                     .allowsHitTesting(false)

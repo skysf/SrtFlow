@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import SwiftUI
 
 // 播放器视图从 `VideoPreviewView.swift` 拆出来（2026-09-21）。
@@ -7,39 +7,31 @@ import SwiftUI
 // seek 和悬停 peek 的状态机）和这个视图。`scripts/check-player-clock.sh` 只想要
 // 前者，却因为同在一个文件里，被迫连带编进视图的全部依赖；这一刀给视图加了
 // 「此刻的调色」之后，那条依赖一路牵到 `TimelineState`，小检查当场编不动。
+//
+// 2026-10-01 起宿主是 `PlayerLayerView`（裸 AVPlayerLayer），不再是 AVKit 的 AVPlayerView：
+// 后者内部的控制器会在主线程上问播放器要时间、把主线程堵住（见 PlayerLayerView.swift 文件头）。
+// 这里不 import AVKit，`checks/player-time-no-sync-read.sh` 钉着。
 
-/// 用 AppKit 原生 AVPlayerView 代替 SwiftUI 的 VideoPlayer：
-/// VideoPlayer 走私有框架 _AVKit_SwiftUI，在某些系统版本上实例化即崩溃。
+/// 预览画面 + 此刻挂的调色。两个宿主都用它：剪辑页（挂调色）和烧字幕预览（不认识滤镜，默认空）。
 struct PlayerViewRepresentable: NSViewRepresentable {
     let player: AVPlayer
-    /// 烧字幕预览给 `.none`：自带的控件浮在画面底部，正好压住字幕，
-    /// 那一块恰恰是要看的地方，所以那边自己画播放条。
-    var controlsStyle: AVPlayerViewControlsStyle = .inline
     /// 此刻要挂的调色（时间轴上的滤镜段）。默认空 —— 烧字幕预览那个宿主
     /// 不认识滤镜，也不该被它影响。
     var filterStack: FilterStack = .empty
 
     func makeCoordinator() -> FilterStackAttachment { FilterStackAttachment() }
 
-    func makeNSView(context: Context) -> AVPlayerView {
-        let view = AVPlayerView()
+    func makeNSView(context: Context) -> PlayerLayerView {
+        let view = PlayerLayerView()
         view.player = player
-        view.controlsStyle = controlsStyle
-        view.showsFullScreenToggleButton = controlsStyle != .none
-        // 不让 AVKit 往「正在播放」（Now Playing）里报状态：它会在主线程上反复问播放器 `currentTime`，
-        // 播放器自己的队列一忙就把主线程堵住（2026-10-01 抓到一次 874 ms，
-        // docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md）。剪辑器也不该出现在系统的媒体控制里。
-        view.updatesNowPlayingInfoCenter = false
         return view
     }
 
-    func updateNSView(_ nsView: AVPlayerView, context: Context) {
+    func updateNSView(_ nsView: PlayerLayerView, context: Context) {
         PerfCounters.update(Self.self)
         if nsView.player !== player { nsView.player = player }
-        if nsView.controlsStyle != controlsStyle { nsView.controlsStyle = controlsStyle }
         // 每秒会被调二十次（时钟 0.05s 一跳），所以「挂的还是不是上次那套」
         // 的判断在 attachment 里做，这里无条件调。
         context.coordinator.apply(filterStack, to: nsView)
     }
 }
-

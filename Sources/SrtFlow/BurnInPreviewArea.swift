@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import SwiftUI
 import SrtFlowCore
 
@@ -194,7 +194,7 @@ struct BurnInPreviewArea: View {
         } else {
             switch mode {
             case .playback:
-                PlayerViewRepresentable(player: clock.player, controlsStyle: .none)
+                PlayerViewRepresentable(player: clock.player)
             case .exactFrame:
                 exactFrame
             }
