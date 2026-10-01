@@ -43,6 +43,19 @@ func run(_ launchPath: String, _ args: [String]) -> (Int32, String) {
     return (process.terminationStatus, String(data: data, encoding: .utf8) ?? "")
 }
 
+/// 2 秒「语音样」的噪声（粉红噪声再高通 100Hz、低通 4kHz），立体声 AAC：声音场景要量带宽、混响，正弦量不出
+/// （和 check-audio-fade 的第 9 组同一种素材）。
+func makeSpeechNoise(_ name: String) -> URL {
+    let url = root.appendingPathComponent(name)
+    let (code, out) = run(ffmpegPath, [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "anoisesrc=color=pink:duration=2:sample_rate=48000:seed=7,highpass=f=100,lowpass=f=4000,volume=0.3",
+        "-c:a", "aac", "-b:a", "256k", "-ac", "2", url.path,
+    ])
+    if code != 0 { print("造噪声素材失败：\(out)") }
+    return url
+}
+
 /// 恒定振幅的 4 秒正弦（振幅 0.5，免得两段相加过顶）。
 func makeTone(_ name: String, frequency: Int, withVideo: Bool, sampleRate: Int = 48_000, channels: Int = 2) -> URL {
     let url = root.appendingPathComponent(name)
@@ -193,6 +206,29 @@ do {
     check(meters.rawPeak(for: mutedKey, from: 0, to: 3) == (0, 0), "静音的段不进它那条轨的表")
     check(meters.rawPeak(for: hiddenKey, from: 0, to: 3) == (0, 0), "隐藏的轨不进表")
     check(meters.rawPeak(for: .track(.main), from: 3.5, to: 3.9) == (0, 0), "主轨那段 3 秒就结束了，之后表里该是空的")
+}
+
+print("==> 11. 声音场景：效果链在渲染块里跑，和 tap 那条路同一份（段增益 → 效果 → 推子），余音越过段尾")
+let noise = makeSpeechNoise("speech-noise.m4a")
+for kind in [SoundSceneKind.bathroom, .telephone] {
+    let state = sceneLane(noise, kind: kind)
+    // 场景那一路和参照比：两边同一条效果链、同一串单元，只差增益按块插值的零头。
+    await compare("场景 \(kind.rawValue)", state, tolerance: 0.3)
+    // 余音：段 2.5 秒结束，之后一小段还有声（浴室的混响散不完；电话的滤波器余音很短，只验浴室）。
+    if kind == .bathroom, let engine = enginePCM(state) {
+        let after = rmsDB(engine.pcm.left[Int(2.52 * 48_000)..<Int(2.6 * 48_000)])
+        check(after > -60, "浴室的混响该越过段尾（2.52–2.60 秒的 RMS \(after) dB）")
+        let later = rmsDB(engine.pcm.left[Int(3.9 * 48_000)..<Int(4.0 * 48_000)])
+        check(later < after, "余音该越散越小（3.9–4.0 秒 \(later) dB 不该比 2.52–2.60 秒 \(after) dB 响）")
+    }
+    // 场景真的改了声音：和不挂场景的那条时间线比，整段 RMS 或频谱得不一样。
+    var plain = state
+    plain.audioTracks[0].clips[0].soundScene = nil
+    if let withScene = enginePCM(state), let without = enginePCM(plain) {
+        let from = Int(1.0 * 48_000), to = Int(2.0 * 48_000)
+        let band = withScene.pcm.left[from..<to].enumerated().reduce(0.0) { $0 + Double(abs($1.element - without.pcm.left[$1.offset + from])) }
+        check(band > 0.001 * Double(to - from), "挂了 \(kind.rawValue) 的声音该和原声不一样（逐采样差的均值 \(band / Double(to - from))）")
+    }
 }
 
 print("\(checks) checks, \(failures) failures")

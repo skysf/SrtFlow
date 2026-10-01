@@ -102,6 +102,20 @@ func overlayOverMain(_ toneA: URL, _ toneB: URL) -> TimelineState {
     return state
 }
 
+/// 一条音频轨一段挂了声音场景（段增益 0.8、渐出 0.5 秒、推子 0.9）：效果在段增益之后、推子之前，余音越过段尾。
+func sceneLane(_ noise: URL, kind: SoundSceneKind) -> TimelineState {
+    var clip = audioClip(noise, start: 0.5, sourceStart: 0, duration: 2)
+    clip.volume = 0.8
+    clip.fadeOutDuration = 0.5
+    clip.soundScene = SoundScene(kind: kind)
+    // 另一条轨上放一段静音的段把总长撑到 4 秒：余音在段尾之后，时间线得有那一截才渲得到（两条管线都到总长为止）。
+    var filler = audioClip(noise, start: 3.5, sourceStart: 0, duration: 0.5)
+    filler.isMuted = true
+    var state = baseState()
+    state.audioTracks = [EditLane(clips: [clip], volume: 0.9), EditLane(clips: [filler])]
+    return state
+}
+
 /// 44.1 kHz 单声道的素材：要重采样、单声道要铺到两边。
 func monoLane(_ tone: URL) -> TimelineState {
     var state = baseState()
