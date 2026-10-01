@@ -275,7 +275,8 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
   步骤记下的选择、每段位置、文字的位置和角度、两条字幕轨每条 cue 的起止 —— 验「落在哪」读这里，比看截图准）、`perf`（两个
   `perf` 之间每个视图重算了几次，冒烟时 `PerfCounters` 也记账）、`cpuMs`（那一段的进程 CPU）、
   `wallMs`（那一段的墙钟 —— 重建预览的活大半不在主线程、还有一截是等 I/O，CPU 看不出「预览多久
-  才回来」）。
+  才回来」）、`stalls`（主线程每次卡过 60 ms 的时刻、毫秒、在哪一栏 / 在不在播、前 12 层栈；每个 `perf`
+  快照里另有 `stall:count` / `stall:maxMs`，见 [主线程卡顿日志](main-thread-stalls.md)）。
 - **量「每一拍多贵」用差值法**：同一动作拖 30 拍和 120 拍，两者之差除以 90。一次拖动的总数里
   起手（选中 → 整个编辑器重算一轮）和松手（`perform` → 又一轮 → 重建预览）是固定开销，会把每拍
   那几毫秒淹掉（2026-09-25：文字拖动总 874 ms，每拍其实只有 3.4 ms）。
