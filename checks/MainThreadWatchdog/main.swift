@@ -36,7 +36,9 @@ let logDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
     .appendingPathComponent("watchdog-check-\(ProcessInfo.processInfo.processIdentifier)", isDirectory: true)
 defer { try? FileManager.default.removeItem(at: logDirectory) }
 
-let watchdog = MainThreadWatchdog(interval: 0.01, threshold: 0.06, logDirectory: logDirectory)
+// 阈值给 150 ms、卡给 400 / 300 ms：CI 的虚拟机上线程醒来能晚几十毫秒（#117 首跑：250 ms 的忙等量成 199 ms），
+// 阈值和卡的长度都要留出这个余量；App 里的阈值仍是 60 ms。
+let watchdog = MainThreadWatchdog(interval: 0.01, threshold: 0.15, logDirectory: logDirectory)
 watchdog.contextProvider = { "ctx=check" }
 let reported = OSAllocatedUnfairLockCounter()
 watchdog.onStall = { _ in reported.increment() }
@@ -46,13 +48,13 @@ watchdog.start()
 pump(0.5)
 check(watchdog.recentStalls.isEmpty, "主线程没卡时不许误报：记了 \(watchdog.recentStalls.count) 次")
 
-// 2. 忙等 250 ms：记一次，时长、context、栈都要对。
-stallTheMainThread(milliseconds: 250)
+// 2. 忙等 400 ms：记一次，时长、context、栈都要对。
+stallTheMainThread(milliseconds: 400)
 pump(0.3)
 let busy = watchdog.recentStalls
-check(busy.count == 1, "忙等 250 ms 该记一次，记了 \(busy.count) 次")
+check(busy.count == 1, "忙等 400 ms 该记一次，记了 \(busy.count) 次")
 if let stall = busy.first {
-    check(stall.duration >= 0.2 && stall.duration < 1.0, "时长该在 0.2–1 秒之间：\(stall.duration)")
+    check(stall.duration >= 0.2 && stall.duration < 1.5, "时长该在 0.2–1.5 秒之间（心跳可能晚发几十毫秒）：\(stall.duration)")
     check(stall.context == "ctx=check", "context 该是 contextProvider 给的：\(stall.context)")
     check(stall.stack.contains { $0.contains("stallTheMainThread") },
           "栈里要有卡住的那个函数（从最里层起前 8 层）：\(stall.stack.prefix(8))")
@@ -60,10 +62,10 @@ if let stall = busy.first {
 }
 check(reported.value == busy.count, "onStall 每次卡顿调一次：\(reported.value) vs \(busy.count)")
 
-// 3. 睡 150 ms（不是忙等）也算卡：主线程不响应就是不响应。
-Thread.sleep(forTimeInterval: 0.15)
+// 3. 睡 300 ms（不是忙等）也算卡：主线程不响应就是不响应。
+Thread.sleep(forTimeInterval: 0.3)
 pump(0.3)
-check(watchdog.recentStalls.count == 2, "睡 150 ms 也该记一次：共 \(watchdog.recentStalls.count) 次")
+check(watchdog.recentStalls.count == 2, "睡 300 ms 也该记一次：共 \(watchdog.recentStalls.count) 次")
 
 // 4. 日志文件：同样的内容在文件里。
 let logFile = logDirectory.appendingPathComponent(MainThreadWatchdog.logFileName)
@@ -76,7 +78,7 @@ check(log.components(separatedBy: "卡了 ").count - 1 == 2, "日志里该有两
 // 5. stop 之后不再记。
 watchdog.stop()
 pump(0.1)
-stallTheMainThread(milliseconds: 120)
+stallTheMainThread(milliseconds: 300)
 pump(0.2)
 check(watchdog.recentStalls.count == 2, "stop 之后不该再记：共 \(watchdog.recentStalls.count) 次")
 
