@@ -1063,4 +1063,13 @@
 "Original file" = "Archivo original";
 "Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "Imagen de la previsualización: medios optimizados (fotogramas clave densos, así los clics durante la reproducción responden al instante) o los archivos originales";
 "Preparing optimized media in the background — the preview uses the original files until each part is ready" = "Preparando los medios optimizados en segundo plano: la previsualización usa los archivos originales hasta que cada parte esté lista";
-"Couldn’t prepare optimized media for %@; the preview uses the original file." = "No se pudieron preparar los medios optimizados de %@; la previsualización usa el archivo original.";
+// 优化媒体 V3（2026-10-01）：设置里的「优化媒体」一节、菜单里转不了的标记
+"Optimized Media" = "Medios optimizados";
+"Videos with sparse keyframes are re-encoded in the background into a cache on this Mac, so clicks in the preview land at once. Exports always use the original files." = "Los vídeos con pocos fotogramas clave se recodifican en segundo plano en una caché de este Mac, así los clics en la previsualización responden al instante. La exportación siempre usa los archivos originales.";
+"Cache" = "Caché";
+"Delete the cache. The preview uses the original files until the optimized media is prepared again" = "Borrar la caché. La previsualización usa los archivos originales hasta que los medios optimizados vuelvan a estar listos";
+"Limit" = "Límite";
+"Past this size, the parts used least recently are deleted first. Parts unused for 30 days are deleted when SrtFlow starts" = "Al superar este tamaño, se borran primero las partes usadas hace más tiempo. Las partes sin usar durante 30 días se borran al iniciar SrtFlow";
+"Cleared. The preview uses the original files and prepares optimized media again in the background." = "Caché vaciada. La previsualización usa los archivos originales y vuelve a preparar los medios optimizados en segundo plano.";
+"Not optimized (the preview uses the original file)" = "Sin optimizar (la previsualización usa el archivo original)";
+"Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "Algunos archivos no se pudieron optimizar, así que la previsualización usa sus archivos originales. El menú indica cuáles";

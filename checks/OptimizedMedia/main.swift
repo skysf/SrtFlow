@@ -3,8 +3,9 @@ import CoreGraphics
 import Foundation
 import SrtFlowCore
 
-// **优化媒体（V1）的自检**：判据是纯函数、关键帧间隔真的扫出来、解码速度量得出、一块真的转出来（0.5 秒内必有关键帧、
-// 没有 B 帧、尺寸 / 时长 / 帧数对、首尾帧和源同一时刻的画面一样、不带声音）、缓存按身份存取、超了上限丢最久没用的。
+// **优化媒体的自检**：判据是纯函数、关键帧间隔真的扫出来、解码速度量得出、一块真的转出来（0.5 秒内必有关键帧、
+// 没有 B 帧、尺寸 / 时长 / 帧数对、首尾帧和源同一时刻的画面一样、不带声音）、缓存按身份存取、超了上限丢最久没用的；
+// V3：上限从设置读（默认 10 GB、低于下限按下限）、几档、过期的天数、清空之后什么都不剩且还能再落块。
 // 编译方式见 scripts/check-optimized-media.sh；方案 docs/plans/2026-10-01-video-optimized-media.md；
 // 长期约束 docs/architecture/optimized-media.md。
 
@@ -313,6 +314,48 @@ Task {
     OptimizedMediaStore.expire(olderThan: 30, now: now.addingTimeInterval(31 * 86_400))
     check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 1) == nil, "31 天没用的块删掉")
     check(!FileManager.default.fileExists(atPath: OptimizedMediaStore.directory(for: identity).path), "空了的源目录删掉")
+
+    // ---- 5b. V3：上限从设置读、几档、过期的天数、清空 ----
+    print("==> 5b. 上限：没设过是默认 10 GB、设了读得回来、低于下限按下限；几档含默认；过期 30 天；清空之后总量 0、目录没了、再落块照样行")
+    let capacitySuite = "srtflow-optimizedmedia-capacity-\(ProcessInfo.processInfo.processIdentifier)"
+    let capacityDefaults = UserDefaults(suiteName: capacitySuite)!
+    capacityDefaults.removePersistentDomain(forName: capacitySuite)
+    check(OptimizedMediaStore.defaultCapacityBytes == 10_000_000_000, "默认 10 GB（十进制：设置里显示的、访达里看到的都是十进制）")
+    check(OptimizedMediaStore.capacityBytes(in: capacityDefaults) == OptimizedMediaStore.defaultCapacityBytes, "没设过就是默认")
+    OptimizedMediaStore.setCapacityBytes(5_000_000_000, in: capacityDefaults)
+    check(OptimizedMediaStore.capacityBytes(in: capacityDefaults) == 5_000_000_000, "设了 5 GB 读回 5 GB")
+    OptimizedMediaStore.setCapacityBytes(1, in: capacityDefaults)
+    check(OptimizedMediaStore.capacityBytes(in: capacityDefaults) == OptimizedMediaStore.minimumCapacityBytes,
+          "设得低于下限按下限（\(OptimizedMediaStore.minimumCapacityBytes)）")
+    capacityDefaults.set(Int64(0), forKey: OptimizedMediaStore.capacityDefaultsKey)
+    check(OptimizedMediaStore.capacityBytes(in: capacityDefaults) == OptimizedMediaStore.minimumCapacityBytes,
+          "别处直接写了 0 也按下限（0 会把刚转好的块当场丢掉）")
+    check(OptimizedMediaStore.capacityPresets.contains(OptimizedMediaStore.defaultCapacityBytes), "几档里有默认那一档")
+    check(OptimizedMediaStore.capacityPresets == OptimizedMediaStore.capacityPresets.sorted()
+              && OptimizedMediaStore.capacityPresets.allSatisfy { $0 >= OptimizedMediaStore.minimumCapacityBytes },
+          "几档从小到大、都不低于下限")
+    check(OptimizedMediaStore.expiryDays == 30, "过期的天数是 30")
+    // 清空：先落两块，清空之后总量 0、根目录没了、块查不到；再落一块照样进得去（目录重建、索引重写）。
+    for chunk in 0...1 {
+        let temp = OptimizedMediaStore.temporaryURL(for: identity)
+        try! Data(repeating: 7, count: 100_000).write(to: temp)
+        _ = try! OptimizedMediaStore.commit(chunk: chunk, temporary: temp, for: identity, now: now)
+    }
+    check(OptimizedMediaStore.totalBytes() == 200_000, "清空前两块 200 KB（\(OptimizedMediaStore.totalBytes())）")
+    OptimizedMediaStore.removeAll()
+    check(OptimizedMediaStore.totalBytes() == 0, "清空之后总量 0（\(OptimizedMediaStore.totalBytes())）")
+    check(!FileManager.default.fileExists(atPath: OptimizedMediaStore.effectiveRoot.path), "清空之后缓存根目录没了")
+    check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 0) == nil, "清空之后块查不到")
+    let again = OptimizedMediaStore.temporaryURL(for: identity)
+    try! Data(repeating: 8, count: 100_000).write(to: again)
+    let landed = try? OptimizedMediaStore.commit(chunk: 3, temporary: again, for: identity, now: now)
+    check(landed != nil && OptimizedMediaStore.chunkURL(for: longGOP, chunk: 3) != nil && OptimizedMediaStore.totalBytes() == 100_000,
+          "清空之后再落一块照样进得去（目录重建、索引重写）")
+    // 过期按 expiryDays：29 天没用的留着，31 天的删（上面第 5 组验过 31 天那条，这里钉的是天数常量真的被用上）。
+    OptimizedMediaStore.expire(olderThan: OptimizedMediaStore.expiryDays, now: now.addingTimeInterval(29 * 86_400))
+    check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 3) != nil, "29 天没用的块留着")
+    OptimizedMediaStore.expire(olderThan: OptimizedMediaStore.expiryDays, now: now.addingTimeInterval(31 * 86_400))
+    check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 3) == nil, "31 天没用的块按 expiryDays 删掉")
     _ = intra
 
     print("\(checks) checks, \(failures) failures")

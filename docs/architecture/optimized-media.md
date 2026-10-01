@@ -1,8 +1,9 @@
 # 优化媒体：长 GOP 的源转成密关键帧的代理（预览的画面）
 
 > 2026-10-01 起（V1：探、判、存、转一块；V2：builder 按段换源 + 后台转码队列 + 停着时换 + 预览工具条的「优化媒体 / 原片」；
-> V3 还没做：设置里的占用 / 上限 / 清空）。改 `Sources/SrtFlow/OptimizedMedia/`、`CompositionClipInsert`、
-> `MediaInfo.keyframeInterval`、`MediaReadQueue.proxy`、预览重建传 `proxies` 的那一处之前必读。
+> V3：设置里的占用 / 上限 / 清空 + 启动时后台过期 + 转不了的只在菜单里标）。改 `Sources/SrtFlow/OptimizedMedia/`、
+> `CompositionClipInsert`、`MediaInfo.keyframeInterval`、`MediaReadQueue.proxy`、预览重建传 `proxies` 的那一处、
+> 设置里的「优化媒体」一节之前必读。
 > 方案与数字见 [方案](../plans/2026-10-01-video-optimized-media.md)；声音那一半见 [音频引擎](audio-engine.md)；
 > 读采样的规矩见 [阻塞的媒体读取](blocking-media-reads.md)。
 
@@ -15,13 +16,16 @@
 | `MediaKeyframeProbe.swift` | 一个源的关键帧间隔：直通读前 60 秒的采样表（不解码），相邻关键帧的最大距离；全帧内 = 0。跑在 `MediaReadQueue.detail` 上 |
 | `DecodeSpeedProbe.swift` | 这台机器解码多快（fps）：解 120 帧计时；按「机型 + macOS 大版本」记在 UserDefaults（`optimizedMedia.decodeFPS.<机型>.<版本>`） |
 | `OptimizedMediaPolicy.swift` | 纯值：要不要转（`needsProxy`）、转多大（`targetSize`）、码率、关键帧间隔 0.5 秒、源时间 10 秒一块、一段用到哪几块（两边各留一块） |
-| `OptimizedMediaStore.swift` | 缓存：`~/Library/Caches/SrtFlow/OptimizedMedia/<路径哈希>/chunk-<i>.mov` + `index.json`（身份、参数版本、每块最后用到的时间和大小）；上限、LRU、过期、清空 |
+| `OptimizedMediaStore.swift` | 缓存：`~/Library/Caches/SrtFlow/OptimizedMedia/<路径哈希>/chunk-<i>.mov` + `index.json`（身份、参数版本、每块最后用到的时间和大小）；上限（UserDefaults 里的键只有它读写；默认、下限、几档）、LRU、过期（天数 `expiryDays`）、占了多少、清空 |
 | `OptimizedMediaTranscoder.swift` | 把一块转出来：`AVAssetReader` 经视频合成解（块的轨从块头盖到块尾）→ `AVAssetWriter` 硬编 H.264，落到 Store。跑在 `MediaReadQueue.proxy` 上 |
 | `OptimizedMediaLookup.swift` | 纯值：builder 换源用的那张表（源 → 块号 → 块文件），一段用到的块齐不齐（`readyChunks(for:)`） |
 | `OptimizedMediaPlan.swift` | 纯值：这份时间线还差哪些块、先转哪块（播放头附近的段先）、哪些源要转、哪些源还没探关键帧间隔 |
-| `OptimizedMediaCoordinator.swift` | 工程上的协调者（`VideoEditProject.optimizedMedia`，`ObservableObject`，只有工具条的菜单订阅）：模式、队列、转、停着时请重建、补探、量解码速度 |
+| `OptimizedMediaCoordinator.swift` | 工程上的协调者（`VideoEditProject.optimizedMedia`，`ObservableObject`，只有工具条的菜单订阅）：模式、队列、转、停着时请重建、补探、量解码速度、转不了的源（`unavailable`） |
+| `OptimizedMediaCacheSettings.swift` | 设置里「优化媒体」那一节的状态（`ObservableObject`，只有那一节订阅）：占了多少（proxy 队列上算）、上限几档、清空（proxy 队列上 `removeAll` → 协调者 `reset()` → `scheduleRebuild()`） |
 | `../CompositionClipInsert.swift` | builder 插画面的那一步：原片一片，或代理几块首尾相接；差一块 / 插不进去退回原片 |
-| `../OptimizedMediaMenu.swift` | 预览工具条上的「优化媒体 / 原片」菜单 + 转码中的小转圈 |
+| `../OptimizedMediaMenu.swift` | 预览工具条上的「优化媒体 / 原片」菜单 + 转码中的小转圈 + 转不了的小感叹号（菜单里列文件名） |
+| `../OptimizedMediaSettingsSection.swift` | 设置窗口里的「优化媒体」一节：占用、「清空」、上限的几档；只订阅 `OptimizedMediaCacheSettings` |
+| `../SrtFlowApp.swift` | 启动时在 proxy 队列上 `expire(olderThan: expiryDays)`（`expireOptimizedMedia`）；设置窗口里摆上那一节 |
 
 `MediaInfo.keyframeInterval`（`MediaProbe.swift`）：导入时顺手探，随工程存；老工程没有这个键 = nil（不知道），不是 0 ——
 打开时协调者补探、用 `applyDocumentRepair` 写回（不标脏）。
@@ -46,8 +50,12 @@
 5. **缓存按路径找、按身份认。** 目录名是路径的哈希；索引里记完整身份（inode + 卷 + 大小 + 修改时间，同 `MediaAssetCache` 的认法）
    和参数版本。路径上换了文件、原地改写过、参数版本变了 → 整个目录作废重来；索引坏了、块文件不在了 = 没转过。
    **改任何转码参数都要 +1 `parametersVersion`**（关键帧间隔、码率、尺寸规则、编码器）。
-6. **总量有上限，丢最久没用的。** 默认 10 GB（`optimizedMedia.capacityBytes`）；每次落一块就看总量，超了按「最后用到的时间」
-   从最早的丢（LRU）；30 天没有任何工程用到的块删掉（`expire`）。缓存丢了就重转，不是错误。
+6. **总量有上限，丢最久没用的。** 默认 10 GB（`optimizedMedia.capacityBytes`，**十进制**：1 GB = 10 亿字节，和设置里显示的、
+   访达里看到的一致 —— 写成 2^30 设置里会显示「10.74 GB」）；设置里给几档（2 / 5 / 10 / 20 / 50 GB，`capacityPresets`），
+   键只经 `OptimizedMediaStore` 读写（`capacityBytes(in:)` / `setCapacityBytes`），低于下限（250 MB）按下限 —— 0 会把刚转好的块
+   当场丢掉，等于关掉优化媒体。每次落一块就看总量，超了按「最后用到的时间」从最早的丢（LRU）；**设置里改小上限当场
+   `enforceCapacity`**（在 proxy 队列上）。30 天（`expiryDays`）没有任何工程用到的块删掉：**App 启动时在 proxy 队列上扫一遍**
+   （`SrtFlowApp.expireOptimizedMedia`，和转码串着、登记成后台读，冒烟的「落定」等它）。缓存丢了就重转，不是错误。
 7. **读和编都是阻塞的，只在 `MediaReadQueue` 上跑**：探在 `detail`、转在 `proxy`（utility，宽度 1 —— 解码器和编码器各只有一个，
    并行也不更快；在后台转，不和播放抢）。转码每读一帧看一眼取消标记。
 8. **10-bit / HDR 的源第一版不转**（H.264 只有 8-bit，转了会灰）：`load` 报 `unsupportedSource`，照用原片。HEVC Main10 是后面一刀。
@@ -63,17 +71,26 @@
    （`clock.$isPlaying`）；块一块块到时最多隔 3 秒换一次，队列空了马上换。播放中 `replaceCurrentItem` 画面会闪一下。
 12. **先转播放头附近的。** 每次重建落地之后按这份时间线算还差哪些块（`OptimizedMediaPlan.jobs`：每段按离播放头多远排，近的先；
    同一段按块号；两边各留一块余量），队列换新；路上那一块转完照收。切工程 `reset()`：路上的作废，表清空（块留在磁盘上）。
-13. **一个源转不了就用原片**（编码器拒绝、10-bit / HDR）：提示条说一句，这次运行里不再试。
+13. **一个源转不了就用原片**（编码器拒绝、10-bit / HDR）：这次运行里不再试；**只在工具条的菜单里标一下**（菜单旁一个小感叹号、
+   菜单里列出文件名，`OptimizedMediaCoordinator.unavailable`），**不进提示条** —— 提示条常驻、要用户点掉，而「用原片」不需要用户做
+   什么（V2 那版写 `project.notice`，每开一个带这种源的工程都弹一条）。守卫钉着协调者不许写 `notice`。
 14. **「优化媒体 / 原片」记在 UserDefaults（`optimizedMedia.previewMode`），不进工程文件**；切换 = 一次重建。默认优化媒体。
    性能台架用参数域 `-optimizedMedia.previewMode original` 量原片那条路（托管 runner 没有硬件编码器的保证；换源的合成和原片同样的
    层数，结构由自检钉着）；冒烟不关，`settle` 等 `backgroundReadsInFlight` 归零 —— 转码、补探、量解码速度都登记了后台读。
 15. **协调者只有工具条的小菜单订阅**（`OptimizedMediaMenu`，`ObservableObject`）；转码的进度不许叫醒整个编辑器
-   （[预览性能 ratchet](preview-perf-ratchet.md) 第十节）。菜单不读工程。
+   （[预览性能 ratchet](preview-perf-ratchet.md) 第十节）。菜单不读工程。设置里那一节同理：只订阅 `OptimizedMediaCacheSettings`
+   这个小对象，不读工程；占用在 proxy 队列上算（和转码串着，不在主线程上读索引），那一节摆着时每隔几秒算一遍。
+16. **清空之后要让当前工程作废再重建**（`OptimizedMediaCacheSettings.clear`，唯一能调 `removeAll` 的地方）：先 `reset()` 取消路上
+   的那一块（不然 `removeAll` 在 proxy 队列上排在它后面、转好的还会落进刚清空的目录），proxy 队列上 `removeAll()`，然后
+   **紧跟 `optimizedMedia.reset()` 再 `scheduleRebuild()`**。为什么：协调者内存里那张「转好的块」表还指着删掉的文件 ——
+   builder 插不进去会退回原片（不黑），但表上写着「齐了」，`sync` 就不会再把这些块排进转码队列，优化媒体从此不回来；
+   作废表、重建一次，重建落地的 `sync` 重新排队、后台重转。清空不弹模态框：按钮旁一行字说「已清空，预览用原片，后台重新准备」。
+   协调者 `sync` 扫索引时**文件也在才算**（同 Store 的认法）：启动时的过期扫描、设置里的清空都可能刚删掉某块。
 
-## 三、还没做的（V3 起）
+## 三、还没做的
 
-- V3：设置里的占用 / 上限 / 清空、启动时后台过期（`expire(olderThan:)` 已有，没人调）、转不了的提示条换成不打扰的样式。
-- 之后：HEVC Main10 的代理（HDR 源）；加 / 去掉场景那类只换声音的改动不该触发换源的重建（现在走整条重建，和以前一样）。
+- HEVC Main10 的代理（HDR 源）；加 / 去掉场景那类只换声音的改动不该触发换源的重建（现在走整条重建，和以前一样）。
+- 设置里的占用是按索引算的（`totalBytes`），转码落盘之前的临时文件、索引坏了的目录不算在内；想看真实的磁盘占用去访达。
 
 ## 四、回归
 
@@ -92,6 +109,9 @@
    1 帧、正好 10 秒、画面是停住前那一帧。29.97 fps 的源（帧在 k × 1001/30000 上）：第 1 块从 0 起、到源结尾、60 帧。
 5. 缓存：另一个路径是另一份；原地改写（大小变）→ 旧块不算数、目录删掉；参数版本对不上 → 当没转过；索引坏了当没转过；
    三块 3 MB 上限 2.5 MB → 最久没用的丢；刚用过的留下；31 天没用的删、空目录删。
+5b. V3：上限没设过是默认 10 GB（十进制）、设了读得回来、设得低于下限 / 别处直接写 0 都按下限；几档含默认、从小到大、都不低于下限；
+   过期的天数是 30；清空之后总量 0、根目录没了、块查不到、再落一块照样进得去（目录重建、索引重写）；按 `expiryDays` 过期：
+   29 天的留着、31 天的删。
 
 `scripts/check-preview-composition.sh` 第 0d 组「按块换源」（`checks/PreviewComposition/ProxySwap.swift`）：段跨两块 → 合成里按块插两段、
 总长和插原片一样、同样的层数、四个时刻的画面同原片；块没齐 → 插原片；不传 proxies → 原片；只用最后一块的段；变速 2×；上层轨摆小了放角上；
@@ -99,13 +119,19 @@
 （播放头在哪段先转哪段的块、转好的不排、转不了的源不排、快机器不排）、缺探的源、纯音频不算画面。
 
 `checks/optimized-media-wiring.sh`（第 1 组）：换源只在预览重建、成片 / 预渲染 / AI 看永远原片、builder 两处都走 `CompositionClipInsert`、
-几何按插进去的源轨算、转码在 proxy 队列并登记后台读、写索引不在主线程、停着才换、切工程作废、转码参数、菜单不读工程、性能台架量原片。
+几何按插进去的源轨算、转码在 proxy 队列并登记后台读、写索引不在主线程、停着才换、切工程作废、转码参数、菜单不读工程、性能台架量原片；
+V3：清空在 proxy 队列上且**紧跟 `reset()` + `scheduleRebuild()`**、`removeAll` 只许设置那一节的模型调、改上限经 Store 写并立刻
+`enforceCapacity`、占用在 proxy 队列上算、缓存目录的路径和上限的键只在 Store 里出现、设置那一节不碰 `FileManager` / `UserDefaults` /
+工程、设置窗口里有这一节、启动时在 proxy 队列上 `expire(olderThan: expiryDays)` 并登记后台读、协调者不许写 `notice`、
+转不了的记在 `unavailable` 且菜单列出来。
 
 反向验证（2026-10-01）：转码不设关键帧间隔 → 第 4 组「0.5 秒内必有关键帧」红；判据不看解码速度（只按 GOP 帧数定一个阈值）→
 第 1 组「慢机器要转」红；V2：`CompositionClipInsert.append` 每片按自己的秒数各自截断 → 格子加起来少一格、`append` 判没插够、
 退回原片 → 「零头的段也按块插两段」红（兜底没让它露一帧黑，但换源没成）；转码不把 `endSession` 落在块尾 → 4c「整块都在静止期里的
 第 1 块正好 10 秒」和 4b「第 1 块到源结尾」红；builder 的几何按原片算 → 「4K 减半」的亮度红。（第一版的反向验证挑的样本不对：
 段的边界都在整秒上、各片各自截断不丢格子，一直绿 —— 零头才露馅。）
+
+反向验证（V3，2026-10-01）：见下文「V3 的反向验证」。
 
 人工回归（发版前实机，南极工程：录屏 + AI 短片，全是长 GOP）：
 
@@ -116,4 +142,9 @@
 - [ ] 变帧率的录屏（静止期长）：静止期画面停住、不黑、不跳。
 - [ ] 转场（叠化 / 推移 / 擦除）、首尾定格、变速的段：和「原片」模式逐帧一样。
 - [ ] 清掉 `~/Library/Caches/SrtFlow/OptimizedMedia/` 再播：用原片、不黑；后台重转。
+- [ ] 设置 → 优化媒体：占用和访达里那个目录的大小对得上（十进制 GB）；工程开着、转码转着时数字跟着涨。
+- [ ] 设置里点「清空」（工程开着、停着）：按钮旁出一行字、不弹框；占用回到 0；预览不黑（用原片）；工具条的转圈重新转起来、
+      转完画面又换回优化媒体（`OptimizedMedia/` 目录重新长出来）。播放中点「清空」：暂停之后才换源。
+- [ ] 设置里把上限改小到低于当前占用：占用当场降到上限以下；改回去不会把删掉的块变回来（后台重转）。
+- [ ] 一段转不了的源（HDR / 10-bit）：提示条不出字；工具条菜单旁有小感叹号，菜单里列着文件名；切工程之后没了。
 - [ ] 导出的成片、AI `look` 的图：和以前一样（原片），`~/Library/Caches` 里没有被它们读。

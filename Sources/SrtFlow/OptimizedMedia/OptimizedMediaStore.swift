@@ -5,8 +5,10 @@ import Foundation
 // MARK: - 优化媒体的缓存：按源文件的身份存块、记索引、超过上限丢最久没用的
 //
 // 管什么：`~/Library/Caches/SrtFlow/OptimizedMedia/<源身份的哈希>/chunk-<i>.mov` + 同目录一份 `index.json`
-// （源的路径、身份、参数版本、每块最后用到的时间和大小）；总量上限；源换了文件 / 原地改写过、参数版本变了就作废。
-// 不管什么：块怎么转（OptimizedMediaTranscoder）、要不要转（OptimizedMediaPolicy）、怎么换进预览（builder，V2）。
+// （源的路径、身份、参数版本、每块最后用到的时间和大小）；总量上限（UserDefaults 里的键只有这里读写）、过期的天数、
+// 占了多少（设置里显示）、清空；源换了文件 / 原地改写过、参数版本变了就作废。
+// 不管什么：块怎么转（OptimizedMediaTranscoder）、要不要转（OptimizedMediaPolicy）、怎么换进预览（CompositionClipInsert）、
+// 设置里那一节的状态（OptimizedMediaCacheSettings）。
 //
 // 身份的认法和 `MediaAssetCache` 一样：路径 + inode + 卷 + 大小 + 修改时间（纳秒）。改转码参数就 +1 `parametersVersion`，
 // 老块全部作废。索引坏了、块文件不在了都当没转过（缓存丢了就重转，不是错误）。
@@ -16,12 +18,27 @@ enum OptimizedMediaStore {
     /// 转码参数的版本：改关键帧间隔、码率、尺寸规则、编码器都要 +1。
     static let parametersVersion = 2  // 2（2026-10-01 V2）：按恒定帧率写、块头那一帧对齐块头
     static let capacityDefaultsKey = "optimizedMedia.capacityBytes"
-    static let defaultCapacityBytes: Int64 = 10 * 1024 * 1024 * 1024
+    /// 默认 10 GB。十进制（1 GB = 10 亿字节）：设置里显示的几档、访达里看到的目录大小都是十进制，写成 2^30 的话
+    /// 设置里会显示成「10.74 GB」。
+    static let defaultCapacityBytes: Int64 = 10_000_000_000
+    /// 上限的下限：写进 UserDefaults 的值再小也按这个算（0 会把刚转好的块当场丢掉，等于关掉优化媒体）。
+    static let minimumCapacityBytes: Int64 = 250_000_000
+    /// 设置里给的几档（含默认那一档），从小到大。
+    static let capacityPresets: [Int64] = [2, 5, 10, 20, 50].map { $0 * 1_000_000_000 }
+    /// 这么多天没有任何工程用到的块删掉（App 启动时在 proxy 队列上扫一遍，SrtFlowApp）。
+    static let expiryDays: Double = 30
 
-    /// 总量上限（设置里可改）。
-    static var capacityBytes: Int64 {
-        let value = UserDefaults.standard.object(forKey: capacityDefaultsKey) as? Int64
-        return value.map { max(256 * 1024 * 1024, $0) } ?? defaultCapacityBytes
+    /// 总量上限（设置里可改；读写只经这里，键不外露）。
+    static var capacityBytes: Int64 { capacityBytes(in: .standard) }
+
+    static func capacityBytes(in defaults: UserDefaults) -> Int64 {
+        let value = defaults.object(forKey: capacityDefaultsKey) as? Int64
+        return value.map { max(minimumCapacityBytes, $0) } ?? defaultCapacityBytes
+    }
+
+    /// 设置里改了上限：记住（不低于下限）。超了的块由调用方接着 `enforceCapacity(limit:)` 丢掉。
+    static func setCapacityBytes(_ bytes: Int64, in defaults: UserDefaults = .standard) {
+        defaults.set(max(minimumCapacityBytes, bytes), forKey: capacityDefaultsKey)
     }
 
     /// 源文件的身份（同 MediaAssetCache 的认法）。
@@ -186,7 +203,7 @@ enum OptimizedMediaStore {
         }
     }
 
-    /// 超过 `days` 天没有任何工程用到的块删掉（启动时在后台扫一遍）。
+    /// 超过 `days` 天没有任何工程用到的块删掉（启动时在后台扫一遍，天数是 `expiryDays`）。
     static func expire(olderThan days: Double, now: Date = Date()) {
         let cutoff = now.addingTimeInterval(-days * 86_400)
         for var index in allIndexes() {
@@ -205,7 +222,7 @@ enum OptimizedMediaStore {
         }
     }
 
-    /// 全部清空（设置里的「清空」）。
+    /// 全部清空（设置里的「清空」）。调用方之后要让协调者作废内存里那张表并重排预览（OptimizedMediaCacheSettings）。
     static func removeAll() {
         try? FileManager.default.removeItem(at: effectiveRoot)
     }

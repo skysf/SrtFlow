@@ -17,6 +17,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startMainThreadWatchdog()
         // 「配了 fal」的小文件启动时对一遍（被删了、Key 是别的途径删的）：小程序据此决定列不列 generate_media（方案第 36 条）。
         FalSettingsStore.shared.refreshKeyStatus()
+        expireOptimizedMedia()
+    }
+
+    /// 优化媒体的缓存：30 天没有任何工程用到的块删掉（docs/architecture/optimized-media.md 第二节第 6 条）。
+    /// 在 proxy 队列上、和转码串着，不在主线程上删文件；登记成后台读，冒烟的「落定」等它做完。
+    private func expireOptimizedMedia() {
+        PerfCounters.backgroundReadBegan()
+        MediaReadQueue.proxy.addOperation {
+            OptimizedMediaStore.expire(olderThan: OptimizedMediaStore.expiryDays)
+            PerfCounters.backgroundReadEnded()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -203,7 +214,7 @@ struct SrtFlowApp: App {
     }
 }
 
-/// 「设置…」(⌘,)。语言，和「连接 AI」。
+/// 「设置…」(⌘,)。语言、优化媒体的缓存，和「连接 AI」。
 private struct SettingsView: View {
     @ObservedObject private var languageStore = AppLanguageStore.shared
 
@@ -219,6 +230,7 @@ private struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
+            OptimizedMediaSettingsSection()
             AIConnectSection()
         }
         .formStyle(.grouped)

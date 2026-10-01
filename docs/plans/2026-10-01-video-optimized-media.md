@@ -134,7 +134,7 @@ seek 到一个 10 秒 GOP 的尾巴要先把前面几百帧全解一遍：自己
 | --- | --- | --- |
 | V1（已合） | 探（关键帧间隔进 `MediaInfo`、解码速度一次）+ 判据纯函数 + `OptimizedMediaStore`（块、身份、索引、LRU、过期）+ 转一块（`AVAssetWriter`）+ `MediaReadQueue.proxy`；不接预览。长期约束 [优化媒体](../architecture/optimized-media.md) | `scripts/check-optimized-media.sh` 五组 64 项（本机 640×360 的一块 0.44 秒）；反向验证两处 |
 | V2（已合） | builder 按段换源（`CompositionClipInsert`）+ 后台转码队列（`OptimizedMediaCoordinator` / `OptimizedMediaPlan`：先转播放头附近的）+ 某段的块齐了且停着时才重建（最多 3 秒一次）+ 预览工具条的「优化媒体 / 原片」+ 老工程补探 + 第一次用到时量解码速度；转码改成经视频合成读、块的轨从块头盖到块尾（变帧率的录屏静止期没有帧，不改块就插不进合成）。性能台架用参数域量原片那条路（托管 runner 没硬件编码器） | `scripts/check-preview-composition.sh` 第 0d 组（自检 3）、`scripts/check-optimized-media.sh` 4b、`checks/optimized-media-wiring.sh`；自检 5（seek 的数字）没做成自动的 —— 留给南极工程的冒烟实测 |
-| V3 | 设置里的占用 / 上限 / 清空 + 30 天不用自动删 + 转不了的提示 | 自检 4；人工 |
+| V3（已合） | 设置里的「优化媒体」一节：占用（proxy 队列上按索引算）、上限几档（2 / 5 / 10 / 20 / 50 GB，十进制、键只经 Store、改小当场 enforce）、「清空」（proxy 队列上删 → 协调者 `reset()` → `scheduleRebuild()`，不弹框、按钮旁一行字）；App 启动时在 proxy 队列上 `expire(olderThan: 30)`；转不了的源不进提示条、只在工具条菜单里标（小感叹号 + 文件名） | `scripts/check-optimized-media.sh` 第 5b 组（上限 / 几档 / 过期天数 / 清空之后再落块）、`checks/optimized-media-wiring.sh`（清空之后 reset + 重建、缓存只经 Store、启动时过期、不写提示条）；人工：设置里看占用、清空再播、改小上限 |
 | 之后 | 出测试版让用户真剪；还卡再谈视频引擎 | — |
 
 ## 六、风险与已知差异
