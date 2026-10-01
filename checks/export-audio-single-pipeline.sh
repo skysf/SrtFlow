@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 扫描守卫：成片的声音只有一条管线 —— 离线读预览那份混音（ExportAudioMixdown）。
+# 扫描守卫：成片的声音只有一条管线 —— 预览那个音频引擎离线渲出来（ExportAudioMixdown → TimelineAudioEngine）。
 #
 # 2026-09-24 以前，导出在 ffmpeg 滤镜图里另搭一整套声音链（atrim → atempo → volume / aeval →
 # afade → adelay，主轨 concat / acrossfade，最后 amix），和预览的 AVFoundation 混音各算一份，
@@ -10,8 +10,10 @@
 #   1. 导出图的真代码里不许出现声音滤镜（注释里提到不算）。垫静音的 anullsrc 除外 ——
 #      一个出声的段都没有时成片照样要有一条音轨。
 #   2. 导出图必须调 ExportAudioMixdown.render，把它的文件接成音轨。
-#   3. 混音读的是 VideoEditCompositionBuilder.build 的那份合成，带着它的 audioMix；变速的保音调
-#      算法和预览的播放条目是同一个常量（timePitchAlgorithm），各写一遍就会分叉。
+#   3. 混音是 AudioEngineConfig.make 那份配置（和预览同一份：段落、增益、曲线、推子、场景、变速）交给
+#      TimelineAudioEngine 的离线模式渲出来的（2026-10-01 PR3a 起；以前是读 AVFoundation 的合成 + audioMix）。
+#      变速的保音调算法：预览的播放条目和引擎的 AudioTimeStretchReader 用同一个 AVAudioUnitTimePitch，
+#      PR3b 删掉 AVPlayer 那条声音路之后这一条也一起收掉。
 #
 # 用法：checks/export-audio-single-pipeline.sh
 set -euo pipefail
@@ -47,12 +49,12 @@ grep -qF 'ExportAudioMixdown.inputArguments(' <<<"${GRAPH_CODE}" \
   || fail "导出图没有把混音文件接成输入"
 
 MIXDOWN_CODE="$(code_of "${MIXDOWN}")"
-grep -qF 'VideoEditCompositionBuilder.build(from:' <<<"${MIXDOWN_CODE}" \
-  || fail "混音不是从预览那份合成读的（VideoEditCompositionBuilder.build）"
-grep -qF 'output.audioMix = mix' <<<"${MIXDOWN_CODE}" \
-  || fail "混音读取没挂 build 出来的 audioMix：音量、渐变、曲线、推子全都会丢"
-grep -qF 'VideoEditCompositionBuilder.timePitchAlgorithm' <<<"${MIXDOWN_CODE}" \
-  || fail "混音的保音调算法不是预览那一个常量"
+grep -qF 'AudioEngineConfig.make(from: state)' <<<"${MIXDOWN_CODE}" \
+  || fail "混音不是从预览那份配置渲的（AudioEngineConfig.make）：段落、增益、场景、变速会和预览分叉"
+grep -qF 'TimelineAudioEngine(config: config, mode: .offline)' <<<"${MIXDOWN_CODE}" \
+  || fail "混音不是预览那个引擎离线渲出来的（TimelineAudioEngine .offline）"
+grep -qF 'engine.renderOffline(' <<<"${MIXDOWN_CODE}" \
+  || fail "混音没有走引擎的 renderOffline"
 grep -qF 'item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm' <<<"$(code_of "${PROJECT}")" \
   || fail "预览的播放条目没用 VideoEditCompositionBuilder.timePitchAlgorithm：变速段两边会是两个算法"
 

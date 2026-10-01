@@ -3,8 +3,8 @@ import Foundation
 
 // MARK: - 9. 声音场景：真的改了声音、余音越过段尾、效果在段增益之后、响度补偿、成片 = 预览
 //
-// 声音场景跑在合成音轨的 tap 里（SceneTrackRenderer），预览和成片是同一份（成片离线读同一个合成）。
-// 这一组量真实的 PCM：预览走真实 build() + 离线读，成片走真实 plan() + ffmpeg。
+// 声音场景跑在合成音轨的 tap 里（SceneTrackRenderer，AVPlayer 那条路）和音频引擎的渲染块里（SceneBox，开关默认开、成片也走它），
+// 两边同一条效果链。这一组量真实的 PCM：预览走真实 build() + 离线读（tap 那条路），成片走真实 plan() + ffmpeg（引擎）。
 // 合同见 docs/architecture/sound-scenes.md。
 
 /// 2 秒「语音样」的噪声（粉红噪声再高通 100Hz、低通 4kHz），立体声 AAC：频谱像人声，
@@ -108,10 +108,15 @@ func checkSoundScenes(videoSource: URL) async {
         check(abs(level) < 3, String(format: "%@：响度补偿之后和原声差 %.1f dB（应在 ±3 dB 内）", kind.rawValue, level))
     }
 
-    // 成片 = 预览：导出走离线读同一份合成，场景、余音都在里面。
+    // 成片 = 预览：2026-10-01（PR3a）起成片是音频引擎离线渲的，预览（开关默认开）也是它，所以对着引擎渲出来的那份比
+    // （场景、余音都在渲染块里）。不能再拿 tap 那条路（上面的 `hall`）当参照：这条 5 秒的时间线上余音的载体要从 2 秒拉成
+    // 2.5 秒（`scaleTimeRange`），AVFoundation 变速那一段之后 tap 里的余音和引擎差 1–3 dB（在 −50 dB 上下），3.3 秒处差 4.2 dB；
+    // 4 秒的时间线（载体不用拉）两边差 ≤ 0.02 dB。tap 那条路 PR3b 删。
     let hallState = sceneTimeline(noise, video: videoSource, scene: SoundScene(kind: .hall))
+    let hallEngine = enginePCM(hallState)
+    check(!hallEngine.isEmpty, "大厅：引擎渲不出来")
     if let exported = await exportSamples(hallState, name: "scene-hall.mp4", audioOnly: false) {
-        checkSameEnvelope(exported, hall, from: 0.6, to: 3.8, tolerance: 0.6, "大厅 · 成片 vs 预览")
+        checkSameEnvelope(exported, hallEngine, from: 0.6, to: 3.8, tolerance: 0.6, "大厅 · 成片 vs 预览（引擎）")
     }
 
     // 正在播的预览走的是电平表那份 tap（AudioMeterEngine 缓存的 TapContext），和成片的独立 tap 是

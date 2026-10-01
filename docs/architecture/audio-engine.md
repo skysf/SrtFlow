@@ -1,7 +1,9 @@
 # 音频引擎：时间线的声音自己播、自己渲
 
-> 2026-10-01 起（PR1a：引擎本体 + 离线渲染 + 等价自检；PR1b：接进 App，**开关默认关**，正式版的声音仍走 AVPlayer 的合成）。
-> 为什么要有它、量过的数字、分几刀见 [方案](../plans/2026-10-01-audio-engine.md)。做完 PR3 之后
+> 2026-10-01 起（PR1a：引擎本体 + 离线渲染 + 等价自检；PR1b：接进 App；PR2a–d：电平表、声音场景、变速、无锁槽；
+> **PR3a：成片也走它、开关默认开** —— `SRTFLOW_AUDIO_ENGINE=0` 或 `defaults write com.srtflow.SrtFlow audioEngine -bool NO`
+> 关回 AVPlayer 的合成那条路，只留到 PR3b 删旧路）。
+> 为什么要有它、量过的数字、分几刀见 [方案](../plans/2026-10-01-audio-engine.md)。做完 PR3b 之后
 > [推子与电平表](audio-mixer.md)、[成片的声音](export-audio-mixdown.md)、[声音场景](sound-scenes.md) 按引擎改写。
 
 ## 一、是什么
@@ -20,7 +22,7 @@
 | `TimelineAudioEngine.swift` | 图（每轨一个 `AVAudioSourceNode` → mainMixer = 总推子，另有一个静音的时钟节点）、引擎时钟（只从渲染块的时间戳来）、播放头锚点、实时的 play / pause / seek、换配置 / 只换增益 / 让路 / 静音、离线整段渲染；把每条轨和总表的槽登记进电平表 |
 | `MeterSlot.swift` | 电平表的无锁槽：渲染块按拍「比大就换」写峰值，界面每拍取走并清零 |
 | `PlaybackAudioSource.swift` | 时钟驱动引擎的那几个方法（协议，不依赖任何东西，`PlayerClock` 的自检只编它） |
-| `AudioEngineFlag.swift` | 迁移期的开关：`SRTFLOW_AUDIO_ENGINE=1` 或 `defaults write com.srtflow.SrtFlow audioEngine -bool YES`；默认关 |
+| `AudioEngineFlag.swift` | 迁移期的开关：**默认开**（PR3a 起）；`SRTFLOW_AUDIO_ENGINE=0` 或 `defaults write com.srtflow.SrtFlow audioEngine -bool NO` 关回 AVPlayer 的合成，只留到 PR3b 删旧路 |
 
 ## 二、合同
 
@@ -37,7 +39,8 @@
 5. **一段一条流**：主轨转场处前后两段相叠、增益各不同，渲染块分别乘再相加；不需要 A/B 槽，也没有
    「一轨一格式」这条规矩（每条流自己转格式）。
 6. **音频不缓存**：直接读 mp3 / aac / wav 原件；mp3 的精确定位 `AVAudioFile` 自己做。
-7. **离线和实时是同一张图**：成片（PR3）和自检都走 `renderOffline`，和实时播放的渲染块是同一段代码。
+7. **离线和实时是同一张图**：成片（PR3a 起，`ExportAudioMixdown` → `renderOffline`，[成片的声音](export-audio-mixdown.md)）
+   和自检都走 `renderOffline`，和实时播放的渲染块是同一段代码；`renderOffline` 的 consumer 回 false 就停（导出取消）。
 8. **引擎的时钟只从渲染块的时间戳来**（节点的 48 kHz 域）。`outputNode.lastRenderTime` 是声卡自己的采样率
    （这台机器 44.1 kHz），拿它算位置播放头会以 0.92 倍速走：2026-10-01 冒烟欠载 51k 帧、视频对表 60 次。
    一个静音的时钟节点一直挂着，没有一条轨出声的时间线也有人每拍更新时钟。
@@ -52,7 +55,7 @@
   播放中 seek 同样 —— 引擎一个 IO 缓冲就出声，视频自己定位、定位要多久就晚多久赶上来（不改时间表）；
   停着 seek 照旧精确定位 / 链式扫帧。暂停 = 引擎锚点钉住 + 播放器 pause。
 - **合成里不插音轨**：重建预览时把 builder 建出来的音轨拆掉（`removeTrack`），audioMix 不挂、电平表的 tap 不建
-  —— 播放器只剩画面，seek 才快。成片不受影响（`ExportMixdown` 自己再建一份带声音的合成）。
+  —— 播放器只剩画面，seek 才快。成片走引擎的离线模式（[成片的声音](export-audio-mixdown.md)），不碰播放器的合成。
 - **快路径和即时试听走配置**：`refreshAudioMix` / `previewAudioLive` 开关开着时算一份 `AudioEngineConfig`
   交给 `updateGains`（结构没变只换增益，流不重开；结构变了退到 `replace`）。
 - **试听让路**：`AudioLibraryAudition` 压播放器音量的同时让引擎的总推子乘同一个让路量。
@@ -73,14 +76,16 @@
   逐窗口比（差 ≤ 0.018 dB）、浴室的余音越过段尾且越散越小、挂了场景的声音和原声不一样；反向验证：不过链 → 8 条红。
 - **变速**（PR2c）：`speed ≠ 1` 的段由 `AudioTimeStretchReader` 读 —— 离线的小引擎跑 AVAudioUnitTimePitch，音调不变，
   时间线上的长度还是 `sourceDuration ÷ speed`。它和 AVFoundation 的 spectral 不是同一种算法，包络对得上（自检第 12 组容差
-  1.5 dB）但不逐采样相等；成片（PR3）走引擎之后两边就是同一份了。
+  1.5 dB）但不逐采样相等；成片（PR3a 起）也走它，预览和成片是同一份。
 - 已知：每次 seek / 开播之后头一拍（约 10 ms）环里还没有数据，当静音（欠载计数里能看到，32 秒 6 次 seek
   共 2505 帧）。
 
 ## 四、还没做的（按方案的刀）
 
 - seek 后头一拍约 8 ms 的静音：只是起声晚一拍，耳朵听不出，不值得在主线程上做同步预读；先不做。
-- PR3：成片切到引擎离线渲染、开关默认开、删旧路。
+- PR3b：删旧路 —— `AudioMixBuilder` 的 tap 接线、`CompositionAudioTracks`、`TapContext` / `SampleRing`、
+  `SceneTrackRenderer` / `SceneTailCarrier`、开关本身；`check-audio-fade.sh` 里对着 tap 那条路比的几组改成对着固定期望比；
+  [推子与电平表](audio-mixer.md)、[声音场景](sound-scenes.md)、[声音：音量与渐入渐出](audio-fades.md) 按引擎改写。
 
 ## 五、回归
 
@@ -96,5 +101,12 @@
 
 进程内冒烟（南极工程拷贝，`SRTFLOW_AUDIO_ENGINE=1`，播放 32 秒 + 4 次播放中 seek + 暂停 / seek / 播放）：
 引擎开着时进程 CPU 约是关着时的一半（16.8 s vs 35.9 s），视频对表 0 次，欠载只有每次 seek 的头一拍。
+成片（PR3a）：`checks/export-audio-single-pipeline.sh` 钉着混音只经 `AudioEngineConfig.make` + `TimelineAudioEngine(.offline)` +
+`renderOffline`（反向验证：换掉模式 → 点名一行；不用 `make` → 两行红）；`scripts/check-audio-fade.sh` 导出那几组真跑导出、
+和预览逐窗对，换了渲染器之后全绿 —— 只有「大厅 · 成片 vs 预览」改成对着引擎自己渲的那份比（`enginePCM`）：那条 5 秒的时间线上
+tap 那条路的余音载体要从 2 秒拉成 2.5 秒，AVFoundation 变速过的那一截之后 tap 里的余音和引擎差 1–3 dB（−50 dB 上下，3.3 秒处 4.2 dB），
+4 秒的时间线（载体不用拉）两边差 ≤ 0.02 dB；用户现在听的预览就是引擎，tap 那条路 PR3b 删。开关默认开之后预览性能 ratchet 的 `meters.tapCreate` 归零、`busy.select.body` 996 → 948，
+基线在同一个 PR 里改小（`checks/PreviewPerf/baseline.json`）。
+
 人工回归（开关开着）：播放中点时间线声音是否立刻接上、暂停 / 播放是否立刻、视频和声音对不对口型、
-拖推子 / 音量线时声音是否跟手、试听音乐时时间线是否让路。
+拖推子 / 音量线时声音是否跟手、试听音乐时时间线是否让路；导出一条有场景 / 变速 / 音量曲线的工程，成片和预览逐段听。

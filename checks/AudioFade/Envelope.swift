@@ -21,7 +21,24 @@ func decodePCM(_ url: URL) -> [Float] {
     return data.withUnsafeBytes { Array($0.bindMemory(to: Float.self)) }
 }
 
-/// 预览侧：从真实合成 + audioMix 里读 PCM（单声道 f32）。
+/// 预览侧（2026-10-01 起用户听到的那一份）：音频引擎离线渲出来的 PCM，并成单声道。并法是 (L + R) / √2 —— 和 `decodePCM`
+/// 里 ffmpeg `-ac 1`、`previewPCM` 里 AVFoundation 出单声道的口径一样（实测：左右相同的正弦并出来是单边的 1.414 倍；
+/// 写成 (L + R) / 2 就比成片整体低 2.93 dB）。成片就是这份渲染经限幅、编码出来的，「成片 = 预览」要对着它比。
+func enginePCM(_ state: TimelineState) -> [Float] {
+    let config = AudioEngineConfig.make(from: state)
+    guard let engine = try? TimelineAudioEngine(config: config, mode: .offline) else { return [] }
+    var samples: [Float] = []
+    do {
+        try engine.renderOffline(duration: state.duration) { interleaved, frames in
+            samples.reserveCapacity(samples.count + frames)
+            for index in 0..<frames { samples.append((interleaved[2 * index] + interleaved[2 * index + 1]) * 0.70710678) }
+            return true
+        }
+    } catch { return [] }
+    return samples
+}
+
+/// 预览侧（AVPlayer 那条路，开关关着时）：从真实合成 + audioMix 里读 PCM（单声道 f32）。
 func previewPCM(_ built: VideoEditCompositionBuilder.Built) async -> [Float] {
     await previewPCM(built.composition, mix: built.audioMix)
 }

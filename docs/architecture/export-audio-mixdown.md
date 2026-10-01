@@ -1,15 +1,19 @@
-# 成片的声音：离线读出预览那份混音
+# 成片的声音：预览那个音频引擎离线渲出来
 
-> 2026-09-24 落地。改剪辑导出的声音、`ExportAudioMixdown`（`VideoEditExportMixdown.swift`）、
-> `makeAudioMix`、导出图里接音轨的那几行之前必读。方案与探针见
-> [声音场景方案](../plans/2026-09-24-sound-scenes.md)。
+> 2026-09-24 落地「成片 = 预览那份混音」；2026-10-01（PR3a）起渲它的是预览同一个音频引擎。改剪辑导出的声音、
+> `ExportAudioMixdown`（`VideoEditExportMixdown.swift`）、`AudioEngineConfig.make`、导出图里接音轨的那几行之前必读。
+> 方案与探针见 [声音场景方案](../plans/2026-09-24-sound-scenes.md)、[音频引擎方案](../plans/2026-10-01-audio-engine.md)；
+> 引擎本身的合同见 [音频引擎](audio-engine.md)。
 
 ## 一、一条管线
 
-**成片的声音就是预览那份混音。** 导出时用和预览同一个 `VideoEditCompositionBuilder.build` +
-`makeAudioMix` 建出合成，`AVAssetReaderAudioMixOutput` 把整条混音原样读成 raw f32 立体声
-48kHz 文件（工作目录里的 `audio-mixdown.f32`），ffmpeg 只负责把它编成 AAC、和画面合在一起。
-导出图里**不许再出现任何声音滤镜**（`checks/export-audio-single-pipeline.sh` 钉着）。
+**成片的声音就是预览那份混音，由同一个引擎渲出来。** 导出时 `AudioEngineConfig.make(from:)` 从用户那一份状态算出
+和预览**同一份**配置（段落、增益、渐变、曲线、推子、场景、变速），`TimelineAudioEngine` 的离线模式（`renderOffline`，
+和实时播放是同一张图、同一段渲染代码）把整条时间线渲成 raw f32 立体声 48kHz 文件（工作目录里的 `audio-mixdown.f32`），
+ffmpeg 只负责把它编成 AAC、和画面合在一起。导出图里**不许再出现任何声音滤镜**（`checks/export-audio-single-pipeline.sh` 钉着）。
+
+2026-09-24 到 2026-10-01 之间这一步是 AVFoundation 那条路：`VideoEditCompositionBuilder.build` + `makeAudioMix` 建合成、
+`AVAssetReaderAudioMixOutput` 读出来。预览换成引擎之后成片也跟着换，不然预览和成片又是两份实现。
 
 以前导出在滤镜图里另搭一整套声音链（每段 atrim → atempo → volume / aeval → afade → adelay，
 主轨 concat / acrossfade，最后 amix），和预览的 AVFoundation 混音各算一份，靠一堆「先后顺序」
@@ -18,14 +22,14 @@
 
 ## 二、七条约束
 
-1. **读的是用户那一份状态。** `render(state:)` 传展开之前的状态，`build` / `makeAudioMix` 自己
-   排序、展开转场，**展开只许一次**。导出图 `plan()` 入口会展开自己那一份（画面要用），传给混音
-   的是展开之前留下来的 `requested`。
-2. **正好 `duration` 秒。** 离线读在最后一个有声音的采样处就停了（最后一截只有画面时会短），
-   重采样的段还会短十几毫秒：读短了补静音、长了截掉，和画面一样长 —— 以前的滤镜链靠 `anullsrc`
-   补齐，这条账不能丢。一个出声的段都没有时，导出图垫一路 `anullsrc`，成片照样有一条音轨。
+1. **读的是用户那一份状态。** `render(state:)` 传展开之前的状态，`AudioEngineConfig.make` 自己
+   排序、展开转场、滤掉藏起来和静音的，**展开只许一次**。导出图 `plan()` 入口会展开自己那一份（画面要用），
+   传给混音的是展开之前留下来的 `requested`。
+2. **正好 `duration` 秒。** 引擎按时间线的帧渲到正好 `frames`（最后一截只有画面时渲出来的就是静音）；
+   `FrameSink` 照旧补短截长，和画面一样长 —— 以前的滤镜链靠 `anullsrc` 补齐，这条账不能丢。
+   配置里一条轨都没有（时间线上没有一个出声的段）时 `.silent`，导出图垫一路 `anullsrc`，成片照样有一条音轨。
 3. **中间文件是 f32，写之前过真峰值限幅器（上限 −1 dBFS），限幅前的峰值、压了多久多深、整段响度都要报出去。**
-   各轨直接相加、不压不限（同以前的 `amix normalize=0`），和可以过 0 dBFS；`AVFoundation` 读出来的 float 也不削。可是交给 AAC 编码器的
+   各轨直接相加、不压不限（同以前的 `amix normalize=0`），和可以过 0 dBFS；引擎渲出来的 float 也不削。可是交给 AAC 编码器的
    信号过了 0 就不可预期（2026-09-30 探针：两轨各 +6 dB 叠加，成片 RMS 比混音掉 4.5 dB、峰值冒到 +12 dBFS、主推子降 3 dB 成片只降 2 dB，
    [案例](../bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)）。第一版（#102）是逐采样硬削；同一天用户拍板换成限幅器
    （[方案](../plans/2026-09-30-export-limiter-and-easing.md)）：
@@ -41,19 +45,25 @@
      才 `needsAttention`，建议降的量 = 压得最深的那一下。经 `Plan.audioLevels` → `VideoEditExporter.finishedAudioLevels` 到导出面板
      （总是一行「响度 · 峰值」，压过的再一句橙字）和 AI 的 `get_job` 结果（`audio_loudness_lufs`、`audio_peak_dbfs`，压过的带
      `audio_limited_seconds`、`audio_max_reduction_db`，超过 3 dB 才带 `note`）。
-   - **预览不限幅**（已知差异）：预览走 AVPlayer，不经这条路；过顶的地方预览里是 AVFoundation 的线性和（也不削），成片是压过的。
-     电平表的红灯照旧管预览。
+   - **预览不限幅**（已知差异）：预览是同一个引擎的实时模式直接出声卡，不经这条路；过顶的地方预览里是线性和（也不削），
+     成片是压过的。电平表的红灯照旧管预览。
    30 分钟立体声约 675MB，放在导出的工作目录里，导出结束随目录删。
-4. **阻塞读取在 `MediaReadQueue.export`**（宽度 1），不进 Swift 并发的线程池
-   （[阻塞的媒体读取](blocking-media-reads.md)）。读的途中每拿一块就看一眼取消标记。
-5. **变速的保音调算法只有一个常量**：`VideoEditCompositionBuilder.timePitchAlgorithm`（`.spectral`），
-   预览的播放条目和混音读取都用它。
-6. **按时间戳落位。** 读出来的块按它的时间戳写到文件里的对应位置，缺一截补静音，不许把后面的声音
-   往前挪（挪了就是声画不同步）。
-7. **导出不挂电平表的 tap**（`meters` 为 nil）。要在 tap 里**改声音**的功能（声音场景），导出照样
-   挂它那一份 tap —— 离线读同样会调 tap，这正是「只做一遍」成立的前提（[声音场景](sound-scenes.md)）。
+4. **整段渲染在 `MediaReadQueue.export`**（宽度 1）上同步做：引擎的喂样在这条线程上读文件（`AVAudioFile`），
+   不进 Swift 并发的线程池（[阻塞的媒体读取](blocking-media-reads.md)）。每渲一拍看一眼取消标记
+   （`renderOffline` 的 consumer 回 false 引擎就停）。
+5. **变速的保音调算法预览和成片是同一份**：引擎的 `AudioTimeStretchReader`（AVAudioUnitTimePitch）。
+   AVPlayer 那条路（开关关着时的预览）用的 `VideoEditCompositionBuilder.timePitchAlgorithm` 是另一种算法，
+   PR3b 删旧路之后这条差异消失。
+6. **按时间线的帧落位。** 引擎从 0 起连续渲，段落的位置在配置里（`Segment.start`），没有「读出来的块带时间戳」
+   这回事；段与段之间渲的是静音，不会把后面的声音往前挪（挪了就是声画不同步）。
+7. **导出不挂电平表**（`meters` 为 nil）。声音场景的效果链在引擎的渲染块里跑（`SceneBox`），离线和实时是
+   同一段代码 —— 这正是「只做一遍」成立的前提（[音频引擎](audio-engine.md) 合同第 7 条、[声音场景](sound-scenes.md)）。
 
 ## 三、和以前比变了什么（2026-09-24 探针实测，都是「成片向预览看齐」）
+
+2026-10-01 起渲成片的是引擎，它和 AVFoundation 那份混音的差在 `scripts/check-audio-engine.sh` 里量着
+（逐 10 ms 窗口 ≤ 0.03 dB；44.1k 单声道重采样 0.29 dB；变速是两种算法、≤ 0.95 dB）。下表是 2026-09-24 从 ffmpeg
+滤镜链换到预览混音时量的，「成片向预览看齐」的结论不变 —— 只是现在两边连渲染代码都是同一份。
 
 | | 以前的成片 | 现在的成片（= 预览） |
 | --- | --- | --- |
@@ -74,7 +84,8 @@
 | 检查 | 守什么 |
 | --- | --- |
 | `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望；第 10a 组（`checks/AudioFade/Limiter.swift`，纯值）：限幅器没过顶逐采样原样、过顶一个采样不超上限、+6 dB 稳态正弦出来是干净的等幅正弦、50 Hz 不被抽扁、尖峰时刻不变 / 前 5 ms 是斜坡 / 1 s 后回到原样、分块喂 = 整段喂且总长不变；响度表按 EBU Tech 3341（−23 → −23、门限、单声道低 3.01）；第 10b 组（`Ceiling.swift`，真跑导出）：过 0 dBFS 的混音限幅前的峰值 / 压了多久多深照实记、f32 里没有一个采样超过 −1 dBFS 且峰值 / 均方根 = √2（不是削平）、整段响度和 ffmpeg `ebur128` 差 < 0.5 LU、成片峰值不冒出 0、成片响度和混音一致、主推子压下来不压且峰值 / 响度都线性 |
-| `checks/export-audio-single-pipeline.sh` | 导出图的真代码里没有声音滤镜；导出图调了混音、接了它的文件；混音读的是 `build` 的合成并挂着它的 audioMix；两边的保音调算法是同一个常量 |
+| `checks/export-audio-single-pipeline.sh` | 导出图的真代码里没有声音滤镜；导出图调了混音、接了它的文件；混音是 `AudioEngineConfig.make` 那份配置交给 `TimelineAudioEngine(mode: .offline)` 的 `renderOffline` 渲出来的；AVPlayer 那条路的播放条目仍用 `timePitchAlgorithm` 常量（PR3b 删） |
+| `scripts/check-audio-engine.sh` | 引擎离线渲染 = AVFoundation 混音（12 组，含电平表、场景、变速）—— 成片和预览用的就是这一份渲染代码 |
 | `checks/transition-handles-wiring.sh` | `makeAudioMix` 自己展开转场（三个预览入口传的是用户状态） |
 | `scripts/check-export-frame-rate.sh`、`check-video-fade.sh` 等 | 真导出照常跑通（含没有声音的时间线走 `anullsrc`） |
 
@@ -83,6 +94,11 @@
 第 6b 组红（见 [案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)）。
 **（2026-09-30）**：限幅器不乘增益 → 10a 大片红、10b「f32 没有一个采样超过 −1 dBFS」红；换回硬削 → 10a「均方根 = 上限 / √2」
 「逐采样差 < 2%」红、10b「峰值 / 均方根 = √2」红。
+
+**（2026-10-01 PR3a，成片换成引擎渲）**：混音不走 `.offline` 的引擎 → 守卫点名那一行；不用 `AudioEngineConfig.make` →
+守卫两行红。换了渲染器之后 `check-audio-fade.sh` 真跑导出的那几组照常全绿 —— 成片的包络仍和预览逐窗一致；只有
+「大厅 · 成片 vs 预览」改成对着引擎自己渲的那份比（`enginePCM`，并单声道按 (L + R) / √2，和 ffmpeg `-ac 1` 一个口径）：
+tap 那条路在这条 5 秒的时间线上余音载体要被拉长，余音比引擎散得慢（3.3 秒处差 4.2 dB），而用户现在听的预览就是引擎。
 
 **人工回归**（发版前实机）：
 

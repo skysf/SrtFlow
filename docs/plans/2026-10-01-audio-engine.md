@@ -168,7 +168,8 @@
 | PR2b（已合） | 场景 + 余音：效果链跟着流，段尾之后喂零 | 同上 | `check-audio-engine.sh` 第 11 组（和 tap 那条路逐窗口比、余音、反向验证） |
 | PR2c（已合） | 变速保音调（AudioTimeStretchReader） | 同上 | `check-audio-engine.sh` 第 12 组 |
 | PR2d（已合） | 电平表改无锁槽（seek 后第一拍预填判定不做：8 ms 的起声延迟听不出） | 同上 | `check-audio-engine.sh` 第 10 组；冒烟里主线程不再等电平表的锁 |
-| PR3 | 成片切到引擎离线渲染；开关默认开；删旧路（`AudioMixBuilder`、`CompositionAudioTracks`、tap、`SceneTailCarrier`、`ExportMixdown` 的 reader 部分）；架构文档改写 | 删掉开关 | 导出自检全绿；`export-audio-single-pipeline` 守卫改成「导出只经引擎」 |
+| PR3a（已合） | 成片切到引擎离线渲染（`ExportAudioMixdown.renderWithEngine`：同一份 `AudioEngineConfig` → `renderOffline` → f32）；开关默认开；`export-audio-single-pipeline` 守卫改成「导出只经引擎」；性能基线登记 `meters.tapCreate` 归零 | 默认开，`SRTFLOW_AUDIO_ENGINE=0` / `-bool NO` 关回 | `check-audio-fade.sh` 导出各组全绿（换了渲染器包络仍和预览逐窗一致）；`check-audio-engine.sh` 84 项 |
+| PR3b | 删旧路（`AudioMixBuilder` 的 tap 接线、`CompositionAudioTracks`、tap、`SceneTailCarrier`、开关本身）；对着 tap 那条路比的自检改成固定期望；架构文档改写 | 删掉开关 | 导出自检全绿 |
 | Beta | 用户真剪 | | 第一节四个数 |
 | 之后 | 预览画面换裸 `AVPlayerLayer`；优化媒体（另一份方案） | | |
 
