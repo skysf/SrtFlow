@@ -58,6 +58,16 @@ Task {
     check(abs(Double(OptimizedMediaPolicy.bitRate(for: CGSize(width: 1280, height: 720))) - 5_333_333) < 2, "720p 按像素等比 ≈ 5.33 Mbps")
     check(OptimizedMediaPolicy.bitRate(for: CGSize(width: 64, height: 36)) == 2_000_000, "小图封在 2 Mbps")
     check(OptimizedMediaPolicy.chunkIndex(forSourceSeconds: 9.999) == 0 && OptimizedMediaPolicy.chunkIndex(forSourceSeconds: 10) == 1, "10 秒一块")
+    check(OptimizedMediaPolicy.coveringChunks(sourceStart: 3, sourceDuration: 9, sourceLength: 12) == 0...1, "3–12 秒正好盖住第 0、1 块（不留余量）")
+    check(OptimizedMediaPolicy.coveringChunks(sourceStart: 10, sourceDuration: 2, sourceLength: 12) == 1...1, "10–12 秒只用第 1 块")
+    check(OptimizedMediaPolicy.coveringChunks(sourceStart: 19.9995, sourceDuration: 0.001, sourceLength: 20) == 1...1, "贴着块尾的一丁点不算下一块")
+    check(OptimizedMediaPolicy.coveringChunks(sourceStart: 25, sourceDuration: 3, sourceLength: 12) == 1...1, "起点在源的结尾之外也不超过最后一块")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 29.97) == CMTime(value: 1001, timescale: 30000), "29.97 → 1001/30000")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 30) == CMTime(value: 1, timescale: 30), "30 → 1/30")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 23.976) == CMTime(value: 1001, timescale: 24000), "23.976 → 1001/24000")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 60) == CMTime(value: 1, timescale: 60), "60 → 1/60")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 7.3) == CMTime(value: 1, timescale: 30), "变帧率录屏报的平均帧率（7.3）→ 按 30")
+    check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: 0) == CMTime(value: 1, timescale: 30), "读不出帧率 → 按 30")
     check(OptimizedMediaPolicy.chunkRange(1) == 10...20, "第 1 块是源的 10–20 秒")
     check(OptimizedMediaPolicy.chunks(sourceStart: 12, sourceDuration: 5, sourceLength: 60) == 0...2, "12–17 秒的段用第 1 块，两边各留一块")
     check(OptimizedMediaPolicy.chunks(sourceStart: 55, sourceDuration: 5, sourceLength: 60) == 4...5, "贴着源结尾的段不超过最后一块")
@@ -166,6 +176,90 @@ Task {
     check(cancelledResult == .failure(.cancelled) && cancelled, "取消标记一亮就停、报 cancelled")
     check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 0) == chunk0URL, "取消的那次不碰已有的块")
 
+    // ---- 4b. 变帧率的源（录屏：静止期没有帧）+ 块头落在两帧之间 ----
+    print("==> 4b. 变帧率的源：静止期没有帧也要连续盖住整块、块头那一帧对齐块头、块尾到源结尾")
+    do {
+        // 12 秒 30 fps，每帧往后挪 1/60 秒（块头 10.0 落在两帧之间），第 60–239 帧（2–8 秒）不写。
+        let vfr = try await makeRampVideo(
+            seconds: 12, fps: 30, size: CGSize(width: 64, height: 36), keyframeEvery: 300, name: "vfr.mp4",
+            firstFrameOffset: CMTime(value: 1, timescale: 60), gap: 60..<240
+        )
+        guard case .success(let source) = await OptimizedMediaTranscoder.load(vfr) else {
+            check(false, "变帧率的源 load 失败")
+            finish(1)
+        }
+        // 源一共 12 + 1/60 秒（每帧都挪了 1/60）：第 0 块 10 秒整、第 1 块到源结尾 2 + 1/60 秒。帧在 30 fps 的格子上，
+        // 合成器只在画面变了才出一帧：第 0 块 0.0 … 2.0 共 61 帧 + 8.033 … 9.967 共 59 帧 = 120 帧（静止期 2.0 那一帧撑 6 秒）；
+        // 第 1 块 10.0 … 12.0 共 61 帧。
+        for chunk in 0...1 {
+            let result = await MediaReadQueue.run(on: MediaReadQueue.proxy) { OptimizedMediaTranscoder.transcode(source, chunk: chunk) }
+            guard case .success(let url) = result else {
+                check(false, "变帧率的源第 \(chunk) 块转不出来：\(result)")
+                continue
+            }
+            let asset = AVURLAsset(url: url)
+            let track = try? await asset.loadTracks(withMediaType: .video).first
+            let range = (try? await track?.load(.timeRange)) ?? .invalid
+            let expected = min(10.0, source.duration - Double(chunk) * 10)
+            let expectedFrames = chunk == 0 ? 120 : 61
+            check(abs(range.start.seconds) < 0.0001, "第 \(chunk) 块的轨从 0 起（块头那一帧挪到了块头），实测 \(range.start.seconds)")
+            check(abs(range.duration.seconds - expected) < 0.002, "第 \(chunk) 块正好 \(expected) 秒（到源结尾），实测 \(range.duration.seconds)")
+            let stats = await passthroughStats(of: url)
+            check(stats?.frames == expectedFrames, "第 \(chunk) 块 \(expectedFrames) 帧（画面变了才出帧、静止期一帧撑住），实测 \(stats?.frames ?? -1)")
+            if chunk == 0 {
+                // 静止期（2–8 秒）里显示的是第 59 帧（灰度 59/359）；块尾 9.5 秒是第 285 帧。
+                let during = await brightness(of: url, at: 5.0)
+                check(abs(during - 59.0 / 359) < 0.06, "静止期里的画面是停住前的最后一帧，实测 \(during)（应约 \(59.0 / 359)）")
+                let late = await brightness(of: url, at: 9.5)
+                check(abs(late - 285.0 / 359) < 0.06, "块尾 9.5 秒的画面对（第 285 帧），实测 \(late)")
+            }
+        }
+    }
+
+    // ---- 4c. 整块都在静止期里 + 29.97 fps 的格子 ----
+    print("==> 4c. 整块都在静止期里只有块头那一帧也要盖住整块；29.97 的源块头落在两帧之间也从 0 起")
+    do {
+        // 25 秒的源，第 60–659 帧（2–22 秒）不写：第 1 块 [10, 20) 整块在静止期里。
+        let idle = try await makeRampVideo(seconds: 25, fps: 30, size: CGSize(width: 64, height: 36), keyframeEvery: 300, name: "idle.mp4", gap: 60..<660)
+        if case .success(let source) = await OptimizedMediaTranscoder.load(idle) {
+            let result = await MediaReadQueue.run(on: MediaReadQueue.proxy) { OptimizedMediaTranscoder.transcode(source, chunk: 1) }
+            if case .success(let url) = result {
+                let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first
+                let range = (try? await track?.load(.timeRange)) ?? .invalid
+                check(abs(range.start.seconds) < 0.0001 && abs(range.duration.seconds - 10) < 0.002,
+                      "整块都在静止期里的第 1 块正好 10 秒（实测 \(range.start.seconds) + \(range.duration.seconds)）")
+                let stats = await passthroughStats(of: url)
+                check(stats?.frames == 1, "整块都在静止期里：只有块头那一帧（实测 \(stats?.frames ?? -1)）")
+                let shown = await brightness(of: url, at: 5.0)
+                check(abs(shown - 59.0 / 749) < 0.06, "静止期里显示的是停住前的那一帧（灰度 59/749），实测 \(shown)")
+            } else {
+                check(false, "整块都在静止期里的第 1 块转不出来：\(result)")
+            }
+        } else {
+            check(false, "静止期的源 load 失败")
+        }
+        // 29.97 fps：帧在 k × 1001/30000 上，块头 10 秒落在两帧之间（9.977 和 10.010）。
+        let ntsc = try await makeRampVideo(seconds: 12, fps: 30, size: CGSize(width: 64, height: 36), keyframeEvery: 300, name: "ntsc.mp4",
+                                           frameDuration: CMTime(value: 1001, timescale: 30000))
+        if case .success(let source) = await OptimizedMediaTranscoder.load(ntsc) {
+            check(OptimizedMediaPolicy.proxyFrameDuration(sourceFPS: source.nominalFrameRate) == CMTime(value: 1001, timescale: 30000),
+                  "29.97 的源按 1001/30000 的格子（标称 \(source.nominalFrameRate)）")
+            let result = await MediaReadQueue.run(on: MediaReadQueue.proxy) { OptimizedMediaTranscoder.transcode(source, chunk: 1) }
+            if case .success(let url) = result {
+                let track = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video).first
+                let range = (try? await track?.load(.timeRange)) ?? .invalid
+                check(abs(range.start.seconds) < 0.0001, "29.97 的源第 1 块的轨从 0 起（块头先出一帧），实测 \(range.start.seconds)")
+                check(abs(range.duration.seconds - (source.duration - 10)) < 0.002, "29.97 的源第 1 块到源结尾，实测 \(range.duration.seconds)")
+                let stats = await passthroughStats(of: url)
+                check(stats?.frames == 60, "29.97 的源第 1 块 60 帧（块头一帧 + 格子上的 59 帧），实测 \(stats?.frames ?? -1)")
+            } else {
+                check(false, "29.97 的源第 1 块转不出来：\(result)")
+            }
+        } else {
+            check(false, "29.97 的源 load 失败")
+        }
+    }
+
     // ---- 5. 缓存 ----
     print("==> 5. 缓存：身份变了作废、版本变了作废、索引坏了当没转过、超过上限丢最久没用的、太久不用的删掉")
     guard let identity = OptimizedMediaStore.SourceIdentity(url: longGOP) else { check(false, "拿不到身份"); finish(1) }
@@ -199,7 +293,8 @@ Task {
     try! Data("garbage".utf8).write(to: indexFile)
     check(OptimizedMediaStore.chunkURL(for: longGOP, chunk: 0) == nil && OptimizedMediaStore.index(for: longGOP) == nil, "索引坏了当没转过")
     try? FileManager.default.removeItem(at: staleDirectory)
-    // 上限：三块各 1 MB，上限 2.5 MB → 最久没用的那块没了
+    // 上限：三块各 1 MB，上限 2.5 MB → 最久没用的那块没了。先清空（4b 的变帧率源也在这个缓存根下，它的块不算进来）。
+    OptimizedMediaStore.removeAll()
     let now = Date()
     for (chunk, age) in [(0, 300.0), (1, 200.0), (2, 100.0)] {
         let temp = OptimizedMediaStore.temporaryURL(for: identity)

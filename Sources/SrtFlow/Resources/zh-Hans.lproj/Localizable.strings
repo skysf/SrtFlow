@@ -1055,3 +1055,12 @@
 "Ease out" = "缓出";
 "Ease in and out" = "缓入缓出";
 "How the values move from the keyframe before the playhead to the next one" = "从播放头前面那一帧到下一帧，数值怎么走";
+
+// 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）
+"Optimized media" = "优化媒体";
+"Original files" = "原片";
+"Optimized" = "优化";
+"Original file" = "原片";
+"Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "预览的画面：优化媒体（关键帧密，播放中点哪儿画面立刻到）还是原片";
+"Preparing optimized media in the background — the preview uses the original files until each part is ready" = "正在后台准备优化媒体 —— 哪一截还没转好，预览先用原片";
+"Couldn’t prepare optimized media for %@; the preview uses the original file." = "%@ 的优化媒体准备不了，预览用原片。";

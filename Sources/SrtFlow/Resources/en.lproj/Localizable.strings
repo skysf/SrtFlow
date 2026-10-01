@@ -1055,3 +1055,12 @@
 "Ease out" = "Ease out";
 "Ease in and out" = "Ease in and out";
 "How the values move from the keyframe before the playhead to the next one" = "How the values move from the keyframe before the playhead to the next one";
+
+// 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）
+"Optimized media" = "Optimized media";
+"Original files" = "Original files";
+"Optimized" = "Optimized";
+"Original file" = "Original file";
+"Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files";
+"Preparing optimized media in the background — the preview uses the original files until each part is ready" = "Preparing optimized media in the background — the preview uses the original files until each part is ready";
+"Couldn’t prepare optimized media for %@; the preview uses the original file." = "Couldn’t prepare optimized media for %@; the preview uses the original file.";

@@ -9,7 +9,12 @@ struct FixtureError: Error, CustomStringConvertible {
     let description: String
 }
 
-func makeRampVideo(seconds: Double, fps: Int, size: CGSize, keyframeEvery: Int?, name: String) async throws -> URL {
+/// `firstFrameOffset`：每一帧都往后挪这么多（块头落在两帧之间的源）；`gap`：这一段帧号的帧不写（变帧率的录屏：静止期没有帧）。
+/// `frameDuration`：不传就是 1/fps；传 1001/30000 就是 29.97 fps 那种不落在整秒上的格子（块头 10 秒落在两帧之间）。
+func makeRampVideo(
+    seconds: Double, fps: Int, size: CGSize, keyframeEvery: Int?, name: String,
+    firstFrameOffset: CMTime = .zero, gap: Range<Int>? = nil, frameDuration: CMTime? = nil
+) async throws -> URL {
     let url = root.appendingPathComponent(name)
     let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
     var compression: [String: Any] = [AVVideoAllowFrameReorderingKey: false]
@@ -34,6 +39,7 @@ func makeRampVideo(seconds: Double, fps: Int, size: CGSize, keyframeEvery: Int?,
     guard let pool = adaptor.pixelBufferPool else { throw FixtureError(description: "拿不到 pixel buffer pool") }
     let frames = Int((seconds * Double(fps)).rounded())
     for frame in 0..<frames {
+        if let gap, gap.contains(frame) { continue }
         var buffer: CVPixelBuffer?
         CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
         guard let buffer else { throw FixtureError(description: "拿不到 pixel buffer") }
@@ -52,7 +58,8 @@ func makeRampVideo(seconds: Double, fps: Int, size: CGSize, keyframeEvery: Int?,
             try await Task.sleep(nanoseconds: 1_000_000)
             waited += 1
         }
-        guard adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))) else {
+        let pts = frameDuration.map { CMTimeMultiply($0, multiplier: Int32(frame)) } ?? CMTime(value: CMTimeValue(frame), timescale: CMTimeScale(fps))
+        guard adaptor.append(buffer, withPresentationTime: pts + firstFrameOffset) else {
             throw FixtureError(description: "append 失败：\(writer.error?.localizedDescription ?? "?")")
         }
     }

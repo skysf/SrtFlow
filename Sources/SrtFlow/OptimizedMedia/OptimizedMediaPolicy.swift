@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreMedia
 import Foundation
 
 // MARK: - 优化媒体的判据和参数：纯值
@@ -63,9 +64,33 @@ enum OptimizedMediaPolicy {
 
     /// 一段（源时间 `sourceStart` 起、`sourceDuration` 长）要用到的块，两边各留 `chunkMargin` 块，不超过源的总长。
     static func chunks(sourceStart: Double, sourceDuration: Double, sourceLength: Double) -> ClosedRange<Int> {
+        let covering = coveringChunks(sourceStart: sourceStart, sourceDuration: sourceDuration, sourceLength: sourceLength)
         let last = max(0, chunkIndex(forSourceSeconds: max(0, sourceLength - 0.001)))
+        return max(0, covering.lowerBound - chunkMargin)...min(last, covering.upperBound + chunkMargin)
+    }
+
+    /// 正好盖住这一截的块（不留余量）：builder 插画面时要的就是这几块，不超过源的最后一块。
+    static func coveringChunks(sourceStart: Double, sourceDuration: Double, sourceLength: Double) -> ClosedRange<Int> {
         let first = chunkIndex(forSourceSeconds: max(0, sourceStart))
-        let end = chunkIndex(forSourceSeconds: max(0, sourceStart + sourceDuration - 0.001))
-        return max(0, first - chunkMargin)...min(last, end + chunkMargin)
+        let end = max(first, chunkIndex(forSourceSeconds: max(0, sourceStart + sourceDuration - 0.001)))
+        guard sourceLength.isFinite else { return first...end }
+        let last = max(0, chunkIndex(forSourceSeconds: max(0, sourceLength - 0.001)))
+        return min(first, last)...min(end, last)
+    }
+
+    /// 代理按恒定帧率写（源是变帧率的录屏时静止期没有帧，块头块尾都要有画面才插得进合成）：帧率照源的标称值，
+    /// 常见的几档按精确的分数（29.97 = 30000/1001）；对不上任何一档（变帧率的录屏报的是平均值）按 30。
+    static func proxyFrameDuration(sourceFPS fps: Double) -> CMTime {
+        let standard: [(rate: Double, duration: CMTime)] = [
+            (23.976, CMTime(value: 1001, timescale: 24000)), (24, CMTime(value: 1, timescale: 24)),
+            (25, CMTime(value: 1, timescale: 25)), (29.97, CMTime(value: 1001, timescale: 30000)),
+            (30, CMTime(value: 1, timescale: 30)), (48, CMTime(value: 1, timescale: 48)),
+            (50, CMTime(value: 1, timescale: 50)), (59.94, CMTime(value: 1001, timescale: 60000)),
+            (60, CMTime(value: 1, timescale: 60)),
+        ]
+        guard fps.isFinite, fps > 0 else { return CMTime(value: 1, timescale: 30) }
+        // 容差 0.05%：29.97 和 30 只差 0.1%，松一点就混在一起（第一版 0.4% 把 30 认成了 29.97）。
+        for entry in standard where abs(fps - entry.rate) < entry.rate * 0.0005 { return entry.duration }
+        return CMTime(value: 1, timescale: 30)
     }
 }

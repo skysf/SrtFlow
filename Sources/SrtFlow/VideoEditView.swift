@@ -420,6 +420,8 @@ struct VideoEditView: View {
             .disabled(recordingCoordinator.isBusy)
             .instantHelp("Project frame rate — preview, export and keyframes all follow it")
 
+            // 预览的画面：优化媒体 / 原片（只订阅协调者，同下一条）。
+            OptimizedMediaMenu(coordinator: project.optimizedMedia)
             // 只有它订阅「正在重建」：放在工程上发的话，每次重建整个编辑器多算两轮。
             PreviewRebuildSpinner(status: project.rebuildStatus)
 
@@ -430,11 +432,8 @@ struct VideoEditView: View {
                     // 「正在添加…」是导入素材那件事的文案 —— 用户点的是定格，
                     // 看到「添加」只会以为自己点错了按钮。两件事同时在跑时算定格：
                     // 那是他刚刚亲手点的那一个。
-                    // **两个字面量各写在自己的分支里**，不要写成
-                    // `Text(cond ? "A" : "B")` —— 文案覆盖扫描器认不出三目里的
-                    // 字面量，那样写会把这两条一起从"用到的文案"里漏掉，
-                    // 检查照样绿（它只查用到的有没有译文），等于悄悄开一个洞。
-                    // 实测：改成三目之后计数从 626 掉到 625。
+                    // **两个字面量各写在自己的分支里**，不要写成 `Text(cond ? "A" : "B")` —— 文案覆盖扫描器认不出
+                    // 三目里的字面量，那两条就一起从「用到的文案」里漏掉、检查照样绿（实测计数从 626 掉到 625）。
                     Group {
                         if project.isFreezing {
                             Text("Freezing…")

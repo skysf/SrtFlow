@@ -69,6 +69,12 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/CompositionClipInsert.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaLookup.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaPolicy.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaStore.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaTranscoder.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaPlan.swift \
   Sources/SrtFlow/VideoEditKeyframeSlices.swift \
   Sources/SrtFlow/CompositionTime.swift \
   Sources/SrtFlow/CompositionSlices.swift \
@@ -92,6 +98,8 @@ xcrun swiftc \
   checks/PreviewComposition/SliceTicks.swift \
   checks/PreviewComposition/Scenes.swift \
   checks/PreviewComposition/ScaleKeyframes.swift \
+  checks/PreviewComposition/ProxySwap.swift \
+  checks/OptimizedMedia/RampVideo.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

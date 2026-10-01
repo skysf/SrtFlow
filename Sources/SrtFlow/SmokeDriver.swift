@@ -231,6 +231,10 @@ enum SmokeDriver {
             "underrunFrames": project?.audioEngineHost.underrunFrames ?? 0,
             "videoDriftCorrections": project?.clock.driftCorrections ?? 0,
         ] as [String: Any]
+        body["optimizedMedia"] = [
+            "mode": project?.optimizedMedia.mode.rawValue ?? "",
+            "pending": project?.optimizedMedia.pendingCount ?? 0,
+        ] as [String: Any]
         body["stalls"] = MainThreadWatchdog.shared.recentStalls.map { stall -> [String: Any] in
             ["at": stallTime.string(from: stall.startedAt), "ms": stall.milliseconds,
              "context": stall.context, "stack": Array(stall.stack.prefix(12))]

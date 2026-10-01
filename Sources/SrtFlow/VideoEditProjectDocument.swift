@@ -93,6 +93,7 @@ extension VideoEditProject {
         autosaveTask = nil
         clock.pause()
         clock.detach()
+        optimizedMedia.reset()  // 路上的转码作废；块留在磁盘上
         cancelLiveEdit()
         // 三类选择一起清。漏掉字幕 cue 的话，新工程一开就带着上一条工程的
         // cue ID —— 它在新轨上多半不存在，预览要么画悬空拖框，要么撞上新轨

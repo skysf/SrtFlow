@@ -102,9 +102,12 @@ run_once() {
   rm -f "${result}"
   echo "    ${scenario} 第 ${n} 遍"
   # -mainWindowSection：启动直接进 Edit Video（参数域覆盖 UserDefaults，不会写回去）。
+  # -optimizedMedia.previewMode original：量的是原片那条路（素材是 libx264 默认 250 帧一个关键帧的长 GOP，开着优化媒体
+  # 的话每遍先在后台转一轮；托管 runner 没有硬件编码器的保证，软编几十秒、数也不稳）。换源的合成和原片同样的层数，
+  # 结构由 scripts/check-preview-composition.sh 的「按块换源」钉着。
   SRTFLOW_BENCH_OUT="${result}" SRTFLOW_BENCH_MEDIA="${MEDIA}" SRTFLOW_BENCH_SCENARIO="${scenario}" \
     SRTFLOW_SMOKE_MUTE=1 SRTFLOW_FFMPEG="${FFMPEG}" \
-    "${APP}" -mainWindowSection videoEdit -ApplePersistenceIgnoreState YES >"${log}" 2>&1 &
+    "${APP}" -mainWindowSection videoEdit -ApplePersistenceIgnoreState YES -optimizedMedia.previewMode original >"${log}" 2>&1 &
   local pid=$!
   local waited=0
   while kill -0 "${pid}" 2>/dev/null; do
