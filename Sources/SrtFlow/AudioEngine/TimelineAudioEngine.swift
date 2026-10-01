@@ -36,9 +36,11 @@ final class TimelineAudioEngine {
     let mode: Mode
     let engine = AVAudioEngine()
     private(set) var config: AudioEngineConfig
-    /// 轨道头的电平表（nil = 不量：离线渲染、自检）。渲染块把每条轨这一拍的采样按时间线的帧写进它的环，
-    /// 和 AVPlayer 那条路的 tap 写的是同一个环、界面照旧在播放头处读（docs/architecture/audio-mixer.md 第三节）。
+    /// 轨道头的电平表（nil = 不量）。每条轨的渲染块按拍把峰值写进自己的无锁槽（MeterSlot），总表从混音器的出口取
+    /// （实时是 mainMixer 上的 tap，离线是渲出来的那一块）；槽登记进电平表，界面照旧按键读、照旧做回落和红灯
+    /// （docs/architecture/audio-engine.md 第三节）。
     let meters: AudioMeterEngine?
+    private let masterSlot = MeterSlot()
     /// 渲染块里环里没有数据、只能当静音的帧数（累计）。冒烟和自检看它。
     var underrunFrames: Int { renderClock.underruns.load(ordering: .relaxed) }
 
@@ -53,8 +55,6 @@ final class TimelineAudioEngine {
         /// 最近一拍多少帧：开播 / seek 时锚点要钉在**下一拍**上，差这么多。
         let quantum = Atomic<Int>(0)
         let underruns = Atomic<Int>(0)
-        /// 总推子（线性），总表要乘它；主线程换、渲染块每拍读。
-        let master = Atomic<Float>(1)
     }
     private let renderClock = RenderClock()
     /// 一直挂着的静音节点：没有一条轨出声的时间线也要有人每拍更新时钟。
@@ -74,7 +74,6 @@ final class TimelineAudioEngine {
         self.mode = mode
         self.config = config
         self.meters = meters
-        renderClock.master.store(config.master, ordering: .relaxed)
         if mode == .offline {
             try engine.enableManualRenderingMode(.offline, format: Self.format, maximumFrameCount: 4096)
         }
@@ -82,6 +81,24 @@ final class TimelineAudioEngine {
         attachClockNode()
         for track in config.tracks { attach(track) }
         engine.mainMixerNode.outputVolume = config.master
+        registerMeterSlots()
+        if mode == .realtime, meters != nil {
+            // 总表：混音器出口的那一拍（含总推子）。tap 在引擎自己的线程上拿到拷贝，不进渲染线程。
+            let slot = masterSlot
+            engine.mainMixerNode.installTap(onBus: 0, bufferSize: 1024, format: nil) { buffer, _ in
+                guard let data = buffer.floatChannelData, buffer.format.channelCount >= 1 else { return }
+                let right = data[min(1, Int(buffer.format.channelCount) - 1)]
+                slot.offer(frames: Int(buffer.frameLength), left: data[0], right: right)
+            }
+        }
+    }
+
+    /// 每条轨的槽 + 总表的槽，整批登记（换配置时重来）。
+    private func registerMeterSlots() {
+        guard let meters else { return }
+        var slots: [MeterKey: MeterSlot] = [.master: masterSlot]
+        for (unit, track) in zip(units, config.tracks) { slots[track.meterKey] = unit.renderer.meterSlot }
+        meters.registerSlots(slots)
     }
 
     /// 静音的节点，只负责把每一拍的时间戳记进 `renderClock`。
@@ -111,8 +128,6 @@ final class TimelineAudioEngine {
         let renderer = AudioTrackRenderer(feeder: feeder, fader: track.fader)
         let anchor = self.anchor
         let clock = renderClock
-        let meters = self.meters
-        let meterKey = track.meterKey
         let node = AVAudioSourceNode(format: Self.format) { _, timestamp, frameCount, outputData -> OSStatus in
             let buffers = UnsafeMutableAudioBufferListPointer(outputData)
             let frames = Int(frameCount)
@@ -129,11 +144,6 @@ final class TimelineAudioEngine {
                 clock.underruns.wrappingAdd(missing, ordering: .relaxed)
                 feeder.poke()
             }
-            // 电平表：这一拍听到的（已乘段增益和推子），按时间线的帧落位；总表再乘总推子。
-            meters?.write(
-                key: meterKey, start: position, left: left, right: right, gains: renderer.unitGains,
-                master: clock.master.load(ordering: .relaxed), count: frames, positions: nil
-            )
             return noErr
         }
         engine.attach(node)
@@ -162,6 +172,7 @@ final class TimelineAudioEngine {
             let status = try engine.renderOffline(AVAudioFrameCount(frames), to: buffer)
             guard status == .success, let data = buffer.floatChannelData else { throw RenderError(status: status) }
             let got = Int(buffer.frameLength)
+            masterSlot.offer(frames: got, left: data[0], right: data[1])
             for index in 0..<got {
                 interleaved[2 * index] = data[0][index]
                 interleaved[2 * index + 1] = data[1][index]
@@ -187,8 +198,8 @@ final class TimelineAudioEngine {
         }
         units.removeAll()
         for track in new.tracks { attach(track) }
-        renderClock.master.store(new.master, ordering: .relaxed)
         engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
+        registerMeterSlots()
         if running { startFeeders() }
     }
 
@@ -203,7 +214,6 @@ final class TimelineAudioEngine {
             unit.renderer.fader.store(track.fader, ordering: .relaxed)
             unit.feeder.update(Dictionary(track.segments.map { ($0.clipID, SegmentUpdate($0)) }, uniquingKeysWith: { first, _ in first }))
         }
-        renderClock.master.store(new.master, ordering: .relaxed)
         engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
     }
 

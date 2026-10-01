@@ -105,6 +105,7 @@ xcrun swiftc \
   Sources/SrtFlow/AudioEngine/AudioEngineConfig.swift \
   Sources/SrtFlow/AudioEngine/AudioRing.swift \
   Sources/SrtFlow/AudioEngine/AudioPublished.swift \
+  Sources/SrtFlow/AudioEngine/MeterSlot.swift \
   Sources/SrtFlow/AudioEngine/AudioSegmentReader.swift \
   Sources/SrtFlow/AudioEngine/AudioTimeStretchReader.swift \
   Sources/SrtFlow/AudioEngine/AudioTrackFeeder.swift \
