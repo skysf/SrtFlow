@@ -132,7 +132,7 @@ seek 到一个 10 秒 GOP 的尾巴要先把前面几百帧全解一遍：自己
 
 | PR | 内容 | 验收 |
 | --- | --- | --- |
-| V1 | 探（关键帧间隔进 `MediaInfo`、解码速度一次）+ 判据纯函数 + `OptimizedMediaStore`（块、身份、索引、LRU）+ 转一块（`AVAssetWriter`）；不接预览 | 自检 1、2、4 |
+| V1（已合） | 探（关键帧间隔进 `MediaInfo`、解码速度一次）+ 判据纯函数 + `OptimizedMediaStore`（块、身份、索引、LRU、过期）+ 转一块（`AVAssetWriter`）+ `MediaReadQueue.proxy`；不接预览。长期约束 [优化媒体](../architecture/optimized-media.md) | `scripts/check-optimized-media.sh` 五组 64 项（本机 640×360 的一块 0.44 秒）；反向验证两处 |
 | V2 | builder 按段换源 + 后台转码队列 + 转好之后停着时重建 + 预览窗口的「优化媒体 / 原片」 | 自检 3、5；冒烟 ≤ 2 帧；性能计数不变 |
 | V3 | 设置里的占用 / 上限 / 清空 + 30 天不用自动删 + 转不了的提示 | 自检 4；人工 |
 | 之后 | 出测试版让用户真剪；还卡再谈视频引擎 | — |

@@ -372,6 +372,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditMediaImport.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   Sources/SrtFlow/AIToolIO.swift \
   Sources/SrtFlow/AIShortIDs.swift \

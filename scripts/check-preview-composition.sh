@@ -81,6 +81,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/PreviewComposition/main.swift \
   checks/PreviewComposition/FrameProbe.swift \

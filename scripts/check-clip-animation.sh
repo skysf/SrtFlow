@@ -118,6 +118,7 @@ xcrun swiftc \
   Sources/SrtFlow/SubtitleFontScale.swift \
   Sources/SrtFlow/SubtitleFallbackFont.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/ClipAnimation/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o

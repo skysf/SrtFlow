@@ -79,6 +79,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/CoverPreviewAttach/main.swift \
   checks/CoverPreviewAttach/Assertions.swift \

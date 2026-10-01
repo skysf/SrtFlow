@@ -90,6 +90,8 @@ xcrun swiftc \
   Sources/SrtFlow/SubtitleGen/AudioWindowReader.swift \
   Sources/SrtFlow/SubtitleGen/TranscriptSidecarStore.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/StillImageClipFactory.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/ProjectFile/main.swift \

@@ -13,6 +13,22 @@ struct MediaInfo: Hashable, Sendable {
     /// 源音频能不能原样塞进 mp4。AAC / MP3 可以，PCM、AC-3 之类要转 AAC。
     var audioCanCopyToMP4: Bool
     var fileBytes: Int64
+    /// 画面轨的关键帧间隔（秒，前 60 秒里相邻两个关键帧的最大距离；全帧内 = 0）。优化媒体靠它判长 GOP
+    /// （OptimizedMediaPolicy）。老工程没探过 = nil；ffmpeg 退路也探不出 = nil。
+    var keyframeInterval: Double?
+
+    init(duration: Double, displaySize: CGSize, frameRate: Double, videoCodec: String, audioCodec: String?,
+         hasAudio: Bool, audioCanCopyToMP4: Bool, fileBytes: Int64, keyframeInterval: Double? = nil) {
+        self.duration = duration
+        self.displaySize = displaySize
+        self.frameRate = frameRate
+        self.videoCodec = videoCodec
+        self.audioCodec = audioCodec
+        self.hasAudio = hasAudio
+        self.audioCanCopyToMP4 = audioCanCopyToMP4
+        self.fileBytes = fileBytes
+        self.keyframeInterval = keyframeInterval
+    }
 
     var width: Int { Int(displaySize.width.rounded()) }
     var height: Int { Int(displaySize.height.rounded()) }
@@ -30,7 +46,7 @@ struct MediaInfo: Hashable, Sendable {
 extension MediaInfo: Codable {
     private enum CodingKeys: String, CodingKey {
         case duration, displaySize, frameRate, videoCodec, audioCodec
-        case hasAudio, audioCanCopyToMP4, fileBytes
+        case hasAudio, audioCanCopyToMP4, fileBytes, keyframeInterval
     }
 
     init(from decoder: Decoder) throws {
@@ -43,6 +59,7 @@ extension MediaInfo: Codable {
         hasAudio = try c.decodeIfPresent(Bool.self, forKey: .hasAudio) ?? false
         audioCanCopyToMP4 = try c.decodeIfPresent(Bool.self, forKey: .audioCanCopyToMP4) ?? false
         fileBytes = try c.decodeIfPresent(Int64.self, forKey: .fileBytes) ?? 0
+        keyframeInterval = try c.decodeIfPresent(Double.self, forKey: .keyframeInterval)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -55,6 +72,7 @@ extension MediaInfo: Codable {
         try c.encode(hasAudio, forKey: .hasAudio)
         try c.encode(audioCanCopyToMP4, forKey: .audioCanCopyToMP4)
         try c.encode(fileBytes, forKey: .fileBytes)
+        try c.encodeIfPresent(keyframeInterval, forKey: .keyframeInterval)
     }
 }
 
@@ -124,6 +142,9 @@ enum MediaProbe {
             audioCodec = audioFormats.first.map { fourCharCode(CMFormatDescriptionGetMediaSubType($0)) }
         }
 
+        // 关键帧间隔：扫前 60 秒的采样表（不解码，MediaKeyframeProbe），优化媒体靠它判长 GOP。
+        let keyframeInterval = await MediaKeyframeProbe.interval(of: url)
+
         return MediaInfo(
             duration: duration.seconds.isFinite ? duration.seconds : 0,
             displaySize: displaySize,
@@ -132,7 +153,8 @@ enum MediaProbe {
             audioCodec: audioCodec.map(normalizedCodecName),
             hasAudio: !audioTracks.isEmpty,
             audioCanCopyToMP4: audioCodec.map(canCopyToMP4) ?? false,
-            fileBytes: fileBytes
+            fileBytes: fileBytes,
+            keyframeInterval: keyframeInterval
         )
     }
 

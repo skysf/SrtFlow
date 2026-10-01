@@ -43,6 +43,7 @@
 | `export` | userInitiated | 1 | 导出时把整条混音离线读成文件（[成片的声音](export-audio-mixdown.md)）；一次只导一个，单独一条不占波形那两条 |
 | `shots` | utility | 1 | AI 找镜头切换点（`AIShotScan`）：一个视频从头解到尾，1440p 的课 M1 上约 17 倍速、分段并行也不更快（硬件解码器只有一个），长的要几十秒；单独一条，扫着的时候不占 `analysis` 那两条（[AI 接口](ai-control-mcp.md)） |
 | `voice` | userInitiated | 1 | 本机配音（`KokoroVoiceSpeech`）：CoreML 的一次推理同样卡线程（一句约 0.4 秒，第一次要等神经网络引擎编译约 10 秒），模型不同时跑两次、加载也在这条上（[AI 接口](ai-control-mcp.md) 第四节第 35 条） |
+| `proxy` | utility | 1 | 优化媒体的转码（`OptimizedMediaTranscoder`）：读一块、硬编一块，解码器和编码器各只有一个，并行也不更快；在后台转，不和播放抢（[优化媒体](optimized-media.md)）。关键帧间隔和解码速度的探测（`MediaKeyframeProbe` / `DecodeSpeedProbe`）走 `detail` |
 | `analysis` | userInitiated | 2 | AI 看画面、读文稿：Vision 的 `VNImageRequestHandler.perform`（认人脸、标签、字）同样卡住线程、等 Vision 自己队列上的活；PDFKit 抽大 PDF 的字也要一两秒（[AI 接口](ai-control-mcp.md)）。不是读采样，但同属下面「等本进程里别的活」那一类 |
 
 宽度只关系到性能（和播放抢 CPU、内存），和死锁无关。43 个短素材：宽度 1 用 0.92 秒，
