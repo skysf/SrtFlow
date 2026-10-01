@@ -87,6 +87,9 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   系统权限或手势时，另按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 执行。
 - 修改 shell 脚本前，先读
   [构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)。
+- **推之前跑 `scripts/check-guards.sh`**（全部 `checks/*.sh` 扫描守卫，几十秒、不编译）。搬代码 / 改名之后尤其要跑：守卫按文件名找
+  接线，挑着跑几条漏掉的那条只会在 CI 上红（[PR #132 首跑](docs/bugfixes/2026-10-01-pr132-first-ci-run-guard-in-moved-insert.md)，
+  同一个坑第三次）。
 
 ## 文档目录职责
 
@@ -311,6 +314,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   跑 `checks/preview-perf-wiring.sh --fix` 自动补上。同一个守卫还钉着**时间线上的块不许
   读工程的属性、必须 `Equatable` 且构造处套 `.equatable()`**，以及**订阅播放器时钟的只许是名单里跟着播放头动的
   小视图**（根视图、时间线本体、检查器、素材库、字幕列表都持有不订阅）。
+- 全部扫描守卫一条命令：`scripts/check-guards.sh`（跑 `checks/*.sh` 每一条，推之前必跑；`check-all.sh` 照样逐条跑它们）。
 - 本文件的索引必须是全的：`docs/` 下每一份文档都要能从这里找到，且没有死链 ——
   `checks/docs-index-drift.sh`。只读 AGENTS.md 的代理打不开索引外的文档，
   所以漏一行等于那份文档不存在。
@@ -579,6 +583,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-01 引擎接管声音之后，配乐比画面长的工程播到画面结尾停在最后一帧上](docs/bugfixes/2026-10-01-preview-item-shorter-than-timeline-without-audio-tracks.md) — 合成音轨除了出声还替合成撑着长度：拆掉它之后播放器的条目只有画面那么长，画面层停在最后一帧、引擎的播放头照走、时钟每拍去对表。builder 从画面结尾到总长垫一截黑底（只垫那一截，画面铺满的工程一层都不多）。**拆掉一样东西之前先问它顺手撑着什么；合成有效不等于播放对。**
 - [2026-10-01 烧录页默认窗口宽度下字幕列被裁掉右边、文件行的提示截成省略号](docs/bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md) — 内层 `HSplitView` 最后一栏的 ideal 和前面各栏的 min 一起放不进可用宽度就被裁；ideal 收到和 min 一样，提示用 `ViewThatFits` 少显示一句。**截图要按用户默认的窗口大小拍，1400 宽看不出。**
 - [2026-10-01 播放中按空格图标慢半拍：电平条每秒 300 次问播放器要时间，被播放器的锁堵住主线程](docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md) — 心跳看门狗第一次跑就抓到 2.4 秒的栈：`player.currentTime()` 要同步拿播放器内部的锁，多轨合成播放中它一忙主线程就排在后面；AVKit 的 Now Playing 走同一把锁。改成读时钟外推的 `estimatedTime`，守卫钉着 App 代码里不许出现 `currentTime()`；第二轮：`AVPlayerView` 自带的控制器也在暂停那一拍问时间（578 ms）且关不掉，预览画面换成裸 `AVPlayerLayer`（`PlayerLayerView`），App 不再 import AVKit。**播放器的 getter 不是免费的；平均值看不见的卡顿要逐次抓；带控制器的便利视图会替你在主线程上做事。**
+- [2026-10-01 把插画面的代码搬出 builder 之后，一条转场守卫还在旧文件里找](docs/bugfixes/2026-10-01-pr132-first-ci-run-guard-in-moved-insert.md) — 优化媒体 V2 把 builder 的插画面搬进 `CompositionClipInsert.swift`，`transition-handles-wiring` 还钉着旧文件，本机挑着跑的 17 条守卫没它、CI 第 1 组才红 —— 和 PR #71、#84 是同一个坑的第三次。守卫改指新文件；**机制**：`scripts/check-guards.sh` 一条命令跑全部守卫，写进验证纪律。**同一个教训撞第三次就别再补清单，改成机制。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
