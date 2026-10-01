@@ -122,6 +122,7 @@ run_check "encode-settings-memory（扫描守卫：压缩 / 烧录记住的设�
 run_check "project-file-wiring（扫描守卫：工程存盘 / 选择 / 隐藏 / 导出这批合同的生产接线）" checks/project-file-wiring.sh
 run_check "fal-wiring（扫描守卫：fal 生成的接线 —— 先问后花、不弹模态框、Key 只经一处读、清单跟着 Key 走）" checks/fal-wiring.sh
 run_check "preview-perf-wiring（扫描守卫：预览性能计数接满）" checks/preview-perf-wiring.sh
+run_check "player-time-no-sync-read（扫描守卫：不许同步问播放器要时间、Now Playing 关着）" checks/player-time-no-sync-read.sh
 run_check "localization-coverage（界面文案两表配齐）" scripts/check-localization-coverage.sh
 # 提示面板落点（scripts/check-instant-tooltip-panel.sh）**故意不在这里**：它要建
 # 真实的 NSWindow/NSPanel，没有图形会话就会假红。按本文件开头的约定，真实窗口

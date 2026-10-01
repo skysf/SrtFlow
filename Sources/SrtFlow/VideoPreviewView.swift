@@ -32,6 +32,10 @@ final class PlayerClock: ObservableObject {
     var displayTime: TimeInterval { peekTime ?? time }
 
     let player = AVPlayer()
+    /// 时间回调的间隔（init 时定）：`estimatedTime` 最多往前补这么长。
+    let observationInterval: TimeInterval
+    /// 最近一次时间回调落地（或 seek）时的 host 时间，给 `estimatedTime` 外推用。主线程读写。
+    private var tickHostTime: TimeInterval = 0
     private var timeObserver: Any?
     private var rateObservation: NSKeyValueObservation?
 
@@ -43,6 +47,7 @@ final class PlayerClock: ObservableObject {
     /// - Parameter observationInterval: 时间回调的间隔。烧字幕预览要靠它切换叠在
     ///   画面上的那句字幕，所以给得比字幕编辑器密一些。
     init(observationInterval: TimeInterval = 0.25) {
+        self.observationInterval = observationInterval
         // GUI 冒烟的静音钩子：验播放时别往正在用机器的人耳朵里外放。
         // 环境变量不设就完全不生效（docs/testing/gui-smoke-testing.md）。
         if ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_MUTE"] != nil { player.volume = 0 }
@@ -75,7 +80,24 @@ final class PlayerClock: ObservableObject {
         PerfCounters.event(.clockTick)
         // 悬停预览期间播放器在别处扫帧，这些回调不能写回播放头 ——
         // 否则播放头还是会被悬停拖走，peek 就白做了。
-        if peekTime == nil { time = seconds }
+        if peekTime == nil {
+            time = seconds
+            tickHostTime = ProcessInfo.processInfo.systemUptime
+        }
+    }
+
+    /// 播放头此刻大概在哪，**不问播放器**：最近一跳的时间，加上从那一跳到现在过了多久（最多补一跳）。
+    ///
+    /// 跟着播放头画东西的高频读者（电平条：每条轨每秒 30 次）读它。`player.currentTime()` 要拿播放器
+    /// 内部那把锁，播放器自己的队列一忙（多轨合成的音频管线在干活）主线程就被堵住 —— 2026-10-01 在
+    /// 南极工程里抓到一次 2.4 秒、几次 200–300 ms，空格按下去图标慢半拍就是它
+    /// （docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md）。`checks/player-time-no-sync-read.sh`
+    /// 钉着：App 代码里不许再出现 `currentTime()`，时间只从时钟的回调来。
+    var estimatedTime: TimeInterval {
+        PlaybackTimeEstimate.estimate(
+            tick: time, tickHost: tickHostTime, now: ProcessInfo.processInfo.systemUptime,
+            isPlaying: isPlaying, maxLead: observationInterval
+        )
     }
 
     deinit {
@@ -125,6 +147,7 @@ final class PlayerClock: ObservableObject {
         peekTime = nil
         let clamped = max(0, seconds)
         time = clamped
+        tickHostTime = ProcessInfo.processInfo.systemUptime
         placed.send(PlayheadPlacement(time: clamped, precise: precise))
         if precise {
             pendingScrubTarget = nil
@@ -203,4 +226,18 @@ final class PlayerClock: ObservableObject {
     }
 
     func pause() { player.pause() }
+}
+
+// MARK: - 播放头的外推（纯值）
+
+/// `PlayerClock.estimatedTime` 的算术：最近一跳 `tick` 是在 host 时间 `tickHost` 落地的，现在是 `now`。
+/// 播放中就把过去的这段时间补上，但最多补 `maxLead`（时钟的回调间隔）—— 回调要是晚到了，外推不许
+/// 一直往前跑；停着就是 `tick` 本身。`now` 比 `tickHost` 还早（时钟倒退）按没过时间算。
+enum PlaybackTimeEstimate {
+    static func estimate(tick: TimeInterval, tickHost: TimeInterval, now: TimeInterval,
+                         isPlaying: Bool, maxLead: TimeInterval) -> TimeInterval {
+        guard isPlaying, tickHost > 0 else { return tick }
+        let elapsed = min(max(0, now - tickHost), max(0, maxLead))
+        return tick + elapsed
+    }
 }
