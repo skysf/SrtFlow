@@ -11,6 +11,7 @@ import Foundation
 //   {"do": "settle", "quiet": 0.6, "timeout": 30}    等预览落定（同性能测试的口径）
 //   {"do": "window", "width": 1400, "height": 860}   把窗口摆成这么大（左下角贴着屏幕可用区域）
 //   {"do": "seek", "time": 3.5}                      播放头挪过去
+//   {"do": "play"} / {"do": "pause"}                  开播 / 暂停（直接调时钟：空格是 SwiftUI 的快捷键，合成的按键到不了）
 //   {"do": "click", "at": [x, y], "count": 1, "flags": ["cmd"]}
 //   {"do": "drag", "from": [x, y], "to": [x, y], "steps": 20, "hold": 0.3, "flags": []}
 //   {"do": "scroll", "at": [x, y], "dx": 0, "dy": -40, "steps": 10}
@@ -35,7 +36,7 @@ import Foundation
 
 struct SmokeStep: Decodable {
     enum Action: String, Decodable {
-        case wait, settle, window, seek, click, drag, scroll, key, hit, focus, toggles, open, menu, zoom
+        case wait, settle, window, seek, play, pause, click, drag, scroll, key, hit, focus, toggles, open, menu, zoom
         case copy, cut, paste, add, show
         case perfReset, perf, state, snapshot, quit
     }

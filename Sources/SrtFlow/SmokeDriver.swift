@@ -112,6 +112,10 @@ enum SmokeDriver {
             note("窗口 \(Int(window.frame.width))×\(Int(window.frame.height))，主屏可用 \(Int(visible.width))×\(Int(visible.height))")
         case .seek:
             project.clock.seek(to: step.time ?? 0, precise: true)
+        case .play:
+            project.clock.play()
+        case .pause:
+            project.clock.pause()
         case .click:
             try await events.click(SmokeStep.point(step.at, "click.at"), count: step.count ?? 1,
                                    flags: SmokeEvents.flags(step.flags))

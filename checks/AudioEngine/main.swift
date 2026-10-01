@@ -145,6 +145,8 @@ let toneC = makeTone("c-880.m4a", frequency: 880, withVideo: false)
 let toneD = makeTone("d-330.m4a", frequency: 330, withVideo: false)
 let toneMono = makeTone("mono-44k.m4a", frequency: 550, withVideo: false, sampleRate: 44_100, channels: 1)
 
+print("==> 0. 读素材的连续性：不是 48 kHz 的源按块读和一口气读逐采样相同（ReaderChunks.swift）")
+checkReaderChunks()
 print("==> 1. 一条音频轨一段 + 轨道推子 + 总推子")
 await compare("音频轨", plainLane(toneC))
 print("==> 2. 渐入渐出 + 音量")
