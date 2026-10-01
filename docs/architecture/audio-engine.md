@@ -105,8 +105,8 @@
 `renderOffline`（反向验证：换掉模式 → 点名一行；不用 `make` → 两行红）；`scripts/check-audio-fade.sh` 导出那几组真跑导出、
 和预览逐窗对，换了渲染器之后全绿 —— 只有「大厅 · 成片 vs 预览」改成对着引擎自己渲的那份比（`enginePCM`）：那条 5 秒的时间线上
 tap 那条路的余音载体要从 2 秒拉成 2.5 秒，AVFoundation 变速过的那一截之后 tap 里的余音和引擎差 1–3 dB（−50 dB 上下，3.3 秒处 4.2 dB），
-4 秒的时间线（载体不用拉）两边差 ≤ 0.02 dB；用户现在听的预览就是引擎，tap 那条路 PR3b 删。开关默认开之后预览性能 ratchet 的 `meters.tapCreate` 归零、`busy.select.body` 996 → 948，
-基线在同一个 PR 里改小（`checks/PreviewPerf/baseline.json`）。
+4 秒的时间线（载体不用拉）两边差 ≤ 0.02 dB；用户现在听的预览就是引擎，tap 那条路 PR3b 删。开关默认开之后预览性能 ratchet 的 `meters.tapCreate` 归零（不再建 tap），基线在同一个 PR 里改小
+（`checks/PreviewPerf/baseline.json`；本机还量到 `busy.select.body` 996 → 948，CI 的 runner 上仍是 996 —— 那一项和引擎无关，基线不动）。
 
 人工回归（开关开着）：播放中点时间线声音是否立刻接上、暂停 / 播放是否立刻、视频和声音对不对口型、
 拖推子 / 音量线时声音是否跟手、试听音乐时时间线是否让路；导出一条有场景 / 变速 / 音量曲线的工程，成片和预览逐段听。
