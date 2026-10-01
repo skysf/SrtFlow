@@ -464,14 +464,14 @@ scripts/gui-smoke/fal/run.sh stop         # 收尾：退 App、杀假 fal、删�
 
 案例：[一条轨上换了音频格式](../bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md)。
 
-- **先分清是数据错了还是实时管线出了事**：把生产的 `VideoEditCompositionBuilder` 和工程读取
-  编进一个小程序（源文件清单抄 `check-audio-fade.sh` 与 `check-project-file.sh` 两份的并集），
-  给用户的工程建合成，用 `AVAssetReaderAudioMixOutput` 逐条合成音轨离线读、按秒量 RMS。数据对，
-  就只剩实时那一段。
-- **实时管线在命令行里也跑得起来，而且可以静音**：同一个小程序里 `AVPlayer(playerItem:)`、
-  `player.volume = 0`、`RunLoop.main.run()`，挂上生产的 `AudioMeterEngine`（`makeAudioMix(…,
-  meters:)`），每秒读一次 `player.currentTime()` 和播放头处的 `rawPeak`。tap 照样被调，播放头照样
-  走（或者照样卡住）—— 不用开窗口、不抢鼠标、不出声。
+- **先分清是数据错了还是实时管线出了事**：把生产的 `AudioEngineConfig` / `TimelineAudioEngine` 和工程读取
+  编进一个小程序（源文件清单抄 `check-audio-engine.sh` 与 `check-project-file.sh` 两份的并集），
+  给用户的工程算配置、`TimelineAudioEngine(config:mode: .offline)` 离线渲、按秒量 RMS（`checks/AudioFade/Envelope.swift`
+  的 `enginePCM` 就是这么做的）。数据对，就只剩实时那一段。
+- **实时管线在命令行里也跑得起来，而且可以静音**：同一个小程序里建 `.realtime` 的引擎、`mute()`、`start()`、
+  `play(from:)`，`RunLoop.main.run()`，每秒读一次 `engine.playhead` 和电平表（挂上 `AudioMeterEngine`，读 `reading`）。
+  播放头照样走（或者照样卡住）、欠载计数照样累 —— 不用开窗口、不抢鼠标、不出声。
+  （2026-10-01 PR3b 之前这里讲的是 AVPlayer 那条路：`AVAssetReaderAudioMixOutput` 离线读、`makeAudioMix(…, meters:)` 挂 tap。）
 - 在真 App 里验播放时带上 `SRTFLOW_SMOKE_MUTE=1`（见第二节）再播。人就在机器前，突然外放出声
   不合适。
 - 电平表的环默认只留约 1.4 秒（`AudioMeterEngine()` 的 2^16 帧）：**读表要在播放中、在播放头附近

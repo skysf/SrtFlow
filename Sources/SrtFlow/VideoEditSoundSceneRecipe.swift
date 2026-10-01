@@ -9,7 +9,7 @@ import Foundation
 // （docs/plans/2026-09-24-sound-scenes.md 第三节）。
 //
 // 各单元自己的干湿比都按「场景里听到的那一份」设（喇叭类全湿，空间类按距离混一部分直达声）；
-// 检查器的「强度」是在这份之外、由 SceneTrackRenderer 和原声交叉混的，和这里无关。
+// 检查器的「强度」是在这份之外、由引擎的渲染块（AudioTrackRenderer.mixScene）和原声交叉混的，和这里无关。
 
 enum SceneRecipe {
     /// 一种场景用哪几个单元（按顺序串起来）。
@@ -25,8 +25,7 @@ enum SceneRecipe {
         }
     }
 
-    /// 余音最长多久（所有场景、所有旋钮位置里最长的那条）。挂了场景的合成音轨最后一段后面就垫这么长
-    /// 一截素材（SceneTailCarrier）—— 固定长度，拖旋钮不改合成结构。
+    /// 余音最长多久（所有场景、所有旋钮位置里最长的那条）：`configure` 算出来的余音以它封顶。
     static let maximumTail = 6.0
 
     /// 把旋钮换算成参数设进 `units`（顺序同 `units(for:)`），返回余音要多长（秒）。

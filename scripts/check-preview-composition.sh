@@ -35,9 +35,6 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditShapeModels.swift \
   Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
   Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
-  Sources/SrtFlow/VideoEditSoundSceneTrack.swift \
-  Sources/SrtFlow/VideoEditSoundSceneTails.swift \
-  Sources/SrtFlow/VideoEditAudioMix.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
@@ -78,10 +75,9 @@ xcrun swiftc \
   Sources/SrtFlow/CompositionHold.swift \
   Sources/SrtFlow/VideoEditMediaAssetCache.swift \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
-  Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
+  Sources/SrtFlow/AudioEngine/AudioGainTable.swift \
   Sources/SrtFlow/AudioEngine/MeterSlot.swift \
-  Sources/SrtFlow/VideoEditMeterRing.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/MediaProbe.swift \

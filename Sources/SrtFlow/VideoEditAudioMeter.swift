@@ -1,103 +1,21 @@
-import AVFoundation
-import MediaToolbox
+import Foundation
 import os
 
 // MARK: - 电平表：轨道头推子里的电平条 + 总电平表 + 爆音红灯
 //
-// 2026-09-23 探针（docs/plans/2026-09-23-audio-mixing.md 第三节）定下的做法：
+// 管什么：每条表的显示状态（回落、峰值保持、红灯）和「此刻多响」从哪来 —— 音频引擎每条轨的渲染块按拍把峰值交给
+// 自己的无锁槽（`MeterSlot`），总表从混音器出口取；引擎换配置时整批登记进来（`registerSlots`），界面播放时按
+// 30 帧/秒 `reading` 取走。不管什么：峰值怎么算出来（AudioEngine/AudioTrackRenderer.swift、TimelineAudioEngine.swift）。
 //
-// 1. 每条合成音轨挂一个 `MTAudioProcessingTap`（PreEffects）。tap 拿到的是
-//    **乘音量之前**的采样（两种 flag 都看不到 audioMix 的音量），所以增益由我们自己乘：
-//    用的是**同一张** `GainTable`（makeAudioMix 往 AVFoundation 里铺的就是它）。
-// 2. **tap 必须跟着合成活**：每次换 audioMix 就新建 tap 的话，播放会静默卡住约 0.6 秒；
-//    复用同一个 tap 对象则完全平滑。所以 tap 按合成音轨缓存，换 mix 时挂回同一个，
-//    只换它背后的增益表。
-// 3. 两条轨的 tap 回调**不对齐**（时间网格差几百帧），总表只能按**绝对采样位置**把各轨
-//    加起来 —— 同一条时间线轨的 A/B 两条合成轨（主轨）也一样按位置相加。
-// 4. 实时播放时 tap 比播放头提前约 280ms 渲染：写进环形缓冲（按位置），界面在播放头处读。
-// 5. 暂停后 tap 仍每 ~93ms 空转一次（时长 0）、开播后第一拍时间无效 —— 都按时长过滤掉。
-//
-// 合同见 docs/architecture/audio-mixer.md。
+// 2026-09-23 到 2026-10-01 这里是 AVPlayer 那条路的电平表：每条合成音轨挂 `MTAudioProcessingTap`、按绝对位置写进
+// 采样环、界面扫环。tap 的七条实测约束（看不到 audioMix 的音量、换 mix 新建 tap 卡 0.6 秒、一条合成音轨只装一种源格式、
+// 时间可以比 0 早……）随那条路一起退役，案例还在 docs/bugfixes/ 里。合同见 docs/architecture/audio-mixer.md。
 
 /// 电平表的身份：某条时间线轨（主轨 / 某条 lane），或者总输出。
 enum MeterKey: Hashable, Sendable {
     case track(TimelineRowHeightKey)
     case master
 }
-
-// MARK: - 增益表（AVFoundation 那一串音量设定的同一份）
-
-/// 一条合成音轨上的音量设定，按时间顺序。`makeAudioMix` 先把它记下来，再原样铺进
-/// `AVMutableAudioMixInputParameters`（乘上总推子）—— 电平表拿的是同一份，
-/// 所以表上看到的就是听到的。
-struct GainTable: Sendable {
-    struct Segment: Sendable {
-        var start: CMTime
-        var end: CMTime
-        var from: Float
-        var to: Float
-    }
-
-    private(set) var segments: [Segment] = []
-
-    /// 从 `time` 起音量是 `value`（AVFoundation 的 `setVolume(_:at:)`）。
-    mutating func set(_ value: Float, at time: CMTime) {
-        segments.append(Segment(start: time, end: time, from: value, to: value))
-    }
-
-    /// 一段线性斜坡（AVFoundation 的 `setVolumeRamp`）。
-    mutating func ramp(from: Float, to: Float, range: CMTimeRange) {
-        segments.append(Segment(start: range.start, end: range.end, from: from, to: to))
-    }
-
-    /// 原样铺进 AVFoundation，每个值乘 `scale`（总推子）。
-    func apply(to params: AVMutableAudioMixInputParameters, scale: Float) {
-        for segment in segments {
-            if CMTimeCompare(segment.end, segment.start) > 0 {
-                params.setVolumeRamp(
-                    fromStartVolume: segment.from * scale, toEndVolume: segment.to * scale,
-                    timeRange: CMTimeRange(start: segment.start, end: segment.end)
-                )
-            } else {
-                params.setVolume(segment.from * scale, at: segment.start)
-            }
-        }
-    }
-
-    /// 某一刻的音量（与 AVFoundation 的语义一致：斜坡里线性插值，斜坡之间保持上一个值，
-    /// 第一个设定之前是默认的 1.0）。按秒存一份，免得音频线程里反复换算 CMTime。
-    func sampler() -> Sampler {
-        Sampler(points: segments.map {
-            Sampler.Point(start: $0.start.seconds, end: $0.end.seconds, from: $0.from, to: $0.to)
-        })
-    }
-
-    struct Sampler: Sendable {
-        struct Point: Sendable {
-            var start: Double
-            var end: Double
-            var from: Float
-            var to: Float
-        }
-        let points: [Point]
-
-        func gain(at time: Double) -> Float {
-            guard let first = points.first, time >= first.start else { return 1 }
-            var low = 0
-            var high = points.count - 1
-            while low < high {
-                let mid = (low + high + 1) / 2
-                if points[mid].start <= time { low = mid } else { high = mid - 1 }
-            }
-            let point = points[low]
-            guard time < point.end, point.end > point.start else { return point.to }
-            let fraction = Float((time - point.start) / (point.end - point.start))
-            return point.from + (point.to - point.from) * fraction
-        }
-    }
-}
-
-// 按位置累加的环形缓冲（`SampleRing`）在 VideoEditMeterRing.swift。
 
 // MARK: - 读数
 
@@ -116,14 +34,10 @@ struct MeterReading: Equatable, Sendable {
 
 // MARK: - 引擎
 
-/// 电平表的全部状态：每条合成音轨的 tap、每条表的采样环、每条表的显示状态。
-/// 音频线程（tap 回调）写、主线程（界面）读，共用一把锁。
+/// 电平表的全部状态：每条表的槽、每条表的显示状态、红灯。音频线程写槽（无锁），主线程（界面）读，显示状态一把锁。
 final class AudioMeterEngine: @unchecked Sendable {
     private struct State {
-        var contexts: [Int32: TapContext] = [:]
-        var taps: [Int32: MTAudioProcessingTap] = [:]
-        var rings: [MeterKey: SampleRing] = [:]
-        /// 音频引擎那条路：每条表一个无锁槽（MeterSlot），渲染块按拍写峰值，这里取走；有槽的表不看环。
+        /// 每条表一个无锁槽（MeterSlot）：渲染块按拍写峰值，这里取走。
         var slots: [MeterKey: MeterSlot] = [:]
         var display: [MeterKey: Display] = [:]
         var clipped: Set<MeterKey> = []
@@ -137,30 +51,22 @@ final class AudioMeterEngine: @unchecked Sendable {
     }
 
     private let lock = OSAllocatedUnfairLock(initialState: State())
-    private let ringCapacity: Int
 
     /// 显示的回落速度（dB/秒）和峰值保持多久（秒）。
     static let fallRate = 24.0
     static let holdSeconds = 1.5
-    /// 界面在播放头前后读多长一窗（秒）。
-    static let window = 0.05
 
-    init(ringCapacity: Int = 1 << 16) {
-        self.ringCapacity = ringCapacity
-    }
+    init() {}
 
-    /// 换了一条新的合成（预览重建）：旧 tap 全部作废（它们挂在旧的 item 上），环也清掉。
+    /// 换了一条新的合成（预览重建）：槽和显示状态重来（引擎 `apply` 之后会重新登记槽）。
     func beginComposition() {
         lock.withLock { state in
-            state.contexts = [:]
-            state.taps = [:]
-            state.rings = [:]
             state.slots = [:]
             state.display = [:]
         }
     }
 
-    /// 音频引擎那条路：登记每条表的槽（引擎换配置时整批换）。登记过的表 `reading` 从槽里取，不看环。
+    /// 登记每条表的槽（引擎建图 / 换配置时整批换）。
     func registerSlots(_ slots: [MeterKey: MeterSlot]) {
         lock.withLock { $0.slots = slots }
     }
@@ -168,27 +74,6 @@ final class AudioMeterEngine: @unchecked Sendable {
     /// 自检用：某条表的槽此刻的峰值（不清零）；没登记槽就是 nil。
     func slotPeak(for key: MeterKey) -> (left: Float, right: Float)? {
         lock.withLock { $0.slots[key] }?.peek()
-    }
-
-    /// 某条合成音轨的 tap：同一条合成里**复用同一个**（换 mix 时新建 tap 会让播放卡住），
-    /// 只把它背后的增益表、归属、总推子和声音场景换掉。
-    func tap(
-        trackID: Int32, key: MeterKey, table: GainTable, master: Float, scenes: SceneTrackConfig? = nil
-    ) -> MTAudioProcessingTap? {
-        let sampler = table.sampler()
-        return lock.withLock { state -> MTAudioProcessingTap? in
-            if let context = state.contexts[trackID], let tap = state.taps[trackID] {
-                context.configure(key: key, sampler: sampler, master: master, scenes: scenes)
-                return tap
-            }
-            PerfCounters.event(.meterTapCreate)
-            let context = TapContext(engine: self)
-            context.configure(key: key, sampler: sampler, master: master, scenes: scenes)
-            guard let tap = context.makeTap() else { return nil }
-            state.contexts[trackID] = context
-            state.taps[trackID] = tap
-            return tap
-        }
     }
 
     /// 开播时把上一遍的红灯熄掉（「这一遍播下来爆没爆」）。
@@ -201,36 +86,11 @@ final class AudioMeterEngine: @unchecked Sendable {
         lock.withLock { $0.clipped.contains(key) }
     }
 
-    /// 把一段「听到的」采样按位置加进这条轨的环和总表的环。两个写者：tap 回调（AVPlayer 那条路，`gains` 是
-    /// 乘音量之前要补乘的增益表）和音频引擎的渲染块（docs/architecture/audio-engine.md：采样已经乘过段增益和推子，
-    /// `gains` 全是 1，`start` 是时间线的帧）。
-    func write(key: MeterKey, start: Int64, left: UnsafePointer<Float>, right: UnsafePointer<Float>?,
-               gains: UnsafePointer<Float>, master: Float, count: Int, positions: UnsafePointer<Int64>?) {
-        let now = DispatchTime.now().uptimeNanoseconds
-        lock.withLock { state in
-            let capacity = ringCapacity
-            let ring = state.rings[key] ?? { let made = SampleRing(capacity: capacity); state.rings[key] = made; return made }()
-            let masterRing = state.rings[.master]
-                ?? { let made = SampleRing(capacity: capacity); state.rings[.master] = made; return made }()
-            for index in 0..<count {
-                let l = left[index] * gains[index]
-                let r = (right?[index] ?? left[index]) * gains[index]
-                let position = positions?[index] ?? (start + Int64(index))
-                ring.add(position: position, left: l, right: r, now: now)
-                masterRing.add(position: position, left: l * master, right: r * master, now: now)
-            }
-        }
-    }
-
-    /// 界面在播放头 `time` 处读一条表：取最近 50ms 的峰值，按回落速度和峰值保持平滑；
-    /// 过了 0 dBFS 就把红灯点上（一直亮到下一次开播）。
+    /// 界面读一条表：取走槽里自上次以来的峰值（30 帧/秒读，就是最近 33 ms 的峰值），按回落速度和峰值保持平滑；
+    /// 过了 0 dBFS 就把红灯点上（一直亮到下一次开播）。`at` 是播放头（秒），只为了和老接口一致；`now` 做平滑。
     func reading(for key: MeterKey, at time: Double, now: Double) -> MeterReading {
-        let to = Int64((time * SampleRing.rate).rounded())
-        let from = to - Int64(Self.window * SampleRing.rate)
-        return lock.withLock { (state: inout State) -> MeterReading in
-            // 引擎那条路：取走自上次以来的峰值（30 帧/秒读，就是最近 33 ms 的峰值）；tap 那条路扫环。
-            let peak: (left: Float, right: Float) = state.slots[key]?.take()
-                ?? state.rings[key]?.peak(from: from, to: to) ?? (0, 0)
+        lock.withLock { (state: inout State) -> MeterReading in
+            let peak: (left: Float, right: Float) = state.slots[key]?.take() ?? (0, 0)
             if max(peak.left, peak.right) > 1 { state.clipped.insert(key) }
             var display = state.display[key] ?? Display()
             let elapsed = display.updated > 0 ? max(0, now - display.updated) : 0
@@ -253,151 +113,4 @@ final class AudioMeterEngine: @unchecked Sendable {
         let fresh = AudioGain.decibels(fromLinear: Double(sample))
         return max(fresh, max(AudioGain.minimumDB, previous - fallRate * elapsed))
     }
-
-    /// 自检用：某条表在 `[from, to)`（秒）上的原始峰值（不经过回落平滑）。
-    func rawPeak(for key: MeterKey, from: Double, to: Double) -> (left: Float, right: Float) {
-        lock.withLock { state in
-            state.rings[key]?.peak(from: Int64((from * SampleRing.rate).rounded()),
-                                   to: Int64((to * SampleRing.rate).rounded())) ?? (0, 0)
-        }
-    }
-}
-
-// MARK: - tap
-
-/// 一条合成音轨的 tap 背后的东西：归属（哪条表）、增益表、总推子、声音场景、预分配的草稿缓冲。
-/// 配置由主线程在换 mix 时写、音频线程在回调里读 —— 用它自己的一把锁（很短）。
-///
-/// 两件事：**改声音**（挂了声音场景的轨，`SceneTrackRenderer` 原地处理）和**记电平**（只看不改）。
-/// 成片的离线读没有电平表（`engine` 为 nil），只剩改声音那一件（`standaloneTap`）。
-final class TapContext: @unchecked Sendable {
-    private struct Config {
-        var key: MeterKey = .master
-        var sampler = GainTable.Sampler(points: [])
-        var master: Float = 1
-        var hasScenes = false
-    }
-
-    private weak var engine: AudioMeterEngine?
-    private let config = OSAllocatedUnfairLock(initialState: Config())
-    private let scenes = SceneTrackRenderer()
-    fileprivate var sampleRate = SampleRing.rate
-    fileprivate var gains: [Float] = []
-    fileprivate var positions: [Int64] = []
-
-    init(engine: AudioMeterEngine?) {
-        self.engine = engine
-    }
-
-    /// 成片离线读用的 tap：只跑声音场景，不记电平。每次导出新建（离线读不存在「换 mix 卡顿」）。
-    static func standaloneTap(scenes: SceneTrackConfig) -> MTAudioProcessingTap? {
-        let context = TapContext(engine: nil)
-        context.configure(key: .master, sampler: GainTable.Sampler(points: []), master: 1, scenes: scenes)
-        return context.makeTap()
-    }
-
-    func configure(key: MeterKey, sampler: GainTable.Sampler, master: Float, scenes sceneConfig: SceneTrackConfig? = nil) {
-        if let sceneConfig { scenes.configure(sceneConfig) }
-        config.withLock { $0 = Config(key: key, sampler: sampler, master: master, hasScenes: sceneConfig != nil) }
-    }
-
-    func makeTap() -> MTAudioProcessingTap? {
-        var callbacks = MTAudioProcessingTapCallbacks(
-            version: kMTAudioProcessingTapCallbacksVersion_0,
-            clientInfo: Unmanaged.passRetained(self).toOpaque(),
-            init: meterTapInit,
-            finalize: meterTapFinalize,
-            prepare: meterTapPrepare,
-            unprepare: meterTapUnprepare,
-            process: meterTapProcess
-        )
-        var tap: MTAudioProcessingTap?
-        let status = MTAudioProcessingTapCreate(
-            kCFAllocatorDefault, &callbacks,
-            MTAudioProcessingTapCreationFlags(kMTAudioProcessingTapCreationFlag_PreEffects), &tap
-        )
-        return status == noErr ? tap : nil
-    }
-
-    fileprivate func prepare(maxFrames: Int, format: AudioStreamBasicDescription) {
-        sampleRate = format.mSampleRate > 0 ? format.mSampleRate : SampleRing.rate
-        gains = Array(repeating: 1, count: max(1, maxFrames))
-        positions = Array(repeating: 0, count: max(1, maxFrames))
-        scenes.prepare(format: format, maxFrames: max(1, maxFrames))
-    }
-
-    /// 一次回调：挂了场景的轨先原地改声音，再记电平（电平表看的是改完的声音）。
-    /// `start` 为 nil = 这一拍时间无效（开播第一拍、暂停后的空转）。
-    fileprivate func process(_ buffers: UnsafeMutableAudioBufferListPointer, frames: Int, start: Double?) {
-        if config.withLock({ $0.hasScenes }) {
-            scenes.process(buffers, frames: frames, start: start)
-        }
-        guard let start else { return }
-        consume(buffers, frames: frames, start: start)
-    }
-
-    /// 一次回调：算出每个采样此刻的增益（按 32 帧一小段插值，斜坡是平滑的），
-    /// 连同位置交给引擎累加。
-    fileprivate func consume(_ buffers: UnsafeMutableAudioBufferListPointer, frames: Int, start: Double) {
-        guard let engine, frames > 0 else { return }
-        if gains.count < frames {
-            gains = Array(repeating: 1, count: frames)
-            positions = Array(repeating: 0, count: frames)
-        }
-        let settings = config.withLock { $0 }
-        let rate = sampleRate
-        let step = 32
-        var index = 0
-        while index < frames {
-            let end = min(frames, index + step)
-            let g0 = settings.sampler.gain(at: start + Double(index) / rate)
-            let g1 = settings.sampler.gain(at: start + Double(end) / rate)
-            for i in index..<end {
-                gains[i] = g0 + (g1 - g0) * Float(i - index) / Float(end - index)
-                positions[i] = Int64(((start + Double(i) / rate) * SampleRing.rate).rounded())
-            }
-            index = end
-        }
-        guard let first = buffers.first?.mData?.assumingMemoryBound(to: Float.self) else { return }
-        let second = buffers.count > 1 ? buffers[1].mData?.assumingMemoryBound(to: Float.self) : nil
-        gains.withUnsafeBufferPointer { gainBuffer in
-            positions.withUnsafeBufferPointer { positionBuffer in
-                engine.write(
-                    key: settings.key, start: positionBuffer[0],
-                    left: UnsafePointer(first), right: second.map { UnsafePointer($0) },
-                    gains: gainBuffer.baseAddress!, master: settings.master, count: frames,
-                    positions: positionBuffer.baseAddress
-                )
-            }
-        }
-    }
-}
-
-// C 回调：clientInfo 里是 passRetained 的 TapContext，finalize 时释放。
-
-private let meterTapInit: MTAudioProcessingTapInitCallback = { _, clientInfo, storageOut in
-    storageOut.pointee = clientInfo
-}
-
-private let meterTapFinalize: MTAudioProcessingTapFinalizeCallback = { tap in
-    Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).release()
-}
-
-private let meterTapPrepare: MTAudioProcessingTapPrepareCallback = { tap, maxFrames, format in
-    Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-        .prepare(maxFrames: Int(maxFrames), format: format.pointee)
-}
-
-private let meterTapUnprepare: MTAudioProcessingTapUnprepareCallback = { _ in }
-
-private let meterTapProcess: MTAudioProcessingTapProcessCallback = { tap, frames, _, bufferList, framesOut, flagsOut in
-    var range = CMTimeRange()
-    var got: CMItemCount = 0
-    let status = MTAudioProcessingTapGetSourceAudio(tap, frames, bufferList, flagsOut, &range, &got)
-    framesOut.pointee = got
-    guard status == noErr, got > 0 else { return }
-    // 开播后第一拍时间无效、暂停后空转的回调时长为 0：都不是真在播的声音。
-    let valid = range.start.isValid && range.duration.isValid && range.duration.seconds > 0
-    Unmanaged<TapContext>.fromOpaque(MTAudioProcessingTapGetStorage(tap)).takeUnretainedValue()
-        .process(UnsafeMutableAudioBufferListPointer(bufferList), frames: Int(got), start: valid ? range.start.seconds : nil)
 }

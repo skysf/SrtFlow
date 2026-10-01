@@ -5,11 +5,11 @@
 692 Sources/SrtFlow/ScreenRecordingCoordinator+Setup.swift
 803 Sources/SrtFlow/ScreenRecordingCoordinator.swift
 638 Sources/SrtFlow/ScreenRecordingWriter.swift
-969 Sources/SrtFlow/VideoEditCompositionBuilder.swift
+918 Sources/SrtFlow/VideoEditCompositionBuilder.swift
 676 Sources/SrtFlow/VideoEditExportGraph.swift
 717 Sources/SrtFlow/VideoEditMediaFileDrop.swift
 1065 Sources/SrtFlow/VideoEditModels.swift
-1298 Sources/SrtFlow/VideoEditProject.swift
+1280 Sources/SrtFlow/VideoEditProject.swift
 652 Sources/SrtFlow/VideoEditView.swift
 978 Sources/SrtFlowCore/ScreenRecordingModels.swift
 1276 Sources/SrtFlowCoreChecks/ScreenRecordingChecks.swift

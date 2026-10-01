@@ -11,9 +11,8 @@
 #      一个出声的段都没有时成片照样要有一条音轨。
 #   2. 导出图必须调 ExportAudioMixdown.render，把它的文件接成音轨。
 #   3. 混音是 AudioEngineConfig.make 那份配置（和预览同一份：段落、增益、曲线、推子、场景、变速）交给
-#      TimelineAudioEngine 的离线模式渲出来的（2026-10-01 PR3a 起；以前是读 AVFoundation 的合成 + audioMix）。
-#      变速的保音调算法：预览的播放条目和引擎的 AudioTimeStretchReader 用同一个 AVAudioUnitTimePitch，
-#      PR3b 删掉 AVPlayer 那条声音路之后这一条也一起收掉。
+#      TimelineAudioEngine 的离线模式渲出来的（2026-10-01 PR3a 起；以前是读 AVFoundation 的合成 + audioMix，
+#      PR3b 连播放器那条声音路一起删了：播放条目里只有画面）。
 #
 # 用法：checks/export-audio-single-pipeline.sh
 set -euo pipefail
@@ -21,7 +20,6 @@ cd "$(dirname "$0")/.."
 
 GRAPH="Sources/SrtFlow/VideoEditExportGraph.swift"
 MIXDOWN="Sources/SrtFlow/VideoEditExportMixdown.swift"
-PROJECT="Sources/SrtFlow/VideoEditProject.swift"
 FAILED=0
 
 fail() {
@@ -29,7 +27,7 @@ fail() {
   FAILED=1
 }
 
-for file in "${GRAPH}" "${MIXDOWN}" "${PROJECT}"; do
+for file in "${GRAPH}" "${MIXDOWN}"; do
   [ -f "${file}" ] || { echo "✗ 找不到 ${file}：被改名了，守卫会扫空 —— 同步改这里" >&2; exit 1; }
 done
 
@@ -55,8 +53,6 @@ grep -qF 'TimelineAudioEngine(config: config, mode: .offline)' <<<"${MIXDOWN_COD
   || fail "混音不是预览那个引擎离线渲出来的（TimelineAudioEngine .offline）"
 grep -qF 'engine.renderOffline(' <<<"${MIXDOWN_CODE}" \
   || fail "混音没有走引擎的 renderOffline"
-grep -qF 'item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm' <<<"$(code_of "${PROJECT}")" \
-  || fail "预览的播放条目没用 VideoEditCompositionBuilder.timePitchAlgorithm：变速段两边会是两个算法"
 
 if [ "${FAILED}" -ne 0 ]; then
   exit 1

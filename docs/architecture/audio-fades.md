@@ -3,7 +3,7 @@
 > 2026-08-11 落地渐入渐出，2026-08-12 补 dB 显示与「只换 audioMix」快路径。
 > 改 `VideoEditAudioFade.swift`、`addVolumeRamps` / `makeAudioMix`（2026-09-24 起实现在
 > `AudioMixBuilder`，VideoEditAudioMix.swift）之前必读。挂了[声音场景](sound-scenes.md)的合成音轨，
-> 段的增益改在 tap 里乘（效果之前），下面第 7 条的钉点只对没挂场景的轨有意义。
+> 效果链在引擎的渲染块里、排在段增益之后（[声音场景](sound-scenes.md)）。
 >
 > 2026-09-23 起同一条链上又多了两环：段上的[音量曲线](audio-volume-curve.md)（有点时取代
 > `volume`）和轨道 / 总[推子](audio-mixer.md)（常数，乘进每一段）。下面「只换 audioMix」
@@ -57,46 +57,24 @@
 
    2026-09-24 之前导出有自己的一份（`exportMainTrack`：转场那条边换成 **0**，因为导出的交叉淡变
    由段与段之间的 `acrossfade` 做），两份的差别曾是这块最容易写错的地方；成片改读预览混音之后
-   只剩上面这一份。**斜坡照着展开过转场的几何铺**：`makeAudioMix` 自己展开（三个预览入口传的
-   是用户那一份状态，[案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)）。
+   只剩上面这一份。**斜坡照着展开过转场的几何铺**：`AudioEngineConfig.make` 自己展开（预览的三个入口和成片传的
+   都是用户那一份状态，[案例](../bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md)；
+   `checks/transition-handles-wiring.sh` 钉着）。
 
 6. （已退役，2026-09-24）导出的 `afade` 必须插在 `atempo` 之后、`st` 用时间线长度算 —— 导出
    不再搭声音滤镜链之后，这条随之作废。预览这一侧的斜坡本来就铺在时间线秒上。
 
-7. **预览侧：每条合成音轨从时间 0 起就必须有确定的音量。**
-   `AVMutableAudioMixInputParameters` 的第一条斜坡之前音量默认是 **1.0**，而
-   AVFoundation 的混音器不硬切增益 —— 它把跳变按**一个渲染缓冲区**平滑过去
-   （de-zipper）。所以「起点 0」的渐入会被拉成一条从满音量降到 0 的下坡贴在
-   渐入最前面，听感是「砰」的一下（见
-   [2026-08-12-audio-fade-in-pop](../bugfixes/2026-08-12-audio-fade-in-pop.md)）。
+7. **每一段的增益表从段起点起就有确定的值。** `GainTable.Sampler` 在第一个设定点之前默认 1.0；引擎只在段内取样
+   （段外本来没有声音），所以 `AudioGainRamps.addVolumeRamps` 把第一个点钉在段起点（或更早）：有渐入钉 0，没渐入钉 body
+   音量本身 —— 段内第一个采样就是用户定的值，那个 1.0 永远取不到。静音段没有例外分支（静音的段压根不进配置）。
+   守卫是**结构不变量**（`check-audio-fade.sh` 第 4b 组：每一段的第一个设定点 ≤ 段起点、起点处的增益就是该起步的值），
+   不是 PCM 包络。
 
-   **缓冲区多长取决于播放路径**：离线 `AVAssetReader` 约 17ms，实时 `AVPlayer`
-   可到 ~90ms（4096 帧 @44.1kHz）。**所以不许用常量提前量去躲它** —— 那是在赌
-   一个随路径变化的量，而自检只跑得到离线那条，赌输了照样全绿（第一轮就是
-   这么放过去的）。
-
-   `addVolumeRamps` 的钉点因此退到**同一条合成轨上上一段的结束处**
-   （`pin = min(previousEnd, clip.timelineStart)`，首段即 0）：那里到本段起点
-   之间全是空段，钉多早都碰不到别人的声音，与缓冲区长度无关。三条不能改的细节：
-
-   - **钉的值分两种**：有渐入钉 0，没渐入钉 body 音量本身。一律钉 0 会让所有
-     段平白多一个软起音。
-   - **钉点不能越过上一段**（`previousEnd`，取**同一条合成轨**上的上一段），
-     否则会啃掉上一段的尾巴。主轨声音走 A/B 交替两条轨，各自算各自的。
-   - **静音段没有例外分支**：它也走 `addVolumeRamps`（音量本来就是
-     `isMuted ? 0 : volume`）。单独 `setVolume(0, at: 段起点)` 等于把跳变留在
-     段内，静音段开头会漏出一下声音。
-
-   守卫方式也跟着变了：**断言的是结构不变量**（每条轨的第一个音量设定点在
-   时间 0），不是 PCM 包络 —— 包络只证明得了离线那条管线。读回来用
-   `getVolumeRamp(for:...)`，注意它在查询点早于第一个设定点时**照样返回
-   `true`**，要看返回的 `timeRange.start` 而不是返回值。
-
-   成片现在就是这份混音离线读出来的，离线读同样有 ~17ms 的平滑窗口 —— 这条规矩从此
-   **同时保护预览和成片**（2026-09-24 之前导出走 ffmpeg 的 `afade`，逐样本算增益，没有这个问题）。
-   2026-10-01 起开关默认开、预览和成片都走 [音频引擎](audio-engine.md)：增益按 64 帧一块插值（`GainBox`），没有
-   AVFoundation 的平滑窗口，但「第一个设定点在时间 0」这条结构不变量照样要守 —— 引擎的 `GainTable.Sampler`
-   取样的就是这张表。
+   这条规矩的来历是 AVPlayer 那条路（2026-10-01 PR3b 之前）的 de-zipper：`AVMutableAudioMixInputParameters` 第一条斜坡之前
+   默认 1.0，混音器把跳变按一个渲染缓冲区平滑过去（离线 ~17 ms、实时 ~90 ms），「起点 0」的渐入前面被贴上一条从满音量
+   滑下来的坡 —— 渐入开头「砰」的一下（[2026-08-12-audio-fade-in-pop](../bugfixes/2026-08-12-audio-fade-in-pop.md)）。
+   那时钉点要一路退到同一条合成轨上上一段的结束处、不许用常量提前量赌缓冲区长度。引擎没有 de-zipper、增益按 64 帧
+   一块线性插值（`GainBox`），钉点退不退都一样，但「起点处就是该起步的音量」照样是合同。
 
 8. **界面必须说出被抑制的那条边。** 主轨接缝上有转场时，检查器要显示一行说明
    （`ClipSoundSection.fadeNote`，`VideoEditInspector+Sound.swift`），判据与合成同一个来源
@@ -117,23 +95,21 @@ dB 只是界面换算，换算只有 `AudioGain` 一份。这样老工程照读�
 
 ## 预览：只改音量/渐变时不要重建合成
 
-音量和渐入渐出只进 `audioMix`，**不改合成结构**。走完整重建的话要
+音量和渐入渐出只进引擎的增益，**不改合成结构**。走完整重建的话要
 `replaceCurrentItem`，画面会闪一下（2026-08-12 用户报告）。所以：
 
-- `VideoEditCompositionBuilder.build()` 顺手记下 `AudioMixPlan`
-  （哪些段的声音落在哪条合成音轨上），`VideoEditProject` 留着它。
-- 改音量/渐变时走 `refreshAudioMix()`：拿 plan 重算一份 mix 直接赋给正在播的
-  `AVPlayerItem`，画面完全不动。三个入口都接了 —— `perform`、`endLiveEdit`
-  （拖滑块松手）、`applySnapshot`（撤销/重做）。
-- **`makeAudioMix` 必须是两条路唯一的实现**。分开写就会出现「拖完滑块的音量」
+- 改音量/渐变时走 `refreshAudioMix()`：按新状态算一份 `AudioEngineConfig` 交给引擎的 `updateGains`
+  （结构没变只换增益，流不重开），画面完全不动。三个入口都接了 —— `perform`、`endLiveEdit`
+  （拖滑块松手）、`applySnapshot`（撤销/重做）；拖动中的试听走 `previewAudioLive`（临时状态、节流）。
+- **`AudioEngineConfig.make` 必须是所有路唯一的实现**（重建、快路径、试听、成片）。分开写就会出现「拖完滑块的音量」
   和「下次重建之后的音量」不一样，而这种偶发差异用户几乎描述不清。
-  `check-audio-fade.sh` 有一条等价性守卫：同一份改动，快路径的 mix 与整条重建
-  出来的包络必须逐点一致。
+  `check-audio-fade.sh` 有一条等价性守卫：同一份改动，只换增益的引擎与按新状态重开的引擎
+  渲出来的包络必须逐点一致（第 5 组、第 7e 组）。
 - 判据是 `TimelineState.differsOnlyInAudioMix`，写法是**「把这几个字段抹平后
   两边完全相等」**，不是枚举「哪些字段算变了」—— 枚举法每加一个新字段就漏
   一次，而漏的方向是「本该重建却没重建」，表现为改了东西预览不更新，
   比闪一下难查得多。
-- **静音（Mute）不在快路径里**：主轨和画中画的静音段压根不会被插进合成音轨，
+- **静音（Mute）不在快路径里**：静音的段压根不进引擎的配置（也不进画面的合成），
   改它会改结构。
 
 ## 时间线上的波形画的是「听到的声音」

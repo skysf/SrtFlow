@@ -2,7 +2,7 @@ import AVFoundation
 
 // MARK: - 预览合成往合成轨上接东西：只从真正的末尾往后接，合成完裁到时间线总长
 //
-// 管什么：VideoEditCompositionBuilder（和声音场景的余音载体）往合成轨上接素材、空白、定格时守的两条规矩。
+// 管什么：VideoEditCompositionBuilder 往合成轨上接素材、空白、定格时守的两条规矩。
 // 1. **只往合成轨真正的末尾后面接**，不信 Double 算出来的游标。`insertTimeRange` / `insertEmptyTimeRange`
 //    是「插入」：落点早于末尾，就把已经插好的内容往后挤，而且不报错。秒换成 1/600 秒的格子用的是
 //    `CMTime(seconds:)`，它**截断**：5.3 + 1.4 在浮点里是 6.699999999999999，截断落在第 4019 格，
@@ -19,7 +19,7 @@ import AVFoundation
 // **换格子仍然截断，别改成四舍五入。** 截断保证从素材里取的范围不会超出素材本身。第一版修复把换算
 // 改成了四舍五入，CI（macOS 15）上声音渐变自检读混音卡死 30 分钟，本机（macOS 26）复现不出来、
 // 也没找到确切原因；上面两条规矩已经足够修黑屏，就不去动换算。
-// 不管什么：摆放、渐变、转场这些几何（builder 自己）；声音的音量斜坡（AudioMixBuilder）。
+// 不管什么：摆放、渐变、转场这些几何（builder 自己）；声音（全在音频引擎里，合成里没有音轨）。
 
 enum CompositionTime {
     /// 合成的格子：1/600 秒。插段、切片表（CompositionSlices）都按它换算。

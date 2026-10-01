@@ -170,7 +170,7 @@
 | PR2d（已合） | 电平表改无锁槽（seek 后第一拍预填判定不做：8 ms 的起声延迟听不出） | 同上 | `check-audio-engine.sh` 第 10 组；冒烟里主线程不再等电平表的锁 |
 | PR3a（已合） | 成片切到引擎离线渲染（`ExportAudioMixdown.renderWithEngine`：同一份 `AudioEngineConfig` → `renderOffline` → f32）；开关默认开；`export-audio-single-pipeline` 守卫改成「导出只经引擎」；性能基线登记 `meters.tapCreate` 归零 | 默认开，`SRTFLOW_AUDIO_ENGINE=0` / `-bool NO` 关回 | `check-audio-fade.sh` 导出各组全绿（换了渲染器包络仍和预览逐窗一致）；`check-audio-engine.sh` 84 项 |
 | PR3b-1（已合） | 自检先不靠 AVPlayer 那条路：`check-audio-engine.sh` 的参照换成纯 Swift 的 oracle 混音器（ffmpeg 解码 + 逐采样乘增益表）；`check-audio-fade.sh` 的「预览」改成引擎离线渲（快路径 = `updateGains`、电平表 = 槽、钉点 = 增益表自己的不变量） | 不动开关 | 两项自检全绿；反向验证 oracle 不乘推子 → 十条红 |
-| PR3b-2 | 删旧路（`AudioMixBuilder` 的 tap 接线、`CompositionAudioTracks`、`TapContext` / `SampleRing`、`SceneTrackRenderer` / `SceneTailCarrier`、开关本身、`meters.tapCreate` 计数）；守卫（transition-handles / timeline-drag / export-audio-single-pipeline）改钉引擎；架构文档改写 | 删掉开关 | 导出自检全绿；性能基线删 tapCreate 键 |
+| PR3b-2（已合） | 删旧路：`VideoEditAudioMix` / `CompositionAudioTracks` / `MeterRing` / `SoundSceneTrack` / `SoundSceneTails` / `AudioEngineFlag` 六个文件、builder 不再插音轨、电平表只剩槽、`meters.tapCreate` 计数；`GainTable` + 斜坡搬进 `AudioEngine/AudioGainTable.swift`；配乐比画面长时 builder 垫黑底铺到总长（顺手修的 PR1b 起的 bug）；守卫（transition-handles / timeline-drag / export-audio-single-pipeline / preview-perf-wiring）改钉引擎；架构文档改写 | 开关删了 | 三项自检全绿（84 / 270 / 256）；反向验证不垫尾巴的黑底 → 三条红；冒烟对表 0 次 |
 | Beta | 用户真剪 | | 第一节四个数 |
 | 之后 | 预览画面换裸 `AVPlayerLayer`；优化媒体（另一份方案） | | |
 

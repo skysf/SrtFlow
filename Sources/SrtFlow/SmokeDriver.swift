@@ -227,7 +227,7 @@ enum SmokeDriver {
     private static func write(to output: URL, error: String?) {
         var body: [String: Any] = ["log": log, "perf": perf, "cpuMs": cpu, "wallMs": wall, "state": states]
         body["audioEngine"] = [
-            "enabled": PreviewAudioEngineHost.isEnabled,
+            "enabled": true,
             "underrunFrames": project?.audioEngineHost.underrunFrames ?? 0,
             "videoDriftCorrections": project?.clock.driftCorrections ?? 0,
         ] as [String: Any]

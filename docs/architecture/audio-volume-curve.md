@@ -25,21 +25,21 @@
 
 ## 二、折线表（成片就是预览这一份）
 
-曲线在数学上是 dB 直线，AVFoundation 只会画「幅度线性」的斜坡，所以要切成弦。
+曲线在数学上是 dB 直线，增益表（`GainTable`）只有「幅度线性」的斜坡，所以要切成弦。
 **`VolumeCurveSampling.breakpoints(for:)` 是唯一的切法**：
 
 - 每根弦最多跨 1.5 dB，误差 ≈ (0.1151·Δ)²/8 ≈ 0.03 dB（自检钉着 < 0.05 dB）。
 - 预览和成片之间**没有**这 0.03 dB —— 成片就是预览那份混音读出来的。
 - 表里的时刻是**离段起点的时间线秒**；增益含静音，不含渐变和推子（那两样调用方乘）。
 
-### 预览（`AudioMixBuilder.addCurveRamps`，VideoEditAudioMix.swift）
+### 预览和成片（`AudioGainRamps.addCurveRamps`，AudioEngine/AudioGainTable.swift）
 
 - 没画曲线的段一行不变地走老路（`addVolumeRamps`）；只有画了曲线的段走折线。
 - 渐变窗口里线性渐变 × 线性折线是二次曲线，按 16 等分补点。
-- 「提前钉音量」那条规矩原样照搬（[audio-fades](audio-fades.md) 第 7 条）：钉点仍是同一条
-  合成轨上上一段的结束处，钉的值是这一段起点真正的增益。
-- 相邻两点落在同一个 1/600 秒格子里就并掉（零长斜坡 AVFoundation 不认）。
-- 只改曲线属于「只换 audioMix」（`differsOnlyInAudioMix` 已经把它抹平），画面不闪。
+- 钉点同 `addVolumeRamps`（[audio-fades](audio-fades.md) 第 7 条）：钉的值是这一段起点真正的增益。
+- 相邻两点落在同一个 1/600 秒格子里就并掉（零长斜坡没有意义）。
+- 只改曲线属于「只换增益」（`differsOnlyInAudioMix` 已经把它抹平），引擎 `updateGains`，画面不闪。
+- 2026-10-01 PR3b 之前这张表还要原样铺进 AVFoundation 的 audioMix（预览）；现在只有引擎这一份读者。
 
 ### 导出（已退役，2026-09-24）
 

@@ -159,8 +159,7 @@ enum PreviewBench {
         var editWork: [String: Int] = [:]
         record(edits, as: "\(name).edits", into: &editWork, &report, &breakdown)
         for (key, value) in editWork { report[key] = Double(value) }
-        for event in [PerfCounters.Event.compositionBuild, .compositionAssetOpen, .playerItemAttach,
-                      .meterTapCreate, .audioMixRefresh] {
+        for event in [PerfCounters.Event.compositionBuild, .compositionAssetOpen, .playerItemAttach, .audioMixRefresh] {
             gated["\(name).edits.\(event.rawValue)"] = edits.counts["event:\(event.rawValue)"] ?? 0
         }
 

@@ -72,16 +72,16 @@ for needle in 'Self.holdSteps(video: clip)' 'let start = clip.renderSourceStart'
     grep -qF "${needle}" "${GRAPH}" \
         || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的" >&2; FAILED=1; }
 done
-# 声音：成片的声音自 2026-09-24 起就是预览那份混音（ExportAudioMixdown），定格那两截的静音
-# 在预览合成里（留空段），导出图不再自己补。**铺音量的 makeAudioMix 必须自己展开**：三个预览
-# 入口传进来的是用户那一份状态，照着没展开的几何铺斜坡，转场接缝上的声音就会掉下去一截
-#（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
-# 2026-09-24 起实现搬到 AudioMixBuilder.make（VideoEditAudioMix.swift），builder 里的 makeAudioMix 只是转交。
-MIX_FILE="Sources/SrtFlow/VideoEditAudioMix.swift"
-[ -f "${MIX_FILE}" ] || { echo "  ✗ 找不到 ${MIX_FILE}：铺音量的实现挪窝了，守卫会扫空 —— 同步改这里" >&2; FAILED=1; }
-MIX_BODY="$(awk '/static func make\(/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${MIX_FILE}")"
+# 声音：成片的声音自 2026-09-24 起就是预览那份混音（ExportAudioMixdown），定格那两截的静音在预览里留空，
+# 导出图不再自己补。**算声音配置的 AudioEngineConfig.make 必须自己展开**：预览换增益的三个入口（重建、快路径、
+# 拖动试听）和成片传进来的都是用户那一份状态，照着没展开的几何铺增益，转场接缝上的声音就会掉下去一截
+#（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md；2026-10-01 PR3b 之前这条钉的是
+# AudioMixBuilder.make）。
+MIX_FILE="Sources/SrtFlow/AudioEngine/AudioEngineConfig.swift"
+[ -f "${MIX_FILE}" ] || { echo "  ✗ 找不到 ${MIX_FILE}：算声音配置的实现挪窝了，守卫会扫空 —— 同步改这里" >&2; FAILED=1; }
+MIX_BODY="$(awk '/static func make\(from/ { inside = 1 } inside { print } inside && /^    }$/ { exit }' "${MIX_FILE}")"
 grep -qF "${CALL}" <<<"${MIX_BODY}" \
-    || { echo "  ✗ makeAudioMix 没有自己展开转场：预览换 mix 的三个入口会照着没展开的几何铺音量" >&2; FAILED=1; }
+    || { echo "  ✗ AudioEngineConfig.make 没有自己展开转场：预览和成片会照着没展开的几何铺增益" >&2; FAILED=1; }
 # 接缝的零头（2026-09-29）：主轨上不到 `TimelineState.mainGapTolerance` 的空隙不算空隙，两条管线必须用
 # **同一个常量**判 —— 导出的分节早就不给 0.01 秒以内的缝补黑场，预览却把后一段照它自己的起点插，各自截断
 # 落在相邻两格，A/B 两条轨之间空出一格 = 接缝上一帧黑（成片没有）。行为断言在 check-preview-composition.sh
