@@ -269,7 +269,7 @@ body 里读它的只剩工程名下拉那一个视图，不再是问题。（重
 [播放丝滑方案](../plans/2026-09-25-smooth-playback.md)）。规矩：
 
 1. **订阅时钟的只许是真跟着播放头变、又足够小的视图，按类型名单管**：时间线的播放头竖线 + 影子指针 +
-   跟随滚动（`TimelinePlayheadLines`）、标尺上的把手（`TimelinePlayheadHandle`）、预览的播放器画面
+   跟随滚动（开关、默认关；`TimelinePlayheadLines`）、标尺上的把手（`TimelinePlayheadHandle`）、预览的播放器画面
    （此刻的调色，`PreviewPlayerSurface`）、预览上的字幕 / 文字 / 形状 / 变换框、电平表、按钮可用性的小修饰器。
    根视图、时间线本体、标尺本身、检查器、素材库那一栏、字幕列表都**持有不订阅**（`let clock`），body 里
    读到的是现值、重算时机由别的东西给。烧字幕页那三个用的是另一个时钟，没量过，先在名单里。

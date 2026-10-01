@@ -229,6 +229,7 @@
 "Main track magnet (auto close gaps)" = "Main track magnet (auto close gaps)";
 "Auto snapping while dragging" = "Auto snapping while dragging";
 "Linkage: detached audio moves with its video" = "Linkage: detached audio moves with its video";
+"Follow the playhead during playback (page the timeline when it reaches the edge)" = "Follow the playhead during playback (page the timeline when it reaches the edge)";
 "Zoom out" = "Zoom out";
 "Zoom in" = "Zoom in";
 "Split at Playhead" = "Split at Playhead";

@@ -138,7 +138,7 @@ shard 2
 run_check "preview-perf-compare（性能 ratchet 的比对规则）" scripts/check-preview-perf.sh --self-test
 run_check "translation-preflight（翻译配对预检）" scripts/check-translation-preflight.sh
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
-run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认）" scripts/check-timeline-zoom.sh
+run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认；播放跟随；记住的开关）" scripts/check-timeline-zoom.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 run_check "optimized-media（优化媒体：判据、关键帧间隔、解码速度、真转一块、缓存）" scripts/check-optimized-media.sh
 run_check "fal（fal.ai 生成：模型表与估价、花钱把关、请求体对着接口定义快照验、假 URLSession 走全流程）" scripts/check-fal.sh

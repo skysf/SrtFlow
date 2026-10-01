@@ -269,17 +269,17 @@ final class VideoEditProject {
     /// 草稿留在视图里就会被漏掉。同样不进工程文件。
     var subtitleDraft: SubtitleTextDraft?
 
-    // 三个开关，对应工具栏里的磁吸、吸附、链接。
-    //
-    // **默认只开吸附**（2026-09-18 用户拍板）：磁吸会自动合拢主轨的空档，而这个
-    // 用户的剪法就是留着间隙；链接会把分离出来的音频一起拖走，也不是他要的默认。
-    // 吸附只是拖到边缘附近时帮忙对齐，不改变任何自动行为，所以留着。
-    // 三个都不进工程文件、也不写 UserDefaults —— 每次启动回到这里的默认值。
-    var magnetEnabled = false {
-        didSet { if magnetEnabled { perform { $0.packMain() } } }
+    // 工具栏的四个开关：磁吸、吸附、链接、播放跟随。默认值和记忆（UserDefaults，不进工程文件）
+    // 都在 `EditorToggles`（2026-10-01 用户拍板四个一起记住）；这里只管「拨了之后做什么」。
+    var magnetEnabled = EditorToggles.read(.magnet) {
+        didSet { EditorToggles.write(.magnet, magnetEnabled); if magnetEnabled { perform { $0.packMain() } } }
     }
-    var snappingEnabled = true
-    var linkageEnabled = false
+    var snappingEnabled = EditorToggles.read(.snapping) { didSet { EditorToggles.write(.snapping, snappingEnabled) } }
+    var linkageEnabled = EditorToggles.read(.linkage) { didSet { EditorToggles.write(.linkage, linkageEnabled) } }
+    /// 播放时时间线跟着播放头翻页；关着时播放头可以走出视口、停下也不滚回来（TimelinePlayheadLines）。
+    var timelineFollowsPlayhead = EditorToggles.read(.followPlayhead) {
+        didSet { EditorToggles.write(.followPlayhead, timelineFollowsPlayhead) }
+    }
 
     /// 时间线缩放：一秒画多少点。
     ///

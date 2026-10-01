@@ -25,7 +25,8 @@ struct VideoEditSubtitlePanel: View {
     /// 打开生成/翻译面板 —— 那是另一件事（从音频识别、机器翻译），不塞进这一列。
     var onOpenGenerator: () -> Void = {}
 
-    @State private var followsPlayback = true
+    /// 播放时滚到正在说的那句。默认关、记住上次拨的（`EditorToggles`，2026-10-01 用户拍板）。
+    @State private var followsPlayback = EditorToggles.read(.subtitleListFollows)
     /// 播放头（悬停预览时是影子播放头）此刻落在哪几句上（两条轨都算）。只在换句时写（`followCurrentCue`）。
     @State private var currentCueIDs: Set<UUID> = []
     /// 哪一句有光标。**焦点归这一列持有**：行是会被重建的临时值，
@@ -169,6 +170,7 @@ struct VideoEditSubtitlePanel: View {
                     .toggleStyle(.button)
                     .buttonStyle(.borderless)
                     .instantHelp("Scroll to the line being spoken during playback")
+                    .onChange(of: followsPlayback) { _, follows in EditorToggles.write(.subtitleListFollows, follows) }
                 }
                 // 逐词高亮、工程自己的样式（VideoEditSubtitleLookRow.swift）。
                 VideoEditSubtitleLookRow(project: project)

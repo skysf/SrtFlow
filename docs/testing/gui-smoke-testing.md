@@ -353,6 +353,9 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
    第 15 条，样本不够，算不上结论。
 17. **`state` 里的 `selection.cues` 是选中那几句的 id 前 8 位**（2026-09-26 起，以前是个数）：两条字幕轨独立之后，
    选中的是原文还是译文要看得出来；和 `cueTimes` / `translationCueTimes` 里的 id 对。
+18. **起手的开关永远是默认值、拨了也不落盘**（2026-10-01）：磁吸 / 吸附 / 链接 / 播放跟随和字幕列表的跟随从此记在
+   UserDefaults，脚本驱动时 `EditorToggles` 不读不写它（[剪辑页上记住的开关](../architecture/editor-remembered-toggles.md)）——
+   本机存着「磁吸开」也不会把冒烟里的落点合拢。要拨就用 `toggles` 一步（四个键），日志里写出拨完的值。
 8. **坐标要避开块上叠着的东西，从截图上裁一块放大再量**：音频块中下部压着音量线（命中带只有
    几 pt 宽），落在那儿拖的是线不是块；裁切把手选中时只有 5 pt 宽，差 1 pt 就点进了块里。
    `state` 里每段带 `transition`（接缝上的转场）和 `volumePoints`（音量线上的点），验这两样

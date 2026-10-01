@@ -3,6 +3,8 @@ import Foundation
 // 时间线缩放的锚点自检（纯值）。编译方式见 scripts/check-timeline-zoom.sh。
 // 2026-09-26 用户拍板：捏合放大「往两边延伸，延伸的点就是鼠标停留的点」；纵向另有一个整体缩放；
 // 工具栏的放大缩小也不许一按画面就跳。长期约束见 docs/architecture/timeline-pinch-zoom.md。
+// 第 4 节是播放跟随（FollowChecks.swift）和记住的开关（TogglesChecks.swift），
+// 2026-10-01 用户拍板，约束见 docs/architecture/editor-remembered-toggles.md。
 
 var failures = 0
 var checks = 0
@@ -113,6 +115,11 @@ do {
     let orphan = Anchor.RowPoint(rowID: "gone", fraction: 0.5, belowBottom: 0)
     check(Anchor.contentY(of: orphan, in: after) == nil, "锚点那一行不在了（缩放途中轨被删）就不滚")
 }
+
+// MARK: - 4. 播放跟随（翻页式、开关默认关）与记住的开关
+
+runPlayheadFollowChecks()
+runEditorTogglesChecks()
 
 // MARK: - 收尾
 

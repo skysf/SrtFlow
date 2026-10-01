@@ -426,16 +426,9 @@ if BODY="$(require_func 'func verticalAim(' "$DRAG_WIRING")"; then
     && fail "verticalAim 又按「起手那一行的中线 + dy」推算了：缝拉开之后指针底下的行已经挪走（§5h）"
 fi
 
-# ── 11. 三个开关的默认值（产品口径，2026-09-18 用户拍板）──────────────
-# 默认**只开吸附**：磁吸会自动合拢主轨空档，而这个用户就是要留着间隙剪；链接会
-# 把分离出来的音频一起拖走。三个都不持久化，所以这里的字面量就是每次启动的状态
-# —— 顺手「改回 true」会静默改掉整个剪辑手感。
-grep_code '^    var magnetEnabled = false' "$PROJECT" \
-  || fail "磁吸的默认值不是关：用户的剪法要留间隙，默认合拢会把间隙吃掉"
-grep_code '^    var snappingEnabled = true' "$PROJECT" \
-  || fail "吸附的默认值不是开：三个开关里只有它该默认开着"
-grep_code '^    var linkageEnabled = false' "$PROJECT" \
-  || fail "链接的默认值不是关：默认会把分离出来的音频一起拖走"
+# ── 11. 记住的开关（默认值是产品口径）与播放跟随的接线（拆在自己的文件里）──────────
+# shellcheck source=checks/timeline-drag-wiring/toggles.sh
+source checks/timeline-drag-wiring/toggles.sh
 
 # ── 12. 播放头的把手跟标尺一起钉住 ─────────────────────────────────────
 # 标尺是不透明的（要盖住滚上来的轨道行）。把手画在滚动内容顶部的话，纵向滚下去

@@ -4,9 +4,9 @@ import SrtFlowCore
 
 /// 视频编辑：上面是预览 + 检查器，下面是工具栏 + 时间线。
 struct VideoEditView: View {
-    /// `@Bindable` 只为三个开关的 `$project.x`。body 读了工程的哪个属性，整个编辑器就在它变时重算一遍：
-    /// **别在这儿读选择**（点选一段会叫醒一切），看选择的按钮放进小视图（preview-perf-ratchet.md 第十三节）。
-    @Bindable private var project = VideoEditProject.shared
+    /// body 读了工程的哪个属性，整个编辑器就在它变时重算一遍：**别在这儿读选择**（点选一段会叫醒一切），
+    /// 看选择的按钮放进小视图（preview-perf-ratchet.md 第十三节）；工具栏的四个开关也在自己的小视图里拨。
+    private let project = VideoEditProject.shared
     @ObservedObject private var exporter = VideoEditExporter.shared
     @StateObject private var toolchain = MediaToolchain.shared
     // 字幕轨的样式沿用「烧制字幕」页调好的那套。
@@ -544,9 +544,7 @@ struct VideoEditView: View {
 
             Spacer()
 
-            ToolbarToggle(icon: "arrow.right.and.line.vertical.and.arrow.left", help: "Main track magnet (auto close gaps)", isOn: $project.magnetEnabled)
-            ToolbarToggle(icon: "arrow.down.to.line.compact", help: "Auto snapping while dragging", isOn: $project.snappingEnabled)
-            ToolbarToggle(icon: "link", help: "Linkage: detached audio moves with its video", isOn: $project.linkageEnabled)
+            TimelineToolbarToggles(project: project)
 
             Divider().frame(height: 16)
 
