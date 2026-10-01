@@ -28,7 +28,7 @@
     "busy.idle.body" : 0,
     "busy.idle.canvas" : 0,
     "busy.idle.update" : 0,
-    "busy.select.body" : 948,
+    "busy.select.body" : 996,
     "busy.select.canvas" : 0,
     "busy.select.update" : 96,
     "busy.ticks.body" : 1109,
