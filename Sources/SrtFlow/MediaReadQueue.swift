@@ -38,6 +38,9 @@ enum MediaReadQueue {
     /// 本机配音（Kokoro）：CoreML 的一次推理同样卡住线程（一句 0.4 秒，第一次要等神经网络引擎编译约 10 秒）；
     /// 模型不同时跑两次，加载也在这里，所以只有一条（KokoroVoiceSpeech）。
     static let voice = make("SrtFlow.MediaRead.voice", qos: .userInitiated, width: 1)
+    /// 优化媒体的转码（OptimizedMediaTranscoder）：读一块、硬编一块，解码器和编码器各只有一个，一条就够；在后台转，
+    /// 用户正在剪，低一档，不和播放抢。
+    static let proxy = make("SrtFlow.MediaRead.proxy", qos: .utility, width: 1)
 
     /// 在 `queue` 上把一段阻塞的读取跑完，结果交回来（等的这一方只是挂起，不占线程）。
     static func run<T: Sendable>(on queue: OperationQueue, _ work: @escaping @Sendable () -> T) async -> T {

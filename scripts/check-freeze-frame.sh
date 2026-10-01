@@ -93,6 +93,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/FreezeFrame/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o

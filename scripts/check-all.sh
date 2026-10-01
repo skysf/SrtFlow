@@ -139,6 +139,7 @@ run_check "translation-preflight（翻译配对预检）" scripts/check-translat
 run_check "timeline-snap（拖动吸附与对齐线）" scripts/check-timeline-snap.sh
 run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向按行认）" scripts/check-timeline-zoom.sh
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
+run_check "optimized-media（优化媒体：判据、关键帧间隔、解码速度、真转一块、缓存）" scripts/check-optimized-media.sh
 run_check "fal（fal.ai 生成：模型表与估价、花钱把关、请求体对着接口定义快照验、假 URLSession 走全流程）" scripts/check-fal.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh
@@ -159,7 +160,7 @@ run_check "waveform（波形多级峰值：声道 / 尖峰 / 跨块 / 5.1 / 很�
 run_check "project-file（工程存盘/重链接）" scripts/check-project-file.sh
 run_check "filters（调色：LUT 数学 + 预览与成片逐像素）" scripts/check-filters.sh
 run_check "mcp（AI 接口：两代客户端的协议、改时间线的规则、客户端配置、词表对账）" scripts/check-mcp.sh
-run_check "audio-engine（音频引擎：同一条时间线，引擎离线渲染 vs AVFoundation 混音逐窗口对账）" scripts/check-audio-engine.sh
+run_check "audio-engine（音频引擎：同一条时间线，引擎离线渲染 vs 纯 Swift 的 oracle 混音器逐窗口对账）" scripts/check-audio-engine.sh
 # 这一条要按真实时间喂 5 秒采样（fragment 必须真的冲出去），所以慢。
 run_check "screen-recording-writer（录屏产物盖到 T1）" scripts/check-screen-recording-writer.sh
 

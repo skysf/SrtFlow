@@ -237,6 +237,12 @@ Finder**。App 只负责「快速回到最近那几条」。
 - **靠 2/3/4 层找回来的要立刻回存一次**（`LoadResult.didRelink` → `saveNow`），
   否则下次打开又要重走慢路径。
 
+### 素材信息里的关键帧间隔（2026-10-01 起）
+
+`MediaInfo.keyframeInterval`（秒）随工程存，导入时由 `MediaKeyframeProbe` 扫采样表探出来，优化媒体靠它判长 GOP
+（[优化媒体](optimized-media.md)）。**不升格式版本**：老版本读到不认识的键照旧忽略，老工程缺键解成 nil（不知道），
+丢了也只是下次再探一遍，不是数据。
+
 ### 运行中素材只开一次（2026-09-25 起）
 
 预览重建时的 `AVURLAsset` 走进程级缓存 `MediaAssetCache`（`VideoEditMediaAssetCache.swift`），

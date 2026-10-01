@@ -34,6 +34,8 @@ xcrun swiftc \
   Sources/SrtFlow/StillImageClipFactory.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/StillClipEncode/main.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o

@@ -76,6 +76,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipboardPaste.swift \
   Sources/SrtFlow/VideoEditFormatVersion.swift \
   Sources/SrtFlow/MediaProbe.swift \
+  Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
+  Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/TimelineClipboard/main.swift \
   checks/TimelineClipboard/Landing.swift \
