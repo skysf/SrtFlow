@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import Synchronization
 
@@ -18,6 +19,46 @@ final class GainBox: @unchecked Sendable {
     init(_ sampler: GainTable.Sampler) { self.sampler = sampler }
 }
 
+/// 段的声音场景：效果链（在喂样线程上建、在渲染块里跑）+ 此刻的强度和响度补偿。换旋钮只换强度 / 参数，
+/// 换种类才重建链（AudioPublished 留着旧的几份，渲染块手里那一份不会被释放）。
+final class SceneBox: @unchecked Sendable {
+    let scene: SoundScene
+    let compensation: Float
+    let chain: SceneChain
+    init(scene: SoundScene, compensation: Float, chain: SceneChain) {
+        self.scene = scene
+        self.compensation = compensation
+        self.chain = chain
+    }
+    /// 余音要多渲多少帧（跟着旋钮变）。
+    var tailFrames: Int64 { Int64((chain.tailSeconds * AudioSegmentReader.engineRate).rounded(.up)) }
+
+    /// 引擎格式的效果链（48 kHz 立体声 float 非交错，一拍最多 `AudioTrackRenderer.maxFrames` 帧）。
+    static func make(_ scene: SoundScene, compensation: Float) -> SceneBox? {
+        let format = AudioStreamBasicDescription(
+            mSampleRate: AudioSegmentReader.engineRate, mFormatID: kAudioFormatLinearPCM,
+            mFormatFlags: kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked | kAudioFormatFlagIsNonInterleaved,
+            mBytesPerPacket: 4, mFramesPerPacket: 1, mBytesPerFrame: 4, mChannelsPerFrame: 2, mBitsPerChannel: 32, mReserved: 0
+        )
+        guard let chain = SceneChain(kind: scene.kind, format: format, maxFrames: AudioTrackRenderer.maxFrames) else { return nil }
+        chain.apply(scene)
+        return SceneBox(scene: scene, compensation: compensation, chain: chain)
+    }
+}
+
+/// 主线程送来的「这段现在该用什么」：增益、场景（结构没变、流不重开时换的东西）。
+struct SegmentUpdate: Sendable {
+    let gain: GainTable.Sampler
+    let scene: SoundScene?
+    let compensation: Float
+
+    init(_ segment: AudioEngineConfig.Segment) {
+        gain = segment.gain
+        scene = segment.scene
+        compensation = segment.compensation
+    }
+}
+
 /// 一段正在喂的声音。
 final class SegmentStream: @unchecked Sendable {
     let segment: AudioEngineConfig.Segment
@@ -26,16 +67,28 @@ final class SegmentStream: @unchecked Sendable {
     let ring: AudioRing
     let reader: AudioSegmentReader
     let gain: AudioPublished<GainBox>
+    /// 挂的场景（nil = 没有）。渲染块每拍取一次；余音期间（段尾之后 `tailFrames` 内）流还活着、喂的是零。
+    let scene: AudioPublished<SceneBox>?
     /// 下一帧写到时间线的哪一帧（只有喂样线程碰）。
     var writePosition: Int64
     /// 素材读到头了：后面只补静音。
     var exhausted = false
+    /// 渲染块上一拍渲到哪（只有渲染块碰）：位置跳了就把效果链复位，旧的余音不许拖进新位置。
+    var renderedUpTo: Int64 = -1
 
-    init?(segment: AudioEngineConfig.Segment, gain: GainTable.Sampler, rate: Double, ringFrames: Int, from position: Int64) {
+    /// 段尾之后还要渲多久（余音）；没场景是 0。
+    var tailFrames: Int64 { scene?.load()?.tailFrames ?? 0 }
+
+    init?(segment: AudioEngineConfig.Segment, update: SegmentUpdate, rate: Double, ringFrames: Int, from position: Int64) {
         guard let reader = AudioSegmentReader(url: segment.url, speed: segment.speed) else { return nil }
         self.segment = segment
         self.reader = reader
-        self.gain = AudioPublished(GainBox(gain))
+        self.gain = AudioPublished(GainBox(update.gain))
+        if let scene = update.scene, let box = SceneBox.make(scene, compensation: update.compensation) {
+            self.scene = AudioPublished(box)
+        } else {
+            self.scene = nil
+        }
         startFrame = Int64((segment.start * rate).rounded())
         endFrame = Int64((segment.end * rate).rounded())
         ring = AudioRing(capacity: ringFrames)
@@ -62,10 +115,10 @@ final class AudioTrackFeeder: @unchecked Sendable {
     let track: AudioEngineConfig.Track
     let published = AudioPublished<StreamSet>(StreamSet([]))
     private var streams: [SegmentStream] = []
-    /// 每段此刻该用的增益（喂样线程自己的那份；新开的流从这里拿）。
-    private var gains: [UUID: GainTable.Sampler]
-    /// 主线程送来的「换增益」（整条轨一次），下一遍 `service` 落地。
-    private var pendingGains: [UUID: GainTable.Sampler]?
+    /// 每段此刻该用的增益和场景（喂样线程自己的那份；新开的流从这里拿）。
+    private var updates: [UUID: SegmentUpdate]
+    /// 主线程送来的「换增益 / 场景」（整条轨一次），下一遍 `service` 落地。
+    private var pendingUpdates: [UUID: SegmentUpdate]?
     private let gainLock = NSLock()
     private let seekRequest = Atomic<Int64>(-1)
     private let wake = DispatchSemaphore(value: 0)
@@ -76,7 +129,7 @@ final class AudioTrackFeeder: @unchecked Sendable {
 
     init(track: AudioEngineConfig.Track) {
         self.track = track
-        gains = Dictionary(track.segments.map { ($0.clipID, $0.gain) }, uniquingKeysWith: { first, _ in first })
+        updates = Dictionary(track.segments.map { ($0.clipID, SegmentUpdate($0)) }, uniquingKeysWith: { first, _ in first })
         scratchLeft = .allocate(capacity: Self.chunkFrames)
         scratchRight = .allocate(capacity: Self.chunkFrames)
     }
@@ -117,10 +170,10 @@ final class AudioTrackFeeder: @unchecked Sendable {
     /// 渲染块发现环快空了就叫一声（不阻塞）。
     func poke() { wake.signal() }
 
-    /// 换这条轨各段的增益（拖推子 / 曲线、改音量：结构没变，流不重开）。下一遍 `service` 落地。
-    func updateGains(_ newGains: [UUID: GainTable.Sampler]) {
+    /// 换这条轨各段的增益 / 场景（拖推子 / 曲线、改音量、拧场景的旋钮：结构没变，流不重开）。下一遍 `service` 落地。
+    func update(_ newUpdates: [UUID: SegmentUpdate]) {
         gainLock.lock()
-        pendingGains = newGains
+        pendingUpdates = newUpdates
         gainLock.unlock()
         wake.signal()
     }
@@ -140,18 +193,20 @@ final class AudioTrackFeeder: @unchecked Sendable {
             }
         }
         gainLock.lock()
-        let newGains = pendingGains
-        pendingGains = nil
+        let newUpdates = pendingUpdates
+        pendingUpdates = nil
         gainLock.unlock()
-        if let newGains {
-            gains = newGains
+        if let newUpdates {
+            updates = newUpdates
             for stream in streams {
-                if let sampler = newGains[stream.segment.clipID] { stream.gain.publish(GainBox(sampler)) }
+                guard let update = newUpdates[stream.segment.clipID] else { continue }
+                stream.gain.publish(GainBox(update.gain))
+                applyScene(update, to: stream)
             }
         }
         var changed = false
-        // 已经过去的流关掉（留 0.1 秒余量：渲染块可能还在读它的末尾）。
-        let dead = streams.filter { $0.endFrame <= playhead - 4800 }
+        // 已经过去的流关掉（余音散完之后；留 0.1 秒余量：渲染块可能还在读它的末尾）。
+        let dead = streams.filter { $0.endFrame + $0.tailFrames <= playhead - 4800 }
         if !dead.isEmpty {
             streams.removeAll { stream in dead.contains { $0 === stream } }
             changed = true
@@ -163,7 +218,7 @@ final class AudioTrackFeeder: @unchecked Sendable {
             let end = Int64((segment.end * Self.rate).rounded())
             guard start < playhead + Self.lookaheadFrames, end > playhead else { continue }
             guard let stream = SegmentStream(
-                segment: segment, gain: gains[segment.clipID] ?? segment.gain,
+                segment: segment, update: updates[segment.clipID] ?? SegmentUpdate(segment),
                 rate: Self.rate, ringFrames: Self.ringFrames, from: playhead
             ) else { continue }
             streams.append(stream)
@@ -171,6 +226,18 @@ final class AudioTrackFeeder: @unchecked Sendable {
         }
         if changed { published.publish(StreamSet(streams)) }
         for stream in streams { fill(stream) }
+    }
+
+    /// 场景的旋钮变了：同一种场景就改链的参数、换一份新的强度 / 补偿；换了种类就重建链；
+    /// 流开的时候没场景、现在有了（或者反过来）要重开流（结构变了，`replace` 会处理），这里只管同一条流上的。
+    private func applyScene(_ update: SegmentUpdate, to stream: SegmentStream) {
+        guard let published = stream.scene, let scene = update.scene, let current = published.load() else { return }
+        if current.chain.kind == scene.kind {
+            current.chain.apply(scene)
+            published.publish(SceneBox(scene: scene, compensation: update.compensation, chain: current.chain))
+        } else if let box = SceneBox.make(scene, compensation: update.compensation) {
+            published.publish(box)
+        }
     }
 
     /// 把一条流的环填到满（或者填到段尾）。

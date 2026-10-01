@@ -26,8 +26,12 @@ struct AudioEngineConfig: Sendable {
         let sourceStart: Double
         /// 变速倍数（1 = 原速）：素材秒 = sourceStart + (t − start) × speed。
         let speed: Double
-        /// 段自己的增益（音量 × 渐变 × 曲线；静音 = 0），按时间线秒取。
+        /// 段自己的增益（音量 × 渐变 × 曲线；静音 = 0），按时间线秒取。**效果之前**乘（声音场景在它后面）。
         let gain: GainTable.Sampler
+        /// 挂的声音场景（nil = 没有）。效果链在渲染块里跑，余音越过段尾（docs/architecture/sound-scenes.md）。
+        let scene: SoundScene?
+        /// 场景输出乘多少才和原声一样响（`SceneLoudness`）。
+        let compensation: Float
 
         var duration: Double { end - start }
     }
@@ -119,7 +123,8 @@ struct AudioEngineConfig: Sendable {
         )
         return Segment(
             clipID: clip.id, url: clip.sourceURL, start: start, end: start + sourceDuration / speed,
-            sourceStart: clip.renderSourceStart, speed: speed, gain: table.sampler()
+            sourceStart: clip.renderSourceStart, speed: speed, gain: table.sampler(),
+            scene: clip.soundScene, compensation: clip.soundScene.map(SceneLoudness.compensation(for:)) ?? 1
         )
     }
 }

@@ -201,7 +201,7 @@ final class TimelineAudioEngine {
         config = new
         for (unit, track) in zip(units, new.tracks) {
             unit.renderer.fader.store(track.fader, ordering: .relaxed)
-            unit.feeder.updateGains(Dictionary(track.segments.map { ($0.clipID, $0.gain) }, uniquingKeysWith: { first, _ in first }))
+            unit.feeder.update(Dictionary(track.segments.map { ($0.clipID, SegmentUpdate($0)) }, uniquingKeysWith: { first, _ in first }))
         }
         renderClock.master.store(new.master, ordering: .relaxed)
         engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
@@ -220,10 +220,12 @@ final class TimelineAudioEngine {
         engine.mainMixerNode.outputVolume = 0
     }
 
+    /// 同样的轨、同样的段，而且每段有没有场景也一样（流开的时候就定了有没有效果链；加上 / 去掉场景要重开流）。
     private static func sameStructure(_ a: AudioEngineConfig, _ b: AudioEngineConfig) -> Bool {
         guard a.tracks.count == b.tracks.count else { return false }
         return zip(a.tracks, b.tracks).allSatisfy { x, y in
             x.name == y.name && x.segments.map(\.clipID) == y.segments.map(\.clipID)
+                && x.segments.map { $0.scene != nil } == y.segments.map { $0.scene != nil }
         }
     }
 
