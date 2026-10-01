@@ -84,7 +84,10 @@
    所以 `SampleRing.add` 丢掉 0 之前的位置（`VideoEditMeterRing.swift`）。负数取余还是负数，拿它当下标就越界崩溃，
    而且崩在音频线程上、整个 App 退出。**从 tap / 播放器回调拿来的时间，当下标之前先问一句会不会是负的。**
    案例：[播放中按 Return 崩溃](../bugfixes/2026-09-26-meter-crash-on-go-to-start.md)。
-9. **界面读播放头不问播放器。** 电平条读的是 `PlayerClock.estimatedTime`（最近一跳 + 过去的时间，最多补一跳），
+9. **环有两个写者。** AVPlayer 那条路是 tap 回调（`TapContext`）；音频引擎那条路（[音频引擎](audio-engine.md)，开关开着时）
+   是每条轨的渲染块，写的是已经乘过段增益和推子的采样、`gains` 全是 1、位置是时间线的帧 —— 同一个 `AudioMeterEngine.write`、
+   同一个环、界面同一种读法；重建时两条路都 `beginComposition`。
+10. **界面读播放头不问播放器。** 电平条读的是 `PlayerClock.estimatedTime`（最近一跳 + 过去的时间，最多补一跳），
    不是 `player.currentTime()`：后者要同步拿播放器内部的锁，多轨工程播放中播放器自己的队列一忙，每秒 300 次的读
    就把主线程堵住几百毫秒到 2.4 秒（空格按下去图标慢半拍）。AVKit 的 Now Playing 更新走同一把锁，
    `PlayerViewRepresentable` 把它关了。`checks/player-time-no-sync-read.sh` 钉着：App 代码里不许出现 `currentTime()`。

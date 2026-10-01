@@ -1278,11 +1278,11 @@ final class VideoEditProject {
             }
             let item = AVPlayerItem(asset: built.composition)
             item.videoComposition = built.videoComposition
+            // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
+            // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
+            // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。引擎那条路没有 tap，但环也按轨的键重来。
+            meters.beginComposition()
             if !engineDriven {
-                // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
-                // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
-                // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。
-                meters.beginComposition()
                 item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
                     state: snapshot, plan: built.audioPlan, meters: meters
                 ) ?? built.audioMix
@@ -1290,7 +1290,7 @@ final class VideoEditProject {
                 item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
             }
             self.clock.attachItem(item)
-            if engineDriven { self.audioEngineHost.apply(AudioEngineConfig.make(from: snapshot), clock: self.clock) }
+            if engineDriven { self.audioEngineHost.apply(AudioEngineConfig.make(from: snapshot), clock: self.clock, meters: meters) }
             self.clock.seek(to: min(time, snapshot.duration), precise: true)
             if wasPlaying { self.clock.play() }
         }

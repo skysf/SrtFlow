@@ -21,13 +21,13 @@ final class PreviewAudioEngineHost {
     /// 渲染块里环里没有数据、只能当静音的帧数（累计）。冒烟看它。
     var underrunFrames: Int { engine?.underrunFrames ?? 0 }
 
-    /// 重建预览之后：整份配置换掉。第一次建引擎、起图、挂到时钟上（从此声音是主时钟）。
-    func apply(_ config: AudioEngineConfig, clock: PlayerClock) {
+    /// 重建预览之后：整份配置换掉。第一次建引擎、起图、挂到时钟上（从此声音是主时钟）；电平表交给渲染块写。
+    func apply(_ config: AudioEngineConfig, clock: PlayerClock, meters: AudioMeterEngine) {
         if let engine {
             engine.replace(config: config)
             return
         }
-        guard let engine = try? TimelineAudioEngine(config: config, mode: .realtime) else { return }
+        guard let engine = try? TimelineAudioEngine(config: config, mode: .realtime, meters: meters) else { return }
         self.engine = engine
         // GUI 冒烟的静音钩子（和 PlayerClock 同一个开关）：验播放时别往正在用机器的人耳朵里外放。
         if ProcessInfo.processInfo.environment["SRTFLOW_SMOKE_MUTE"] != nil { engine.mute() }
