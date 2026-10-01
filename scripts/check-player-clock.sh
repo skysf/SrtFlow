@@ -31,6 +31,8 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoPreviewView.swift \
+  Sources/SrtFlow/MainThreadWatchdog.swift \
+  Sources/SrtFlow/MainThreadStackCapture.swift \
   Sources/SrtFlow/PacedPlayhead.swift \
   Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
   Sources/SrtFlow/PerfCounters.swift \
