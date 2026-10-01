@@ -32,6 +32,7 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/VideoPreviewView.swift \
   Sources/SrtFlow/PacedPlayhead.swift \
+  Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
   Sources/SrtFlow/PerfCounters.swift \
   checks/PlayerClock/main.swift \
   checks/PlayerClock/PacedPlayheadChecks.swift \

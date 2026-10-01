@@ -163,7 +163,7 @@
 | PR | 内容 | 开关 | 验收 |
 | --- | --- | --- | --- |
 | PR1a（已合） | 引擎本体：图、喂样线程、环、渲染核心（增益 / 渐变 / 曲线 / 推子 / 总推子）、锚点式时钟、离线渲染；**不接 App** | 无（App 不变） | `check-audio-engine.sh`：八条时间线逐 10 ms 窗口差 ≤ 0.15 dB（实测 ≤ 0.027；重采样 0.287）、帧数正好、零欠载；长期约束 [音频引擎](../architecture/audio-engine.md) |
-| PR1b | 接进 App：开关开时 builder 不插音轨、`PlayerClock` 由引擎喂时间、和视频对表、ducking、拖推子 / 曲线换配置 | `SRTFLOW_AUDIO_ENGINE=1`，默认关 | 冒烟量第五节三个数；看门狗无新卡顿 |
+| PR1b（已合） | 接进 App：开关开时合成里拆掉音轨、`PlayerClock` 由引擎喂时间（声音是主时钟）、视频 `setRate` 钉到引擎并对表、ducking、拖推子 / 曲线换配置、冒烟静音 | `SRTFLOW_AUDIO_ENGINE=1` / `defaults write com.srtflow.SrtFlow audioEngine -bool YES`，默认关 | 冒烟：CPU 减半、视频对表 0 次、欠载只有每次 seek 的头一拍；第五节的三个数等测试版实听 |
 | PR2 | 场景 + 余音、电平表、变速、ducking | 同上 | `check-audio-fade.sh` 的场景 / 电平组改成读引擎（两边都跑，比对）；人工听三段场景 |
 | PR3 | 成片切到引擎离线渲染；开关默认开；删旧路（`AudioMixBuilder`、`CompositionAudioTracks`、tap、`SceneTailCarrier`、`ExportMixdown` 的 reader 部分）；架构文档改写 | 删掉开关 | 导出自检全绿；`export-audio-single-pipeline` 守卫改成「导出只经引擎」 |
 | Beta | 用户真剪 | | 第一节四个数 |

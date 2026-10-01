@@ -44,6 +44,15 @@ final class PlayerClock: ObservableObject {
     private var isScrubSeeking = false
     private var pendingScrubTarget: TimeInterval?
 
+    /// 声音引擎（开关开着时由工程挂上，见 PreviewAudioEngineHost）。挂着时它是主时钟：`time` 每 50 ms 从它读一次，
+    /// 播放器的周期回调只用来对表（差过一帧就把视频重新钉到引擎的时间表上）。
+    private(set) var audioSource: PlaybackAudioSource?
+    private var audioTimer: Timer?
+    /// 视频和引擎连续几拍对不上（一拍的偶差不管，连着两拍才对表）。
+    private var driftTicks = 0
+    /// 对了几次表（冒烟看它）。
+    private(set) var driftCorrections = 0
+
     /// - Parameter observationInterval: 时间回调的间隔。烧字幕预览要靠它切换叠在
     ///   画面上的那句字幕，所以给得比字幕编辑器密一些。
     init(observationInterval: TimeInterval = 0.25) {
@@ -57,8 +66,13 @@ final class PlayerClock: ObservableObject {
         ) { [weak self] cmTime in
             // 卸了片（detach）之后还会晚到一拍、报旧条目的时间：新建 / 打开工程先卸片、播放头归零，这一拍把它写回
             // 上一个工程的位置（2026-09-29，docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md）。没有条目就没有播放时间。
-            guard self?.player.currentItem != nil else { return }
-            self?.observePlaybackTime(cmTime.seconds)
+            guard let clock = self, clock.player.currentItem != nil else { return }
+            if clock.audioSource != nil {
+                // 引擎驱动：播放头从引擎读（attachAudioSource 的 timer），这一拍只用来对表。
+                clock.checkVideoDrift(videoTime: cmTime.seconds)
+            } else {
+                self?.observePlaybackTime(cmTime.seconds)
+            }
         }
         // 播放/暂停按钮要跟着实际状态走：播到片尾时 rate 会自己变 0，
         // 光靠自己按下去的那一下记状态会不准。
@@ -103,8 +117,58 @@ final class PlayerClock: ObservableObject {
     deinit {
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         rateObservation?.invalidate()
+        audioTimer?.invalidate()
         // 视图被销毁（比如切走了侧边栏那一栏）时别让声音还在响。
         player.pause()
+    }
+
+    // MARK: 声音引擎当主时钟
+
+    /// 挂上引擎：从此播放头从它读、视频跟着它。只挂一次。
+    func attachAudioSource(_ source: PlaybackAudioSource) {
+        guard audioSource == nil else { return }
+        audioSource = source
+        // `setRate(_:time:atHostTime:)` 要求关掉「等缓冲」（开着会抛异常）；本地文件本来也不用等。
+        player.automaticallyWaitsToMinimizeStalling = false
+        let timer = Timer(timeInterval: observationInterval, repeats: true) { [weak self] _ in
+            guard let self, let source = audioSource, source.isPlaying else { return }
+            observePlaybackTime(source.playhead)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        audioTimer = timer
+    }
+
+    /// 视频的周期回调报来的时间和引擎差过一帧（连着两拍）就把视频重新钉到引擎的时间表上。
+    private func checkVideoDrift(videoTime: TimeInterval) {
+        guard let source = audioSource, source.isPlaying, player.rate > 0 else {
+            driftTicks = 0
+            return
+        }
+        let drift = abs(videoTime - source.playhead)
+        guard drift > 0.04 else {
+            driftTicks = 0
+            return
+        }
+        driftTicks += 1
+        guard driftTicks >= 2 else { return }
+        driftTicks = 0
+        driftCorrections += 1
+        anchorVideo(to: source.playhead)
+    }
+
+    /// 让视频从 `seconds` 起、从**此刻**开始跟着走：播放器自己去定位，定位要多久就晚多久赶上来，不改时间表。
+    private func anchorVideo(to seconds: TimeInterval) {
+        player.setRate(1, time: CMTime(seconds: seconds, preferredTimescale: 600), atHostTime: CMClockGetTime(CMClockGetHostTimeClock()))
+    }
+
+    /// 开播（空格、重建之后接着播）：引擎驱动时声音先起、视频钉到同一个时刻；否则就是播放器自己播。
+    func play() {
+        if let source = audioSource {
+            source.play(from: time)
+            anchorVideo(to: time)
+        } else {
+            player.play()
+        }
     }
 
     func attach(url: URL, autoplay: Bool = true) {
@@ -128,6 +192,8 @@ final class PlayerClock: ObservableObject {
     }
 
     func detach() {
+        audioSource?.pause()
+        audioSource?.seek(to: 0)
         player.pause()
         player.replaceCurrentItem(with: nil)
         pendingScrubTarget = nil
@@ -149,6 +215,16 @@ final class PlayerClock: ObservableObject {
         time = clamped
         tickHostTime = ProcessInfo.processInfo.systemUptime
         placed.send(PlayheadPlacement(time: clamped, precise: precise))
+        if let source = audioSource {
+            // 引擎驱动：声音先跳过去（一个 IO 缓冲就出声）；视频在播就钉到同一个时刻（播放器自己定位、赶上来），
+            // 停着就照旧精确定位 / 链式扫帧。
+            source.seek(to: clamped)
+            if player.rate > 0 {
+                pendingScrubTarget = nil
+                anchorVideo(to: clamped)
+                return
+            }
+        }
         if precise {
             pendingScrubTarget = nil
             player.seek(
@@ -209,23 +285,29 @@ final class PlayerClock: ObservableObject {
 
     func togglePlayback() {
         if player.rate > 0 {
-            player.pause()
+            pause()
         } else {
             // 悬停预览把画面带去了别处：播放必须从**播放头**起，先precise跳回去。
             // seek 后紧跟 play 是安全的（play 不取消在飞的 seek，完成后从目标续播）。
+            // 引擎驱动时不用：`play()` 里的 setRate 自带定位。
             if peekTime != nil {
                 peekTime = nil
                 pendingScrubTarget = nil
-                player.seek(
-                    to: CMTime(seconds: time, preferredTimescale: 600),
-                    toleranceBefore: .zero, toleranceAfter: .zero
-                )
+                if audioSource == nil {
+                    player.seek(
+                        to: CMTime(seconds: time, preferredTimescale: 600),
+                        toleranceBefore: .zero, toleranceAfter: .zero
+                    )
+                }
             }
-            player.play()
+            play()
         }
     }
 
-    func pause() { player.pause() }
+    func pause() {
+        audioSource?.pause()
+        player.pause()
+    }
 }
 
 // MARK: - 播放头的外推（纯值）

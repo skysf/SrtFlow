@@ -55,6 +55,8 @@ OPEN_ARGS=(-g -n
   --env "SRTFLOW_FFMPEG=${REPO}/vendor/ffmpeg"
   --stderr "${LOG}")
 if [ -n "${PROJECT}" ]; then OPEN_ARGS+=(--env "SRTFLOW_SMOKE_PROJECT=${PROJECT}"); fi
+# 音频引擎的开关（docs/architecture/audio-engine.md）：设了就带进去，不设就是正式版那条路。
+if [ -n "${SRTFLOW_AUDIO_ENGINE:-}" ]; then OPEN_ARGS+=(--env "SRTFLOW_AUDIO_ENGINE=${SRTFLOW_AUDIO_ENGINE}"); fi
 echo "==> 起 SrtFlowDev（后台，不抢前台）"
 open "${OPEN_ARGS[@]}" -a "${APP}" --args -mainWindowSection videoEdit
 

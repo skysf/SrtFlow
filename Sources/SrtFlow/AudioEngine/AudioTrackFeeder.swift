@@ -12,6 +12,12 @@ import Synchronization
 // 每 50 ms 或被叫醒（seek、渲染块说环快空了）跑一遍 `service(at:)`；离线渲染时调用方在自己的线程上直接调
 // `service`，渲染块随后在同一条线程上取 —— 单写者单读者仍然成立。
 
+/// 段的增益（渲染块每拍取一次）：拖曲线 / 改音量时换一份新的，流不重开。
+final class GainBox: @unchecked Sendable {
+    let sampler: GainTable.Sampler
+    init(_ sampler: GainTable.Sampler) { self.sampler = sampler }
+}
+
 /// 一段正在喂的声音。
 final class SegmentStream: @unchecked Sendable {
     let segment: AudioEngineConfig.Segment
@@ -19,15 +25,17 @@ final class SegmentStream: @unchecked Sendable {
     let endFrame: Int64
     let ring: AudioRing
     let reader: AudioSegmentReader
+    let gain: AudioPublished<GainBox>
     /// 下一帧写到时间线的哪一帧（只有喂样线程碰）。
     var writePosition: Int64
     /// 素材读到头了：后面只补静音。
     var exhausted = false
 
-    init?(segment: AudioEngineConfig.Segment, rate: Double, ringFrames: Int, from position: Int64) {
+    init?(segment: AudioEngineConfig.Segment, gain: GainTable.Sampler, rate: Double, ringFrames: Int, from position: Int64) {
         guard let reader = AudioSegmentReader(url: segment.url, speed: segment.speed) else { return nil }
         self.segment = segment
         self.reader = reader
+        self.gain = AudioPublished(GainBox(gain))
         startFrame = Int64((segment.start * rate).rounded())
         endFrame = Int64((segment.end * rate).rounded())
         ring = AudioRing(capacity: ringFrames)
@@ -54,6 +62,11 @@ final class AudioTrackFeeder: @unchecked Sendable {
     let track: AudioEngineConfig.Track
     let published = AudioPublished<StreamSet>(StreamSet([]))
     private var streams: [SegmentStream] = []
+    /// 每段此刻该用的增益（喂样线程自己的那份；新开的流从这里拿）。
+    private var gains: [UUID: GainTable.Sampler]
+    /// 主线程送来的「换增益」（整条轨一次），下一遍 `service` 落地。
+    private var pendingGains: [UUID: GainTable.Sampler]?
+    private let gainLock = NSLock()
     private let seekRequest = Atomic<Int64>(-1)
     private let wake = DispatchSemaphore(value: 0)
     private let running = Atomic<Bool>(false)
@@ -63,6 +76,7 @@ final class AudioTrackFeeder: @unchecked Sendable {
 
     init(track: AudioEngineConfig.Track) {
         self.track = track
+        gains = Dictionary(track.segments.map { ($0.clipID, $0.gain) }, uniquingKeysWith: { first, _ in first })
         scratchLeft = .allocate(capacity: Self.chunkFrames)
         scratchRight = .allocate(capacity: Self.chunkFrames)
     }
@@ -103,6 +117,14 @@ final class AudioTrackFeeder: @unchecked Sendable {
     /// 渲染块发现环快空了就叫一声（不阻塞）。
     func poke() { wake.signal() }
 
+    /// 换这条轨各段的增益（拖推子 / 曲线、改音量：结构没变，流不重开）。下一遍 `service` 落地。
+    func updateGains(_ newGains: [UUID: GainTable.Sampler]) {
+        gainLock.lock()
+        pendingGains = newGains
+        gainLock.unlock()
+        wake.signal()
+    }
+
     // MARK: 一遍
 
     /// 处理 seek、按播放头开关流、把每条流的环填满。离线渲染每拍调一次。
@@ -115,6 +137,16 @@ final class AudioTrackFeeder: @unchecked Sendable {
                 stream.writePosition = max(stream.startFrame, playhead)
                 stream.exhausted = false
                 stream.ring.beginEpoch(position: stream.writePosition)
+            }
+        }
+        gainLock.lock()
+        let newGains = pendingGains
+        pendingGains = nil
+        gainLock.unlock()
+        if let newGains {
+            gains = newGains
+            for stream in streams {
+                if let sampler = newGains[stream.segment.clipID] { stream.gain.publish(GainBox(sampler)) }
             }
         }
         var changed = false
@@ -130,8 +162,10 @@ final class AudioTrackFeeder: @unchecked Sendable {
             let start = Int64((segment.start * Self.rate).rounded())
             let end = Int64((segment.end * Self.rate).rounded())
             guard start < playhead + Self.lookaheadFrames, end > playhead else { continue }
-            guard let stream = SegmentStream(segment: segment, rate: Self.rate, ringFrames: Self.ringFrames, from: playhead)
-            else { continue }
+            guard let stream = SegmentStream(
+                segment: segment, gain: gains[segment.clipID] ?? segment.gain,
+                rate: Self.rate, ringFrames: Self.ringFrames, from: playhead
+            ) else { continue }
             streams.append(stream)
             changed = true
         }

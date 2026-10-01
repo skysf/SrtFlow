@@ -109,6 +109,8 @@ xcrun swiftc \
   Sources/SrtFlow/AudioEngine/AudioTrackFeeder.swift \
   Sources/SrtFlow/AudioEngine/AudioTrackRenderer.swift \
   Sources/SrtFlow/AudioEngine/TimelineAudioEngine.swift \
+  Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
+  Sources/SrtFlow/AudioEngine/AudioEngineFlag.swift \
   checks/AudioEngine/main.swift \
   checks/AudioEngine/Compare.swift \
   checks/AudioEngine/Timelines.swift \
