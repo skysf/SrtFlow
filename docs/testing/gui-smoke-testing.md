@@ -256,7 +256,8 @@ scripts/gui-smoke/in-process/run.sh <scratchpad>/steps.json <scratchpad>/southpo
 # 再跑一遍之前从模板复原工程文件：cp <scratchpad>/southpole/Edit.template.json <scratchpad>/southpole/Edit.srtflowproj
 ```
 
-- **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` /
+- **步骤表**的格式写在 `Sources/SrtFlow/SmokeScript.swift` 文件头：`window` / `settle` / `seek` / `play` / `pause`（直接调时钟：空格是
+  SwiftUI 的快捷键，合成的按键到不了；结果里 `audioEngine.underrunFrames` 是这一轮的欠载帧数）/
   `click` / `drag` / `scroll` / `key` / `state` / `snapshot` / `perfReset` + `perf` / `hit` / `quit`，
   以及 `open`（换一个工程，走「打开工程」同一个入口）和 `menu`（把某一层菜单的每一项和亮不亮写进日志）、
   `zoom`（以窗口里某一点为锚缩放，横向或 `"vertical": true` 纵向；和捏合处理器同样的调用，前后各记一次指针底下

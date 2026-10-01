@@ -29,9 +29,13 @@ final class AudioSegmentReader {
     private let fileBuffer: AVAudioPCMBuffer
     /// 和 fileBuffer 同样的数据、但格式标成「采样率 × speed」：转换器只认这个输入格式。
     private let virtualBuffer: AVAudioPCMBuffer?
-    private let outputBuffer: AVAudioPCMBuffer
-    /// 上一次读完停在素材的第几帧：接着读就不 reset 转换器。
-    private var nextSourceFrame: AVAudioFramePosition = -1
+    /// 下一次接着读会产出引擎格式的第几帧（素材时间 × 48 kHz）；-1 = 还没读过 / 刚跳读过。
+    /// 比「素材第几帧」靠谱：重采样时输入和输出不成整数比，按输出算才知道这一次是不是上一次的延续。
+    private var nextOutputFrame: Int64 = -1
+    /// 引擎格式（48 kHz float，1 或 2 声道）：重采样时每次按要多少帧现开一个正好那么大的输出缓冲。
+    private let outFormat: AVAudioFormat
+    /// 素材读到头了（转换器已经收到 endOfStream，再要就是 0 帧；跳读会 reset 重来）。
+    private var ended = false
     private static let chunk: AVAudioFrameCount = 8192
     /// 变速段：保音调的拉伸读取器接管一切。
     private let stretch: AudioTimeStretchReader?
@@ -50,11 +54,10 @@ final class AudioSegmentReader {
             stretch = nil
         }
         guard let outFormat = AVAudioFormat(standardFormatWithSampleRate: Self.engineRate, channels: AVAudioChannelCount(channels)),
-              let fileBuffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: Self.chunk * 4),
-              let outputBuffer = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: Self.chunk * 4)
+              let fileBuffer = AVAudioPCMBuffer(pcmFormat: inFormat, frameCapacity: Self.chunk * 4)
         else { return nil }
         self.fileBuffer = fileBuffer
-        self.outputBuffer = outputBuffer
+        self.outFormat = outFormat
         let virtualRate = fileRate   // 变速段不走这里（stretch 接管），所以不再乘倍速
         if abs(virtualRate - Self.engineRate) < 0.5, inFormat.channelCount == outFormat.channelCount {
             converter = nil
@@ -80,49 +83,56 @@ final class AudioSegmentReader {
         if let stretch { return stretch.read(sourceSeconds: sourceSeconds, frames: frames, into: left, right) }
         let wanted = min(frames, Int(Self.chunk * 4))
         guard wanted > 0 else { return 0 }
-        let sourceFrame = AVAudioFramePosition((sourceSeconds * fileRate).rounded(.down))
-        guard sourceFrame < file.length, sourceFrame >= 0 else { return 0 }
-        if sourceFrame != nextSourceFrame {
+        // 是不是上一次的延续：按引擎格式的帧号比，差一帧以内算接上（位置是浮点算出来的）。
+        let target = Int64((sourceSeconds * Self.engineRate).rounded())
+        let continuing = nextOutputFrame >= 0 && abs(target - nextOutputFrame) <= 1
+        if !continuing {
+            let sourceFrame = AVAudioFramePosition((sourceSeconds * fileRate).rounded(.down))
+            guard sourceFrame < file.length, sourceFrame >= 0 else { return 0 }
             file.framePosition = sourceFrame
             converter?.reset()
+            ended = false
+            nextOutputFrame = target
         }
         guard let converter, let virtualBuffer else {
             // 直读：格式已经是引擎的。
             fileBuffer.frameLength = 0
             guard (try? file.read(into: fileBuffer, frameCount: AVAudioFrameCount(wanted))) != nil else { return 0 }
             let got = Int(fileBuffer.frameLength)
-            nextSourceFrame = sourceFrame + AVAudioFramePosition(got)
             copy(fileBuffer, frames: got, into: left, right)
+            nextOutputFrame += Int64(got)
             return got
         }
-        // 重采样：按比例多读一点输入，转换器吐出多少算多少。
-        let ratio = fileRate / Self.engineRate
-        let inputWanted = min(Int(Self.chunk * 4), Int((Double(wanted) * ratio).rounded(.up)) + 64)
-        fileBuffer.frameLength = 0
-        guard (try? file.read(into: fileBuffer, frameCount: AVAudioFrameCount(inputWanted))) != nil else { return 0 }
-        let inputGot = Int(fileBuffer.frameLength)
-        guard inputGot > 0 else { return 0 }
-        nextSourceFrame = sourceFrame + AVAudioFramePosition(inputGot)
-        // 数据原样、只换格式标签（采样率 × speed）。
-        virtualBuffer.frameLength = AVAudioFrameCount(inputGot)
-        for channel in 0..<Int(fileBuffer.format.channelCount) {
-            virtualBuffer.floatChannelData![channel].update(from: fileBuffer.floatChannelData![channel], count: inputGot)
-        }
-        outputBuffer.frameLength = 0
-        var supplied = false
+        // 重采样：输出缓冲正好 `wanted` 帧，转换器要多少输入就从文件里现读多少（拉式）——
+        // 它永远不会「输入先断了」。推式（一次塞一块、不够就说 noDataNow）的话，每次调用的最后几十帧是
+        // 在没有后面的采样时算出来的、是错的：2026-10-01 之前这几十帧被扔掉但转换器每块被 reset（块头一个
+        // 毛刺），改成留着下次先给之后毛刺照样在块头（探针：块头误差 −22 dB、块中间逐位相同）。拉式之后逐位相同。
+        guard !ended, let output = AVAudioPCMBuffer(pcmFormat: outFormat, frameCapacity: AVAudioFrameCount(wanted)) else { return 0 }
         var error: NSError?
-        let status = converter.convert(to: outputBuffer, error: &error) { _, outStatus in
-            if supplied {
-                outStatus.pointee = .noDataNow
+        let status = converter.convert(to: output, error: &error) { [self] requested, outStatus in
+            if ended {
+                outStatus.pointee = .endOfStream
                 return nil
             }
-            supplied = true
+            fileBuffer.frameLength = 0
+            let toRead = min(AVAudioFrameCount(requested), fileBuffer.frameCapacity)
+            guard toRead > 0, (try? file.read(into: fileBuffer, frameCount: toRead)) != nil, fileBuffer.frameLength > 0 else {
+                ended = true
+                outStatus.pointee = .endOfStream
+                return nil
+            }
+            // 数据原样、只换格式标签。
+            virtualBuffer.frameLength = fileBuffer.frameLength
+            for channel in 0..<Int(fileBuffer.format.channelCount) {
+                virtualBuffer.floatChannelData![channel].update(from: fileBuffer.floatChannelData![channel], count: Int(fileBuffer.frameLength))
+            }
             outStatus.pointee = .haveData
             return virtualBuffer
         }
         guard status != .error else { return 0 }
-        let got = min(wanted, Int(outputBuffer.frameLength))
-        copy(outputBuffer, frames: got, into: left, right)
+        let got = min(wanted, Int(output.frameLength))
+        copy(output, frames: got, into: left, right)
+        nextOutputFrame += Int64(got)
         return got
     }
 
