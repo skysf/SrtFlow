@@ -21,7 +21,7 @@
 
 两个推子都是常数，**直接乘进每一段自己的增益**，不另加节点：`makeAudioMix` 给每一段算
 `gainScale = trackVolume(containingClip:) × masterVolume`，乘进这一段的每个音量设定点（主轨 A/B
-两条合成轨都按主轨推子算）。成片就是这份混音离线读出来的（[成片的声音](export-audio-mixdown.md)），
+两条合成轨都按主轨推子算）。成片就是这份混音由音频引擎离线渲出来的（[成片的声音](export-audio-mixdown.md)），
 2026-09-24 之前导出另乘一份（乘进这一段的 `volume=` 或曲线 `aeval` 的每片叶子），已退役。
 - 只动推子属于「只换 audioMix」（`differsOnlyInAudioMix` 已经抹平三级推子），画面不闪。
 

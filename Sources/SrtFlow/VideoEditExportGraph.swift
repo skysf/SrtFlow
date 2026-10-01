@@ -169,11 +169,11 @@ enum VideoEditExportGraph {
             return "\(prefix)\(labelCounter)"
         }
 
-        // MARK: 声音：离线读出预览那份混音
+        // MARK: 声音：预览那个音频引擎离线渲出来
         //
-        // 成片的声音**不在这张图里搭**：和预览同一份合成 + audioMix，由 ExportAudioMixdown 读成
-        // 一个正好 `total` 秒的 raw 文件，这里只把它当一路输入接上去、编成 AAC。音量、渐变、曲线、
-        // 推子、转场的交叉淡变、首尾定格的静音都已经在里面了（docs/architecture/export-audio-mixdown.md）。
+        // 成片的声音**不在这张图里搭**：和预览同一个音频引擎、同一份 AudioEngineConfig，由 ExportAudioMixdown
+        // 离线渲成一个正好 `total` 秒的 raw 文件，这里只把它当一路输入接上去、编成 AAC。音量、渐变、曲线、
+        // 推子、场景、变速、转场的交叉淡变、首尾定格的静音都已经在里面了（docs/architecture/export-audio-mixdown.md）。
         // 一个出声的段都没有时垫一路静音：成片照旧总有一条音轨。
         let mixdownFile = workspace.appendingPathComponent("audio-mixdown.f32")
         var audioLevels: ExportAudioMixdown.Levels?

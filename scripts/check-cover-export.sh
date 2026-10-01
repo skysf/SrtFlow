@@ -97,6 +97,16 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
   Sources/SrtFlow/AudioEngine/MeterSlot.swift \
+  Sources/SrtFlow/AudioEngine/AudioEngineConfig.swift \
+  Sources/SrtFlow/AudioEngine/AudioRing.swift \
+  Sources/SrtFlow/AudioEngine/AudioPublished.swift \
+  Sources/SrtFlow/AudioEngine/AudioSegmentReader.swift \
+  Sources/SrtFlow/AudioEngine/AudioTimeStretchReader.swift \
+  Sources/SrtFlow/AudioEngine/AudioTrackFeeder.swift \
+  Sources/SrtFlow/AudioEngine/AudioTrackRenderer.swift \
+  Sources/SrtFlow/AudioEngine/TimelineAudioEngine.swift \
+  Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
+  Sources/SrtFlow/AudioEngine/AudioEngineFlag.swift \
   Sources/SrtFlow/VideoEditMeterRing.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \

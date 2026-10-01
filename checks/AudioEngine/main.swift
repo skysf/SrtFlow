@@ -126,6 +126,7 @@ func enginePCM(_ state: TimelineState) -> (pcm: Stereo, config: AudioEngineConfi
     do {
         try engine.renderOffline(duration: state.duration) { interleaved, frames in
             pcm.append(interleaved: interleaved, frames: frames)
+            return true
         }
     } catch {
         print("引擎渲染失败：\(error)")
@@ -202,7 +203,10 @@ do {
     var pcm = Stereo()
     if let engine = try? TimelineAudioEngine(config: config, mode: .offline, meters: meters) {
         do {
-            try engine.renderOffline(duration: state.duration) { interleaved, frames in pcm.append(interleaved: interleaved, frames: frames) }
+            try engine.renderOffline(duration: state.duration) { interleaved, frames in
+                pcm.append(interleaved: interleaved, frames: frames)
+                return true
+            }
         } catch { check(false, "电平表那组引擎渲染失败：\(error)") }
     } else { check(false, "电平表那组引擎建不起来") }
     // 槽记的是整段渲染里的峰值：渲出来的（已乘总推子）的峰值就是总表的峰值；主轨表是乘总推子之前的。

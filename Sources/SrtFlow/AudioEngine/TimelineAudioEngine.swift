@@ -153,9 +153,9 @@ final class TimelineAudioEngine {
 
     // MARK: 离线：整段渲染
 
-    /// 把时间线从 0 渲到 `duration` 秒，按拍交给 `consumer`（交错的立体声 f32、这一拍的帧数）。
-    /// 成片和自检走这里；喂样在这条线程上同步做。
-    func renderOffline(duration: Double, consumer: (UnsafeBufferPointer<Float>, Int) -> Void) throws {
+    /// 把时间线从 0 渲到 `duration` 秒，按拍交给 `consumer`（交错的立体声 f32、这一拍的帧数）；`consumer` 回 false 就停
+    /// （导出被取消）。成片和自检走这里；喂样在这条线程上同步做。
+    func renderOffline(duration: Double, consumer: (UnsafeBufferPointer<Float>, Int) -> Bool) throws {
         precondition(mode == .offline, "renderOffline 只在离线模式下用")
         let total = Int64((duration * Self.sampleRate).rounded())
         guard let buffer = AVAudioPCMBuffer(pcmFormat: Self.format, frameCapacity: engine.manualRenderingMaximumFrameCount)
@@ -177,7 +177,8 @@ final class TimelineAudioEngine {
                 interleaved[2 * index] = data[0][index]
                 interleaved[2 * index + 1] = data[1][index]
             }
-            interleaved.withUnsafeBufferPointer { consumer(UnsafeBufferPointer(rebasing: $0[0..<(got * 2)]), got) }
+            let keepGoing = interleaved.withUnsafeBufferPointer { consumer(UnsafeBufferPointer(rebasing: $0[0..<(got * 2)]), got) }
+            guard keepGoing else { return }
             position += Int64(got)
         }
     }

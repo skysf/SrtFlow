@@ -1,11 +1,11 @@
 import AVFoundation
 
-// MARK: - 成片的声音：离线读出预览那份混音
+// MARK: - 成片的声音：用预览那个引擎离线渲出来
 //
 // 2026-09-24 起，剪辑导出的声音**不再由 ffmpeg 另搭一套滤镜链**（以前是每段 atrim → atempo →
-// volume / aeval → afade → adelay，主轨 concat / acrossfade，最后 amix）。现在用和预览**同一个**
-// `VideoEditCompositionBuilder.build` + `makeAudioMix` 建出合成，`AVAssetReaderAudioMixOutput`
-// 把整条混音原样读成一个 raw f32 文件；ffmpeg 只负责编码、和画面合在一起。
+// volume / aeval → afade → adelay，主轨 concat / acrossfade，最后 amix）；2026-10-01 PR3a 起也不再读
+// AVFoundation 的合成 + audioMix，而是和预览**同一个** `TimelineAudioEngine`（AudioEngineConfig 同一份配置、
+// 同一段渲染代码）离线渲成一个 raw f32 文件；ffmpeg 只负责编码、和画面合在一起。
 //
 // 为什么：用户嫌「每个声音功能要在预览、成片各做一遍」效率低，而两份实现迟早分叉 —— 音量、
 // 渐变、曲线、推子为了让 ffmpeg 模仿 AVFoundation 攒下了一整套规矩（aeval 平衡树、afade 必须
@@ -82,16 +82,12 @@ enum ExportAudioMixdown {
         cancellation: ExportCancellationToken? = nil
     ) async throws -> Outcome {
         if cancellation?.isCancelled == true { throw CancellationError() }
-        guard let built = await VideoEditCompositionBuilder.build(from: state),
-              let tracks = try? await built.composition.loadTracks(withMediaType: .audio),
-              !tracks.isEmpty else { return .silent }
+        // 和预览同一份配置（段落、增益、场景、变速都在里面；`make` 自己排序、展开转场）。
+        let config = AudioEngineConfig.make(from: state)
+        guard !config.tracks.isEmpty else { return .silent }
         let frames = max(0, Int((duration * Double(sampleRate)).rounded()))
-        // 这几样 AVFoundation 对象都没标 Sendable；交给读取线程之后这边不再碰。
-        nonisolated(unsafe) let composition = built.composition
-        nonisolated(unsafe) let audioTracks = tracks
-        nonisolated(unsafe) let mix = built.audioMix
         let result = await MediaReadQueue.run(on: MediaReadQueue.export) {
-            read(composition, tracks: audioTracks, mix: mix, frames: frames, to: file, cancellation: cancellation)
+            renderWithEngine(config, frames: frames, to: file, cancellation: cancellation)
         }
         switch result {
         case .success(let levels): return .written(levels)
@@ -99,82 +95,45 @@ enum ExportAudioMixdown {
         }
     }
 
-    /// 阻塞地读完整条混音、边读边写盘。**只在 `MediaReadQueue` 上调**（阻塞读取不许进 Swift
-    /// 并发的线程池，见 docs/architecture/blocking-media-reads.md）。
-    private static func read(
-        _ composition: AVComposition,
-        tracks: [AVAssetTrack],
-        mix: AVAudioMix?,
+    /// 阻塞地渲完整条混音、边渲边写盘。**只在 `MediaReadQueue` 上调**（引擎的喂样在这条线程上同步读文件，阻塞读取
+    /// 不许进 Swift 并发的线程池，见 docs/architecture/blocking-media-reads.md）。
+    private static func renderWithEngine(
+        _ config: AudioEngineConfig,
         frames: Int,
         to file: URL,
         cancellation: ExportCancellationToken?
     ) -> Result<Levels, Error> {
-        let reader: AVAssetReader
-        do { reader = try AVAssetReader(asset: composition) } catch { return .failure(error) }
-        let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: outputSettings)
-        output.audioMix = mix
-        // 变速段的保音调算法和预览的播放条目是同一个（VideoEditCompositionBuilder.timePitchAlgorithm）。
-        output.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else {
+        guard let engine = try? TimelineAudioEngine(config: config, mode: .offline) else {
             return .failure(ReadError(detail: nil))
         }
-        reader.add(output)
-        reader.timeRange = CMTimeRange(
-            start: .zero, duration: CMTime(value: CMTimeValue(frames), timescale: CMTimeScale(sampleRate))
-        )
-        guard reader.startReading() else {
-            return .failure(ReadError(detail: reader.error?.localizedDescription))
-        }
-
         guard FileManager.default.createFile(atPath: file.path, contents: nil),
               let handle = try? FileHandle(forWritingTo: file) else {
-            reader.cancelReading()
             return .failure(ReadError(detail: file.lastPathComponent))
         }
         defer { try? handle.close() }
         var sink = FrameSink(handle: handle, limit: frames, channels: channels, sampleRate: sampleRate)
-
-        while sink.received < frames, let buffer = output.copyNextSampleBuffer() {
-            if cancellation?.isCancelled == true {
-                reader.cancelReading()
-                return .failure(CancellationError())
+        var cancelled = false
+        do {
+            try engine.renderOffline(duration: Double(frames) / Double(sampleRate)) { interleaved, got in
+                if cancellation?.isCancelled == true {
+                    cancelled = true
+                    return false
+                }
+                sink.append(interleaved, frames: got)
+                return true
             }
-            // 按时间戳落位：中间要是缺了一截（不该有，但不能赌），缺的补静音，不许把后面的声音
-            // 往前挪 —— 挪了就是声画不同步。
-            let pts = CMSampleBufferGetPresentationTimeStamp(buffer)
-            if pts.isValid {
-                sink.padSilence(upTo: Int((pts.seconds * Double(sampleRate)).rounded()))
-            }
-            sink.append(buffer)
+        } catch {
+            return .failure(ReadError(detail: "\(error)"))
         }
-        if reader.status == .failed {
-            return .failure(ReadError(detail: reader.error?.localizedDescription))
-        }
-        // 读得比画面短（最后一截没有声音）：补静音补到正好 `frames`；再把限幅器延迟线里的最后 5 ms 冲出来。
+        if cancelled { return .failure(CancellationError()) }
+        // 引擎正好渲到 `frames`；万一短了补静音补到正好；再把限幅器延迟线里的最后 5 ms 冲出来。
         sink.padSilence(upTo: frames)
         let levels = sink.finish()
         return sink.failure.map { .failure($0) } ?? .success(levels)
     }
-
-    /// interleaved f32 立体声 48kHz。
-    private static var outputSettings: [String: Any] {
-        var layout = AudioChannelLayout()
-        layout.mChannelLayoutTag = kAudioChannelLayoutTag_Stereo
-        return [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsNonInterleaved: false,
-            AVLinearPCMIsBigEndianKey: false,
-            AVNumberOfChannelsKey: channels,
-            AVSampleRateKey: sampleRate,
-            AVChannelLayoutKey: Data(bytes: &layout, count: MemoryLayout<AudioChannelLayout>.size),
-        ]
-    }
 }
 
-/// 往 raw 文件里按帧写：记着收了几帧，超过上限的截掉；每一帧先过限幅器（ExportPeakLimiter，延迟 5 ms）再写盘，
+/// 往 raw 文件里按帧写（引擎渲出来的交错 f32）：记着收了几帧，超过上限的截掉；每一帧先过限幅器（ExportPeakLimiter，延迟 5 ms）再写盘，
 /// 写出去的采样同时喂响度表（ExportLoudnessMeter）。`finish()` 把延迟线冲干净，写出去的总帧数 = 收进来的。
 private struct FrameSink {
     let handle: FileHandle
@@ -195,8 +154,6 @@ private struct FrameSink {
         meter = ExportLoudnessMeter(channels: channels)
     }
 
-    private var bytesPerFrame: Int { channels * MemoryLayout<Float>.size }
-
     mutating func padSilence(upTo frame: Int) {
         var missing = min(frame, limit) - received
         let chunk = 48_000
@@ -208,19 +165,11 @@ private struct FrameSink {
         }
     }
 
-    mutating func append(_ buffer: CMSampleBuffer) {
-        guard let block = CMSampleBufferGetDataBuffer(buffer) else { return }
-        let length = CMBlockBufferGetDataLength(block)
-        let frames = min(length / bytesPerFrame, limit - received)
-        guard frames > 0 else { return }
-        var data = Data(count: frames * bytesPerFrame)
-        let status = data.withUnsafeMutableBytes { raw in
-            CMBlockBufferCopyDataBytes(
-                block, atOffset: 0, dataLength: frames * bytesPerFrame, destination: raw.baseAddress!
-            )
-        }
-        guard status == kCMBlockBufferNoErr else { return }
-        data.withUnsafeBytes { raw in feed(raw.bindMemory(to: Float.self), frames: frames) }
+    /// 引擎渲出来的一拍（交错的立体声 f32）。
+    mutating func append(_ interleaved: UnsafeBufferPointer<Float>, frames: Int) {
+        let count = min(frames, limit - received)
+        guard count > 0 else { return }
+        feed(UnsafeBufferPointer(rebasing: interleaved[0..<(count * channels)]), frames: count)
     }
 
     /// 冲掉限幅器的延迟，写完最后几帧；给出电平。
