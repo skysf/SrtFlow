@@ -162,7 +162,8 @@
 
 | PR | 内容 | 开关 | 验收 |
 | --- | --- | --- | --- |
-| PR1 | 引擎骨架：图、读线程、渲染核心（增益 / 渐变 / 曲线 / 推子）、时钟与视频对齐、`PlayerClock` 改由引擎喂时间；开关开时 builder 不插音轨 | `SRTFLOW_AUDIO_ENGINE=1`，默认关 | 新自检 `check-audio-engine.sh`：同一条时间线、引擎离线渲染 vs 今天的 AVFoundation 混音，逐段包络差 ≤ 0.1 dB；冒烟量第五节三个数；看门狗无新卡顿 |
+| PR1a（已合） | 引擎本体：图、喂样线程、环、渲染核心（增益 / 渐变 / 曲线 / 推子 / 总推子）、锚点式时钟、离线渲染；**不接 App** | 无（App 不变） | `check-audio-engine.sh`：八条时间线逐 10 ms 窗口差 ≤ 0.15 dB（实测 ≤ 0.027；重采样 0.287）、帧数正好、零欠载；长期约束 [音频引擎](../architecture/audio-engine.md) |
+| PR1b | 接进 App：开关开时 builder 不插音轨、`PlayerClock` 由引擎喂时间、和视频对表、ducking、拖推子 / 曲线换配置 | `SRTFLOW_AUDIO_ENGINE=1`，默认关 | 冒烟量第五节三个数；看门狗无新卡顿 |
 | PR2 | 场景 + 余音、电平表、变速、ducking | 同上 | `check-audio-fade.sh` 的场景 / 电平组改成读引擎（两边都跑，比对）；人工听三段场景 |
 | PR3 | 成片切到引擎离线渲染；开关默认开；删旧路（`AudioMixBuilder`、`CompositionAudioTracks`、tap、`SceneTailCarrier`、`ExportMixdown` 的 reader 部分）；架构文档改写 | 删掉开关 | 导出自检全绿；`export-audio-single-pipeline` 守卫改成「导出只经引擎」 |
 | Beta | 用户真剪 | | 第一节四个数 |
