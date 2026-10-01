@@ -188,9 +188,11 @@ final class AudioMeterEngine: @unchecked Sendable {
         lock.withLock { $0.clipped.contains(key) }
     }
 
-    /// tap 回调里：把一段「听到的」采样按位置加进这条轨的环和总表的环。
-    fileprivate func write(key: MeterKey, start: Int64, left: UnsafePointer<Float>, right: UnsafePointer<Float>?,
-                           gains: UnsafePointer<Float>, master: Float, count: Int, positions: UnsafePointer<Int64>?) {
+    /// 把一段「听到的」采样按位置加进这条轨的环和总表的环。两个写者：tap 回调（AVPlayer 那条路，`gains` 是
+    /// 乘音量之前要补乘的增益表）和音频引擎的渲染块（docs/architecture/audio-engine.md：采样已经乘过段增益和推子，
+    /// `gains` 全是 1，`start` 是时间线的帧）。
+    func write(key: MeterKey, start: Int64, left: UnsafePointer<Float>, right: UnsafePointer<Float>?,
+               gains: UnsafePointer<Float>, master: Float, count: Int, positions: UnsafePointer<Int64>?) {
         let now = DispatchTime.now().uptimeNanoseconds
         lock.withLock { state in
             let capacity = ringCapacity

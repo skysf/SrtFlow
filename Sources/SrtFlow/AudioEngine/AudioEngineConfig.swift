@@ -36,6 +36,8 @@ struct AudioEngineConfig: Sendable {
     struct Track: Sendable {
         /// 给日志和自检看的名字（main / V2 / A1…）。
         let name: String
+        /// 轨道头上哪一条电平表（主轨 `.track(.main)`，其余按轨的 id）。渲染块把这条轨听到的采样写进它的环。
+        let meterKey: MeterKey
         /// 轨道推子（线性）。
         let fader: Float
         /// 按 `start` 排好；主轨转场处前后两段相叠。
@@ -73,7 +75,7 @@ struct AudioEngineConfig: Sendable {
             )
             if let segment = segment(for: clip, at: startsAt, fades: fades) { main.append(segment) }
         }
-        tracks.append(Track(name: "main", fader: Float(state.mainVolume), segments: main))
+        tracks.append(Track(name: "main", meterKey: .track(.main), fader: Float(state.mainVolume), segments: main))
 
         for (index, lane) in state.overlayTracks.enumerated() where !lane.isHidden {
             var segments: [Segment] = []
@@ -83,7 +85,7 @@ struct AudioEngineConfig: Sendable {
                     segments.append(segment)
                 }
             }
-            tracks.append(Track(name: "V\(index + 2)", fader: Float(lane.volume), segments: segments))
+            tracks.append(Track(name: "V\(index + 2)", meterKey: .track(.lane(lane.id)), fader: Float(lane.volume), segments: segments))
         }
 
         for (index, lane) in state.audioTracks.enumerated() where !lane.isHidden {
@@ -94,7 +96,7 @@ struct AudioEngineConfig: Sendable {
                     segments.append(segment)
                 }
             }
-            tracks.append(Track(name: "A\(index + 1)", fader: Float(lane.volume), segments: segments))
+            tracks.append(Track(name: "A\(index + 1)", meterKey: .track(.lane(lane.id)), fader: Float(lane.volume), segments: segments))
         }
 
         return AudioEngineConfig(

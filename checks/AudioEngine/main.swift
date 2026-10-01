@@ -164,6 +164,37 @@ await compare("单声道 44.1k", monoLane(toneMono), tolerance: 0.3)
 print("==> 9. 空时间线：配置没有轨")
 check(AudioEngineConfig.make(from: baseState()).tracks.isEmpty, "空时间线的配置该没有轨")
 
+print("==> 10. 电平表：渲染块写进同一个环，轨道表 = 这条轨听到的，总表 = 全部 × 总推子，静音的段不进表")
+do {
+    // 主轨一段（推子 0.6）+ 一条静音的音频轨 + 一条隐藏的轨；总推子 0.8。
+    var state = mutedAndHidden(toneA, toneC, toneD)
+    state.masterVolume = 0.8
+    let config = AudioEngineConfig.make(from: state)
+    // 环要装得下整段：默认 1 << 16 帧只有 1.37 秒，离线一口气渲 4 秒之后前面的窗口早被盖掉了（界面上只读播放头附近，够用）。
+    let meters = AudioMeterEngine(ringCapacity: 1 << 19)
+    var pcm = Stereo()
+    if let engine = try? TimelineAudioEngine(config: config, mode: .offline, meters: meters) {
+        do {
+            try engine.renderOffline(duration: state.duration) { interleaved, frames in pcm.append(interleaved: interleaved, frames: frames) }
+        } catch { check(false, "电平表那组引擎渲染失败：\(error)") }
+    } else { check(false, "电平表那组引擎建不起来") }
+    // 1–2 秒这一窗：渲出来的（已乘总推子）的峰值就是总表的峰值；主轨表是乘总推子之前的。
+    let from = 48_000, to = 96_000
+    let renderedPeak = Double(max(pcm.left[from..<to].map { abs($0) }.max() ?? 0, pcm.right[from..<to].map { abs($0) }.max() ?? 0))
+    let masterPeak = meters.rawPeak(for: .master, from: 1, to: 2)
+    let mainPeak = meters.rawPeak(for: .track(.main), from: 1, to: 2)
+    check(renderedPeak > 0.001, "这一窗该有声音（渲出来的峰值 \(renderedPeak)）")
+    check(abs(Double(max(masterPeak.left, masterPeak.right)) - renderedPeak) < renderedPeak * 0.02,
+          "总表的峰值该等于渲出来的峰值：表 \(masterPeak)，渲出 \(renderedPeak)")
+    check(abs(Double(max(mainPeak.left, mainPeak.right)) * 0.8 - renderedPeak) < renderedPeak * 0.02,
+          "主轨表 × 总推子 0.8 该等于渲出来的峰值：表 \(mainPeak)，渲出 \(renderedPeak)")
+    let mutedKey = MeterKey.track(.lane(state.audioTracks[0].id))
+    let hiddenKey = MeterKey.track(.lane(state.audioTracks[1].id))
+    check(meters.rawPeak(for: mutedKey, from: 0, to: 3) == (0, 0), "静音的段不进它那条轨的表")
+    check(meters.rawPeak(for: hiddenKey, from: 0, to: 3) == (0, 0), "隐藏的轨不进表")
+    check(meters.rawPeak(for: .track(.main), from: 3.5, to: 3.9) == (0, 0), "主轨那段 3 秒就结束了，之后表里该是空的")
+}
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 finish(failures == 0 ? 0 : 1)

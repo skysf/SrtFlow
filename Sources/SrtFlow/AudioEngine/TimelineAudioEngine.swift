@@ -36,6 +36,9 @@ final class TimelineAudioEngine {
     let mode: Mode
     let engine = AVAudioEngine()
     private(set) var config: AudioEngineConfig
+    /// 轨道头的电平表（nil = 不量：离线渲染、自检）。渲染块把每条轨这一拍的采样按时间线的帧写进它的环，
+    /// 和 AVPlayer 那条路的 tap 写的是同一个环、界面照旧在播放头处读（docs/architecture/audio-mixer.md 第三节）。
+    let meters: AudioMeterEngine?
     /// 渲染块里环里没有数据、只能当静音的帧数（累计）。冒烟和自检看它。
     var underrunFrames: Int { renderClock.underruns.load(ordering: .relaxed) }
 
@@ -50,6 +53,8 @@ final class TimelineAudioEngine {
         /// 最近一拍多少帧：开播 / seek 时锚点要钉在**下一拍**上，差这么多。
         let quantum = Atomic<Int>(0)
         let underruns = Atomic<Int>(0)
+        /// 总推子（线性），总表要乘它；主线程换、渲染块每拍读。
+        let master = Atomic<Float>(1)
     }
     private let renderClock = RenderClock()
     /// 一直挂着的静音节点：没有一条轨出声的时间线也要有人每拍更新时钟。
@@ -65,9 +70,11 @@ final class TimelineAudioEngine {
     }
     private var units: [TrackUnit] = []
 
-    init(config: AudioEngineConfig, mode: Mode) throws {
+    init(config: AudioEngineConfig, mode: Mode, meters: AudioMeterEngine? = nil) throws {
         self.mode = mode
         self.config = config
+        self.meters = meters
+        renderClock.master.store(config.master, ordering: .relaxed)
         if mode == .offline {
             try engine.enableManualRenderingMode(.offline, format: Self.format, maximumFrameCount: 4096)
         }
@@ -104,6 +111,8 @@ final class TimelineAudioEngine {
         let renderer = AudioTrackRenderer(feeder: feeder, fader: track.fader)
         let anchor = self.anchor
         let clock = renderClock
+        let meters = self.meters
+        let meterKey = track.meterKey
         let node = AVAudioSourceNode(format: Self.format) { _, timestamp, frameCount, outputData -> OSStatus in
             let buffers = UnsafeMutableAudioBufferListPointer(outputData)
             let frames = Int(frameCount)
@@ -120,6 +129,11 @@ final class TimelineAudioEngine {
                 clock.underruns.wrappingAdd(missing, ordering: .relaxed)
                 feeder.poke()
             }
+            // 电平表：这一拍听到的（已乘段增益和推子），按时间线的帧落位；总表再乘总推子。
+            meters?.write(
+                key: meterKey, start: position, left: left, right: right, gains: renderer.unitGains,
+                master: clock.master.load(ordering: .relaxed), count: frames, positions: nil
+            )
             return noErr
         }
         engine.attach(node)
@@ -173,6 +187,7 @@ final class TimelineAudioEngine {
         }
         units.removeAll()
         for track in new.tracks { attach(track) }
+        renderClock.master.store(new.master, ordering: .relaxed)
         engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
         if running { startFeeders() }
     }
@@ -188,6 +203,7 @@ final class TimelineAudioEngine {
             unit.renderer.fader.store(track.fader, ordering: .relaxed)
             unit.feeder.updateGains(Dictionary(track.segments.map { ($0.clipID, $0.gain) }, uniquingKeysWith: { first, _ in first }))
         }
+        renderClock.master.store(new.master, ordering: .relaxed)
         engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
     }
 
