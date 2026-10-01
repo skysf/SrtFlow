@@ -116,6 +116,18 @@ func sceneLane(_ noise: URL, kind: SoundSceneKind) -> TimelineState {
     return state
 }
 
+/// 变速：2 倍速取素材的 1.0–3.0 秒（时间线 0.5–1.5 秒）、0.5 倍速取 1.5–2.5 秒（时间线 2–4 秒）。
+/// 素材是前 2 秒 440 Hz、后 2 秒 880 Hz 的换音正弦，换音的时刻就验得出拉伸真的按倍速走。
+func speedLanes(_ tone: URL) -> TimelineState {
+    var fast = audioClip(tone, start: 0.5, sourceStart: 1.0, duration: 2)
+    fast.speed = 2
+    var slow = audioClip(tone, start: 2, sourceStart: 1.5, duration: 1)
+    slow.speed = 0.5
+    var state = baseState()
+    state.audioTracks = [EditLane(clips: [fast]), EditLane(clips: [slow])]
+    return state
+}
+
 /// 44.1 kHz 单声道的素材：要重采样、单声道要铺到两边。
 func monoLane(_ tone: URL) -> TimelineState {
     var state = baseState()

@@ -56,6 +56,19 @@ func makeSpeechNoise(_ name: String) -> URL {
     return url
 }
 
+/// 前 2 秒 440 Hz、后 2 秒 880 Hz 的正弦：变速那组靠「什么时候换音」验证拉伸真的按倍速走（恒定的音量和音高
+/// 验不出 1 倍速和 2 倍速的区别）。
+func makeSwitchTone(_ name: String) -> URL {
+    let url = root.appendingPathComponent(name)
+    let (code, out) = run(ffmpegPath, [
+        "-y", "-hide_banner", "-loglevel", "error",
+        "-f", "lavfi", "-i", "aevalsrc=0.5*sin(2*PI*t*if(lt(t\\,2)\\,440\\,880)):s=48000:d=4",
+        "-c:a", "aac", "-b:a", "192k", "-ac", "2", "-t", "4", url.path,
+    ])
+    if code != 0 { print("造换音素材失败：\(out)") }
+    return url
+}
+
 /// 恒定振幅的 4 秒正弦（振幅 0.5，免得两段相加过顶）。
 func makeTone(_ name: String, frequency: Int, withVideo: Bool, sampleRate: Int = 48_000, channels: Int = 2) -> URL {
     let url = root.appendingPathComponent(name)
@@ -122,7 +135,9 @@ func enginePCM(_ state: TimelineState) -> (pcm: Stereo, config: AudioEngineConfi
 }
 
 /// 一组：两边都算出来，逐窗口比。
-func compare(_ label: String, _ state: TimelineState, tolerance: Double = 0.15, expectSilent: Bool = false) async {
+/// `margin`：段的边界两侧各跳过多少秒不比（默认 12 ms；变速段 AVFoundation 的拉伸算法会把尾巴吃掉几十毫秒，给 0.1）。
+func compare(_ label: String, _ state: TimelineState, tolerance: Double = 0.15, margin: Double = 0.012,
+             totalTolerance: Double = 0.1, expectSilent: Bool = false) async {
     guard let reference = await referencePCM(state) else {
         check(false, "\(label)：参照读不出来")
         return
@@ -135,7 +150,7 @@ func compare(_ label: String, _ state: TimelineState, tolerance: Double = 0.15, 
     check(abs(engine.pcm.frames - expected) <= 1, "\(label)：引擎该正好渲 \(expected) 帧，渲了 \(engine.pcm.frames)")
     check(engine.underruns == 0, "\(label)：离线渲染不许欠载，欠了 \(engine.underruns) 帧")
     let boundaries = engine.config.tracks.flatMap { $0.segments.flatMap { [$0.start, $0.end] } }
-    let result = compareWindows(reference: reference, engine: engine.pcm, boundaries: boundaries, tolerance: tolerance)
+    let result = compareWindows(reference: reference, engine: engine.pcm, boundaries: boundaries, tolerance: tolerance, margin: margin)
     let total = rmsDB(engine.pcm.left)
     if expectSilent {
         check(total < -60, "\(label)：引擎该全静音，整段 RMS \(total) dB")
@@ -143,7 +158,7 @@ func compare(_ label: String, _ state: TimelineState, tolerance: Double = 0.15, 
     } else {
         // 素材是 −30 dBFS 左右的正弦，再乘推子会到 −40：门槛放在 −50，静音是 −60 以下。
         check(total > -50, "\(label)：引擎不该是静音（整段 RMS \(total) dB）—— 比对无从谈起")
-        check(abs(rmsDB(reference.left) - total) < 0.1, "\(label)：整段 RMS 两边该一样（参照 \(rmsDB(reference.left))，引擎 \(total)）")
+        check(abs(rmsDB(reference.left) - total) < totalTolerance, "\(label)：整段 RMS 两边该一样（参照 \(rmsDB(reference.left))，引擎 \(total)）")
     }
     check(result.compared > 0, "\(label)：一个窗口都没比到")
     check(result.failures.isEmpty, "\(label)：\(result.failures.count) 个窗口对不上，前几个：\(result.failures.prefix(4))")
@@ -228,6 +243,36 @@ for kind in [SoundSceneKind.bathroom, .telephone] {
         let from = Int(1.0 * 48_000), to = Int(2.0 * 48_000)
         let band = withScene.pcm.left[from..<to].enumerated().reduce(0.0) { $0 + Double(abs($1.element - without.pcm.left[$1.offset + from])) }
         check(band > 0.001 * Double(to - from), "挂了 \(kind.rawValue) 的声音该和原声不一样（逐采样差的均值 \(band / Double(to - from))）")
+    }
+}
+
+print("==> 12. 变速：保音调地拉伸，时长正好，换音的时刻按倍速落位，音高不变")
+do {
+    let switching = makeSwitchTone("switch-440-880.m4a")   // 前 2 秒 440 Hz，后 2 秒 880 Hz
+    let state = speedLanes(switching)
+    // 两种拉伸算法（AVAudioUnitTimePitch vs AVFoundation 的 spectral）不逐采样相等：包络只要对得上；
+    // 它们的尾巴差几十毫秒，整段 RMS 差 0.1–0.2 dB 是算法的差，不是混音的。
+    await compare("变速", state, tolerance: 1.5, margin: 0.1, totalTolerance: 0.3)
+    if let engine = enginePCM(state) {
+        /// 一段里过零多少次 → 频率。
+        func frequency(_ from: Double, _ to: Double) -> Double {
+            let samples = engine.pcm.left[Int(from * 48_000)..<Int(to * 48_000)]
+            var crossings = 0
+            var previous = samples.first ?? 0
+            for sample in samples.dropFirst() {
+                if (sample >= 0) != (previous >= 0) { crossings += 1 }
+                previous = sample
+            }
+            return Double(crossings) / 2 / (to - from)
+        }
+        // 2 倍速：素材 1.0–3.0 秒落在时间线 0.5–1.5 秒，素材 2.0 秒的换音落在时间线 1.0 秒。不拉伸的话换音要到 1.5 秒才来。
+        check(abs(frequency(0.55, 0.95) - 440) < 30, "2 倍速 0.55–0.95 秒该是 440 Hz（素材 1.1–1.9），量到 \(frequency(0.55, 0.95))")
+        check(abs(frequency(1.05, 1.45) - 880) < 30, "2 倍速 1.05–1.45 秒该是 880 Hz（素材 2.1–2.9），量到 \(frequency(1.05, 1.45))")
+        // 0.5 倍速：素材 1.5–2.5 秒落在时间线 2–4 秒，换音落在 3.0 秒。不拉伸的话 2.5 秒就换了。
+        check(abs(frequency(2.1, 2.9) - 440) < 30, "0.5 倍速 2.1–2.9 秒该是 440 Hz（素材 1.55–1.95），量到 \(frequency(2.1, 2.9))")
+        check(abs(frequency(3.1, 3.9) - 880) < 30, "0.5 倍速 3.1–3.9 秒该是 880 Hz（素材 2.05–2.45），量到 \(frequency(3.1, 3.9))")
+        check(rmsDB(engine.pcm.left[Int(1.6 * 48_000)..<Int(1.9 * 48_000)]) < -60, "2 倍速那段 1.5 秒就该结束了（1.6–1.9 秒要静音）")
+        check(rmsDB(engine.pcm.left[Int(3.8 * 48_000)..<Int(3.95 * 48_000)]) > -50, "0.5 倍速那段要一直响到 4 秒")
     }
 }
 
