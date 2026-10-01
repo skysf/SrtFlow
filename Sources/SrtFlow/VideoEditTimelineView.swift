@@ -347,7 +347,10 @@ struct VideoEditTimelineView: View {
             )
 
             // 影子指针 + 播放头竖线 + 播放跟随滚动：只有它订阅时钟，播放每一跳时间线本体不重算。
-            TimelinePlayheadLines(clock: clock, pps: pps, viewportWidth: viewportWidth, geometry: scrollGeometry)
+            TimelinePlayheadLines(
+                clock: clock, pps: pps, viewportWidth: viewportWidth, geometry: scrollGeometry,
+                follows: project.timelineFollowsPlayhead
+            )
         }
         // 内容区这一层：宽度就是 `contentWidth`，轨道底色和标尺刻度都画到这儿为止。
         .frame(width: contentWidth, alignment: .topLeading)

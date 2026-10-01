@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 时间线缩放的锚点自检：横向缩放后锚点那一刻回到视口里原来那个 x、工具栏缩放钉播放头（不在视口里
 # 钉视口正中）、纵向缩放后锚点那一行的那一处回到原来那个 y（行内按比例、缝里按距离）。
+# 外加视口的另一件事 —— 播放跟随（翻页式，开关默认关：关着时播放头到哪都不推）和剪辑页记住的开关
+#（默认值是产品口径、脚本驱动时永远默认值），见 docs/architecture/editor-remembered-toggles.md。
 #
 # 用法：
 #   scripts/check-timeline-zoom.sh
@@ -26,7 +28,12 @@ xcrun swiftc \
   -wmo \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditTimelineZoomAnchor.swift \
-  checks/TimelineZoom/main.swift
+  Sources/SrtFlow/VideoEditTimelinePlayheadFollow.swift \
+  Sources/SrtFlow/EditorToggles.swift \
+  Sources/SrtFlow/PerfCounters.swift \
+  checks/TimelineZoom/main.swift \
+  checks/TimelineZoom/FollowChecks.swift \
+  checks/TimelineZoom/TogglesChecks.swift
 
 echo "==> 运行"
 "$OUT"

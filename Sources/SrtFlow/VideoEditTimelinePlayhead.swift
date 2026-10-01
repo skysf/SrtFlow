@@ -21,6 +21,8 @@ struct TimelinePlayheadLines: View {
     let viewportWidth: Double
     /// 推横向滚动的唯一入口（§5b）。持有不订阅：滚动时这两根线不用跟着重算。
     let geometry: TimelineScrollGeometry
+    /// 播放跟随开着没有（工具栏的开关，记在 `EditorToggles`；默认关：播放时轨道区域停在哪就停在哪）。
+    let follows: Bool
     /// 播放跟随滚动的节流。
     @State private var lastFollowTime: Double = -1
 
@@ -53,23 +55,21 @@ struct TimelinePlayheadLines: View {
             .onReceive(clock.wentToStart) { geometry.scrollHorizontally(to: 0, animated: true) }
     }
 
-    /// 播放时让播放头留在视野里：只有它快滚出去了才动一下，
-    /// 平时不跟着走 —— 每帧都居中会看得人晕。
+    /// 播放跟随开着时让播放头留在视野里：只有它快滚出去了才翻一页（`PlayheadFollow`，纯值），
+    /// 平时不跟着走 —— 每帧都居中会看得人晕。关着（默认）什么都不做：播放头走出视口就走出去，
+    /// 停下来也不滚回来（2026-10-01 用户拍板）。
     ///
     /// **只碰横向。** 以前走 `ScrollViewProxy.scrollTo(_:anchor:)`，那个锚点是
     /// 双轴的：时间线能上下滚之后（2026-09-18），正在看下面几条轨时一按播放，
     /// 画面会被连带拽回最顶上。
     private func followPlayhead(_ time: Double) {
-        guard clock.isPlaying, viewportWidth > 80 else { return }
+        guard clock.isPlaying,
+              let target = PlayheadFollow.scrollTarget(
+                  playheadX: time * pps, offsetX: geometry.offsetX, viewportWidth: viewportWidth, enabled: follows
+              ) else { return }
+        // 节流只在真要推的时候记（写 @State 就多重算一遍）：推过一次之后 0.15 秒内不再推，动画还在走。
         guard abs(time - lastFollowTime) > 0.15 else { return }
         lastFollowTime = time
-
-        let x = time * pps
-        let offset = geometry.offsetX
-        let leftEdge = offset + 40
-        let rightEdge = offset + viewportWidth - 80
-        guard x < leftEdge || x > rightEdge else { return }
-        // 挪到视野偏左的位置，后面还留着一大段能看。
-        geometry.scrollHorizontally(to: x - viewportWidth * 0.15, animated: true)
+        geometry.scrollHorizontally(to: target, animated: true)
     }
 }

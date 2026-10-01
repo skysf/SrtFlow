@@ -23,7 +23,8 @@ enum SmokeProjectChanges {
         ("textEditingRequest", \.textEditingRequest), ("activeTool", \.activeTool),
         ("showsSubtitleList", \.showsSubtitleList), ("subtitleDraft", \.subtitleDraft),
         ("magnetEnabled", \.magnetEnabled), ("snappingEnabled", \.snappingEnabled),
-        ("linkageEnabled", \.linkageEnabled), ("pixelsPerSecond", \.pixelsPerSecond),
+        ("linkageEnabled", \.linkageEnabled), ("timelineFollowsPlayhead", \.timelineFollowsPlayhead),
+        ("pixelsPerSecond", \.pixelsPerSecond),
         ("rowHeights", \.rowHeights), ("importingCount", \.importingCount), ("isFreezing", \.isFreezing),
         ("renderSize", \.renderSize), ("notice", \.notice), ("canvasEditGeneration", \.canvasEditGeneration),
     ]

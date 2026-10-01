@@ -140,11 +140,14 @@ enum SmokeDriver {
         case .show:
             note(try SmokeUISteps.show(step, project: project))
         case .toggles:
-            // 三个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨。
+            // 四个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨；
+            // 冒烟里起手是默认值、拨了也不落盘（EditorToggles）。
             if let magnet = step.magnet { project.magnetEnabled = magnet }
             if let snapping = step.snapping { project.snappingEnabled = snapping }
             if let linkage = step.linkage { project.linkageEnabled = linkage }
-            note("开关：磁吸 \(project.magnetEnabled) 吸附 \(project.snappingEnabled) 链接 \(project.linkageEnabled)")
+            if let follows = step.followPlayhead { project.timelineFollowsPlayhead = follows }
+            note("开关：磁吸 \(project.magnetEnabled) 吸附 \(project.snappingEnabled) 链接 \(project.linkageEnabled) "
+                 + "播放跟随 \(project.timelineFollowsPlayhead)")
         case .open:
             guard case .file(let file) = step.path else { throw SmokeScriptError("open 要写 \"path\": \"/绝对路径\"") }
             await project.openProject(at: URL(fileURLWithPath: file))
