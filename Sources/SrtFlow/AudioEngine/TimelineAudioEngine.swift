@@ -37,12 +37,26 @@ final class TimelineAudioEngine {
     let engine = AVAudioEngine()
     private(set) var config: AudioEngineConfig
     /// 渲染块里环里没有数据、只能当静音的帧数（累计）。冒烟和自检看它。
-    var underrunFrames: Int { underruns.frames.load(ordering: .relaxed) }
-    /// `Atomic` 不能拷贝、不能被闭包按值捕获，渲染块里要累加就得经一个引用。
-    private final class UnderrunCounter: @unchecked Sendable {
-        let frames = Atomic<Int>(0)
+    var underrunFrames: Int { renderClock.underruns.load(ordering: .relaxed) }
+
+    /// 引擎的时钟：渲染线程每拍写、别处读。**采样时间只从渲染块的时间戳来**（节点的 48 kHz 域）——
+    /// `outputNode.lastRenderTime` 是声卡自己的采样率（这台机器 44.1 kHz），拿它算位置播放头会以 0.92 倍速走
+    /// （2026-10-01 冒烟：欠载 51k 帧、视频对表 60 次）。`Atomic` 不能拷贝、不能被闭包按值捕获，所以收在一个引用里。
+    private final class RenderClock: @unchecked Sendable {
+        /// 最近一拍的采样时间（这一拍第一帧的）。
+        let sampleTime = Atomic<Int64>(0)
+        /// 最近一拍对应的 host 时间（这一拍第一帧出声卡的时刻；离线渲染时是 0）。
+        let hostTime = Atomic<UInt64>(0)
+        /// 最近一拍多少帧：开播 / seek 时锚点要钉在**下一拍**上，差这么多。
+        let quantum = Atomic<Int>(0)
+        let underruns = Atomic<Int>(0)
     }
-    private let underruns = UnderrunCounter()
+    private let renderClock = RenderClock()
+    /// 一直挂着的静音节点：没有一条轨出声的时间线也要有人每拍更新时钟。
+    private var clockNode: AVAudioSourceNode?
+    private var running = false
+    /// 试听让路时压的那一份（线性），乘在总推子上。
+    private var duckGain: Float = 1
     private let anchor = AudioPublished<PlaybackAnchor>()
     private struct TrackUnit {
         let feeder: AudioTrackFeeder
@@ -58,15 +72,38 @@ final class TimelineAudioEngine {
             try engine.enableManualRenderingMode(.offline, format: Self.format, maximumFrameCount: 4096)
         }
         anchor.publish(PlaybackAnchor(position: 0, sampleTime: 0, playing: false))
+        attachClockNode()
         for track in config.tracks { attach(track) }
         engine.mainMixerNode.outputVolume = config.master
+    }
+
+    /// 静音的节点，只负责把每一拍的时间戳记进 `renderClock`。
+    private func attachClockNode() {
+        let clock = renderClock
+        let node = AVAudioSourceNode(format: Self.format) { isSilence, timestamp, frameCount, outputData -> OSStatus in
+            Self.tick(clock, timestamp: timestamp, frames: Int(frameCount))
+            let buffers = UnsafeMutableAudioBufferListPointer(outputData)
+            for buffer in buffers { buffer.mData?.assumingMemoryBound(to: Float.self).update(repeating: 0, count: Int(frameCount)) }
+            isSilence.pointee = true
+            return noErr
+        }
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: Self.format)
+        clockNode = node
+    }
+
+    private static func tick(_ clock: RenderClock, timestamp: UnsafePointer<AudioTimeStamp>, frames: Int) {
+        let stamp = timestamp.pointee
+        clock.sampleTime.store(Int64(stamp.mSampleTime), ordering: .relaxed)
+        clock.hostTime.store(stamp.mHostTime, ordering: .relaxed)
+        clock.quantum.store(frames, ordering: .relaxed)
     }
 
     private func attach(_ track: AudioEngineConfig.Track) {
         let feeder = AudioTrackFeeder(track: track)
         let renderer = AudioTrackRenderer(feeder: feeder, fader: track.fader)
         let anchor = self.anchor
-        let underruns = self.underruns
+        let clock = renderClock
         let node = AVAudioSourceNode(format: Self.format) { _, timestamp, frameCount, outputData -> OSStatus in
             let buffers = UnsafeMutableAudioBufferListPointer(outputData)
             let frames = Int(frameCount)
@@ -75,11 +112,12 @@ final class TimelineAudioEngine {
                   let right = buffers[1].mData?.assumingMemoryBound(to: Float.self) else { return noErr }
             left.update(repeating: 0, count: frames)
             right.update(repeating: 0, count: frames)
+            Self.tick(clock, timestamp: timestamp, frames: frames)
             guard let anchor = anchor.load(), anchor.playing else { return noErr }
             let position = anchor.position + (Int64(timestamp.pointee.mSampleTime) - anchor.sampleTime)
             let missing = renderer.render(position: position, frames: frames, into: left, right)
             if missing > 0 {
-                underruns.frames.wrappingAdd(missing, ordering: .relaxed)
+                clock.underruns.wrappingAdd(missing, ordering: .relaxed)
                 feeder.poke()
             }
             return noErr
@@ -100,6 +138,7 @@ final class TimelineAudioEngine {
         else { return }
         try engine.start()
         defer { engine.stop() }
+        // 离线：渲染块的时间戳从 manualRenderingSampleTime 起，锚点钉在它上面。
         anchor.publish(PlaybackAnchor(position: 0, sampleTime: Int64(engine.manualRenderingSampleTime), playing: true))
         var interleaved = [Float](repeating: 0, count: Int(buffer.frameCapacity) * 2)
         var position: Int64 = 0
@@ -118,30 +157,112 @@ final class TimelineAudioEngine {
         }
     }
 
+    // MARK: 换配置
+
+    /// 整份配置换掉（预览重建之后）：轨的结构可能变了，节点和喂样重来；播放头和播放状态不变。
+    /// 结构没变（同样的轨、同样的段）就只换增益，流不重开。
+    func replace(config new: AudioEngineConfig) {
+        if Self.sameStructure(config, new) {
+            updateGains(config: new)
+            return
+        }
+        config = new
+        for unit in units {
+            unit.feeder.stop()
+            engine.detach(unit.node)
+        }
+        units.removeAll()
+        for track in new.tracks { attach(track) }
+        engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
+        if running { startFeeders() }
+    }
+
+    /// 只换增益（拖推子 / 曲线、改音量）：按段对上的换采样器，轨道推子、总推子直接换。结构不同就退到 `replace`。
+    func updateGains(config new: AudioEngineConfig) {
+        guard Self.sameStructure(config, new) else {
+            replace(config: new)
+            return
+        }
+        config = new
+        for (unit, track) in zip(units, new.tracks) {
+            unit.renderer.fader.store(track.fader, ordering: .relaxed)
+            unit.feeder.updateGains(Dictionary(track.segments.map { ($0.clipID, $0.gain) }, uniquingKeysWith: { first, _ in first }))
+        }
+        engine.mainMixerNode.outputVolume = new.master * duckGain * (muted ? 0 : 1)
+    }
+
+    /// 试听让路：总推子再乘这么多（1 = 不让）。
+    func duck(_ gain: Float) {
+        duckGain = gain
+        engine.mainMixerNode.outputVolume = config.master * gain * (muted ? 0 : 1)
+    }
+
+    /// 整个引擎静音（冒烟用）：总推子照常算，输出不出声卡。
+    private var muted = false
+    func mute() {
+        muted = true
+        engine.mainMixerNode.outputVolume = 0
+    }
+
+    private static func sameStructure(_ a: AudioEngineConfig, _ b: AudioEngineConfig) -> Bool {
+        guard a.tracks.count == b.tracks.count else { return false }
+        return zip(a.tracks, b.tracks).allSatisfy { x, y in
+            x.name == y.name && x.segments.map(\.clipID) == y.segments.map(\.clipID)
+        }
+    }
+
     // MARK: 实时：播放头只是几个数
 
     /// 起图、起各轨的喂样线程；一开始停在 0。
     func start() throws {
         precondition(mode == .realtime)
         try engine.start()
-        for unit in units { unit.feeder.start { [anchor] in Self.position(of: anchor.load(), at: 0) } }
+        running = true
+        startFeeders()
     }
 
     func stop() {
+        running = false
         for unit in units { unit.feeder.stop() }
         engine.stop()
     }
 
-    /// 此刻播放头在时间线的第几秒（按引擎最近一拍的采样时间算；停着就是锚点）。
-    var playhead: Double {
-        Double(Self.position(of: anchor.load(), at: currentSampleTime)) / Self.sampleRate
+    private func startFeeders() {
+        for unit in units {
+            unit.feeder.start { [weak self] in
+                guard let self else { return 0 }
+                return Self.position(of: anchor.load(), at: currentSampleTime)
+            }
+        }
     }
 
-    func play(from seconds: Double? = nil) {
-        let current = anchor.load()
-        let frame = seconds.map { Int64(($0 * Self.sampleRate).rounded()) } ?? (current?.position ?? 0)
-        anchor.publish(PlaybackAnchor(position: frame, sampleTime: currentSampleTime, playing: true))
-        if seconds != nil { for unit in units { unit.feeder.seek(toFrame: frame) } }
+    var isPlaying: Bool { anchor.load()?.playing ?? false }
+
+    /// 此刻播放头在时间线的第几秒：最近一拍的位置，再按 host 时间补上这一拍已经过去的那一截；停着就是锚点。
+    var playhead: Double {
+        guard let anchor = anchor.load() else { return 0 }
+        guard anchor.playing else { return Double(anchor.position) / Self.sampleRate }
+        var position = Double(Self.position(of: anchor, at: currentSampleTime))
+        let host = renderClock.hostTime.load(ordering: .relaxed)
+        if host > 0 {
+            let elapsed = AVAudioTime.seconds(forHostTime: mach_absolute_time()) - AVAudioTime.seconds(forHostTime: host)
+            let quantum = Double(renderClock.quantum.load(ordering: .relaxed)) / Self.sampleRate
+            position += min(max(0, elapsed), quantum * 2) * Self.sampleRate
+        }
+        return position / Self.sampleRate
+    }
+
+    /// 从 `seconds` 起播（锚点钉在下一拍上，第一拍就是这儿的声音）。
+    func play(from seconds: Double) {
+        let frame = Int64((max(0, seconds) * Self.sampleRate).rounded())
+        anchor.publish(PlaybackAnchor(position: frame, sampleTime: nextQuantumSampleTime, playing: true))
+        for unit in units { unit.feeder.seek(toFrame: frame) }
+    }
+
+    /// 从锚点停着的地方接着播。
+    func resume() {
+        let position = anchor.load()?.position ?? 0
+        anchor.publish(PlaybackAnchor(position: position, sampleTime: nextQuantumSampleTime, playing: true))
     }
 
     func pause() {
@@ -153,12 +274,16 @@ final class TimelineAudioEngine {
     func seek(to seconds: Double) {
         let frame = Int64((max(0, seconds) * Self.sampleRate).rounded())
         let playing = anchor.load()?.playing ?? false
-        anchor.publish(PlaybackAnchor(position: frame, sampleTime: currentSampleTime, playing: playing))
+        anchor.publish(PlaybackAnchor(position: frame, sampleTime: nextQuantumSampleTime, playing: playing))
         for unit in units { unit.feeder.seek(toFrame: frame) }
     }
 
-    private var currentSampleTime: Int64 {
-        Int64(engine.outputNode.lastRenderTime?.sampleTime ?? 0)
+    /// 最近一拍的采样时间（渲染块记的，节点的 48 kHz 域）。
+    private var currentSampleTime: Int64 { renderClock.sampleTime.load(ordering: .relaxed) }
+
+    /// 下一拍的采样时间：最近一拍的起点加上它的长度。
+    private var nextQuantumSampleTime: Int64 {
+        currentSampleTime + Int64(renderClock.quantum.load(ordering: .relaxed))
     }
 
     private static func position(of anchor: PlaybackAnchor?, at sampleTime: Int64) -> Int64 {
@@ -167,3 +292,6 @@ final class TimelineAudioEngine {
         return anchor.position + max(0, sampleTime - anchor.sampleTime)
     }
 }
+
+/// `PlayerClock` 通过这个协议驱动引擎（AudioEngine/PlaybackAudioSource.swift）。
+extension TimelineAudioEngine: PlaybackAudioSource {}

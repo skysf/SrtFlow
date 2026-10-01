@@ -47,11 +47,14 @@ enum SmokeDriver {
     /// 上次 `perfReset` 的时刻：`perf` 快照里带上这一窗口里主线程卡了几次、最长一次多少毫秒
     /// （MainThreadWatchdog；卡顿次数不稳，只进冒烟结果，不进性能 ratchet 的账）。
     private static var stallsResetAt = Date()
+    /// 结果里要报引擎的欠载和对表次数（VideoEditProjectAudioMix.swift / PlayerClock）。
+    private static weak var project: VideoEditProject?
 
     /// 编辑器出现时调（`DevHooks.editorAppeared`）。没设脚本就什么都不做。
     static func startIfRequested(project: VideoEditProject) {
         guard isRequested, !started else { return }
         started = true
+        Self.project = project
         let env = ProcessInfo.processInfo.environment
         let script = URL(fileURLWithPath: env[PerfCounters.smokeScriptKey] ?? "")
         let output = env[outputKey].map { URL(fileURLWithPath: $0) }
@@ -223,6 +226,11 @@ enum SmokeDriver {
 
     private static func write(to output: URL, error: String?) {
         var body: [String: Any] = ["log": log, "perf": perf, "cpuMs": cpu, "wallMs": wall, "state": states]
+        body["audioEngine"] = [
+            "enabled": PreviewAudioEngineHost.isEnabled,
+            "underrunFrames": project?.audioEngineHost.underrunFrames ?? 0,
+            "videoDriftCorrections": project?.clock.driftCorrections ?? 0,
+        ] as [String: Any]
         body["stalls"] = MainThreadWatchdog.shared.recentStalls.map { stall -> [String: Any] in
             ["at": stallTime.string(from: stall.startedAt), "ms": stall.milliseconds,
              "context": stall.context, "stack": Array(stall.stack.prefix(12))]

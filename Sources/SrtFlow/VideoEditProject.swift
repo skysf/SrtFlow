@@ -383,9 +383,11 @@ final class VideoEditProject {
     let trimGuides = TrimGuideState()
     /// 当前预览合成里「谁的声音在哪条音轨上」。改音量/渐变时靠它只换 audioMix
     /// 而不重建整条预览（`refreshAudioMix`）。
-    @ObservationIgnored private var audioPlan: AudioMixPlan?
+    @ObservationIgnored var audioPlan: AudioMixPlan?
     /// `previewAudioLive` 的节流时间戳。
-    @ObservationIgnored private var lastLiveAudioPreview: CFTimeInterval = 0
+    @ObservationIgnored var lastLiveAudioPreview: CFTimeInterval = 0
+    /// 开关开着时预览的声音走它（VideoEditProjectAudioMix.swift）。
+    let audioEngineHost = PreviewAudioEngineHost()
     /// 正在块上拖音量线（扫帧 peek 要让位 —— 调音量时画面跟着指针乱跳只会干扰）。
     /// 不被观察（`@ObservationIgnored`）：只有 `hoverPeek` 在鼠标事件里读它，不需要驱动重绘。
     @ObservationIgnored var isDraggingVolume = false
@@ -1242,45 +1244,6 @@ final class VideoEditProject {
 
     // MARK: - 预览重建
 
-    /// 时间线一变就（去抖后）重建预览合成。播放头位置和播放状态都要还原，
-    /// 只把新的 audioMix 换到正在播的条目上，**不碰画面**。
-    ///
-    /// 音量和渐入渐出只进 audioMix，走完整重建的话要
-    /// `replaceCurrentItem`，画面会闪一下（用户报的问题）。返回 false 表示
-    /// 这条快路径此刻用不上（还没建过预览、或者合成已经被换掉），调用方
-    /// 应当退回 `scheduleRebuild()`。
-    ///
-    /// 前提是**合成结构没变**，判据在 `TimelineState.differsOnlyInAudioMix`，
-    /// 别在这里另立一套。
-    @discardableResult
-    func refreshAudioMix() -> Bool {
-        guard let plan = audioPlan, !plan.lanes.isEmpty,
-              let item = clock.player.currentItem else { return false }
-        // 重建正在路上时别插队：它马上会带着新的 plan 和 mix 落地，
-        // 这时候按旧 plan 算出来的 mix 会被它覆盖，白算一次还可能对不上。
-        guard !rebuildStatus.isRebuilding else { return false }
-        PerfCounters.event(.audioMixRefresh)
-        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: plan, meters: meters)
-        return true
-    }
-
-    /// 拖音量线 / 推子的**过程中**让预览当场听得见，但**不写 `state`**（时间线拖动 §0：
-    /// 每一拍写 `state` 会让读它的视图每一拍都重算、还要重挂一次自动保存）。拿一份临时状态算
-    /// audioMix 直接换上；节流到 ~20 次/秒。松手时的真提交走 `perform` → 快路径，
-    /// 手势中途放弃时调一次 `refreshAudioMix()` 换回真状态的 mix。
-    ///
-    /// 同一个 `makeAudioMix`、同一份 plan —— 和快路径、整条重建是同一笔账。
-    func previewAudioLive(_ mutate: (inout TimelineState) -> Void) {
-        let now = CACurrentMediaTime()
-        guard now - lastLiveAudioPreview > 0.05 else { return }
-        guard let plan = audioPlan, !plan.lanes.isEmpty,
-              let item = clock.player.currentItem, !rebuildStatus.isRebuilding else { return }
-        lastLiveAudioPreview = now
-        var preview = state
-        mutate(&preview)
-        item.audioMix = VideoEditCompositionBuilder.makeAudioMix(state: preview, plan: plan, meters: meters)
-    }
-
     /// 不然每改一刀就跳回 0:00 没法干活。
     func scheduleRebuild() {
         // 重建按旧路径开素材，文件被挪走的话对应时段会静默变黑（builder 对
@@ -1307,20 +1270,29 @@ final class VideoEditProject {
             self.audioPlan = built.audioPlan
             let wasPlaying = self.clock.isPlaying
             let time = self.clock.time
+            let engineDriven = PreviewAudioEngineHost.isEnabled
+            if engineDriven {
+                // 声音归引擎：合成里的音轨拆掉（播放器只剩画面，seek 才快），audioMix 不挂，快路径不走 plan。
+                for track in built.composition.tracks(withMediaType: .audio) { built.composition.removeTrack(track) }
+                self.audioPlan = nil
+            }
             let item = AVPlayerItem(asset: built.composition)
             item.videoComposition = built.videoComposition
-            // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
-            // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
-            // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。
-            meters.beginComposition()
-            item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
-                state: snapshot, plan: built.audioPlan, meters: meters
-            ) ?? built.audioMix
-            // 变速片段保持音调：和成片的离线混音同一个算法（成片的声音就是这份混音读出来的）。
-            item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
+            if !engineDriven {
+                // 新合成：电平表的 tap 全部重来（旧的挂在旧 item 上）。之后同一条合成里的每次
+                // 换 mix（快路径、拖推子 / 音量线时的试听）都挂回这一批 —— 新建 tap 会让播放
+                // 卡住约 0.6 秒（docs/architecture/audio-mixer.md）。
+                meters.beginComposition()
+                item.audioMix = VideoEditCompositionBuilder.makeAudioMix(
+                    state: snapshot, plan: built.audioPlan, meters: meters
+                ) ?? built.audioMix
+                // 变速片段保持音调：和成片的离线混音同一个算法（成片的声音就是这份混音读出来的）。
+                item.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
+            }
             self.clock.attachItem(item)
+            if engineDriven { self.audioEngineHost.apply(AudioEngineConfig.make(from: snapshot), clock: self.clock) }
             self.clock.seek(to: min(time, snapshot.duration), precise: true)
-            if wasPlaying { self.clock.player.play() }
+            if wasPlaying { self.clock.play() }
         }
     }
 }

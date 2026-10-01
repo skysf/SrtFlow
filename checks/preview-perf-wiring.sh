@@ -178,7 +178,7 @@ need Sources/SrtFlow/VideoPreviewView.swift 'PerfCounters\.event\(\.playerItemAt
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionBuild\)' '建合成的计数'
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionAssetOpen\)' '开素材文件的计数'
 need Sources/SrtFlow/VideoEditAudioMeter.swift 'PerfCounters\.event\(\.meterTapCreate\)' '新建电平表 tap 的计数'
-need Sources/SrtFlow/VideoEditProject.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
+need Sources/SrtFlow/VideoEditProjectAudioMix.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
 # 编辑器出现时的开发钩子收在 DevHooks.editorAppeared 里（2026-09-24 从 VideoEditView 挪出去）：
 # 钉住两头 —— 视图调了钩子、钩子里启动了性能测试。
 need Sources/SrtFlow/VideoEditView.swift 'DevHooks\.editorAppeared\(project: project\)' '编辑器出现时调开发钩子'
@@ -271,7 +271,7 @@ if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditProject.swift | grep -cE 
 fi
 need Sources/SrtFlow/VideoEditView.swift 'PreviewRebuildSpinner\(status: project\.rebuildStatus\)' '工具栏上订阅重建开关的转圈'
 # 读值的只许是不画界面的两处：工程自己（快路径让路）和性能测试的「落定」。
-readers="$(grep -lE 'rebuildStatus\.isRebuilding' $SWIFT_FILES | grep -vE '/(VideoEditProject|PreviewBench)\.swift$' || true)"
+readers="$(grep -lE 'rebuildStatus\.isRebuilding' $SWIFT_FILES | grep -vE '/(VideoEditProject|VideoEditProjectAudioMix|PreviewBench)\.swift$' || true)"
 if [ -n "$readers" ]; then
   echo "✗ 这些文件直接读了重建开关（不订阅就不刷新，转圈会卡住）：${readers}"; fail=1
 fi

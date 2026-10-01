@@ -48,8 +48,8 @@ final class AudioTrackRenderer: @unchecked Sendable {
             scratchRight.update(repeating: 0, count: count)
             let got = stream.ring.accumulate(position: from, frames: count, into: scratchLeft, scratchRight)
             missing += count - got
-            mix(stream.segment.gain, fader: fader, from: from, count: count,
-                into: outLeft + offset, outRight + offset)
+            let gain = stream.gain.load()?.sampler ?? stream.segment.gain
+            mix(gain, fader: fader, from: from, count: count, into: outLeft + offset, outRight + offset)
         }
         return missing
     }

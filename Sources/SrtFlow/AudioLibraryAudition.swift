@@ -104,12 +104,15 @@ final class AudioLibraryAudition: ObservableObject {
         if restoreVolume == nil { restoreVolume = timeline.volume }
         let factor = Float(pow(10.0, Self.duckingDB / 20.0))
         timeline.volume = (restoreVolume ?? 1) * factor
+        // 开关开着时声音在引擎里，播放器的音量压了也没用：引擎的总推子再乘同一个让路量。
+        VideoEditProject.shared.audioEngineHost.duck(factor)
     }
 
     private func unduck(_ timeline: AVPlayer?) {
         guard let timeline, let restore = restoreVolume else { return }
         timeline.volume = restore
         restoreVolume = nil
+        VideoEditProject.shared.audioEngineHost.duck(1)
     }
 
     private func teardown() {
