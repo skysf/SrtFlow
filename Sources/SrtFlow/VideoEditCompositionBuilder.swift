@@ -8,6 +8,7 @@ import SrtFlowCore
 /// 同时有画面，同一条轨做不到。上层视频轨每条时间线轨各占一条合成轨。转场用
 /// 透明度渐变近似（压黑/闪白在导出时由 xfade 精确渲染，预览的时间账完全一致）。
 /// 变速用 scaleTimeRange。**合成里只有画面**：声音全在音频引擎里（AudioEngine/，预览实时渲、成片离线渲），
+/// 画面从原片取，或者（只有预览重建传 `proxies` 时）从优化媒体的块取（CompositionClipInsert，docs/architecture/optimized-media.md）。
 /// 2026-10-01 PR3b 之前这里还插合成音轨、铺 audioMix。画面收得比时间线总长早（配乐比画面长、纯音频时间线）时
 /// 垫一截黑底铺到总长：播放器的条目要和时间线一样长，不然播到画面结尾就停在最后一帧上、时钟对表也没完没了。
 enum VideoEditCompositionBuilder {
@@ -67,9 +68,11 @@ enum VideoEditCompositionBuilder {
     /// 注意：默认合成器的 `backgroundColor` **只支持不透明色（alpha 被忽略，
     /// 文档明说）**，所以这里出不了透明背景 —— 带 alpha 的预渲染走
     /// fill + matte 双渲染（见 AnimatedClipPrerenderer）。
+    /// - Parameter proxies: 优化媒体转好的块；只有预览重建传（成片、预渲染、AI 看永远用原片）。
     static func build(
         from state: TimelineState,
-        renderSizeOverride: CGSize? = nil
+        renderSizeOverride: CGSize? = nil,
+        proxies: OptimizedMediaLookup = .none
     ) async -> Built? {
         // 主轨按数组顺序进 A/B 轨，插入游标只会前进：乱序的输入会让
         // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
@@ -126,13 +129,14 @@ enum VideoEditCompositionBuilder {
             // 19.9598、这一段从 19.96 起，各自截断落在相邻两格，A/B 两条轨之间就空出一格 —— 接缝上一帧黑。
             let gap = clip.timelineStart - previousMainEnd
             let startsAt = gap > 0 && gap < TimelineState.mainGapTolerance ? previousMainEnd : clip.timelineStart
-            guard await insert(
-                source: sourceVideo, clip: clip, into: videoTrack, cursor: &videoCursors[slot], at: startsAt
+            guard let geometrySource = await CompositionClipInsert.insert(
+                original: sourceVideo, proxies: await proxyTracks(for: clip, in: proxies, asset: asset),
+                clip: clip, into: videoTrack, cursor: &videoCursors[slot], at: startsAt
             ) else { continue }
             previousMainEnd = clip.timelineEnd
 
-            let naturalSize = (try? await sourceVideo.load(.naturalSize)) ?? renderSize
-            let preferred = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
+            let naturalSize = (try? await geometrySource.load(.naturalSize)) ?? renderSize
+            let preferred = (try? await geometrySource.load(.preferredTransform)) ?? .identity
             let fitted = fittingTransform(
                 naturalSize: naturalSize,
                 preferredTransform: preferred,
@@ -243,10 +247,13 @@ enum VideoEditCompositionBuilder {
             where !clip.needsStillConversion {
                 let sourceAsset = asset(for: clip.sourceURL)
                 guard let sourceVideo = try? await sourceAsset.loadTracks(withMediaType: .video).first else { continue }
-                guard await insert(source: sourceVideo, clip: clip, into: videoTrack, cursor: &videoCursor) else { continue }
+                guard let geometrySource = await CompositionClipInsert.insert(
+                    original: sourceVideo, proxies: await proxyTracks(for: clip, in: proxies, asset: asset),
+                    clip: clip, into: videoTrack, cursor: &videoCursor
+                ) else { continue }
 
-                let naturalSize = (try? await sourceVideo.load(.naturalSize)) ?? renderSize
-                let preferred = (try? await sourceVideo.load(.preferredTransform)) ?? .identity
+                let naturalSize = (try? await geometrySource.load(.naturalSize)) ?? renderSize
+                let preferred = (try? await geometrySource.load(.preferredTransform)) ?? .identity
                 let fitted = fittingTransform(
                     naturalSize: naturalSize,
                     preferredTransform: preferred,
@@ -404,77 +411,17 @@ enum VideoEditCompositionBuilder {
         )
     }
 
-    /// 把素材段插进合成轨。轨内必须连续，落点之前的空档用空段补齐。
-    /// 变速在插完之后用 scaleTimeRange 拉伸。
-    ///
-    /// 截取范围要收口到**源轨自己的范围**里（素材比标的时长短一小截时按视频时长去截会越界抛错）。
-    ///
-    /// **首尾定格**（`renderHoldHead` / `renderHoldTail`，只有渲染副本里转场余料
-    /// 不够的主轨段才有）：把首帧 / 尾帧插进来再拉长成定格（声音那一截引擎留空）。
-    /// 导出那边是 `tpad` 复制首尾帧 + 补静音，同一笔账（VideoEditExportGraph）。
-    /// `at`：落点（时间线秒），不传就是段自己的起点；主轨接缝的零头会传前一段的末尾。
-    private static func insert(
-        source: AVAssetTrack,
-        clip: EditClip,
-        into track: AVMutableCompositionTrack,
-        cursor: inout Double,
-        at: Double? = nil
-    ) async -> Bool {
-        let at = at ?? clip.timelineStart
-        let holdHead = clip.renderHoldHead
-        let holdTail = clip.renderHoldTail
-
-        let trackRange = (try? await source.load(.timeRange))
-            ?? CMTimeRange(start: .zero, duration: time(clip.assetDuration))
-        let trackEnd = trackRange.end.seconds
-        let start = max(clip.renderSourceStart, max(0, trackRange.start.seconds))
-        let available = trackEnd - start
-        guard available > 0.01, clip.renderSourceDuration > 0.01 else { return false }
-        let sourceDuration = min(clip.renderSourceDuration, available)
-
-        // 只往合成轨真正的末尾后面接，不信 Double 游标（CompositionTime）。
-        CompositionTime.pad(track, to: time(at))
-        let isVideo = source.mediaType == .video
-        var position = at
-        if holdHead > 0.0005 {
-            if isVideo {
-                await CompositionHold.insert(
-                    source: source, frameAt: start, duration: holdHead, into: track, at: position
-                )
-            } else {
-                CompositionTime.pad(track, to: time(position + holdHead))
-            }
-            position += holdHead
+    /// 这一段的优化媒体块（都转好了才给；没有代理 / 没转全 / 块文件打不开 → nil，插原片）。只开真要用的那几块。
+    private static func proxyTracks(
+        for clip: EditClip, in lookup: OptimizedMediaLookup, asset: (URL) -> AVURLAsset
+    ) async -> [Int: AVAssetTrack]? {
+        guard let chunks = lookup.readyChunks(for: clip) else { return nil }
+        var tracks: [Int: AVAssetTrack] = [:]
+        for (chunk, url) in chunks {
+            guard let track = try? await asset(url).loadTracks(withMediaType: .video).first else { return nil }
+            tracks[chunk] = track
         }
-        let insertAt = CompositionTime.appendPoint(time(position), on: track)
-        do {
-            try track.insertTimeRange(
-                CMTimeRange(start: time(start), duration: time(sourceDuration)), of: source, at: insertAt
-            )
-        } catch {
-            return false
-        }
-        // 真素材那一段在时间线上的长度。被收口的部分按同一比例折算（= 取到的
-        // 素材秒 ÷ 变速），画面和声音才不会错位。
-        let realDuration = sourceDuration / max(0.05, clip.speed)
-        if abs(clip.speed - 1) > 0.001 {
-            track.scaleTimeRange(
-                CMTimeRange(start: insertAt, duration: time(sourceDuration)), toDuration: time(realDuration)
-            )
-        }
-        position += realDuration
-        if holdTail > 0.0005, isVideo {
-            // 尾帧定格一直铺到这段的结尾：素材被收口短了一截时，差的那点也由
-            // 定格补上，免得定格前面夹一条黑缝。声音不用插 —— 下一段插进来之前
-            // 游标之后的空档会补空段，就是静音。
-            let frame = await CompositionHold.frameDuration(of: source)
-            await CompositionHold.insert(
-                source: source, frameAt: max(start, start + sourceDuration - frame),
-                duration: at + clip.timelineDuration - position, into: track, at: position
-            )
-        }
-        cursor = at + clip.timelineDuration
-        return true
+        return tracks
     }
 
     /// 素材画面摆进输出画布的完整变换：源自带旋转摆正 → 裁切区挪到原点 →

@@ -117,10 +117,8 @@ final class VideoEditProject {
         generation == documentGeneration
     }
 
-    /// 「打开工程」请求的流水号。
-    ///
-    /// 连点两个最近工程时，慢的那个可能后回来：没有它的话，先打开的 B 会被
-    /// A 的过期结果又顶掉。每次 openProject 进门 +1，await 回来对不上就作废。
+    /// 「打开工程」请求的流水号：连点两个最近工程时慢的那个可能后回来，openProject 进门 +1、await 回来对不上就作废
+    ///（不然先打开的 B 会被 A 的过期结果顶掉）。
     @ObservationIgnored var openRequestToken = 0
 
     private func documentDidChange() {
@@ -395,6 +393,8 @@ final class VideoEditProject {
     @ObservationIgnored weak var undoManager: UndoManager?
 
     let mediaProbes = MediaProbeCache()
+    /// 优化媒体：后台转码队列 + 预览窗口的「优化媒体 / 原片」；只有工具栏的小菜单订阅它（OptimizedMedia/）。
+    let optimizedMedia = OptimizedMediaCoordinator()
     @ObservationIgnored private var rebuildTask: Task<Void, Never>?
     /// 预览重建的代数，旧的构建结果回来晚了就直接扔。
     @ObservationIgnored private var rebuildGeneration = 0
@@ -408,8 +408,7 @@ final class VideoEditProject {
         defaultVideoRowHeight = stored("editVideoRowHeight", 54)
         defaultAudioRowHeight = stored("editAudioRowHeight", 34)
 
-        // 素材在工程开着的时候也可能被改名/挪走，而去访达动文件必然让 App
-        // 失焦 —— 一激活就重核对，轨道块名字和丢失提示当场跟上。
+        // 素材在工程开着的时候也可能被改名 / 挪走，去访达动文件必然让 App 失焦 —— 一激活就重核对，块名和丢失提示当场跟上。
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
@@ -417,6 +416,7 @@ final class VideoEditProject {
         ) { [weak self] _ in
             Task { @MainActor in self?.revalidateMediaLocations() }
         }
+        optimizedMedia.project = self  // 协调者要请重建、读播放状态；弱引用
     }
 
     /// 恰好选中一个时的那一个（检查器只在单选时展示细节）。
@@ -1243,10 +1243,8 @@ final class VideoEditProject {
 
     /// 不然每改一刀就跳回 0:00 没法干活。
     func scheduleRebuild() {
-        // 重建按旧路径开素材，文件被挪走的话对应时段会静默变黑（builder 对
-        // 加载失败的 clip 只能跳过）——先把素材位置重核对一遍，跟得上的当场
-        // 改引用再重建一次，跟不上的亮出丢失提示。单飞 + 无变化即收敛，
-        // 核对触发的重建不会和这里循环。
+        // 重建按旧路径开素材，文件被挪走的话对应时段会静默变黑（builder 对加载失败的 clip 只能跳过）——先把素材位置
+        // 重核对一遍，跟得上的当场改引用再重建一次，跟不上的亮出丢失提示。单飞 + 无变化即收敛，不会和这里循环。
         revalidateMediaLocations()
         rebuildGeneration += 1
         let generation = rebuildGeneration
@@ -1256,7 +1254,8 @@ final class VideoEditProject {
             try? await Task.sleep(nanoseconds: 120_000_000)  // 防抖只为并掉一阵子里的连续改动；250 时松手到预览回来白等 130ms（2026-09-25）
             guard let self, !Task.isCancelled else { return }
             let snapshot = self.state
-            let built = await VideoEditCompositionBuilder.build(from: snapshot)
+            // 画面按优化媒体转好的块换源（只有这一处传 proxies：成片、预渲染、AI 看永远原片）。
+            let built = await VideoEditCompositionBuilder.build(from: snapshot, proxies: self.optimizedMedia.lookup(for: snapshot))
             guard !Task.isCancelled, generation == self.rebuildGeneration else { return }
             self.rebuildStatus.set(false)
             guard let built else {
@@ -1275,6 +1274,7 @@ final class VideoEditProject {
             self.audioEngineHost.apply(AudioEngineConfig.make(from: snapshot), clock: self.clock, meters: meters)
             self.clock.seek(to: min(time, snapshot.duration), precise: true)
             if wasPlaying { self.clock.play() }
+            self.optimizedMedia.sync(state: snapshot, playhead: time)
         }
     }
 }

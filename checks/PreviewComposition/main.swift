@@ -47,8 +47,7 @@ func check(_ condition: Bool, _ message: String, line: Int = #line) {
 let root = FileManager.default.temporaryDirectory
     .appendingPathComponent("srtflow-previewcheck-\(UUID().uuidString)", isDirectory: true)
 try! FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-// 顶层 defer 会被结尾的 exit() 绕过（exit 不跑 defer）——
-// 实测这个检查攒了 52 个 srtflow-previewcheck-* 临时目录。显式清理。
+// 顶层 defer 会被结尾的 exit() 绕过（exit 不跑 defer），实测攒了 52 个 srtflow-previewcheck-* 临时目录：显式清理。
 
 // 写测试素材的函数（纯色 / 两色视频、带声音的 WAV）在 Fixtures.swift。
 
@@ -66,6 +65,7 @@ Task {
         try await checkAppendOnly(root: root)
         // 0c. 切片表按格子铺、首尾相接（SliceTicks.swift，2026-09-29 黑屏案例：边界各自截断落在相邻两格）。
         try await checkSliceTicks(root: root)
+        try await checkProxySwap(root: root)  // 0d. 优化媒体按块换源（ProxySwap.swift，2026-10-01 V2）
 
         // 1. 无任何变换：精确「垫底」路径，中点必须还是全亮（dissolve 不变暗）。
         if let built = await VideoEditCompositionBuilder.build(

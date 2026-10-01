@@ -94,6 +94,9 @@ xcrun swiftc \
   Sources/SrtFlow/AudioKWeighting.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/VideoEditCompositionBuilder.swift \
+  Sources/SrtFlow/CompositionClipInsert.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaLookup.swift \
+  Sources/SrtFlow/OptimizedMedia/OptimizedMediaPolicy.swift \
   Sources/SrtFlow/VideoEditKeyframeSlices.swift \
   Sources/SrtFlow/CompositionTime.swift \
   Sources/SrtFlow/CompositionSlices.swift \

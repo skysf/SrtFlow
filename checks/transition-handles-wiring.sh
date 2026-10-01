@@ -64,10 +64,14 @@ else
 fi
 grep -qE '\.renderHold(Head|Tail)[[:space:]]*=' "${HANDLES}" \
     || { echo "  ✗ 展开函数没写定格字段：余料不够的缝会在渲染时缺一截" >&2; FAILED=1; }
+# 预览插画面的那一步 2026-10-01（优化媒体 V2）起在 CompositionClipInsert.swift（从 builder 拆出），builder 只负责调它。
+INSERT="Sources/SrtFlow/CompositionClipInsert.swift"
 for needle in 'clip.renderSourceStart' 'clip.renderSourceDuration' 'await CompositionHold.insert('; do
-    grep -qF "${needle}" "${BUILDER}" \
+    grep -qF "${needle}" "${INSERT}" \
         || { echo "  ✗ 预览合成没用 ${needle}：定格那一截会插成素材之外的画面或空段" >&2; FAILED=1; }
 done
+grep -qF 'CompositionClipInsert.insert(' "${BUILDER}" \
+    || { echo "  ✗ 预览合成没走 CompositionClipInsert.insert：定格那一截的接线断了" >&2; FAILED=1; }
 for needle in 'Self.holdSteps(video: clip)' 'let start = clip.renderSourceStart'; do
     grep -qF "${needle}" "${GRAPH}" \
         || { echo "  ✗ 导出没接 ${needle}：成片里定格那一截会是黑的" >&2; FAILED=1; }

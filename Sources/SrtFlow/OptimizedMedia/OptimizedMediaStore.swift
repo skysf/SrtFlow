@@ -14,7 +14,7 @@ import Foundation
 
 enum OptimizedMediaStore {
     /// 转码参数的版本：改关键帧间隔、码率、尺寸规则、编码器都要 +1。
-    static let parametersVersion = 1
+    static let parametersVersion = 2  // 2（2026-10-01 V2）：按恒定帧率写、块头那一帧对齐块头
     static let capacityDefaultsKey = "optimizedMedia.capacityBytes"
     static let defaultCapacityBytes: Int64 = 10 * 1024 * 1024 * 1024
 

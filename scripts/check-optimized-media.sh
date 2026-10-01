@@ -35,7 +35,7 @@ xcrun swiftc \
   Sources/SrtFlow/OptimizedMedia/OptimizedMediaStore.swift \
   Sources/SrtFlow/OptimizedMedia/OptimizedMediaTranscoder.swift \
   checks/OptimizedMedia/main.swift \
-  checks/OptimizedMedia/Fixtures.swift \
+  checks/OptimizedMedia/RampVideo.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

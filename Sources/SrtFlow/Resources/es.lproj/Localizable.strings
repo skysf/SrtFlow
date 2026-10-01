@@ -1055,3 +1055,12 @@
 "Ease out" = "Salida suave";
 "Ease in and out" = "Entrada y salida suaves";
 "How the values move from the keyframe before the playhead to the next one" = "Cómo pasan los valores del fotograma clave anterior al cabezal al siguiente";
+
+// 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）
+"Optimized media" = "Medios optimizados";
+"Original files" = "Archivos originales";
+"Optimized" = "Optimizado";
+"Original file" = "Archivo original";
+"Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "Imagen de la previsualización: medios optimizados (fotogramas clave densos, así los clics durante la reproducción responden al instante) o los archivos originales";
+"Preparing optimized media in the background — the preview uses the original files until each part is ready" = "Preparando los medios optimizados en segundo plano: la previsualización usa los archivos originales hasta que cada parte esté lista";
+"Couldn’t prepare optimized media for %@; the preview uses the original file." = "No se pudieron preparar los medios optimizados de %@; la previsualización usa el archivo original.";
