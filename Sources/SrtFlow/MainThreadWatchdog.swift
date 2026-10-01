@@ -151,9 +151,25 @@ final class MainThreadWatchdog: @unchecked Sendable {
         callback?(stall)
     }
 
+    // MARK: 旁注
+
+    /// 往同一份日志里记一行**不是卡顿**的事（播放中 seek、视频对表……）：用户报「卡」的时候，卡顿的栈旁边要有
+    /// 当时在做什么才看得懂。一行一句话、带时刻，不带栈；统一日志里也有一行。别拿它当 print 用：每秒几十行就把
+    /// 卡顿淹了，高频的事自己限流。
+    func note(_ text: String) {
+        logger.notice("\(text, privacy: .public)")
+        appendToLog("\(Self.timestamp.string(from: Date()))  注：\(text)\n")
+    }
+
     // MARK: 日志文件
 
     private func appendToLog(_ stall: Stall) {
+        var text = "\(Self.timestamp.string(from: stall.startedAt))  卡了 \(stall.milliseconds) ms  \(stall.context)\n"
+        for frame in stall.stack { text += "    \(frame)\n" }
+        appendToLog(text)
+    }
+
+    private func appendToLog(_ text: String) {
         guard let logDirectory else { return }
         let file = logDirectory.appendingPathComponent(Self.logFileName)
         let manager = FileManager.default
@@ -163,8 +179,6 @@ final class MainThreadWatchdog: @unchecked Sendable {
             try? manager.removeItem(at: previous)
             try? manager.moveItem(at: file, to: previous)
         }
-        var text = "\(Self.timestamp.string(from: stall.startedAt))  卡了 \(stall.milliseconds) ms  \(stall.context)\n"
-        for frame in stall.stack { text += "    \(frame)\n" }
         if !manager.fileExists(atPath: file.path) { manager.createFile(atPath: file.path, contents: nil) }
         guard let handle = try? FileHandle(forWritingTo: file) else { return }
         defer { try? handle.close() }

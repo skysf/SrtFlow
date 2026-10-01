@@ -52,6 +52,8 @@ final class PlayerClock: ObservableObject {
     private var driftTicks = 0
     /// 对了几次表（冒烟看它）。
     private(set) var driftCorrections = 0
+    /// 上一次往卡顿日志里记「对表」的时刻：连着对表只记第一次，别把日志淹了。
+    private var lastDriftNote: TimeInterval = 0
 
     /// - Parameter observationInterval: 时间回调的间隔。烧字幕预览要靠它切换叠在
     ///   画面上的那句字幕，所以给得比字幕编辑器密一些。
@@ -153,6 +155,11 @@ final class PlayerClock: ObservableObject {
         guard driftTicks >= 2 else { return }
         driftTicks = 0
         driftCorrections += 1
+        let now = ProcessInfo.processInfo.systemUptime
+        if now - lastDriftNote > 1 {
+            lastDriftNote = now
+            MainThreadWatchdog.shared.note(String(format: "视频对表：画面 %.3f s、引擎 %.3f s（差 %.0f ms），重新钉到引擎", videoTime, source.playhead, drift * 1000))
+        }
         anchorVideo(to: source.playhead)
     }
 
@@ -221,6 +228,7 @@ final class PlayerClock: ObservableObject {
             source.seek(to: clamped)
             if player.rate > 0 {
                 pendingScrubTarget = nil
+                MainThreadWatchdog.shared.note(String(format: "播放中 seek → %.3f s（引擎先跳，视频钉过去自己赶）", clamped))
                 anchorVideo(to: clamped)
                 return
             }

@@ -75,6 +75,13 @@ check(log.contains("stallTheMainThread"), "日志里要有栈")
 check(log.contains("ctx=check"), "日志里要有 context")
 check(log.components(separatedBy: "卡了 ").count - 1 == 2, "日志里该有两条记录")
 
+// 4b. 旁注：不是卡顿的事也记进同一份日志（一行、带时刻、「注：」开头），不算卡顿。
+watchdog.note("note=check 播放中 seek → 12.345 s")
+let withNote = (try? String(contentsOf: logFile, encoding: .utf8)) ?? ""
+check(withNote.contains("  注：note=check 播放中 seek → 12.345 s"), "旁注该原样写进日志、带「注：」前缀")
+check(withNote.components(separatedBy: "卡了 ").count - 1 == 2, "旁注不算卡顿：仍是两条卡顿记录")
+check(watchdog.recentStalls.count == 2, "旁注不进 recentStalls")
+
 // 5. stop 之后不再记。
 watchdog.stop()
 pump(0.1)
