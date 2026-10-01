@@ -67,7 +67,7 @@ final class CoverHostView: NSView {
 
         init(player: AVPlayer) {
             playerLayer = AVPlayerLayer(player: player)
-            playerLayer.videoGravity = .resizeAspect   // 和 AVPlayerView 同一个放法：画布正好铺满时两层的画面重合
+            playerLayer.videoGravity = .resizeAspect   // 和 PlayerLayerView 同一个放法：画布正好铺满时两层的画面重合
             container.masksToBounds = true
             container.addSublayer(effect)
             effect.addSublayer(playerLayer)

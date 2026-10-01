@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # **预览调色的接线回归**：把生产的 `FilterStack` + `FilterStackAttachment` 挂到
-# 真的 AVPlayerView 上，拍窗口，数像素。
+# 真的播放器宿主（PlayerLayerView，裸 AVPlayerLayer）上，拍窗口，数像素。
 #
 # 和 scripts/check-filters.sh 的分工（别搞混）：
 #   - 那个守的是**表**：LUT 数学、.cube 写法、和导出逐像素对齐。它对「这张表有
@@ -45,6 +45,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditFilterLUT.swift \
   Sources/SrtFlow/VideoEditFilterPreview.swift \
+  Sources/SrtFlow/PlayerLayerView.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
   Sources/SrtFlow/VideoEditTransitionHandles.swift \
   Sources/SrtFlow/VideoEditFadeWindow.swift \

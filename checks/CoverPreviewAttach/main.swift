@@ -1,5 +1,4 @@
 import AVFoundation
-import AVKit
 import AppKit
 import CoreImage
 import Foundation
@@ -52,7 +51,7 @@ struct PanelPlan {
 
 @MainActor
 final class Panel {
-    let view = AVPlayerView()
+    let view = PlayerLayerView()   // 生产的宿主（裸 AVPlayerLayer），不是 AVKit 的 AVPlayerView
     let cover: CoverHostView
     let attachment = FilterStackAttachment()
     let player: AVPlayer
@@ -60,7 +59,6 @@ final class Panel {
     init(plan: PanelPlan, frame: NSRect) {
         player = AVPlayer(url: plan.video)
         view.player = player
-        view.controlsStyle = .none
         view.videoGravity = .resizeAspect
         view.frame = frame
         cover = CoverHostView(player: player)

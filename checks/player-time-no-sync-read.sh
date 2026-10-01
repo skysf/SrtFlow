@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 扫描守卫：App 代码里不许同步问播放器要时间（`currentTime()`），AVKit 的 Now Playing 更新必须关着。
+# 扫描守卫：App 代码里不许同步问播放器要时间（`currentTime()`），预览画面不许用 AVKit 的 AVPlayerView。
 #
 # 由来（docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md）：电平条每秒 300 次在主线程上调
 # `player.currentTime()`，它要拿播放器内部那把锁；多轨工程播放中播放器自己的队列一忙，主线程就被堵住
@@ -20,9 +20,17 @@ if [ "${HITS}" != "0" ]; then
   FAILED=1
 fi
 
-# 2. AVPlayerView 的 Now Playing 更新必须关着。
-if ! grep -q 'updatesNowPlayingInfoCenter = false' Sources/SrtFlow/PlayerViewRepresentable.swift; then
-  echo "✗ player-time-no-sync-read：PlayerViewRepresentable 没有关掉 updatesNowPlayingInfoCenter（AVKit 会在主线程上反复问播放器 currentTime）" >&2
+# 2. 预览画面不许用 AVKit 的 AVPlayerView：它内部的控制器会在主线程上问播放器 currentTime（暂停那一拍 578 ms）。
+#    宿主只能是 PlayerLayerView（裸 AVPlayerLayer）。
+AVKIT_HITS="$(grep -rn 'AVPlayerView\b\|import AVKit' Sources/SrtFlow --include='*.swift' | sed 's,//.*,,' | grep -c 'AVPlayerView\b\|import AVKit' || true)"
+if [ "${AVKIT_HITS}" != "0" ]; then
+  echo "✗ player-time-no-sync-read：App 代码里用到了 AVKit 的 AVPlayerView（它的控制器会在主线程上问播放器 currentTime）：" >&2
+  grep -rn 'AVPlayerView\b\|import AVKit' Sources/SrtFlow --include='*.swift' | sed 's,//.*,,' | grep 'AVPlayerView\b\|import AVKit' >&2
+  echo "  预览画面的宿主只能是 PlayerLayerView（裸 AVPlayerLayer）。" >&2
+  FAILED=1
+fi
+if ! grep -q 'makeNSView(context: Context) -> PlayerLayerView' Sources/SrtFlow/PlayerViewRepresentable.swift; then
+  echo "✗ player-time-no-sync-read：PlayerViewRepresentable 的宿主不是 PlayerLayerView（改名了就同步改这里）" >&2
   FAILED=1
 fi
 
@@ -33,6 +41,6 @@ if ! grep -q 'clock.estimatedTime' Sources/SrtFlow/VideoEditTrackFader.swift; th
 fi
 
 if [ "${FAILED}" = "0" ]; then
-  echo "✓ player-time-no-sync-read：App 代码里没有 currentTime()，Now Playing 更新关着，电平条读的是时钟外推的播放头"
+  echo "✓ player-time-no-sync-read：App 代码里没有 currentTime()、没有 AVKit 的 AVPlayerView，电平条读的是时钟外推的播放头"
 fi
 exit "${FAILED}"

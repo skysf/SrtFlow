@@ -45,6 +45,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditFilterModels.swift \
   Sources/SrtFlow/VideoEditFilterLUT.swift \
   Sources/SrtFlow/VideoEditFilterPreview.swift \
+  Sources/SrtFlow/PlayerLayerView.swift \
   Sources/SrtFlow/VideoEditCoverFilters.swift \
   Sources/SrtFlow/VideoEditCoverPreview.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \

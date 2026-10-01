@@ -562,7 +562,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-09-30 动画行的「In」「Out」、字体目录的「Chinese」「Other」从没进过表](docs/bugfixes/2026-09-30-animation-in-out-labels-never-localized.md) — 经参数转交的文案靠手抄清单守，`help:`、`label:` 各漏过一轮之后 `title:` 和位置参数又漏了一个多月；改成从声明里找 `LocalizedStringKey` 参数、调用点自动纳入。**同一个教训撞第三次就别再补清单，改成机制。**
 - [2026-10-01 录屏设置页的「follows the project」、烧录列表的「· N lines」从没进过表](docs/bugfixes/2026-10-01-interpolated-keys-never-localized.md) — 带插值的键是守卫「写明的盲区」，写进文档不等于有人守；改成对每个 `\(…)` 把 `%lld` / `%@` 都试一遍、只看直接调用点。**判不出类型就把几种可能都试一遍，比跳过强。**
 - [2026-10-01 烧录页默认窗口宽度下字幕列被裁掉右边、文件行的提示截成省略号](docs/bugfixes/2026-10-01-burn-in-subtitle-column-clipped-at-default-width.md) — 内层 `HSplitView` 最后一栏的 ideal 和前面各栏的 min 一起放不进可用宽度就被裁；ideal 收到和 min 一样，提示用 `ViewThatFits` 少显示一句。**截图要按用户默认的窗口大小拍，1400 宽看不出。**
-- [2026-10-01 播放中按空格图标慢半拍：电平条每秒 300 次问播放器要时间，被播放器的锁堵住主线程](docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md) — 心跳看门狗第一次跑就抓到 2.4 秒的栈：`player.currentTime()` 要同步拿播放器内部的锁，多轨合成播放中它一忙主线程就排在后面；AVKit 的 Now Playing 走同一把锁。改成读时钟外推的 `estimatedTime`、关掉 Now Playing，守卫钉着 App 代码里不许出现 `currentTime()`。**播放器的 getter 不是免费的；平均值看不见的卡顿要逐次抓。**
+- [2026-10-01 播放中按空格图标慢半拍：电平条每秒 300 次问播放器要时间，被播放器的锁堵住主线程](docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md) — 心跳看门狗第一次跑就抓到 2.4 秒的栈：`player.currentTime()` 要同步拿播放器内部的锁，多轨合成播放中它一忙主线程就排在后面；AVKit 的 Now Playing 走同一把锁。改成读时钟外推的 `estimatedTime`，守卫钉着 App 代码里不许出现 `currentTime()`；第二轮：`AVPlayerView` 自带的控制器也在暂停那一拍问时间（578 ms）且关不掉，预览画面换成裸 `AVPlayerLayer`（`PlayerLayerView`），App 不再 import AVKit。**播放器的 getter 不是免费的；平均值看不见的卡顿要逐次抓；带控制器的便利视图会替你在主线程上做事。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

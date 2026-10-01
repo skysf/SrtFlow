@@ -1,5 +1,5 @@
 import SwiftUI
-import AVKit
+import AVFoundation
 import Combine
 import SrtFlowCore
 
