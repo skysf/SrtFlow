@@ -12,7 +12,8 @@
 | --- | --- |
 | `AudioEngineConfig.swift` | 从 `TimelineState` 算出来的纯值：哪条轨、哪一段、从素材哪一秒起、在时间线哪一段出声、段的增益（`GainTable.Sampler`）、轨道推子、总推子、总长 |
 | `AudioRing.swift` | 一段声音的环：喂样线程写、渲染块读、无锁；按**时间线的帧**定位；seek 用「新一轮」标记，读者自己跳过去 |
-| `AudioSegmentReader.swift` | 按段读原件（`AVAudioFile` + `AVAudioConverter` 转 48 kHz），不缓存 |
+| `AudioSegmentReader.swift` | 按段读原件（`AVAudioFile` + `AVAudioConverter` 转 48 kHz），不缓存；变速段交给下一行 |
+| `AudioTimeStretchReader.swift` | 变速段：保音调地拉伸（离线的小 AVAudioEngine：PlayerNode → AVAudioUnitTimePitch(rate)），随机定位时重排并先渲掉单元的延迟 |
 | `AudioTrackFeeder.swift` | 一条轨的喂样：一段一条流（环 + 读取器），提前一秒开流、走在播放头前面半秒；seek 各流重读；把活着的流发布给渲染块 |
 | `AudioTrackRenderer.swift` | 渲染块：从各流的环里取这一拍、乘段增益（64 帧一块线性插值）和轨道推子、累加 |
 | `AudioPublished.swift` | 给渲染块看的「此刻生效的那一份」：原子指针交换，发布方留最近 8 份不放 |
@@ -69,13 +70,15 @@
   拧旋钮走 `updateGains`：同一种场景只改链的参数，换种类重建链；加上 / 去掉场景算结构变了（`sameStructure`），重开流。
   不需要 `SceneTailCarrier` 那截载体（合成里才要垫东西让 tap 活着）。自检第 11 组：浴室、电话两种场景和 tap 那条路
   逐窗口比（差 ≤ 0.018 dB）、浴室的余音越过段尾且越散越小、挂了场景的声音和原声不一样；反向验证：不过链 → 8 条红。
+- **变速**（PR2c）：`speed ≠ 1` 的段由 `AudioTimeStretchReader` 读 —— 离线的小引擎跑 AVAudioUnitTimePitch，音调不变，
+  时间线上的长度还是 `sourceDuration ÷ speed`。它和 AVFoundation 的 spectral 不是同一种算法，包络对得上（自检第 12 组容差
+  1.5 dB）但不逐采样相等；成片（PR3）走引擎之后两边就是同一份了。
 - 已知：每次 seek / 开播之后头一拍（约 10 ms）环里还没有数据，当静音（欠载计数里能看到，32 秒 6 次 seek
-  共 2505 帧）；变速会变调 —— PR2c。
+  共 2505 帧）。
 
 ## 四、还没做的（按方案的刀）
 
-- PR2c：变速保音调（现在变速是「当成采样率 × speed 重采样」，音调会变）；PR2d：seek 后第一拍的预填、
-  电平表改成渲染块按拍算峰值写无锁槽。
+- PR2d：seek 后第一拍的预填、电平表改成渲染块按拍算峰值写无锁槽。
 - PR3：成片切到引擎离线渲染、开关默认开、删旧路。
 
 ## 五、回归
@@ -83,7 +86,8 @@
 `scripts/check-audio-engine.sh`（`scripts/check-all.sh` 第 4 组，要 ffmpeg 造正弦素材）：八条时间线
 （音频轨 + 推子 + 总推子、渐入渐出、音量曲线、主轨叠化、主轨接缝零头、静音段 + 隐藏轨 + 主轨推子、上层轨、
 44.1 kHz 单声道）两边各渲一遍，逐 10 ms 窗口比 RMS、整段 RMS、帧数正好、零欠载，空时间线没有轨；第 10 组电平表
-（总表 = 渲出来的峰值、轨道表 × 总推子 = 总表、静音段 / 隐藏轨 / 段结束之后不进表）；第 11 组声音场景（见第三节）。
+（总表 = 渲出来的峰值、轨道表 × 总推子 = 总表、静音段 / 隐藏轨 / 段结束之后不进表）；第 11 组声音场景（见第三节）；
+第 12 组变速（2 倍速和 0.5 倍速：包络对得上、时长正好、过零数出来的音高仍是 880 Hz）。
 反向验证：渲染块不写表 → 两条红；渲染块不过效果链 → 八条红。
 
 反向验证（2026-10-01）：渲染块不乘段的增益 → 渐变 / 曲线 / 叠化三组红（792 / 690 / 192 个窗口）；

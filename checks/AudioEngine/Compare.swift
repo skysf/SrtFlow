@@ -39,7 +39,7 @@ struct WindowComparison {
 
 /// 逐窗口比。`boundaries` 是要跳过的时刻（秒）：段的起止。`tolerance` 是两边都有声音时允许的差（dB）。
 func compareWindows(
-    reference: Stereo, engine: Stereo, boundaries: [Double], tolerance: Double, rate: Double = 48_000
+    reference: Stereo, engine: Stereo, boundaries: [Double], tolerance: Double, margin: Double = 0.012, rate: Double = 48_000
 ) -> WindowComparison {
     let window = Int(rate * 0.010)
     let frames = min(reference.frames, engine.frames)
@@ -49,7 +49,7 @@ func compareWindows(
         let end = start + window
         result.windows += 1
         let from = Double(start) / rate, to = Double(end) / rate
-        if boundaries.contains(where: { $0 > from - 0.012 && $0 < to + 0.012 }) {
+        if boundaries.contains(where: { $0 > from - margin && $0 < to + margin }) {
             result.skipped += 1
             start = end
             continue

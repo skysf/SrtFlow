@@ -166,7 +166,8 @@
 | PR1b（已合） | 接进 App：开关开时合成里拆掉音轨、`PlayerClock` 由引擎喂时间（声音是主时钟）、视频 `setRate` 钉到引擎并对表、ducking、拖推子 / 曲线换配置、冒烟静音 | `SRTFLOW_AUDIO_ENGINE=1` / `defaults write com.srtflow.SrtFlow audioEngine -bool YES`，默认关 | 冒烟：CPU 减半、视频对表 0 次、欠载只有每次 seek 的头一拍；第五节的三个数等测试版实听 |
 | PR2a（已合） | 电平表：渲染块写进同一个环 | 同上 | `check-audio-engine.sh` 第 10 组；冒烟里电平条在画 |
 | PR2b（已合） | 场景 + 余音：效果链跟着流，段尾之后喂零 | 同上 | `check-audio-engine.sh` 第 11 组（和 tap 那条路逐窗口比、余音、反向验证） |
-| PR2c / 2d | 变速保音调；seek 后第一拍预填、电平表改无锁槽 | 同上 | 人工听三段场景 |
+| PR2c（已合） | 变速保音调（AudioTimeStretchReader） | 同上 | `check-audio-engine.sh` 第 12 组 |
+| PR2d | seek 后第一拍预填、电平表改无锁槽 | 同上 | 冒烟的欠载归零、播放中主线程不再等电平表的锁 |
 | PR3 | 成片切到引擎离线渲染；开关默认开；删旧路（`AudioMixBuilder`、`CompositionAudioTracks`、tap、`SceneTailCarrier`、`ExportMixdown` 的 reader 部分）；架构文档改写 | 删掉开关 | 导出自检全绿；`export-audio-single-pipeline` 守卫改成「导出只经引擎」 |
 | Beta | 用户真剪 | | 第一节四个数 |
 | 之后 | 预览画面换裸 `AVPlayerLayer`；优化媒体（另一份方案） | | |
