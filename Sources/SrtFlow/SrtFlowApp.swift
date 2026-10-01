@@ -14,12 +14,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 小程序可能正是为了一次调用才把 App 拉起来的，它在等着连。
     func applicationDidFinishLaunching(_ notification: Notification) {
         AIBridgeServer.shared.start()
+        startMainThreadWatchdog()
         // 「配了 fal」的小文件启动时对一遍（被删了、Key 是别的途径删的）：小程序据此决定列不列 generate_media（方案第 36 条）。
         FalSettingsStore.shared.refreshKeyStatus()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         AIBridgeServer.shared.stop()
+        MainThreadWatchdog.shared.stop()
+    }
+
+    /// 主线程卡顿日志（docs/testing/main-thread-stalls.md）：主线程卡过阈值就记时长、在哪一栏 / 在不在播、
+    /// 卡在哪。默认开着，`SRTFLOW_STALL_LOG=0` 关。context 在主线程上读（心跳落地的那一拍）。
+    private func startMainThreadWatchdog() {
+        guard !MainThreadWatchdog.isDisabledByEnvironment else { return }
+        MainThreadWatchdog.shared.contextProvider = {
+            MainActor.assumeIsolated {
+                "section=\(MainWindowState.shared.section) playing=\(VideoEditProject.shared.clock.isPlaying)"
+            }
+        }
+        MainThreadWatchdog.shared.start()
     }
 
     // MARK: - 剪切 / 拷贝 / 粘贴（剪辑页时间线上的东西，2026-09-26 起不止滤镜段）

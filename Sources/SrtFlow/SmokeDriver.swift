@@ -44,6 +44,9 @@ enum SmokeDriver {
     private static var wallStartedAt = Date()
     private static var states: [String: Any] = [:]
     private static var perfStartedAt = 0.0
+    /// 上次 `perfReset` 的时刻：`perf` 快照里带上这一窗口里主线程卡了几次、最长一次多少毫秒
+    /// （MainThreadWatchdog；卡顿次数不稳，只进冒烟结果，不进性能 ratchet 的账）。
+    private static var stallsResetAt = Date()
 
     /// 编辑器出现时调（`DevHooks.editorAppeared`）。没设脚本就什么都不做。
     static func startIfRequested(project: VideoEditProject) {
@@ -152,11 +155,15 @@ enum SmokeDriver {
             PerfCounters.reset()
             perfStartedAt = PreviewBench.cpuTimeMs()
             wallStartedAt = Date()
+            stallsResetAt = Date()
             SmokeProjectChanges.reset()
         case .perf:
             let label = step.label ?? "perf\(perf.count + 1)"
             var counts = PerfCounters.snapshot()
             counts.merge(SmokeProjectChanges.snapshot()) { $1 }
+            let stalls = MainThreadWatchdog.shared.recentStalls.filter { $0.startedAt >= stallsResetAt }
+            counts["stall:count"] = stalls.count
+            counts["stall:maxMs"] = stalls.map(\.milliseconds).max() ?? 0
             perf[label] = counts
             cpu[label] = (PreviewBench.cpuTimeMs() - perfStartedAt).rounded()
             wall[label] = (Date().timeIntervalSince(wallStartedAt) * 1000).rounded()
@@ -208,8 +215,18 @@ enum SmokeDriver {
         FileHandle.standardError.write(Data("SmokeDriver: \(line)\n".utf8))
     }
 
+    private static let stallTime: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter
+    }()
+
     private static func write(to output: URL, error: String?) {
         var body: [String: Any] = ["log": log, "perf": perf, "cpuMs": cpu, "wallMs": wall, "state": states]
+        body["stalls"] = MainThreadWatchdog.shared.recentStalls.map { stall -> [String: Any] in
+            ["at": stallTime.string(from: stall.startedAt), "ms": stall.milliseconds,
+             "context": stall.context, "stack": Array(stall.stack.prefix(12))]
+        }
         if let error { body["error"] = error }
         if let data = try? JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: output)
