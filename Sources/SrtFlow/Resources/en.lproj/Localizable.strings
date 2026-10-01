@@ -1063,4 +1063,13 @@
 "Original file" = "Original file";
 "Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files";
 "Preparing optimized media in the background — the preview uses the original files until each part is ready" = "Preparing optimized media in the background — the preview uses the original files until each part is ready";
-"Couldn’t prepare optimized media for %@; the preview uses the original file." = "Couldn’t prepare optimized media for %@; the preview uses the original file.";
+// 优化媒体 V3（2026-10-01）：设置里的「优化媒体」一节、菜单里转不了的标记
+"Optimized Media" = "Optimized Media";
+"Videos with sparse keyframes are re-encoded in the background into a cache on this Mac, so clicks in the preview land at once. Exports always use the original files." = "Videos with sparse keyframes are re-encoded in the background into a cache on this Mac, so clicks in the preview land at once. Exports always use the original files.";
+"Cache" = "Cache";
+"Delete the cache. The preview uses the original files until the optimized media is prepared again" = "Delete the cache. The preview uses the original files until the optimized media is prepared again";
+"Limit" = "Limit";
+"Past this size, the parts used least recently are deleted first. Parts unused for 30 days are deleted when SrtFlow starts" = "Past this size, the parts used least recently are deleted first. Parts unused for 30 days are deleted when SrtFlow starts";
+"Cleared. The preview uses the original files and prepares optimized media again in the background." = "Cleared. The preview uses the original files and prepares optimized media again in the background.";
+"Not optimized (the preview uses the original file)" = "Not optimized (the preview uses the original file)";
+"Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones";

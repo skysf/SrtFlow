@@ -6,11 +6,14 @@ import Foundation
 // 管什么：预览窗口的「优化媒体 / 原片」（UserDefaults，不进工程）；每次预览重建落地之后按这份时间线算还差哪些块
 //（OptimizedMediaPlan），一块一块在 `MediaReadQueue.proxy` 上转（OptimizedMediaTranscoder），转好记在内存里的那张表
 //（builder 重建时拿它换源，OptimizedMediaLookup）；某一段用到的块齐了就请一次重建 —— **只在停着的时候**（播放中
-// `replaceCurrentItem` 画面会闪一下，等暂停再换）；老工程缺关键帧间隔的先补探；这台机器的解码速度第一次用到时量一次。
+// `replaceCurrentItem` 画面会闪一下，等暂停再换）；老工程缺关键帧间隔的先补探；这台机器的解码速度第一次用到时量一次；
+// 转不了的源（编码器拒绝、10-bit / HDR）记在 `unavailable` 里，只在工具栏的菜单里标一下，不进提示条（提示条常驻、要用户点掉，
+// 而「用原片」不需要用户做什么）。
 // 不管什么：判据和分块（OptimizedMediaPolicy）、块怎么转（OptimizedMediaTranscoder）、缓存目录（OptimizedMediaStore）、
-// 合成里怎么插（CompositionClipInsert）。长期约束见 docs/architecture/optimized-media.md。
+// 合成里怎么插（CompositionClipInsert）、设置里的占用 / 上限 / 清空（OptimizedMediaCacheSettings：清空之后调这里的 `reset()`
+// 再让工程重建）。长期约束见 docs/architecture/optimized-media.md。
 //
-// 为什么是 `ObservableObject` 而不是工程上的属性：只有工具栏那一个小菜单订阅它（模式、还有几块要转），转码的进度
+// 为什么是 `ObservableObject` 而不是工程上的属性：只有工具栏那一个小菜单订阅它（模式、还有几块要转、哪些转不了），转码的进度
 // 不许叫醒整个编辑器（docs/architecture/preview-perf-ratchet.md 第十节）。
 
 @MainActor
@@ -27,6 +30,8 @@ final class OptimizedMediaCoordinator: ObservableObject {
     @Published private(set) var mode: Mode
     /// 还有几块要转（工具栏的小进度）。
     @Published private(set) var pendingCount = 0
+    /// 这次运行里转不了、预览用原片的源（文件名，按先后）：工具栏的菜单里标一下。
+    @Published private(set) var unavailable: [String] = []
 
     weak var project: VideoEditProject?
 
@@ -86,7 +91,11 @@ final class OptimizedMediaCoordinator: ObservableObject {
         for url in OptimizedMediaPlan.proxySources(in: state, decodeFPS: decodeFPS) where scanned.insert(url).inserted {
             if let index = OptimizedMediaStore.index(for: url), let directory = OptimizedMediaStore.SourceIdentity(url: url).map(OptimizedMediaStore.directory(for:)) {
                 var chunks: [Int: URL] = [:]
-                for (chunk, record) in index.chunks { chunks[chunk] = directory.appendingPathComponent(record.fileName) }
+                // 索引里有、文件也在才算（同 Store 的认法）：启动时的过期扫描、别处的清空可能刚删掉某块。
+                for (chunk, record) in index.chunks {
+                    let file = directory.appendingPathComponent(record.fileName)
+                    if FileManager.default.fileExists(atPath: file.path) { chunks[chunk] = file }
+                }
                 if !chunks.isEmpty { ready[url] = chunks }
             }
         }
@@ -99,7 +108,8 @@ final class OptimizedMediaCoordinator: ObservableObject {
         startWorkerIfNeeded()
     }
 
-    /// 切工程：路上的全部作废，表清空（块还在磁盘上，下一个工程用到再读索引）。
+    /// 切工程、设置里清空了缓存：路上的全部作废，表清空（切工程时块还在磁盘上，下一个工程用到再读索引；
+    /// 清空之后调用方接着 `scheduleRebuild()`，重建落地的 `sync` 重新排队）。
     func reset() {
         generation += 1
         cancelFlag.cancelled = true
@@ -117,6 +127,7 @@ final class OptimizedMediaCoordinator: ObservableObject {
         probed = []
         sources = [:]
         swapPending = false
+        if !unavailable.isEmpty { unavailable = [] }
     }
 
     // MARK: - 探
@@ -217,14 +228,13 @@ final class OptimizedMediaCoordinator: ObservableObject {
         return source
     }
 
+    /// 一个源转不了就用原片，这次运行里不再试；只在工具栏的菜单里标一下（`unavailable`），不进提示条。
     private func giveUp(on url: URL, reason: OptimizedMediaTranscoder.Failure?) {
         failed.insert(url)
         queue.removeAll { $0.url == url }
         pendingCount = queue.count
-        guard let project else { return }
-        // 一个源转不了就用原片，提示条说一句，不反复重试（同一次运行里不再报）。
-        project.notice = String(format: L10n("Couldn’t prepare optimized media for %@; the preview uses the original file."), url.lastPathComponent)
-        _ = reason
+        let name = url.lastPathComponent
+        if !unavailable.contains(name) { unavailable.append(name) }
     }
 
     /// 这一块转好之后，有没有哪一段用到的块刚好齐了（之前差它）。

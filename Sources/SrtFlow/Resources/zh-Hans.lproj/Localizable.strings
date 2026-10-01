@@ -1063,4 +1063,13 @@
 "Original file" = "原片";
 "Preview picture: optimized media (dense keyframes, so clicks while playing land at once) or the original files" = "预览的画面：优化媒体（关键帧密，播放中点哪儿画面立刻到）还是原片";
 "Preparing optimized media in the background — the preview uses the original files until each part is ready" = "正在后台准备优化媒体 —— 哪一截还没转好，预览先用原片";
-"Couldn’t prepare optimized media for %@; the preview uses the original file." = "%@ 的优化媒体准备不了，预览用原片。";
+// 优化媒体 V3（2026-10-01）：设置里的「优化媒体」一节、菜单里转不了的标记
+"Optimized Media" = "优化媒体";
+"Videos with sparse keyframes are re-encoded in the background into a cache on this Mac, so clicks in the preview land at once. Exports always use the original files." = "关键帧稀疏的视频会在后台重新编码、存进这台 Mac 上的缓存，预览里点哪儿画面立刻到。成片永远用原片。";
+"Cache" = "缓存";
+"Delete the cache. The preview uses the original files until the optimized media is prepared again" = "删掉缓存。重新准备好之前预览用原片";
+"Limit" = "上限";
+"Past this size, the parts used least recently are deleted first. Parts unused for 30 days are deleted when SrtFlow starts" = "超过这个大小，先删最久没用到的部分。30 天没用到的部分在 SrtFlow 启动时删掉";
+"Cleared. The preview uses the original files and prepares optimized media again in the background." = "已清空。预览用原片，后台重新准备优化媒体。";
+"Not optimized (the preview uses the original file)" = "没有优化（预览用原片）";
+"Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "有几个文件优化不了，预览对它们用原片。菜单里列着是哪几个";
