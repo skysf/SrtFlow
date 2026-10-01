@@ -475,9 +475,11 @@ grep_code 'masterStrip' "$HEADER_COLUMN" || fail "标尺那一行的总推子不
 grep_code 'key: .track(' "$HEADER_COLUMN" || fail "轨道推子没接上自己那条轨的电平表"
 grep_code 'key: .master' "$HEADER_COLUMN" || fail "总推子没接上总电平表"
 # tap 必须跟着合成活：预览重建时整批重来，其余换 mix 的地方都挂回同一批（新建会卡 0.6 秒）。
+# 重建在 VideoEditProject.swift，快路径和试听 2026-10-01 搬到了 VideoEditProjectAudioMix.swift（同一个文件里还有音频引擎那条路）。
+AUDIO_MIX_PATHS="Sources/SrtFlow/VideoEditProjectAudioMix.swift"
 grep_code 'meters.beginComposition()' "$PROJECT" \
   || fail "预览重建时没让电平表的 tap 整批重来：旧 tap 挂在旧 item 上"
-[ "$(grep -c 'meters: meters' "$PROJECT")" -ge 3 ] \
+[ "$(cat "$PROJECT" "$AUDIO_MIX_PATHS" | grep -c 'meters: meters')" -ge 3 ] \
   || fail "有换 audioMix 的地方没挂回电平表的 tap（重建 / 快路径 / 试听三处都要）"
 if grep -vE '^[[:space:]]*//' Sources/SrtFlow/VideoEditTrackFader.swift | grep -cE 'project\.|perform|liveApply' >/dev/null; then
   fail "推子视图自己去碰 project 了：它只该回调 onLive / onCommit（拖动中不写 state）"
