@@ -121,7 +121,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
 | **盖一块（模糊 / 马赛克，`ShapeKind.blur` / `.mosaic`）**、预览的第二层播放器（`CoverPreviewLayer`）、导出里的 `gblur` / `pixelize`（`VideoEditCoverExport`）、`set_shape` 的 blur / mosaic、`look text_scan` 给的 `cover`（`AICoverBox`）、遮水印 / 遮旧字幕 | [盖一块](docs/architecture/cover-blur-mosaic.md)（形状的一种、时间线上的一段、**不跟着片段走**；落点在调色之后、形状之前；三条管线按构造一致：裁出这一块、在这块里做效果、边缘外延、贴回去；预览的蒙版和滤镜别挂同一层；`CIPixellate` 的格子要设成从左上角起算；框取偶数往外收；力度按画面高换算）、[滤镜](docs/architecture/filters.md)（预览不走自定义合成器、图层滤镜的地基）、[预览自由变换](docs/architecture/preview-free-transform.md)（源画面框换画布框的变换顺序）、[AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第 38 条）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（没有盖一块时第二层不建、性能计数不变） |
 | 工程帧率、关键帧容差、**AI 读写关键帧（报出来的永远在片段范围里、`edit_clip keyframes` 策略、`relative` 时间）**、**关键帧的缓动（`Keyframe.easing`、`KeyframeEasing`、预览按帧加密 `KeyframeSliceTimes`、AI 默认 easeInOut）** | [工程帧率](docs/architecture/project-frame-rate.md)、[关键帧动画](docs/architecture/keyframe-animation.md)「AI 接口」「缓动」（linear 逐位一致、只对画面的六条轨、v27）、[限幅 + 缓动方案](docs/plans/2026-09-30-export-limiter-and-easing.md) |
-| 音量、dB、渐入渐出、audioMix | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md) |
+| 音量、dB、渐入渐出、audioMix、**预览和成片的声音要换成自己的音频引擎（方案）** | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[音频引擎方案](docs/plans/2026-10-01-audio-engine.md)（动引擎代码前先读它，架构文档做完要改写） |
 | 声音场景（喇叭 / 室内 / 室外）、tap 里的效果单元、余音越过段尾、检查器的声音那一块 | [声音场景](docs/architecture/sound-scenes.md)（挂了场景的轨段增益在 tap 里乘；最后一段后面垫载体；有没有场景是合成结构）、[推子与电平表](docs/architecture/audio-mixer.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[声音场景方案](docs/plans/2026-09-24-sound-scenes.md) |
 | 导出的声音、离线混音（`ExportAudioMixdown`）、导出图里接音轨的地方、**限幅器（`ExportPeakLimiter`）、整段响度（`ExportLoudnessMeter`、`AudioKWeighting`）、面板和 `get_job` 里的响度 / 峰值 / 压了多少** | [成片的声音](docs/architecture/export-audio-mixdown.md)（导出图里不许有声音滤镜；成片 = 预览那份混音；写 f32 之前过真峰值限幅器、上限 −1 dBFS、总长不变，响度只报不归一，预览不限幅是已知差异）、[限幅 + 缓动方案](docs/plans/2026-09-30-export-limiter-and-easing.md)、[过 0 交给 AAC](docs/bugfixes/2026-09-30-export-mix-over-0dbfs-into-aac.md)、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md)、[转场那条缝上预览的声音掉下去](docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md) |
 | 波形显示、深度缩放（缩放上限、标尺刻度、缩略图、超宽内容的绘制） | [波形与深度缩放](docs/architecture/audio-waveform.md)、[捏合缩放](docs/architecture/timeline-pinch-zoom.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md) §5、[阻塞的媒体读取](docs/architecture/blocking-media-reads.md) |
@@ -365,6 +365,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [音效：合成器（给 AI）+ 录音素材库（给用户）](docs/plans/2026-09-30-sound-effects.md) — 2026-09-30 用户拍的板：合成器先在 scratchpad 渲样音试听、点头才写产品代码；
   AI 先搜素材库、没有再合成、真实声音才走 fal；63 个 SouthPole 录音全收进 R2 素材库（默认不随 App 带）、授权加「自有 / 已授权」一类；
   三个 PR 的分刀、`hit_at` 落点、原型里学到的（Freeverb 湿声按干声峰值比例混）、决策门。
+- [预览和成片的声音：自己的音频引擎（播放 / seek 无感）](docs/plans/2026-10-01-audio-engine.md) — 2026-10-01 用户拍板：大工程播放中点时间线等 1–1.5 秒、
+  按空格播放头 0.5 秒才动，压力测试量到 AVPlayer 的合成「每条音轨 40 ms、串行、参数无效」是固有开销；自己做音频引擎
+  （AVAudioEngine 做图 / 设备 / 求和，自己写按游标取样 + 增益 / 渐变 / 曲线 / 推子 / 场景 / 电平的渲染核心，每轨后台解码预读、
+  **不缓存**，22 轨 seek 9 ms）、成片同步切到引擎离线渲染、视频留在 AVPlayer 只做优化媒体；全部数字、架构、时钟对齐怎么验、
+  每个功能怎么搬、三刀、风险；用户看过再动代码。
 - [界面语言：加西班牙语、法语、土耳其语，按系统自动选](docs/plans/2026-09-30-ui-languages.md) — 2026-09-30 用户定：「按系统自动选」本来就有（`.system` + 包里的 `.lproj`）；
   先一个 PR 把枚举和守卫改成任意多种语言，再先做西班牙语一种在真窗口看排版、之后定法语 / 土耳其语；泛化的 `es` / `fr` / `tr`；
   译文由 AI 出、**用户不做审核、直接算正式、不标 Beta**；复数和小数点先照英文。风险：法 / 西比英文长两到三成而检查器是窄栏、每个 PR 从此要给每种语言译文。
