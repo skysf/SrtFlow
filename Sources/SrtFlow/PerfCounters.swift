@@ -62,10 +62,7 @@ enum PerfCounters {
         case compositionBuild = "composition.build"
         /// 建合成时开了一个素材文件（`AVURLAsset`）。
         case compositionAssetOpen = "composition.assetOpen"
-        /// 新建了一个电平表 tap。同一条合成里换 mix 该复用旧的：新建会让播放卡
-        /// 0.6 秒（docs/architecture/audio-mixer.md）。
-        case meterTapCreate = "meters.tapCreate"
-        /// 只换 audioMix、不重建合成的快路径走通了一次。
+        /// 只换引擎的增益、不重建合成的快路径走通了一次（键名沿用 audioMix 那时候的）。
         case audioMixRefresh = "audioMix.refresh"
     }
 

@@ -71,6 +71,7 @@ func checkSliceTicks(root: URL) async throws {
     ])]
     checkClose(tail.duration, 2.96, 0.0001, "配乐决定总长 2.96（第 1776 格）")
     if let built = await VideoEditCompositionBuilder.build(from: tail) {
+        checkEqual(built.composition.duration, CMTime(value: 1776, timescale: 600), "合成铺到配乐那一格（声音不在合成里，靠黑底撑）")
         await checkInstructionsCover(built, totalDuration: tail.duration, label: "画面比配乐早收 0.3 毫秒")
         let mid = await averageBrightness(built, at: 2.0)
         check(mid > 0.9, "画面照常，实测 \(mid)")

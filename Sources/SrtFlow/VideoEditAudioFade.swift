@@ -5,9 +5,8 @@ import Foundation
 /// 存的是 `EditClip.fadeInDuration` / `fadeOutDuration`，单位是**时间线秒**
 /// （变速之后）—— 用户在时间线上看到的就是这个长度，变速不该让他重算。
 ///
-/// 预览的音量斜坡（`AVMutableAudioMixInputParameters.setVolumeRamp`）从**这里**取生效值，
-/// 不许在调用点另夹一份。成片的声音自 2026-09-24 起就是预览这份混音离线读出来的
-/// （ExportAudioMixdown），不再有 ffmpeg 的 `afade` 那一份 —— 两条管线只剩一条。
+/// 音频引擎的增益表（`AudioGainRamps`，预览和成片同一份）从**这里**取生效值，不许在调用点另夹一份。
+/// 2026-09-24 之前导出另有 ffmpeg 的 `afade` 一份、2026-10-01 之前预览另有 AVFoundation 的 audioMix 一份，都退役了。
 ///
 /// 长期约束见 docs/architecture/audio-fades.md。
 
@@ -145,7 +144,7 @@ extension TimelineState {
 
     /// 两份状态**只差在音量/渐变**上吗。
     ///
-    /// 这三个字段只进 audioMix，不改合成结构，所以改它们不必重建整条预览
+    /// 这几样只进引擎的增益（`updateGains`），不改合成结构，所以改它们不必重建整条预览
     /// （重建会 `replaceCurrentItem`，画面必闪一下）。判据故意写成「把这几个
     /// 字段抹平之后两边完全相等」——**别去枚举「哪些字段算变了」**：
     /// 那种写法每加一个新字段就漏一次，而漏的方向是「本该重建却没重建」，
@@ -156,7 +155,7 @@ extension TimelineState {
     }
 
     /// 把所有段的音量/渐变/音量曲线、以及三级推子抹成同一个值，只留「合成结构」
-    /// 那部分身份。推子和曲线同样只进 audioMix（见 docs/architecture/audio-mixer.md），
+    /// 那部分身份。推子和曲线同样只进引擎的增益（见 docs/architecture/audio-mixer.md），
     /// 拖一下推子就重建一次整条预览的话，画面每拖一下闪一次。
     private func audioMixNeutralized() -> TimelineState {
         var copy = self
@@ -165,8 +164,8 @@ extension TimelineState {
             clip.fadeInDuration = 0
             clip.fadeOutDuration = 0
             clip.volumeCurve = KeyframeTrack()
-            // 声音场景：换种类、拖滑杆只进 audioMix（tap 背后的配置），抹平；**有没有**场景
-            // 留着 —— 挂了场景的合成音轨最后一段后面要垫一截素材让余音散完，那是合成结构
+            // 声音场景：换种类、拖滑杆只进引擎的增益（`updateGains` 同一种场景只改链的参数），抹平；
+            // **有没有**场景留着 —— 引擎加上 / 去掉场景要重开那一段的流（`sameStructure`），沿用整条重建这条路
             // （docs/architecture/sound-scenes.md）。
             if clip.soundScene != nil { clip.soundScene = SoundScene(kind: .room) }
         }
@@ -185,35 +184,6 @@ extension TimelineState {
         }
         for lane in audioTracks.indices {
             for index in audioTracks[lane].clips.indices { change(&audioTracks[lane].clips[index]) }
-        }
-    }
-}
-
-/// 预览合成建好之后，「哪些段的声音落在哪条合成音轨上」的记录。
-///
-/// 有了它就能在**不重建合成**的前提下只重算一遍 audioMix：改音量或渐变时
-/// 直接把新的 mix 赋给正在播的 `AVPlayerItem`，画面完全不动。
-///
-/// 只对「合成结构不变」的改动有效 —— 判据是
-/// `TimelineState.differsOnlyInAudioMix`。静音（Mute）**不在**其中：主轨和
-/// 上层视频轨的静音段压根不会被插进合成音轨，改它会改结构。
-struct AudioMixPlan: Equatable, Sendable {
-    /// 一条合成音轨上按插入顺序排下来的段。
-    struct Lane: Equatable, Sendable {
-        /// `CMPersistentTrackID`（就是 Int32），用它重建 input parameters。
-        var trackID: Int32
-        var clipIDs: [UUID]
-        /// 主轨的声音要按转场仲裁算斜坡，上层视频轨/音频轨不用。
-        var isMainTrack: Bool
-    }
-
-    var lanes: [Lane] = []
-
-    mutating func record(trackID: Int32, clipID: UUID, isMainTrack: Bool) {
-        if let index = lanes.firstIndex(where: { $0.trackID == trackID }) {
-            lanes[index].clipIDs.append(clipID)
-        } else {
-            lanes.append(Lane(trackID: trackID, clipIDs: [clipID], isMainTrack: isMainTrack))
         }
     }
 }

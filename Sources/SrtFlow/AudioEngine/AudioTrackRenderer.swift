@@ -97,7 +97,7 @@ final class AudioTrackRenderer: @unchecked Sendable {
     }
 
     /// 草稿（已乘段增益）过场景：原声那一份（1 − 强度）直接进、湿的那一份（强度 × 响度补偿）从链里出来；
-    /// 链没渲出来就全给原声，不许凭空少一截声音。最后乘推子。和 `SceneTrackRenderer.render` 同一笔账。
+    /// 链没渲出来就全给原声，不许凭空少一截声音。最后乘推子。顺序是合同（docs/architecture/sound-scenes.md）。
     private func mixScene(_ box: SceneBox, fader: Float, count: Int,
                           into outLeft: UnsafeMutablePointer<Float>, _ outRight: UnsafeMutablePointer<Float>) {
         let chain = box.chain

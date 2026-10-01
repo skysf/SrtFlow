@@ -1,10 +1,8 @@
 # 音频引擎：时间线的声音自己播、自己渲
 
 > 2026-10-01 起（PR1a：引擎本体 + 离线渲染 + 等价自检；PR1b：接进 App；PR2a–d：电平表、声音场景、变速、无锁槽；
-> **PR3a：成片也走它、开关默认开** —— `SRTFLOW_AUDIO_ENGINE=0` 或 `defaults write com.srtflow.SrtFlow audioEngine -bool NO`
-> 关回 AVPlayer 的合成那条路，只留到 PR3b 删旧路）。
-> 为什么要有它、量过的数字、分几刀见 [方案](../plans/2026-10-01-audio-engine.md)。做完 PR3b 之后
-> [推子与电平表](audio-mixer.md)、[成片的声音](export-audio-mixdown.md)、[声音场景](sound-scenes.md) 按引擎改写。
+> PR3a：成片也走它；**PR3b：AVPlayer 那条声音路（合成音轨 + audioMix + tap）和迁移期的开关删掉，时间线的声音只有引擎
+> 这一份，播放器的合成里只有画面**）。为什么要有它、量过的数字、分几刀见 [方案](../plans/2026-10-01-audio-engine.md)。
 
 ## 一、是什么
 
@@ -12,7 +10,8 @@
 
 | 文件 | 管什么 |
 | --- | --- |
-| `AudioEngineConfig.swift` | 从 `TimelineState` 算出来的纯值：哪条轨、哪一段、从素材哪一秒起、在时间线哪一段出声、段的增益（`GainTable.Sampler`）、轨道推子、总推子、总长 |
+| `AudioEngineConfig.swift` | 从 `TimelineState` 算出来的纯值：哪条轨、哪一段、从素材哪一秒起、在时间线哪一段出声、段的增益（`GainTable.Sampler`）、轨道推子、总推子、总长；自己排序、展开转场 |
+| `AudioGainTable.swift` | 增益表 `GainTable`（设定点 + 线性斜坡，`sampler()` 按秒取值）和 `AudioGainRamps`（从一段剪辑的音量 / 曲线 × 渐变铺出一张表） |
 | `AudioRing.swift` | 一段声音的环：喂样线程写、渲染块读、无锁；按**时间线的帧**定位；seek 用「新一轮」标记，读者自己跳过去 |
 | `AudioSegmentReader.swift` | 按段读原件（`AVAudioFile` + `AVAudioConverter` 转 48 kHz），不缓存；变速段交给下一行 |
 | `AudioTimeStretchReader.swift` | 变速段：保音调地拉伸（离线的小 AVAudioEngine：PlayerNode → AVAudioUnitTimePitch(rate)），随机定位时重排并先渲掉单元的延迟 |
@@ -22,7 +21,6 @@
 | `TimelineAudioEngine.swift` | 图（每轨一个 `AVAudioSourceNode` → mainMixer = 总推子，另有一个静音的时钟节点）、引擎时钟（只从渲染块的时间戳来）、播放头锚点、实时的 play / pause / seek、换配置 / 只换增益 / 让路 / 静音、离线整段渲染；把每条轨和总表的槽登记进电平表 |
 | `MeterSlot.swift` | 电平表的无锁槽：渲染块按拍「比大就换」写峰值，界面每拍取走并清零 |
 | `PlaybackAudioSource.swift` | 时钟驱动引擎的那几个方法（协议，不依赖任何东西，`PlayerClock` 的自检只编它） |
-| `AudioEngineFlag.swift` | 迁移期的开关：**默认开**（PR3a 起）；`SRTFLOW_AUDIO_ENGINE=0` 或 `defaults write com.srtflow.SrtFlow audioEngine -bool NO` 关回 AVPlayer 的合成，只留到 PR3b 删旧路 |
 
 ## 二、合同
 
@@ -45,7 +43,7 @@
    （这台机器 44.1 kHz），拿它算位置播放头会以 0.92 倍速走：2026-10-01 冒烟欠载 51k 帧、视频对表 60 次。
    一个静音的时钟节点一直挂着，没有一条轨出声的时间线也有人每拍更新时钟。
 
-## 三、接进 App 的样子（PR1b，开关开着时）
+## 三、接进 App 的样子
 
 - **声音是主时钟。** `PreviewAudioEngineHost`（VideoEditProjectAudioMix.swift）在第一次重建预览时建引擎、起图、
   `PlayerClock.attachAudioSource`；从此播放头每 50 ms 从引擎读（`observePlaybackTime` 仍是唯一入口），
@@ -54,38 +52,42 @@
 - **开播 / seek 都只是改几个数**：`PlayerClock.play()` 先让引擎从播放头起播，再 `setRate` 让视频从此刻起跟；
   播放中 seek 同样 —— 引擎一个 IO 缓冲就出声，视频自己定位、定位要多久就晚多久赶上来（不改时间表）；
   停着 seek 照旧精确定位 / 链式扫帧。暂停 = 引擎锚点钉住 + 播放器 pause。
-- **合成里不插音轨**：重建预览时把 builder 建出来的音轨拆掉（`removeTrack`），audioMix 不挂、电平表的 tap 不建
-  —— 播放器只剩画面，seek 才快。成片走引擎的离线模式（[成片的声音](export-audio-mixdown.md)），不碰播放器的合成。
-- **快路径和即时试听走配置**：`refreshAudioMix` / `previewAudioLive` 开关开着时算一份 `AudioEngineConfig`
+- **合成里只有画面**（PR3b 起 builder 根本不插音轨；PR1b–PR3a 是建完再拆）：播放器只剩画面，seek 才快。
+  画面收得比时间线总长早（配乐比画面长、纯音频时间线）时 builder 从画面结尾到总长垫一截黑底：合成里没有音轨撑长度，
+  不垫的话播放器的条目比时间线短 —— 播到画面结尾停在最后一帧上，引擎的播放头还在走、时钟每拍都去对表
+  （[案例](../bugfixes/2026-10-01-preview-item-shorter-than-timeline-without-audio-tracks.md)；只垫那一截，画面铺满的工程一层都不多）。
+  成片走引擎的离线模式（[成片的声音](export-audio-mixdown.md)），不碰播放器的合成。
+- **快路径和即时试听走配置**：`refreshAudioMix` / `previewAudioLive` 算一份 `AudioEngineConfig`
   交给 `updateGains`（结构没变只换增益，流不重开；结构变了退到 `replace`）。
-- **试听让路**：`AudioLibraryAudition` 压播放器音量的同时让引擎的总推子乘同一个让路量。
+- **试听让路**：`AudioLibraryAudition` 让引擎的总推子乘让路量（播放器没有声音可压）。
 - **冒烟静音**：`SRTFLOW_SMOKE_MUTE` 也让引擎静音（渲染照跑，输出不出声卡）；结果里带 `audioEngine`
   （开没开、欠载几帧、视频对了几次表）。
 - **电平表**（PR2a 写环，PR2d 改成无锁槽）：每条轨的渲染块按拍把混完的峰值（已乘段增益、场景、推子）交给自己的
   `MeterSlot`（原子的「比大就换」，不加锁、不逐采样写环）；总表从混音器的出口取（实时是 mainMixer 上的 tap，在引擎自己的
   线程上拿到拷贝；离线是渲出来的那一块），所以总表含总推子、让路和静音。槽按键登记进 `AudioMeterEngine`
   （`registerSlots`，换配置时整批重登记；`Track.meterKey`：主轨 `.track(.main)`，其余 `.track(.lane(id))`），
-  `reading` 对登记过的键取走槽里的峰值（30 帧/秒读就是最近 33 ms 的峰值）、不看环，回落 / 峰值保持 / 红灯照旧。
-  tap 那条路（开关关着）仍然写环、扫环。自检第 10 组：总表的槽 = 渲出来的峰值、主轨的槽 × 总推子 = 总表、静音段的轨是 0、
-  隐藏轨没有槽。
+  `reading` 对登记过的键取走槽里的峰值（30 帧/秒读就是最近 33 ms 的峰值），回落 / 峰值保持 / 红灯照旧
+  （PR3b 起 `AudioMeterEngine` 只剩槽 + 显示状态，环和 tap 删了）。自检第 10 组：总表的槽 = 渲出来的峰值、
+  主轨的槽 × 总推子 = 总表、静音段的轨是 0、隐藏轨没有槽。
 - **声音场景**（PR2b）：效果链跟着流（`SceneBox`：链 + 此刻的强度和响度补偿，在喂样线程上建、渲染块里跑），
-  顺序和 tap 那条路一样：段增益 → 效果（原声 1 − 强度 直出，湿的 强度 × 补偿 从链里出来）→ 推子；段尾之后流还活着、
+  顺序：段增益 → 效果（原声 1 − 强度 直出，湿的 强度 × 补偿 从链里出来）→ 推子；段尾之后流还活着、
   喂零、链继续吐余音（`tailFrames`，跟着旋钮变），余音散完才关流；位置跳了（seek、开播）链复位，旧余音不拖进新位置。
   拧旋钮走 `updateGains`：同一种场景只改链的参数，换种类重建链；加上 / 去掉场景算结构变了（`sameStructure`），重开流。
-  不需要 `SceneTailCarrier` 那截载体（合成里才要垫东西让 tap 活着）。自检第 11 组：浴室、电话两种场景和 tap 那条路
-  逐窗口比（差 ≤ 0.018 dB）、浴室的余音越过段尾且越散越小、挂了场景的声音和原声不一样；反向验证：不过链 → 8 条红。
+  自检第 11 组：强度 0 = 原声（对着 oracle 比）、浴室的余音越过段尾且越散越小、挂了场景的声音和原声不一样；
+  反向验证：不过链 → 8 条红。合同在 [声音场景](sound-scenes.md)。
 - **变速**（PR2c）：`speed ≠ 1` 的段由 `AudioTimeStretchReader` 读 —— 离线的小引擎跑 AVAudioUnitTimePitch，音调不变，
-  时间线上的长度还是 `sourceDuration ÷ speed`。它和 AVFoundation 的 spectral 不是同一种算法，包络对得上（自检第 12 组容差
-  1.5 dB）但不逐采样相等；成片（PR3a 起）也走它，预览和成片是同一份。
+  时间线上的长度还是 `sourceDuration ÷ speed`。预览和成片是同一份（自检第 12 组：包络对得上 oracle 的线性重采样、
+  换音的时刻按倍速落位、音高不变）。
 - 已知：每次 seek / 开播之后头一拍（约 10 ms）环里还没有数据，当静音（欠载计数里能看到，32 秒 6 次 seek
   共 2505 帧）。
 
-## 四、还没做的（按方案的刀）
+## 四、还没做的
 
 - seek 后头一拍约 8 ms 的静音：只是起声晚一拍，耳朵听不出，不值得在主线程上做同步预读；先不做。
-- PR3b：删旧路 —— `AudioMixBuilder` 的 tap 接线、`CompositionAudioTracks`、`TapContext` / `SampleRing`、
-  `SceneTrackRenderer` / `SceneTailCarrier`、开关本身；`check-audio-fade.sh` 里对着 tap 那条路比的几组改成对着固定期望比；
-  [推子与电平表](audio-mixer.md)、[声音场景](sound-scenes.md)、[声音：音量与渐入渐出](audio-fades.md) 按引擎改写。
+- 加 / 去掉场景仍走整条预览重建（`differsOnlyInAudioMix` 把「有没有场景」算结构，那是合成音轨要垫载体的年代定的）；
+  引擎本身只需重开那一段的流，改成快路径是后续一刀。
+- 没有音频输出设备的机器（托管 CI 的虚拟机可能就是）：实时引擎 `start()` 失败时宿主不挂时钟，播放头照旧由播放器走、
+  只是没声音；引擎应当自己带一个静默的时钟，这一条还没做。
 
 ## 五、回归
 
@@ -115,10 +117,11 @@ oracle 比；场景本身验结构，见第三节）；第 12 组变速（2 倍�
 引擎开着时进程 CPU 约是关着时的一半（16.8 s vs 35.9 s），视频对表 0 次，欠载只有每次 seek 的头一拍。
 成片（PR3a）：`checks/export-audio-single-pipeline.sh` 钉着混音只经 `AudioEngineConfig.make` + `TimelineAudioEngine(.offline)` +
 `renderOffline`（反向验证：换掉模式 → 点名一行；不用 `make` → 两行红）；`scripts/check-audio-fade.sh` 导出那几组真跑导出、
-和预览逐窗对，换了渲染器之后全绿 —— 只有「大厅 · 成片 vs 预览」改成对着引擎自己渲的那份比（`enginePCM`）：那条 5 秒的时间线上
-tap 那条路的余音载体要从 2 秒拉成 2.5 秒，AVFoundation 变速过的那一截之后 tap 里的余音和引擎差 1–3 dB（−50 dB 上下，3.3 秒处 4.2 dB），
-4 秒的时间线（载体不用拉）两边差 ≤ 0.02 dB；用户现在听的预览就是引擎，tap 那条路 PR3b 删。开关默认开之后预览性能 ratchet 的 `meters.tapCreate` 归零（不再建 tap），基线在同一个 PR 里改小
-（`checks/PreviewPerf/baseline.json`；本机还量到 `busy.select.body` 996 → 948，CI 的 runner 上仍是 996 —— 那一项和引擎无关，基线不动）。
+和预览（引擎离线渲）逐窗对。性能 ratchet：PR3a 开关默认开之后 `meters.tapCreate` 归零，PR3b 把这两个键删了。
+合成只有画面（PR3b）：`scripts/check-preview-composition.sh` 第 0b 组钉着合成里没有音轨、配乐比画面长时合成铺到总长且尾巴是黑的、
+纯音频时间线也有铺到总长的画面轨、画面铺满时不垫（反向验证：不垫尾巴的黑底 → 三条红）；`checks/transition-handles-wiring.sh`
+钉着 `AudioEngineConfig.make` 自己展开转场；`checks/timeline-drag-wiring.sh` 钉着重建把配置连同电平表交给引擎、换增益的两个入口走
+`updateGains`。
 
 人工回归（开关开着）：播放中点时间线声音是否立刻接上、暂停 / 播放是否立刻、视频和声音对不对口型、
 拖推子 / 音量线时声音是否跟手、试听音乐时时间线是否让路；导出一条有场景 / 变速 / 音量曲线的工程，成片和预览逐段听。

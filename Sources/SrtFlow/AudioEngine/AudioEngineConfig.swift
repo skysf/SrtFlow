@@ -9,7 +9,7 @@ import Foundation
 // 段落规则和 VideoEditCompositionBuilder 往合成里插声音的规则**是同一份**：哪些段出声（整轨隐藏、单段隐藏、
 // 还在转静帧的占位块不出；主轨和上层轨静音的段不出；音频轨静音 = 增益 0，这里直接不出）、从哪儿起（主轨接缝
 // 不到 `mainGapTolerance` 的零头接在上一段末尾）、首尾定格那两截留空（声音没有定格）。增益用的是
-// AudioMixBuilder.addVolumeRamps 那一张 GainTable（音量 × 渐变 × 曲线；主轨转场的交叉淡变仲裁在
+// AudioGainRamps.addVolumeRamps 那一张 GainTable（音量 × 渐变 × 曲线；主轨转场的交叉淡变仲裁在
 // FadeWindow.previewMainTrack）。引擎接管之后 builder 不再插音轨（PR3），这份就是声音唯一的账。
 // 方案：docs/plans/2026-10-01-audio-engine.md；自检：scripts/check-audio-engine.sh（和 AVFoundation 的混音逐窗口比）。
 
@@ -56,7 +56,7 @@ struct AudioEngineConfig: Sendable {
 
     static let empty = AudioEngineConfig(tracks: [], master: 1, duration: 0)
 
-    /// `requested` 传**用户那一份**：这里自己排序、展开转场（和 builder / makeAudioMix 同一份几何，展开只许一次）。
+    /// `requested` 传**用户那一份**：这里自己排序、展开转场（和 builder 插画面同一份几何，展开只许一次）。
     static func make(from requested: TimelineState) -> AudioEngineConfig {
         var state = requested
         state.sortMainClipsByStart()
@@ -111,14 +111,14 @@ struct AudioEngineConfig: Sendable {
     }
 
     /// 一段的出声范围和增益。和 builder 的 `insert` 同一笔账：首帧定格留空、素材不够长在读的那一侧收口。
-    /// 增益表的钉点（`previousEnd`）只对 AVFoundation 的 de-zipper 有意义，这里段外本来就没有声音，钉在段起点即可。
+    /// 增益表的钉点（`previousEnd`）钉在段起点：引擎段外本来就没有声音（AudioGainTable.swift）。
     private static func segment(for clip: EditClip, at: Double, fades: AudioFadeWindow) -> Segment? {
         let speed = max(0.05, clip.speed)
         let sourceDuration = clip.renderSourceDuration
         guard sourceDuration > 0.01 else { return nil }
         let start = at + clip.renderHoldHead
         var table = GainTable()
-        AudioMixBuilder.addVolumeRamps(
+        AudioGainRamps.addVolumeRamps(
             table: &table, clip: clip, fades: fades, previousEnd: clip.timelineStart, gainScale: 1
         )
         return Segment(

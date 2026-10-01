@@ -1,7 +1,8 @@
 # 推子与电平表：轨道头上的混音台
 
-> 2026-09-23 落地。改轨道推子 / 总推子、轨道头的推子视图、电平表（音频 tap，
-> `VideoEditAudioMeter.swift`）、`makeAudioMix` 的增益表之前必读。
+> 2026-09-23 落地；2026-10-01 PR3b 起电平表和增益都在音频引擎里（tap 那条路删了）。改轨道推子 / 总推子、轨道头的
+> 推子视图、电平表（`VideoEditAudioMeter.swift` + `AudioEngine/MeterSlot.swift`）、增益表（`AudioEngine/AudioGainTable.swift`）
+> 之前必读。
 > 方案与产品决策见 [声音编辑方案](../plans/2026-09-23-audio-mixing.md)；
 > 段自己的音量见 [音量曲线](audio-volume-curve.md) 与 [声音：音量与渐入渐出](audio-fades.md)。
 
@@ -19,14 +20,15 @@
 
 ### 怎么乘
 
-两个推子都是常数，**直接乘进每一段自己的增益**，不另加节点：`makeAudioMix` 给每一段算
-`gainScale = trackVolume(containingClip:) × masterVolume`，乘进这一段的每个音量设定点（主轨 A/B
-两条合成轨都按主轨推子算）。成片就是这份混音由音频引擎离线渲出来的（[成片的声音](export-audio-mixdown.md)），
-2026-09-24 之前导出另乘一份（乘进这一段的 `volume=` 或曲线 `aeval` 的每片叶子），已退役。
-- 只动推子属于「只换 audioMix」（`differsOnlyInAudioMix` 已经抹平三级推子），画面不闪。
+两个推子都是常数，不另加节点：`AudioEngineConfig.make` 把段的增益表（`AudioGainRamps`：音量 / 曲线 × 渐变）、
+轨道推子（`Track.fader`）、总推子（`config.master`）分开记，引擎的渲染块每拍乘段增益、再乘轨道推子，总推子在 mainMixer
+上（[音频引擎](audio-engine.md)）；成片是同一个引擎离线渲的（[成片的声音](export-audio-mixdown.md)）。
+2026-09-24 之前导出另乘一份（乘进这一段的 `volume=` 或曲线 `aeval` 的每片叶子）、2026-10-01 之前预览还有
+AVFoundation 的 audioMix 一份，都退役了。
+- 只动推子属于「只换增益」（`differsOnlyInAudioMix` 已经抹平三级推子），引擎 `updateGains`，画面不闪。
 
-**总推子不能挪到混音之后单独乘**：那样数学上虽等价，却多出一处「总推子在哪乘」的账，迟早分叉
-（当年是预览每条合成轨各乘各的、导出混完再乘）。
+**三级增益只许有一本账**（配置里分开记、渲染块按同一个顺序乘）：当年预览每条合成轨各乘各的、导出混完再乘，
+两份迟早分叉。
 
 ## 二、界面：轨道头的推子
 
@@ -53,42 +55,25 @@
 **总表最要紧**：混音是各轨直接相加（不压不限，成片同样），每条轨都没爆、加起来
 爆了的情况只有它看得见。
 
-实现（`VideoEditAudioMeter.swift`）全部建立在 2026-09-23 的 tap 探针上，七条不许改的。
-**2026-09-24 起同一个 tap 还管[声音场景](sound-scenes.md)**：挂了场景的合成音轨，tap 先原地改声音
-（段增益 → 效果 → 轨道推子，AVFoundation 只乘总推子），电平表量的是改完的声音（那张增益表是空的 = 1）；
-没挂场景的轨照旧只看不改。
+实现：`VideoEditAudioMeter.swift`（显示状态、红灯）+ `AudioEngine/MeterSlot.swift`（槽）+ 引擎的渲染块。
+2026-09-23 到 2026-10-01 这里是 AVPlayer 那条路：每条合成音轨挂 `MTAudioProcessingTap`、按绝对位置写采样环、界面扫环，
+背后七条实测约束（tap 看不到 audioMix 的音量要自己乘同一张增益表、换 mix 新建 tap 卡 0.6 秒、回调不对齐要按位置累加、
+提前 280 ms、空转回调要过滤、一条合成音轨只装一种源格式、tap 给的时间可以比 0 早）—— 全是那条路带来的，
+随它退役；案例还在：[换格式 tap 死掉](../bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md)、
+[播放中按 Return 崩溃](../bugfixes/2026-09-26-meter-crash-on-go-to-start.md)。现在不许改的：
 
-1. **每条合成音轨一个 `MTAudioProcessingTap`（PreEffects）。** tap 拿到的是**乘音量之前**
-   的采样（PreEffects / PostEffects 都看不到 audioMix 的音量；PostEffects 的时间标签还不准），
-   所以增益我们自己乘 —— 用的是 **`makeAudioMix` 铺进 AVFoundation 的同一张 `GainTable`**
-   （先记表、再原样铺进 AVFoundation，两边不可能分叉）。表里不含总推子，总推子只乘在总表上。
-2. **tap 必须跟着合成活。** 每次换 audioMix 就新建 tap 的话，播放会**静默卡住约 0.6 秒**
-   （不报错、不发通知，rate 仍是 1）。所以 tap 按合成音轨缓存（`AudioMeterEngine.tap`），
-   快路径、拖推子 / 音量线时的试听都挂回同一个，只换它背后的增益表；只有预览重建（新合成）
-   时 `beginComposition` 整批重来。
-3. **两条轨的回调不对齐**（时间网格差几百帧），所以按**绝对采样位置**累加（`SampleRing`）：
-   总表是所有轨相加，主轨的 A/B 两条合成轨也按位置加到同一条表上。环按 256 帧一块记着
-   「装的是哪个位置、什么时候写的」，位置对不上或写得太久（>100ms，上一遍播放留下的）先清零。
-4. **tap 比播放头提前约 280ms 渲染**：写进环，界面在播放头处读最近 50ms。
-5. **开播后第一拍时间无效、暂停后每 ~93ms 空转一次（时长 0）**：按时长过滤掉。
-6. 界面只在播放时按 30 帧/秒去读（`TimelineView` 停播即停）；停播时电平条收起、红灯留着。
-7. **一条合成音轨只装一种源音频格式**（`CompositionAudioTracks`，
-   `VideoEditCompositionAudioTracks.swift`）。同一条合成音轨上前后两段的源格式不同（采样率、
-   声道数、编码任何一样），tap 会被 AVFoundation 重新 prepare，之后**再也不被调用**：那条轨
-   从那儿起没声音（播放器提前几秒读，断得比换格式的地方还早）；从换格式之后起播、而此刻只有
-   这条轨出声时，播放器干脆不走。离线读同样中招。换 PostEffects 没用。只差编码参数
-   （magic cookie）、变速段都不算换格式。所以主轨的 A/B 槽、每条上层视频轨、每条音频轨遇到新
-   格式就另开一条合成音轨，电平表照样按时间线轨归并（同第 3 条的按位置相加）。
-   案例：[一条轨上换了音频格式](../bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md)。
-8. **tap 给的时间可以比 0 早**（播放中精确跳回 0 —— Return / Home —— 之后实测崩过一次：位置 ≤ -256 帧），
-   所以 `SampleRing.add` 丢掉 0 之前的位置（`VideoEditMeterRing.swift`）。负数取余还是负数，拿它当下标就越界崩溃，
-   而且崩在音频线程上、整个 App 退出。**从 tap / 播放器回调拿来的时间，当下标之前先问一句会不会是负的。**
-   案例：[播放中按 Return 崩溃](../bugfixes/2026-09-26-meter-crash-on-go-to-start.md)。
-9. **引擎那条路不走环。** AVPlayer 那条路是 tap 回调（`TapContext`）写环、界面扫环；音频引擎那条路
-   （[音频引擎](audio-engine.md)，开关开着时）是每条轨的渲染块按拍把峰值交给无锁的槽（`MeterSlot`），总表从 mainMixer 的
-   tap 取，槽按键登记进 `AudioMeterEngine`，`reading` 对登记过的键取走槽里的峰值、不看环；回落 / 峰值保持 / 红灯是同一份。
-   重建时两条路都 `beginComposition`。
-10. **界面读播放头不问播放器。** 电平条读的是 `PlayerClock.estimatedTime`（最近一跳 + 过去的时间，最多补一跳），
+1. **每条轨的峰值从渲染块来，总表从混音器出口来。** 每条轨的渲染块按拍把混完的峰值（已乘段增益、场景、轨道推子）交给
+   自己的无锁槽（`MeterSlot`：原子的「比大就换」，不加锁、不逐采样写环）；总表是 mainMixer 出口那一拍的峰值
+   （实时是 mainMixer 上的 tap、在引擎自己的线程上拿到拷贝；离线是渲出来的那一块），所以总表含总推子、让路和静音。
+   表上看到的就是听到的 —— 不存在「tap 看不到音量要自己补乘」这回事。
+2. **槽按键登记。** 引擎建图 / 换配置时整批 `registerSlots`（`Track.meterKey`：主轨 `.track(.main)`，其余 `.track(.lane(id))`；
+   主轨的两段都在同一条轨上、同一个槽）；预览重建时 `beginComposition` 把槽和显示状态清掉，引擎 `apply` 之后重新登记。
+3. **界面每拍取走。** `reading` 对登记过的键 `take()`（取走并清零），30 帧/秒读就是最近 33 ms 的峰值；回落 24 dB/秒、
+   峰值保持 1.5 秒、过 0 dBFS 点红灯，和以前一样。没登记的键读到的是静音。
+4. **一条轨上换源格式不是事。** 引擎一段一条流、各自转成 48 kHz（`AudioSegmentReader`），换格式只是换一条流；
+   自检第 8b 组钉着两段都出声、表上都看得见、渲染不卡。
+5. 界面只在播放时按 30 帧/秒去读（`TimelineView` 停播即停）；停播时电平条收起、红灯留着。
+6. **界面读播放头不问播放器。** 电平条读的是 `PlayerClock.estimatedTime`（最近一跳 + 过去的时间，最多补一跳），
    不是 `player.currentTime()`：后者要同步拿播放器内部的锁，多轨工程播放中播放器自己的队列一忙，每秒 300 次的读
    就把主线程堵住几百毫秒到 2.4 秒（空格按下去图标慢半拍）。AVKit 的 Now Playing 更新走同一把锁，
    `PlayerViewRepresentable` 把它关了。`checks/player-time-no-sync-read.sh` 钉着：App 代码里不许出现 `currentTime()`。
@@ -101,9 +86,9 @@
 | `scripts/check-project-file.sh`（第 28 组） | 推子的取值口与夹紧、只动推子 = 只换 audioMix、选段导出带着推子走（含升轨）、存盘按需写键 / v19、越界值夹回来、v18 老工程读成 0 dB |
 | `scripts/check-audio-fade.sh`（第 7a、7e 组） | 真实包络里推子那 −3 dB 预览和成片都在；快路径与重建等价 |
 | `checks/timeline-drag-wiring.sh`（轨道头一节） | 推子占格（没有推子的行也占着）、拖动中走 `previewTrackVolume`、标尺行有总推子、推子视图不碰 project |
-| `scripts/check-audio-fade.sh`（第 8 组，电平表） | 离线读同一份合成 + 挂了 tap 的 audioMix：轨道表是推子之后的（×2 / ×4）、总表按位置相加再乘总推子（×12）且与真实混音一致、红灯只亮在总表上、开播熄灯、曲线同样乘进表、主轨 A/B 两条合成轨归到同一条表。反向验证（2026-09-23）：tap 里不乘增益 → 5 项红 |
-| `scripts/check-audio-fade.sh`（第 8c 组，环形缓冲） | 0 之前的位置（两种越界：块号为负、块号为 0 但下标为负）丢掉、不崩、不串到 0 以后；0 以后照常。反向验证（2026-09-26）：删掉那行 `guard` → `Index out of range`、退出码 133，和现场同一个崩法 |
-| `scripts/check-audio-fade.sh`（第 8b 组，换格式） | 音频轨、主轨各在中途换一次源格式（48kHz 立体声 → 44.1kHz 单声道）：换格式之后表上和真实混音里都有声音、渲染不卡（普通线程上的看门狗 60 秒）。2026-10-01 PR3b 起走引擎（一段一条流、各自转格式）；AVFoundation 那条路时还钉着「每条合成音轨只装一种格式」的结构不变量（反向验证：换回旧的合成 → 4 项红 + 看门狗判红） |
+| `scripts/check-audio-fade.sh`（第 8 组，电平表） | 挂着电平表离线渲（每拍先看槽再取走）：轨道表是推子之后的（×2 / ×4）、总表 = 各轨相加再乘总推子（×12）且与真实混音一致、红灯只亮在总表上、开播熄灯、曲线同样乘进表、主轨两段都在主轨那一条表上。反向验证（2026-10-01，`check-audio-engine` 第 10 组）：渲染块不交峰值 → 两条红 |
+| `scripts/check-audio-engine.sh`（第 10 组，电平表） | 总表的槽 = 渲出来的峰值、主轨的槽 × 总推子 = 总表、静音段的轨是 0、隐藏轨没有槽、界面取走之后槽清零 |
+| `scripts/check-audio-fade.sh`（第 8b 组，换格式） | 音频轨、主轨各在中途换一次源格式（48kHz 立体声 → 44.1kHz 单声道）：换格式之后表上和真实混音里都有声音、渲染不卡（普通线程上的看门狗 60 秒）。2026-10-01 PR3b 之前这里钉的是 AVFoundation 那条路的「一条合成音轨只装一种格式」 |
 
 **已知的偶发（CI，AVFoundation 那条路，2026-10-01 PR3b 起不再适用）**：第 8b 组「一条音频轨上换了源格式，挂着电平表
 离线读 60 秒没读完」在 CI 上红过两次（2026-09-24 `823a433`、2026-09-27 `0994af1`，两次改动都不碰声音代码）。认法曾是：
@@ -127,8 +112,8 @@
       停播电平条收起。
 - [ ] 两条都接近满幅的轨一起响：各自的表不红、**总表红**；拉低总推子再播，红灯开播时熄掉、
       这一遍不再亮。
-- [ ] 播放中换 mix（拖推子、拖音量线、改音量）**不卡顿**（新建 tap 会卡 0.6 秒，这条就是
-      防它的）。
+- [ ] 播放中换增益（拖推子、拖音量线、改音量）**不卡顿**（引擎只换增益、流不重开；AVPlayer 那条路新建 tap
+      会卡 0.6 秒，这条当年就是防它的）。
 - [ ] 一条音频轨上混着不同格式的素材（比如 48kHz 立体声的音效后面接 44.1kHz 单声道的配音、
       mp3 后面接视频里的 AAC）：从头播、从后面那段里起播，每段都听得见，那条轨的电平条都在跳，
       播放头照常走（`AI_Video_SouthPole` 那份工程第二条音频轨就是这样）。

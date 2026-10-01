@@ -7,20 +7,14 @@ import SrtFlowCore
 /// 结构：主轨用**两条**合成视频轨 A/B 交替放段落 —— 转场要求前后两段在重叠区
 /// 同时有画面，同一条轨做不到。上层视频轨每条时间线轨各占一条合成轨。转场用
 /// 透明度渐变近似（压黑/闪白在导出时由 xfade 精确渲染，预览的时间账完全一致）。
-/// 变速用 scaleTimeRange，保音调用 `timePitchAlgorithm`。成片的声音就是这份合成离线读出来的
-/// （ExportAudioMixdown），所以这里的音量、渐变、曲线、推子也就是成片的。
+/// 变速用 scaleTimeRange。**合成里只有画面**：声音全在音频引擎里（AudioEngine/，预览实时渲、成片离线渲），
+/// 2026-10-01 PR3b 之前这里还插合成音轨、铺 audioMix。画面收得比时间线总长早（配乐比画面长、纯音频时间线）时
+/// 垫一截黑底铺到总长：播放器的条目要和时间线一样长，不然播到画面结尾就停在最后一帧上、时钟对表也没完没了。
 enum VideoEditCompositionBuilder {
-
-    /// 变速段的保音调算法：预览的播放条目和成片的离线混音**用同一个**，各写一遍就会分叉。
-    static let timePitchAlgorithm: AVAudioTimePitchAlgorithm = .spectral
 
     struct Built {
         var composition: AVMutableComposition
         var videoComposition: AVMutableVideoComposition?
-        var audioMix: AVMutableAudioMix?
-        /// 「谁的声音在哪条合成音轨上」。留着它，改音量/渐变时就能只换 mix、
-        /// 不重建合成（见 `makeAudioMix`）。
-        var audioPlan: AudioMixPlan
         var renderSize: CGSize
     }
 
@@ -81,7 +75,7 @@ enum VideoEditCompositionBuilder {
         // `insertTimeRange` 把已插好的段往后挤（黑屏/画面错时）。状态侧的
         // 改动入口已维持有序，这里再守一道 —— 上层视频轨（下面）同款 sorted。
         PerfCounters.event(.compositionBuild)
-        // 铺音量要的是**用户那一份**（`makeAudioMix` 自己展开，展开只许一次）。
+        // 声音的配置另从用户那一份状态算（`AudioEngineConfig.make` 自己展开，展开只许一次）。
         let requested = state
         var state = state
         state.sortMainClipsByStart()
@@ -112,13 +106,6 @@ enum VideoEditCompositionBuilder {
         let videoA = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         let videoB = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid)
         var videoCursors: [Double] = [0, 0]
-        // 合成音轨按「哪条轨 × 源音频格式」按需开：一条合成音轨上换格式，电平表的 tap 会
-        // 从此不被调用，那条轨没声音、从换格式之后起播还会卡死（见 VideoEditCompositionAudioTracks.swift）。
-        let audioTracks = CompositionAudioTracks(composition: composition)
-        // 音量斜坡不在这儿铺：这一趟只记「谁的声音进了哪条合成音轨」，
-        // 铺斜坡统一交给 `makeAudioMix` —— 它同时也是「只改音量/渐变时不重建
-        // 合成、只换 audioMix」那条快路径的实现，两条路共用一份才不会分叉。
-        var audioPlan = AudioMixPlan()
         // 主轨 clip 序号 → placed 序号（接缝后处理用；被跳过的段不在里面）。
         var placedIndexByMainIndex: [Int: Int] = [:]
         // 上一段进了合成的主轨段收在哪（时间线秒）：接缝的零头要接在它真正的末尾上。
@@ -163,14 +150,6 @@ enum VideoEditCompositionBuilder {
                 geometry: fitted.geometry,
                 layer: 0
             ))
-
-            // 声音
-            if clip.hasAudio, !clip.isMuted,
-               let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
-               let target = await audioTracks.slot(for: .main(slot: slot), source: sourceAudio),
-               await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor, at: startsAt) {
-                audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: true)
-            }
         }
 
         // MARK: 主轨接缝的转场分派
@@ -281,32 +260,8 @@ enum VideoEditCompositionBuilder {
                     geometry: fitted.geometry,
                     layer: 1 + trackIndex
                 ))
-
-                if clip.hasAudio, !clip.isMuted,
-                   let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
-                   let target = await audioTracks.slot(for: .overlay(trackIndex), source: sourceAudio),
-                   await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor) {
-                    audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: false)
-                }
             }
         }
-
-        // MARK: 音频轨
-
-        for lane in state.audioTracks where !lane.clips.isEmpty && !lane.isHidden {
-            for clip in ClipVisibility.visible(lane.clips)
-                .sorted(by: { $0.timelineStart < $1.timelineStart }) {
-                let sourceAsset = asset(for: clip.sourceURL)
-                guard let sourceAudio = try? await sourceAsset.loadTracks(withMediaType: .audio).first,
-                      let target = await audioTracks.slot(for: .lane(lane.id), source: sourceAudio),
-                      await insert(source: sourceAudio, clip: clip, into: target.track, cursor: &target.cursor)
-                else { continue }
-                audioPlan.record(trackID: target.track.trackID, clipID: clip.id, isMainTrack: false)
-            }
-        }
-
-        // MARK: 声音场景的余音：挂了场景的合成音轨最后一段后面垫一截素材（VideoEditSoundSceneTails.swift）
-        await SceneTailCarrier.pad(composition, plan: audioPlan, state: state, assetFor: asset(for:))
 
         // MARK: 单段画面渐变
         //
@@ -368,21 +323,29 @@ enum VideoEditCompositionBuilder {
                 // 切到混合路径（未覆盖区变暗绿色），必须垫黑底。
                 || !$0.preset.isEmpty
         }
-        if needsOpaqueBase, let baseURL = await BlackBaseVideoFactory.videoURL() {
+        // 画面收得比时间线早（配乐比画面长、纯音频时间线）：合成里没有音轨撑长度（声音在引擎里），播放器的条目
+        // 就会比时间线短 —— 播到画面结尾停在最后一帧上，而引擎的播放头还在走、时钟每拍都去对表。所以从画面结尾
+        // 到总长也垫黑底（只垫那一截：画面铺满的工程一层都不多，性能计数不变）。两种情况都要垫就整段垫。
+        let pictureEnd = composition.tracks(withMediaType: .video)
+            .map { CompositionTime.end(of: $0).seconds }.max() ?? 0
+        let baseStart: Double? = needsOpaqueBase ? 0 : (pictureEnd + 0.0005 < state.duration ? pictureEnd : nil)
+        if let baseStart, let baseURL = await BlackBaseVideoFactory.videoURL() {
             let baseAsset = asset(for: baseURL)
+            let baseLength = state.duration - baseStart
             if let baseSource = try? await baseAsset.loadTracks(withMediaType: .video).first,
                let baseTrack = composition.addMutableTrack(
                    withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid
                ),
                let sourceRange = try? await baseSource.load(.timeRange),
-               (try? baseTrack.insertTimeRange(sourceRange, of: baseSource, at: .zero)) != nil {
+               ({ CompositionTime.pad(baseTrack, to: time(baseStart)); return true }()),
+               (try? baseTrack.insertTimeRange(sourceRange, of: baseSource, at: time(baseStart))) != nil {
                 baseTrack.scaleTimeRange(
-                    CMTimeRange(start: .zero, duration: sourceRange.duration),
-                    toDuration: time(state.duration)
+                    CMTimeRange(start: time(baseStart), duration: sourceRange.duration),
+                    toDuration: time(baseLength)
                 )
                 let natural = (try? await baseSource.load(.naturalSize)) ?? CGSize(width: 64, height: 36)
-                var base = EditClip(sourceURL: baseURL, sourceDuration: state.duration)
-                base.timelineStart = 0
+                var base = EditClip(sourceURL: baseURL, sourceDuration: baseLength)
+                base.timelineStart = baseStart
                 placed.append(PlacedClip(
                     clip: base,
                     track: baseTrack,
@@ -405,10 +368,7 @@ enum VideoEditCompositionBuilder {
         for track in composition.tracks where track.segments.isEmpty {
             composition.removeTrack(track)
         }
-        let remainingTrackIDs = Set(composition.tracks.map(\.trackID))
-        audioPlan.lanes.removeAll { !remainingTrackIDs.contains($0.trackID) }
-
-        // 纯音频时间线：没有任何画面就不配 videoComposition。
+        // 没有任何画面（连黑底都没垫上）就不配 videoComposition。
         let hasVideoContent = placed.contains { !$0.clip.isAudioOnly }
         var videoComposition: AVMutableVideoComposition?
         if hasVideoContent {
@@ -423,18 +383,8 @@ enum VideoEditCompositionBuilder {
         return Built(
             composition: composition,
             videoComposition: videoComposition,
-            audioMix: makeAudioMix(state: requested, plan: audioPlan),
-            audioPlan: audioPlan,
             renderSize: renderSize
         )
-    }
-
-    /// 按 `plan` 给每条合成音轨铺音量、挂 tap，产出 audioMix。实现在 `AudioMixBuilder`
-    /// （VideoEditAudioMix.swift）；这里留着这个名字，四个调用方（build、预览的三个入口）一个不用改。
-    static func makeAudioMix(
-        state: TimelineState, plan: AudioMixPlan, meters: AudioMeterEngine? = nil
-    ) -> AVMutableAudioMix? {
-        AudioMixBuilder.make(state: state, plan: plan, meters: meters)
     }
 
     // MARK: - 小工具
@@ -457,11 +407,10 @@ enum VideoEditCompositionBuilder {
     /// 把素材段插进合成轨。轨内必须连续，落点之前的空档用空段补齐。
     /// 变速在插完之后用 scaleTimeRange 拉伸。
     ///
-    /// 截取范围要收口到**源轨自己的范围**里：音频流经常比视频流短一小截，
-    /// 按视频时长去截音频会越界抛错 —— 整段声音就这么无声无息地丢了。
+    /// 截取范围要收口到**源轨自己的范围**里（素材比标的时长短一小截时按视频时长去截会越界抛错）。
     ///
     /// **首尾定格**（`renderHoldHead` / `renderHoldTail`，只有渲染副本里转场余料
-    /// 不够的主轨段才有）：画面把首帧 / 尾帧插进来再拉长成定格，声音那一截留空。
+    /// 不够的主轨段才有）：把首帧 / 尾帧插进来再拉长成定格（声音那一截引擎留空）。
     /// 导出那边是 `tpad` 复制首尾帧 + 补静音，同一笔账（VideoEditExportGraph）。
     /// `at`：落点（时间线秒），不传就是段自己的起点；主轨接缝的零头会传前一段的末尾。
     private static func insert(

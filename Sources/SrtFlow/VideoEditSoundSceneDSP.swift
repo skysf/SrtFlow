@@ -131,7 +131,7 @@ private let sceneUnitInput: AURenderCallback = { refCon, _, _, _, frames, ioData
 
 // MARK: - 一种场景的一串单元
 
-/// 一种场景的一串效果单元。一段声音一份（各段的余音各自散），由 `SceneTrackRenderer` 管着。
+/// 一种场景的一串效果单元。一段声音一份（各段的余音各自散），由引擎的 `SceneBox`（AudioEngine/AudioTrackFeeder.swift）管着。
 final class SceneChain {
     let kind: SoundSceneKind
     let maxFrames: Int

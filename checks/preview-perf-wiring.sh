@@ -177,7 +177,6 @@ need Sources/SrtFlow/VideoPreviewView.swift 'PerfCounters\.event\(\.clockTick\)'
 need Sources/SrtFlow/VideoPreviewView.swift 'PerfCounters\.event\(\.playerItemAttach\)' '换播放条目的计数'
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionBuild\)' '建合成的计数'
 need Sources/SrtFlow/VideoEditCompositionBuilder.swift 'PerfCounters\.event\(\.compositionAssetOpen\)' '开素材文件的计数'
-need Sources/SrtFlow/VideoEditAudioMeter.swift 'PerfCounters\.event\(\.meterTapCreate\)' '新建电平表 tap 的计数'
 need Sources/SrtFlow/VideoEditProjectAudioMix.swift 'PerfCounters\.event\(\.audioMixRefresh\)' 'audioMix 快路径的计数'
 # 编辑器出现时的开发钩子收在 DevHooks.editorAppeared 里（2026-09-24 从 VideoEditView 挪出去）：
 # 钉住两头 —— 视图调了钩子、钩子里启动了性能测试。
