@@ -112,38 +112,25 @@ func checkVolumeCurvesAndFaders(audioSource: URL, videoSource: URL) async {
         checkGains(samples, reference: reference, label: "主轨接缝后的曲线 · 预览", probes: seamProbes)
     }
 
-    // ---- 7d. 预览的钉点规则对曲线段照样成立（第 4b 组的不变量）----
+    // ---- 7d. 曲线段的增益表同样从段起点起就有确定的值（第 4b 组的不变量）----
     var late = clip
     late.timelineStart = 2.7183
     var lateState = TimelineState()
     lateState.frameRate = .fps30
     lateState.audioTracks = [EditLane(clips: [late])]
-    if let built = await VideoEditCompositionBuilder.build(from: lateState),
-       let params = built.audioMix?.inputParameters.first {
-        var start: Float = -1, end: Float = -1
-        var range = CMTimeRange.zero
-        _ = params.getVolumeRamp(for: .zero, startVolume: &start, endVolume: &end, timeRange: &range)
-        check(range.start.seconds <= 0.0005,
-              "曲线段也得从时间 0 起就有确定的音量（第一个设定点在 \(range.start.seconds)s）")
-    } else {
-        check(false, "钉点用例的预览合成没建起来")
-    }
+    checkPinnedFromZero(lateState, "曲线段从 2.7183s 起")
 
-    // ---- 7e. 快路径：只改曲线 / 推子时换 mix 与整条重建等价 ----
-    guard let built = await VideoEditCompositionBuilder.build(from: flat) else {
-        check(false, "快路径用例的预览合成没建起来"); return
+    // ---- 7e. 快路径：只改曲线 / 推子时只换增益（updateGains）与按新状态重开引擎等价 ----
+    check(curved.differsOnlyInAudioMix(from: flat), "加曲线 + 动推子只该换增益（audio-only）")
+    let fastPath = enginePCM(flat, thenUpdateGains: curved)
+    let slowPath = enginePCM(curved)
+    check(!fastPath.isEmpty && !slowPath.isEmpty, "快路径和重建两条路都要渲得出 PCM")
+    for probe in [0.25, 1.0, 2.0, 3.0, 3.8] {
+        let a = gainDB(fastPath, reference: reference, at: probe, sourceTime: probe)
+        let b = gainDB(slowPath, reference: reference, at: probe, sourceTime: probe)
+        check(abs(a - b) < 0.2, String(format: "快路径与重建在 %.2fs 处一致（%.2f vs %.2f dB）", probe, a, b))
     }
-    check(curved.differsOnlyInAudioMix(from: flat), "加曲线 + 动推子只该换 audioMix")
-    let fastMix = VideoEditCompositionBuilder.makeAudioMix(state: curved, plan: built.audioPlan)
-    let fastPath = await previewPCM(built.composition, mix: fastMix)
-    if let rebuilt = await VideoEditCompositionBuilder.build(from: curved) {
-        let slowPath = await previewPCM(rebuilt)
-        for probe in [0.25, 1.0, 2.0, 3.0, 3.8] {
-            let a = gainDB(fastPath, reference: reference, at: probe, sourceTime: probe)
-            let b = gainDB(slowPath, reference: reference, at: probe, sourceTime: probe)
-            check(abs(a - b) < 0.2, String(format: "快路径与重建在 %.2fs 处一致（%.2f vs %.2f dB）", probe, a, b))
-        }
-    } else {
-        check(false, "快路径对照的整条重建没建起来")
-    }
+    // 反向：快路径真的换上了曲线（不是两边都是平的）—— 2.0 秒处该是 −20 dB 的坑。
+    check(abs(gainDB(fastPath, reference: reference, at: 2.0, sourceTime: 2.0) - (-20 + mix)) < 0.5,
+          "快路径 2.0 秒处该是曲线的 −20 dB（加推子 −3）")
 }

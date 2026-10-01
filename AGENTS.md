@@ -48,7 +48,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 
 - 一个 PR 只做一件事、尽量小；CI 的汇总 job `check-all` 绿了就**马上合并**（`gh pr merge N --merge --delete-branch`，
   绝不 squash），不攒着等人看。下一件事从合并后的最新 main 开分支，别在旧分支上叠。
-- 「绿」指 CI 的结论，本地跑过不算。红了先看是不是已知的偶发（性能 ratchet、`check-audio-fade` 第 8b 组和第 7b 组，认法见对应
+- 「绿」指 CI 的结论，本地跑过不算。红了先看是不是已知的偶发（性能 ratchet、`check-audio-fade` 第 7b 组，认法见对应
   文档），是就 `gh run rerun --failed`，不是就修；不许带红合。
 - 合掉一个之后别的 PR 变 DIRTY（常见于本文件的索引行相邻）：把新 main 合进那条分支、两边都留、推上去等 CI 绿再合。
 - 合进 main 不等于发给用户：发版（打 tag、`gh release create`、DMG）仍然另外拍板。
@@ -175,7 +175,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `scripts/check-player-clock.sh`。
 - 不许同步问播放器要时间（`currentTime()`，会被播放器的锁堵住主线程）、AVKit 的 Now Playing 必须关着、电平条读时钟外推的
   `estimatedTime`：`checks/player-time-no-sync-read.sh`；外推的算术在 `scripts/check-player-clock.sh` 第 12 组。
-- 音频引擎的等价自检（同一条时间线：引擎离线渲染 vs AVFoundation 混音，逐 10 ms 窗口比 RMS ≤ 0.15 dB、帧数正好、零欠载）：
+- 音频引擎的等价自检（同一条时间线：引擎离线渲染 vs 纯 Swift 的 oracle 混音器（`checks/AudioEngine/Oracle.swift`：ffmpeg 解码 + 逐采样乘增益表），逐 10 ms 窗口比 RMS ≤ 0.15 dB、帧数正好、零欠载；电平表的槽、场景、变速）：
   `scripts/check-audio-engine.sh`（第 4 组，要 ffmpeg 造素材）。
 - 主线程心跳看门狗（主线程没卡不误报、卡过阈值记时长 / context / 栈、日志文件、stop 之后不记）：
   `scripts/check-main-thread-watchdog.sh`；日志在哪、怎么读见 [主线程卡顿日志](docs/testing/main-thread-stalls.md)。
@@ -206,10 +206,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 预览上的盖一块真的盖上了（生产的 `CoverHostView` 放进真窗口、拍屏数像素：块里糊成混色块外还是硬的、改动的行正好是块的上下沿、调色带上了、马赛克格线从块的左上角起算、两块同时盖、撤掉之后回到参照）：`scripts/check-cover-preview-attach.sh`。**要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditCoverPreview.swift` / `VideoEditCoverFilters.swift` 时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
   **要图形会话，故意不在 `check-all.sh` 里**，改 `VideoEditFilterPreview.swift`
   时按 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md) 跑。
-- 声音渐入渐出、音量曲线与推子的真实包络（预览 + 导出两条管线），电平表（离线读挂了
-  tap 的真实混音，对账轨道表 / 总表 / 红灯），以及过 0 dBFS 的混音过真峰值限幅器（没过顶逐采样原样、过顶一个采样不超上限、稳态正弦不削成方波、
-  尖峰时刻不变、总长不变）、整段响度按 BS.1770 且和 ffmpeg 的 `ebur128` 一致、成片响度和混音一致（第 10 组）：`scripts/check-audio-fade.sh`（带看门狗：读混音卡住
-  4 分钟就判红，并说出卡在哪一组；CI 上第 8b 组「换了源格式…60 秒没读完」和第 7b 组「2 倍速曲线 · 导出」差 1–2 dB 偶发，认法见
+- 声音渐入渐出、音量曲线与推子的真实包络（预览 = 引擎离线渲、导出 = 真跑 ffmpeg 两条管线），电平表（挂着表离线渲，
+  对账轨道表 / 总表 / 红灯），以及过 0 dBFS 的混音过真峰值限幅器（没过顶逐采样原样、过顶一个采样不超上限、稳态正弦不削成方波、
+  尖峰时刻不变、总长不变）、整段响度按 BS.1770 且和 ffmpeg 的 `ebur128` 一致、成片响度和混音一致（第 10 组）：`scripts/check-audio-fade.sh`（带看门狗：渲混音卡住
+  4 分钟就判红，并说出卡在哪一组；CI 上第 7b 组「2 倍速曲线 · 导出」差 1–2 dB 偶发，认法见
   [推子与电平表](docs/architecture/audio-mixer.md)「已知的偶发」）。
 - 波形数据（多级峰值、原始采样块）逐采样对账，以及**很多文件同时读**必须全部读完、
   不许把线程池堵死（看门狗判红）：`scripts/check-waveform.sh`。

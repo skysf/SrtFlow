@@ -2,9 +2,10 @@ import AVFoundation
 import Foundation
 import SrtFlowCore
 
-// **音频引擎的等价自检**：同一条时间线，AVFoundation 那份混音（今天的预览和成片）和引擎离线渲染出来的声音
-// 逐 10 ms 窗口比 RMS，差不许超过容差；一边有声一边静音算错；引擎渲染期间不许欠载。
-// 素材是现造的恒定振幅正弦（check-audio-fade 同一套），两边的差只能来自混音本身。
+// **音频引擎的等价自检**：同一条时间线，纯 Swift 的 oracle 混音器（Oracle.swift：ffmpeg 解码 + 逐采样乘增益表）
+// 和引擎离线渲染出来的声音逐 10 ms 窗口比 RMS，差不许超过容差；一边有声一边静音算错；引擎渲染期间不许欠载。
+// 素材是现造的恒定振幅正弦（check-audio-fade 同一套），两边的差只能来自引擎的「水管」。
+// 2026-10-01 PR1a–PR3a 期间参照是 AVFoundation 那份混音（AVAssetReaderAudioMixOutput）；PR3b 删掉那条路之前换成 oracle。
 // 编译方式见 scripts/check-audio-engine.sh；方案见 docs/plans/2026-10-01-audio-engine.md。
 
 var failures = 0
@@ -88,36 +89,6 @@ func makeTone(_ name: String, frequency: Int, withVideo: Bool, sampleRate: Int =
 
 // MARK: - 两条管线
 
-/// 参照：真实的合成 + audioMix，经 AVAssetReaderAudioMixOutput 读成立体声。
-func referencePCM(_ state: TimelineState) async -> Stereo? {
-    guard let built = await VideoEditCompositionBuilder.build(from: state) else { return Stereo() }
-    guard let tracks = try? await built.composition.loadTracks(withMediaType: .audio), !tracks.isEmpty,
-          let reader = try? AVAssetReader(asset: built.composition) else { return Stereo() }
-    let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
-        AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32, AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false, AVLinearPCMIsNonInterleaved: false,
-        AVSampleRateKey: 48_000, AVNumberOfChannelsKey: 2,
-    ])
-    output.audioMix = built.audioMix
-    output.audioTimePitchAlgorithm = VideoEditCompositionBuilder.timePitchAlgorithm
-    guard reader.canAdd(output) else { return nil }
-    reader.add(output)
-    guard reader.startReading() else { return nil }
-    var pcm = Stereo()
-    while let buffer = output.copyNextSampleBuffer() {
-        guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-        let length = CMBlockBufferGetDataLength(block)
-        var bytes = [UInt8](repeating: 0, count: length)
-        guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: &bytes) == kCMBlockBufferNoErr
-        else { continue }
-        bytes.withUnsafeBytes { raw in
-            let floats = raw.bindMemory(to: Float.self)
-            pcm.append(interleaved: floats, frames: floats.count / 2)
-        }
-    }
-    return pcm
-}
-
 /// 引擎：同一份时间线算出配置，离线渲到总长。
 func enginePCM(_ state: TimelineState) -> (pcm: Stereo, config: AudioEngineConfig, underruns: Int)? {
     let config = AudioEngineConfig.make(from: state)
@@ -135,22 +106,22 @@ func enginePCM(_ state: TimelineState) -> (pcm: Stereo, config: AudioEngineConfi
     return (pcm, config, engine.underrunFrames)
 }
 
-/// 一组：两边都算出来，逐窗口比。
-/// `margin`：段的边界两侧各跳过多少秒不比（默认 12 ms；变速段 AVFoundation 的拉伸算法会把尾巴吃掉几十毫秒，给 0.1）。
+/// 一组：oracle 和引擎都算出来，逐窗口比。
+/// `margin`：段的边界两侧各跳过多少秒不比（默认 12 ms；变速段的拉伸算法会把头尾吃掉几十毫秒，给 0.1）。
 func compare(_ label: String, _ state: TimelineState, tolerance: Double = 0.15, margin: Double = 0.012,
-             totalTolerance: Double = 0.1, expectSilent: Bool = false) async {
-    guard let reference = await referencePCM(state) else {
-        check(false, "\(label)：参照读不出来")
-        return
-    }
+             totalTolerance: Double = 0.1, expectSilent: Bool = false, extraBoundaries: [Double] = []) async {
     guard let engine = enginePCM(state) else {
         check(false, "\(label)：引擎渲不出来")
+        return
+    }
+    guard let reference = oraclePCM(engine.config) else {
+        check(false, "\(label)：oracle 渲不出来")
         return
     }
     let expected = Int((state.duration * 48_000).rounded())
     check(abs(engine.pcm.frames - expected) <= 1, "\(label)：引擎该正好渲 \(expected) 帧，渲了 \(engine.pcm.frames)")
     check(engine.underruns == 0, "\(label)：离线渲染不许欠载，欠了 \(engine.underruns) 帧")
-    let boundaries = engine.config.tracks.flatMap { $0.segments.flatMap { [$0.start, $0.end] } }
+    let boundaries = engine.config.tracks.flatMap { $0.segments.flatMap { [$0.start, $0.end] } } + extraBoundaries
     let result = compareWindows(reference: reference, engine: engine.pcm, boundaries: boundaries, tolerance: tolerance, margin: margin)
     let total = rmsDB(engine.pcm.left)
     if expectSilent {
@@ -226,12 +197,14 @@ do {
     check((meters.slotPeak(for: .track(.main)) ?? (1, 1)) == (0, 0), "界面取走之后槽清零（下一拍从零起记）")
 }
 
-print("==> 11. 声音场景：效果链在渲染块里跑，和 tap 那条路同一份（段增益 → 效果 → 推子），余音越过段尾")
+print("==> 11. 声音场景：效果链在渲染块里跑（段增益 → 效果 → 推子），强度 0 = 原声，余音越过段尾")
 let noise = makeSpeechNoise("speech-noise.m4a")
 for kind in [SoundSceneKind.bathroom, .telephone] {
     let state = sceneLane(noise, kind: kind)
-    // 场景那一路和参照比：两边同一条效果链、同一串单元，只差增益按块插值的零头。
-    await compare("场景 \(kind.rawValue)", state, tolerance: 0.3)
+    // oracle 不做场景：强度 0 就该和原声一样（效果链在线、干湿比却全是干的）；场景本身在下面验结构。
+    var zero = state
+    zero.audioTracks[0].clips[0].soundScene?.amount = 0
+    await compare("场景 \(kind.rawValue) · 强度 0 = 原声", zero, tolerance: 0.3)
     // 余音：段 2.5 秒结束，之后一小段还有声（浴室的混响散不完；电话的滤波器余音很短，只验浴室）。
     if kind == .bathroom, let engine = enginePCM(state) {
         let after = rmsDB(engine.pcm.left[Int(2.52 * 48_000)..<Int(2.6 * 48_000)])
@@ -253,9 +226,10 @@ print("==> 12. 变速：保音调地拉伸，时长正好，换音的时刻按�
 do {
     let switching = makeSwitchTone("switch-440-880.m4a")   // 前 2 秒 440 Hz，后 2 秒 880 Hz
     let state = speedLanes(switching)
-    // 两种拉伸算法（AVAudioUnitTimePitch vs AVFoundation 的 spectral）不逐采样相等：包络只要对得上；
-    // 它们的尾巴差几十毫秒，整段 RMS 差 0.1–0.2 dB 是算法的差，不是混音的。
-    await compare("变速", state, tolerance: 1.5, margin: 0.1, totalTolerance: 0.3)
+    // oracle 只按线性插值重采样（音高会变），引擎是 AVAudioUnitTimePitch 保音调地拉伸：包络对得上，但换音的瞬间
+    // （时间线 1.0 秒、3.0 秒）保音调算法要过渡几十毫秒、oracle 是瞬间换，那两处两侧各 0.1 秒不比（换音的时刻另有
+    // 下面过零数的断言）；段的头尾同理。整段 RMS 差 0.1–0.2 dB 是算法的差，不是混音的。
+    await compare("变速", state, tolerance: 1.5, margin: 0.1, totalTolerance: 0.3, extraBoundaries: [1.0, 3.0])
     if let engine = enginePCM(state) {
         /// 一段里过零多少次 → 频率。
         func frequency(_ from: Double, _ to: Double) -> Double {

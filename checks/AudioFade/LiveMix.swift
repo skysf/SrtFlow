@@ -1,17 +1,15 @@
 import AVFoundation
 import Foundation
 
-// MARK: - 6b. 正在播的预览换上的那份 mix，和成片是同一份
+// MARK: - 6b. 转场接缝上的声音：展开过的几何、绝对的期望
 //
-// 预览换 mix 的三个入口（`scheduleRebuild` 重建、`refreshAudioMix` 快路径、`previewAudioLive`
-// 拖动试听）都拿**用户那一份**状态调 `makeAudioMix`。2026-09-24 以前它照着那份没展开的几何铺
-// 斜坡，而插进合成里的是 `expandingTransitionHandles` 展开过的段 —— 转场接缝上预览的声音掉下去
-// 一截，零余料的缝（首尾帧定格）中间几乎静音；成片（读 build() 顺手产出的那份 mix）却是对的。
-// 上面几组读的都是 `built.audioMix`，走不到那三个入口，所以一直是绿的
-// （docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
+// 预览换声音的三个入口（`scheduleRebuild` 重建、`refreshAudioMix` 快路径、`previewAudioLive` 拖动试听）
+// 都拿**用户那一份**状态算 `AudioEngineConfig.make`，它自己排序、展开转场。2026-09-24 以前（AVFoundation 那条路）
+// 快路径照着没展开的几何铺斜坡、合成里插的却是展开过的段 —— 转场接缝上预览的声音掉下去一截，零余料的缝
+// （首尾帧定格）中间几乎静音；成片却是对的（docs/bugfixes/2026-09-24-preview-mix-ignores-transition-expansion.md）。
 //
-// 这一组照生产入口的样子，用用户状态 + build 出来的 plan 重新调一次 `makeAudioMix`，
-// 逐窗对 `built.audioMix`。两种要展开的缝都要有：借余料的、零余料要定格补足的。
+// 那次的教训：两份结果互相比，比不出它们一起错。所以这一组对每种缝写**绝对的期望**（这条缝本来该多响），
+// 渲出来逐窗量。两种要展开的缝都要有：借余料的、零余料要定格补足的。
 // （第 6 组那个「已相叠」的缝用不着展开，所以它照不出这个问题。）
 
 /// 两段 PCM 逐窗（100ms RMS）一致：差不过 `tolerance` dB。太安静的窗口（两边都低于 −50 dB）
@@ -59,9 +57,8 @@ func checkLiveMixFollowsExpandedSeams(videoSource: URL) async {
     whole.transitionDuration = 1
     let next = EditClip(sourceURL: videoSource, sourceDuration: 4, timelineStart: 4, info: videoInfo)
 
-    // 每种缝的**绝对**期望（相对远离接缝处的满音量，单位 dB）。光拿两份 mix 互相比不够：
-    // 2026-09-24 反向验证时把修复撤掉，build() 自己那份也跟着照没展开的几何铺，两份一起错、
-    // 互相比照样一致 —— 守卫没红。所以每一窗还要对「这条缝本来该是多响」：
+    // 每种缝的**绝对**期望（相对远离接缝处的满音量，单位 dB）。2026-09-24 反向验证时把修复撤掉，两份 mix
+    // 一起错、互相比照样一致 —— 守卫没红。所以每一窗对「这条缝本来该是多响」：
     // - 借余料：同一条正弦、同相位，1 秒线性交叉淡变的两半加起来一直是满音量（±1 dB）；
     // - 零余料：定格那两截没有声音，出场段在缝上只剩一半增益、进场段也是 —— 最低掉到
     //   −6 dB（修复前是 −30 dB 上下）。
@@ -74,16 +71,9 @@ func checkLiveMixFollowsExpandedSeams(videoSource: URL) async {
         state.frameRate = .fps30
         state.canvasRatio = .wide16x9
         state.mainClips = clips
-        guard let built = await VideoEditCompositionBuilder.build(from: state) else {
-            check(false, "\(label)：预览合成没建起来")
-            continue
-        }
-        // 生产入口的样子：用户状态 + 这次合成的 plan。
-        let live = VideoEditCompositionBuilder.makeAudioMix(state: state, plan: built.audioPlan)
-        let livePCM = await previewPCM(built.composition, mix: live)
-        let builtPCM = await previewPCM(built)
-        checkSameEnvelope(livePCM, builtPCM, from: seam - 1, to: seam + 1, tolerance: 0.1,
-                          "\(label) · 正在播的预览 vs 成片那份 mix")
+        // 生产入口的样子：`AudioEngineConfig.make(from: 用户状态)`，三个入口同一个函数、自己展开。
+        let livePCM = enginePCM(state)
+        check(!livePCM.isEmpty, "\(label)：引擎渲不出来")
 
         let full = decibels(rms(livePCM, from: 1.0, to: 1.1))
         check(full > -40, "\(label)：远离接缝处要有声音（\(full) dB）")

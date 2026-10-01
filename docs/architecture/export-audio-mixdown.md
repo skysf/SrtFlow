@@ -61,9 +61,9 @@ ffmpeg 只负责把它编成 AAC、和画面合在一起。导出图里**不许�
 
 ## 三、和以前比变了什么（2026-09-24 探针实测，都是「成片向预览看齐」）
 
-2026-10-01 起渲成片的是引擎，它和 AVFoundation 那份混音的差在 `scripts/check-audio-engine.sh` 里量着
-（逐 10 ms 窗口 ≤ 0.03 dB；44.1k 单声道重采样 0.29 dB；变速是两种算法、≤ 0.95 dB）。下表是 2026-09-24 从 ffmpeg
-滤镜链换到预览混音时量的，「成片向预览看齐」的结论不变 —— 只是现在两边连渲染代码都是同一份。
+2026-10-01 起渲成片的是引擎。PR3a 时它和 AVFoundation 那份混音逐 10 ms 窗口差 ≤ 0.03 dB（44.1k 单声道重采样 0.29 dB；
+变速是两种算法、≤ 0.95 dB）；PR3b 删掉那条路之后 `scripts/check-audio-engine.sh` 改对着纯 Swift 的 oracle 混音器量（差 ≤ 0.027 dB）。
+下表是 2026-09-24 从 ffmpeg 滤镜链换到预览混音时量的，「成片向预览看齐」的结论不变 —— 只是现在两边连渲染代码都是同一份。
 
 | | 以前的成片 | 现在的成片（= 预览） |
 | --- | --- | --- |
@@ -85,7 +85,7 @@ ffmpeg 只负责把它编成 AAC、和画面合在一起。导出图里**不许�
 | --- | --- |
 | `scripts/check-audio-fade.sh` | 真跑导出（`plan()` + ffmpeg）量包络，和预览逐窗对：渐变、变速、曲线、推子、接缝；第 6 组断言导出图里没有声音滤镜、混音文件以 f32le 输入接进去；第 6b 组断言正在播的预览换上的 mix（用户状态 + plan）在两种要展开的缝上和成片一致，且符合绝对期望；第 10a 组（`checks/AudioFade/Limiter.swift`，纯值）：限幅器没过顶逐采样原样、过顶一个采样不超上限、+6 dB 稳态正弦出来是干净的等幅正弦、50 Hz 不被抽扁、尖峰时刻不变 / 前 5 ms 是斜坡 / 1 s 后回到原样、分块喂 = 整段喂且总长不变；响度表按 EBU Tech 3341（−23 → −23、门限、单声道低 3.01）；第 10b 组（`Ceiling.swift`，真跑导出）：过 0 dBFS 的混音限幅前的峰值 / 压了多久多深照实记、f32 里没有一个采样超过 −1 dBFS 且峰值 / 均方根 = √2（不是削平）、整段响度和 ffmpeg `ebur128` 差 < 0.5 LU、成片峰值不冒出 0、成片响度和混音一致、主推子压下来不压且峰值 / 响度都线性 |
 | `checks/export-audio-single-pipeline.sh` | 导出图的真代码里没有声音滤镜；导出图调了混音、接了它的文件；混音是 `AudioEngineConfig.make` 那份配置交给 `TimelineAudioEngine(mode: .offline)` 的 `renderOffline` 渲出来的；AVPlayer 那条路的播放条目仍用 `timePitchAlgorithm` 常量（PR3b 删） |
-| `scripts/check-audio-engine.sh` | 引擎离线渲染 = AVFoundation 混音（12 组，含电平表、场景、变速）—— 成片和预览用的就是这一份渲染代码 |
+| `scripts/check-audio-engine.sh` | 引擎离线渲染 = 纯 Swift 的 oracle 混音器（12 组，含电平表、场景、变速，[音频引擎](audio-engine.md) 第五节）—— 成片和预览用的就是这一份渲染代码 |
 | `checks/transition-handles-wiring.sh` | `makeAudioMix` 自己展开转场（三个预览入口传的是用户状态） |
 | `scripts/check-export-frame-rate.sh`、`check-video-fade.sh` 等 | 真导出照常跑通（含没有声音的时间线走 `anullsrc`） |
 
