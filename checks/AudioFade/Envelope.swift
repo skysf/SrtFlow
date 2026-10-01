@@ -22,14 +22,26 @@ func decodePCM(_ url: URL) -> [Float] {
 }
 
 /// 预览侧（2026-10-01 起用户听到的那一份）：音频引擎离线渲出来的 PCM，并成单声道。并法是 (L + R) / √2 —— 和 `decodePCM`
-/// 里 ffmpeg `-ac 1`、`previewPCM` 里 AVFoundation 出单声道的口径一样（实测：左右相同的正弦并出来是单边的 1.414 倍；
-/// 写成 (L + R) / 2 就比成片整体低 2.93 dB）。成片就是这份渲染经限幅、编码出来的，「成片 = 预览」要对着它比。
+/// 里 ffmpeg `-ac 1` 的口径一样（实测：左右相同的正弦并出来是单边的 1.414 倍；写成 (L + R) / 2 就比成片整体低 2.93 dB）。
+/// 成片就是这份渲染经限幅、编码出来的，「成片 = 预览」要对着它比。
+/// 2026-10-01 PR3b 之前这里还有 AVFoundation 那条读法（合成 + audioMix 经 AVAssetReaderAudioMixOutput）；那条路删了。
 func enginePCM(_ state: TimelineState) -> [Float] {
-    let config = AudioEngineConfig.make(from: state)
-    guard let engine = try? TimelineAudioEngine(config: config, mode: .offline) else { return [] }
+    guard let engine = try? TimelineAudioEngine(config: AudioEngineConfig.make(from: state), mode: .offline) else { return [] }
+    return renderMono(engine, duration: state.duration)
+}
+
+/// 快路径：按 `base` 开引擎，只换增益到 `changed`（`updateGains`：结构不变、流不重开），再离线渲 ——
+/// 和「拖完滑块听到的」是同一条路；对照组是按 `changed` 重开一个引擎（`enginePCM`）。
+func enginePCM(_ base: TimelineState, thenUpdateGains changed: TimelineState) -> [Float] {
+    guard let engine = try? TimelineAudioEngine(config: AudioEngineConfig.make(from: base), mode: .offline) else { return [] }
+    engine.updateGains(config: AudioEngineConfig.make(from: changed))
+    return renderMono(engine, duration: changed.duration)
+}
+
+private func renderMono(_ engine: TimelineAudioEngine, duration: Double) -> [Float] {
     var samples: [Float] = []
     do {
-        try engine.renderOffline(duration: state.duration) { interleaved, frames in
+        try engine.renderOffline(duration: duration) { interleaved, frames in
             samples.reserveCapacity(samples.count + frames)
             for index in 0..<frames { samples.append((interleaved[2 * index] + interleaved[2 * index + 1]) * 0.70710678) }
             return true
@@ -38,40 +50,63 @@ func enginePCM(_ state: TimelineState) -> [Float] {
     return samples
 }
 
-/// 预览侧（AVPlayer 那条路，开关关着时）：从真实合成 + audioMix 里读 PCM（单声道 f32）。
-func previewPCM(_ built: VideoEditCompositionBuilder.Built) async -> [Float] {
-    await previewPCM(built.composition, mix: built.audioMix)
+/// 挂着电平表渲出来的结果：单声道 PCM，加上每条表**按拍**记下的槽里的峰值（取走之前看一眼）。
+struct MeteredRender {
+    var samples: [Float] = []
+    /// 每条表：(这一拍的起点秒, 槽里的峰值 —— 左右取大)。
+    var peaks: [MeterKey: [(time: Double, peak: Float)]] = [:]
+
+    /// `[from, to)` 秒内落下的拍里最大的峰值（没有就是 0）。
+    func rawPeak(for key: MeterKey, from: Double, to: Double) -> Float {
+        (peaks[key] ?? []).filter { $0.time >= from - 0.0001 && $0.time < to }.map(\.peak).max() ?? 0
+    }
 }
 
-func previewPCM(_ asset: AVMutableComposition, mix: AVMutableAudioMix?) async -> [Float] {
-    guard let tracks = try? await asset.loadTracks(withMediaType: .audio), !tracks.isEmpty,
-          let reader = try? AVAssetReader(asset: asset) else { return [] }
-    let output = AVAssetReaderAudioMixOutput(audioTracks: tracks, audioSettings: [
-        AVFormatIDKey: kAudioFormatLinearPCM,
-        AVLinearPCMBitDepthKey: 32,
-        AVLinearPCMIsFloatKey: true,
-        AVLinearPCMIsBigEndianKey: false,
-        AVLinearPCMIsNonInterleaved: false,
-        AVSampleRateKey: 48_000,
-        AVNumberOfChannelsKey: 1,
-    ])
-    output.audioMix = mix
-    guard reader.canAdd(output) else { return [] }
-    reader.add(output)
-    guard reader.startReading() else { return [] }
+/// 挂着电平表离线渲：每拍渲完先看一眼 `keys` 每条表槽里的峰值（`slotPeak`，不清零），再照界面那条路取走
+/// （`reading`，顺带算回落和红灯）。离线一拍是引擎的一个渲染块（4096 帧 ≈ 85 ms）。
+func enginePCMMetered(_ state: TimelineState, keys: [MeterKey], meters: AudioMeterEngine) -> MeteredRender? {
+    guard let engine = try? TimelineAudioEngine(config: AudioEngineConfig.make(from: state), mode: .offline, meters: meters)
+    else { return nil }
+    var result = MeteredRender()
+    var position = 0
+    do {
+        try engine.renderOffline(duration: state.duration) { interleaved, frames in
+            let time = Double(position) / 48_000
+            for key in keys {
+                if let peak = meters.slotPeak(for: key) {
+                    result.peaks[key, default: []].append((time, max(peak.left, peak.right)))
+                }
+                _ = meters.reading(for: key, at: time, now: time)
+            }
+            result.samples.reserveCapacity(result.samples.count + frames)
+            for index in 0..<frames { result.samples.append((interleaved[2 * index] + interleaved[2 * index + 1]) * 0.70710678) }
+            position += frames
+            return true
+        }
+    } catch { return nil }
+    return result
+}
 
-    var samples: [Float] = []
-    while let buffer = output.copyNextSampleBuffer() {
-        guard let block = CMSampleBufferGetDataBuffer(buffer) else { continue }
-        let length = CMBlockBufferGetDataLength(block)
-        var bytes = [UInt8](repeating: 0, count: length)
-        guard CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: &bytes)
-                == kCMBlockBufferNoErr else { continue }
-        bytes.withUnsafeBytes { raw in
-            samples.append(contentsOf: raw.bindMemory(to: Float.self))
+/// 第 4b 组的不变量，引擎版：每一段的增益表**第一个设定点不晚于段的起点**（引擎只在段内取样，表在第一个点之前默认 1.0
+/// 的那一截永远取不到），而且起点处的增益就是「这一段该从多少起步」—— 有渐入是 0、没渐入是段的音量，不是默认的 1.0。
+/// `startGain` 给了就连值一起验。
+/// （AVFoundation 那条路的版本是「每条合成音轨的第一个音量设定点在时间 0」：混音器把第一个点之前的默认 1.0 平滑成一条
+/// 下坡贴在渐入最前面 —— 2026-08-12 的爆音。引擎没有 de-zipper、段外不取样，这条约束就落在增益表自己身上。）
+func checkPinnedFromZero(_ state: TimelineState, _ label: String, startGain: Float? = nil) {
+    let config = AudioEngineConfig.make(from: state)
+    check(!config.tracks.isEmpty, "\(label)：引擎的配置里该有轨")
+    for track in config.tracks {
+        for segment in track.segments {
+            let firstPoint = segment.gain.points.first?.start ?? .infinity
+            check(firstPoint <= segment.start + 0.0005,
+                  "\(label)：轨 \(track.name) 段 \(segment.clipID) 的第一个增益设定点在 \(firstPoint)s，"
+                  + "晚于段的起点 \(segment.start)s —— 起点到它之间会落到表的默认 1.0 上")
+            if let startGain {
+                let got = segment.gain.gain(at: segment.start)
+                check(abs(got - startGain) < 0.001, "\(label)：轨 \(track.name) 段起点的增益该是 \(startGain)，量到 \(got)")
+            }
         }
     }
-    return samples
 }
 
 /// 一个时间窗内的 RMS（48kHz 单声道）。

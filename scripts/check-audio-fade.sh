@@ -3,8 +3,8 @@
 #
 # 两条生产管线各跑一遍，量真实的音量包络：
 #   - 导出：真实的 `VideoEditExportGraph.plan()` → 真跑 ffmpeg → 解码成 PCM。
-#   - 预览：真实的 `VideoEditCompositionBuilder.build()` → 用它返回的 audioMix
-#     经 AVAssetReaderAudioMixOutput 读 PCM。
+#   - 预览：用户听到的那一份 = 音频引擎（TimelineAudioEngine）离线渲出来的 PCM
+#     （2026-10-01 PR3b 之前是 VideoEditCompositionBuilder.build() 的 audioMix 经 AVAssetReaderAudioMixOutput 读）。
 # 每组都带「同一条时间线去掉渐变」的反例对照，防止断言在静音素材上假绿。
 #
 # 用法：

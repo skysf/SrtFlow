@@ -6,8 +6,8 @@ import SrtFlowCore
 //
 // - 导出：调真实的 `VideoEditExportGraph.plan()` 拿生产 ffmpeg 参数，真跑一遍，
 //   再把成品解码成 PCM 量音量包络。
-// - 预览：调真实的 `VideoEditCompositionBuilder.build()`，用它返回的 audioMix
-//   经 `AVAssetReaderAudioMixOutput` 读出 PCM，量同样几个窗口。
+// - 预览：用户听到的那一份 = 音频引擎（`TimelineAudioEngine`）离线渲出来的 PCM，量同样几个窗口
+//   （2026-10-01 PR3b 之前是 AVFoundation 的合成 + audioMix 经 AVAssetReaderAudioMixOutput 读）。
 //
 // 两条管线必须给出同一条包络 —— 「预览听着对、成片不对」正是这套东西最容易
 // 出的问题（同 docs/architecture/project-frame-rate.md 里帧率那次的教训）。
@@ -148,15 +148,11 @@ func exportSamples(_ state: TimelineState, name: String, audioOnly: Bool) async 
     return samples
 }
 
-/// 真实预览合成（含 audioMix）读出来的 PCM。
+/// 预览侧：用户听到的那一份 = 音频引擎离线渲出来的 PCM（Envelope.swift 的 `enginePCM`）。
 func previewSamples(_ state: TimelineState, name: String) async -> [Float]? {
-    guard let built = await VideoEditCompositionBuilder.build(from: state) else {
-        check(false, "\(name) 的预览合成没建起来")
-        return nil
-    }
-    let samples = await previewPCM(built)
+    let samples = enginePCM(state)
     guard !samples.isEmpty else {
-        check(false, "\(name) 的预览合成读不出 PCM")
+        check(false, "\(name) 的引擎渲不出 PCM")
         return nil
     }
     return samples
@@ -309,32 +305,10 @@ func main() async {
     // **结构不变量**：斜坡之前的默认音量 1.0 是一切的根源，那就断言
     // **没有任何一条轨会用到那个默认值** —— 每条轨在时间 0 处就已经有我们
     // 自己设的音量。这条不依赖任何缓冲区长度，因而对两条播放路径同时成立。
-    func checkPinnedFromZero(_ state: TimelineState, _ label: String) async {
-        guard let built = await VideoEditCompositionBuilder.build(from: state) else {
-            check(false, "\(label)：预览合成没建起来"); return
-        }
-        guard let mix = built.audioMix, !mix.inputParameters.isEmpty else {
-            check(false, "\(label)：没有 audioMix"); return
-        }
-        for params in mix.inputParameters {
-            // 注意 `getVolumeRamp` 的语义：查询点**早于**第一个设定点时，它照样
-            // 返回 true，把后面那条斜坡连同它的起点一起给出来。所以判据不能看
-            // 返回值，要看**第一条斜坡的起点**落在哪 —— 起点之前的那段时间才是
-            // 真正吃默认 1.0 的地方。
-            var start: Float = -1, end: Float = -1
-            var range = CMTimeRange.zero
-            _ = params.getVolumeRamp(for: .zero, startVolume: &start, endVolume: &end, timeRange: &range)
-            check(range.start.seconds <= 0.0005,
-                  "\(label)：轨 \(params.trackID) 的第一个音量设定点在 "
-                  + "\(range.start.seconds)s，它之前的 \(range.start.seconds)s 会落到 "
-                  + "AVFoundation 的默认 1.0 上。实时混音器（缓冲区可到 ~90ms，"
-                  + "远大于离线的 ~17ms）会把这个跳变平滑成一条从满音量下来的坡，"
-                  + "贴在渐入最前面 —— 渐入开头的爆音就是这么来的。钉点要一路退到"
-                  + "同一条轨上上一段的结束处，不能用固定提前量。")
-        }
-    }
-    await checkPinnedFromZero(offsetState, "段从 1.3337s 起 · 渐入")
-    await checkPinnedFromZero(offsetFlat, "段从 1.3337s 起 · 无渐入")
+    // 2026-10-01 起预览和成片都是音频引擎：它没有 de-zipper、段外不取样，这条不变量落在每一段的增益表上
+    // （Envelope.swift 的 `checkPinnedFromZero`：第一个设定点不晚于段起点、起点处就是该起步的音量）。
+    checkPinnedFromZero(offsetState, "段从 1.3337s 起 · 渐入", startGain: 0)
+    checkPinnedFromZero(offsetFlat, "段从 1.3337s 起 · 无渐入", startGain: 1)
 
     // 真实工程的形态：音频轨上一段孤零零的背景乐，起点在 24s 开外。
     // 用户报告的就是这个形状 —— 段前有 24 秒空档，钉点必须一路退到 0，
@@ -348,26 +322,29 @@ func main() async {
     var lateState = TimelineState()
     lateState.frameRate = .fps30
     lateState.audioTracks = [EditLane(clips: [lateClip])]
-    await checkPinnedFromZero(lateState, "背景乐在 24.39s 起 · 渐入 3s · 音量 0.12")
+    checkPinnedFromZero(lateState, "背景乐在 24.39s 起 · 渐入 3s · 音量 0.12", startGain: 0)
+    if let late = AudioEngineConfig.make(from: lateState).tracks.first?.segments.first {
+        let settled = late.gain.gain(at: late.start + 3)
+        check(abs(settled - 0.12) < 0.001, "渐入 3 秒之后是段的音量 0.12（增益表里没有默认的 1.0），量到 \(settled)")
+    } else {
+        check(false, "背景乐那条时间线该有一段")
+    }
 
     // 静音段同理：它以前走的是 `setVolume(0, at: 段起点)`，钉在起点上，
     // 等于把 1.0 → 0 的跳变留在段内 —— 静音段开头照样漏一下声音。
     var mutedState = lateState
     mutedState.audioTracks[0].clips[0].isMuted = true
-    await checkPinnedFromZero(mutedState, "静音的音频段")
+    check(AudioEngineConfig.make(from: mutedState).tracks.isEmpty, "静音的音频段不进引擎的配置（没有段 = 没有声音，也没有钉点可错）")
 
-    // ---- 5. 「只换 audioMix」的快路径必须与整条重建等价 ----
-    group("5. 「只换 audioMix」的快路径必须与整条重建等价")
+    // ---- 5. 「只换增益」的快路径必须与整条重建等价 ----
+    group("5. 「只换增益」的快路径必须与整条重建等价")
     //
-    // 改音量/渐变时预览不重建合成（重建要 replaceCurrentItem，画面会闪），
-    // 而是拿建好时记下的 `audioPlan` 重算一份 mix 换上去。两条路一旦分叉，
-    // 症状是「拖完滑块的声音」和「下次重建之后的声音」不一样 —— 用户几乎
-    // 不可能把这种偶发差异描述清楚，只能靠守卫钉住。
+    // 改音量/渐变时预览不重建合成（重建要 replaceCurrentItem，画面会闪），而是按新状态算一份
+    // `AudioEngineConfig` 交给引擎只换增益（`updateGains`，流不重开）。两条路一旦分叉，症状是
+    // 「拖完滑块的声音」和「下次重建之后的声音」不一样 —— 用户几乎不可能把这种偶发差异描述清楚，只能靠守卫钉住。
     var fastBase = audioOnlyTimeline(audioSource, fadeIn: 1, fadeOut: 1)
     fastBase.audioTracks[0].clips[0].timelineStart = 0.5   // 非零起点，顺带覆盖钉音量那条
-    if let built = await VideoEditCompositionBuilder.build(from: fastBase) {
-        check(!built.audioPlan.lanes.isEmpty, "建完预览要记下 audioPlan，否则快路径根本用不上")
-
+    do {
         var changed = fastBase
         changed.audioTracks[0].clips[0].volume = 0.35
         changed.audioTracks[0].clips[0].fadeInDuration = 0.4
@@ -375,15 +352,10 @@ func main() async {
         check(changed.differsOnlyInAudioMix(from: fastBase),
               "只改音量/渐变必须判成 audio-only（判错成结构变化只是白重建一次，不致命）")
 
-        // 快路径：**老合成** + 新算的 mix
-        let fastMix = VideoEditCompositionBuilder.makeAudioMix(state: changed, plan: built.audioPlan)
-        let fast = await previewPCM(built.composition, mix: fastMix)
-        // 慢路径：整条重建
-        var slow: [Float] = []
-        if let rebuilt = await VideoEditCompositionBuilder.build(from: changed) {
-            slow = await previewPCM(rebuilt)
-        }
-        check(!fast.isEmpty && !slow.isEmpty, "两条路都要读得出 PCM")
+        // 快路径：老配置开的引擎 + 只换增益（updateGains，流不重开）；慢路径：按新状态重开一个引擎。
+        let fast = enginePCM(fastBase, thenUpdateGains: changed)
+        let slow = enginePCM(changed)
+        check(!fast.isEmpty && !slow.isEmpty, "两条路都要渲得出 PCM")
         // 逐点比包络：渐入中、满音量段、渐出中各取一处。
         for probe in [0.7, 1.2, 2.0, 3.0] {
             let a = rms(fast, from: probe, to: probe + 0.05)
@@ -391,6 +363,11 @@ func main() async {
             check(abs(a - b) < max(0.02, b * 0.1),
                   "快路径与整条重建在 \(probe)s 处的音量必须一致（快 \(a) vs 重建 \(b)）")
         }
+        // 反向：快路径真的换了增益，不是两边都没动 —— 和没换增益的老配置比，满音量处该从 1.0 变成 0.35。
+        let stale = enginePCM(fastBase)
+        let before = rms(stale, from: 2.0, to: 2.05), after = rms(fast, from: 2.0, to: 2.05)
+        check(before > 0.001 && abs(after / before - 0.35) < 0.05,
+              "换了增益之后满音量处该是老的 0.35 倍（老 \(before)、新 \(after)）")
 
         // 判据的另一侧：动了**结构**就不能走快路径，否则预览会跟状态对不上。
         var moved = fastBase
@@ -402,10 +379,8 @@ func main() async {
         var muted = fastBase
         muted.audioTracks[0].clips[0].isMuted = true
         check(!muted.differsOnlyInAudioMix(from: fastBase),
-              "静音不算 audio-only：主轨/画中画的静音段压根不会进合成音轨，改它会改结构")
+              "静音不算 audio-only：静音的段压根不进引擎的配置（也不进画面的合成），改它会改结构")
         check(!fastBase.differsOnlyInAudioMix(from: fastBase), "跟自己比不算「有差异」")
-    } else {
-        check(false, "快路径用例的预览合成没建起来")
     }
 
     // ---- 6. 转场仲裁：接缝那条边归转场管，段内不能再淡一次 ----
@@ -433,7 +408,7 @@ func main() async {
     // 钉点算错很可能只错其中一条 —— 症状是「隔一段响一下」，比全错更难查。
     // 放在这里是因为要用现成的双段带转场时间线：单段主轨起点必然是 0，
     // 恰恰是唯一不触发跳变的形状（第一轮就是被这个形状骗过去的）。
-    await checkPinnedFromZero(seamState, "主轨接缝 · A/B 两条合成轨")
+    checkPinnedFromZero(seamState, "主轨接缝 · 两段")
 
     // 2026-09-24 以前这里数的是导出滤镜图里有几条 afade、有没有 acrossfade（导出自己搭一套
     // 声音链时，转场那条边要「让位」给 acrossfade）。之后成片的声音就是预览那份混音离线读出来的

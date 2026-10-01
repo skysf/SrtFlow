@@ -157,7 +157,7 @@ dB 只是界面换算，换算只有 `AudioGain` 一份。这样老工程照读�
 
 | 检查 | 守什么 |
 | --- | --- |
-| `scripts/check-audio-fade.sh` | **真实音量包络**：导出走真实 `plan()` + 真跑 ffmpeg + 解码量 RMS；预览走真实 `build()` + `AVAssetReaderAudioMixOutput` 量 RMS。含变速用例、转场接缝用例（成片与预览逐窗一致；第 6b 组：预览三个入口用的那份 mix 在要展开的缝上符合绝对期望）、**段从非零位置起的渐入起点峰值**用例，每组都带「同一时间线去掉渐变」的反例对照 |
+| `scripts/check-audio-fade.sh` | **真实音量包络**：导出走真实 `plan()` + 真跑 ffmpeg + 解码量 RMS；预览走音频引擎离线渲（`enginePCM`，2026-10-01 PR3b 起；之前是 `build()` + `AVAssetReaderAudioMixOutput`）量 RMS。含变速用例、转场接缝用例（成片与预览逐窗一致；第 6b 组：预览三个入口用的那份 mix 在要展开的缝上符合绝对期望）、**段从非零位置起的渐入起点峰值**用例，每组都带「同一时间线去掉渐变」的反例对照 |
 | `scripts/check-project-file.sh` | 夹紧规则（含按比例收、NaN、变速）、转场那条边的仲裁、存盘往返、v9 登记与按需写键、v8 老文件缺键按 0 读、**dB 换算的往返与边界** |
 | `scripts/check-audio-fade.sh`（第 5 组） | **快路径与整条重建等价**：同一份音量/渐变改动，`makeAudioMix` 出来的包络与重建出来的逐点一致；以及 `differsOnlyInAudioMix` 对挪位置/裁剪/静音都要判否 |
 

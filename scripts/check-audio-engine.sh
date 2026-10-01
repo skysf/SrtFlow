@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# **音频引擎的等价自检**：同一条时间线，AVFoundation 那份混音（今天的预览和成片）和引擎离线渲染出来的声音
+# **音频引擎的等价自检**：同一条时间线，纯 Swift 的 oracle 混音器（checks/AudioEngine/Oracle.swift）和引擎离线渲染出来的声音
 # 逐 10 ms 窗口比 RMS（差 ≤ 0.15 dB；重采样的素材 0.3 dB），一边有声一边静音算错，引擎不许欠载。
 # 素材是现造的恒定振幅正弦（和 check-audio-fade 同一套，需要 ffmpeg）。
 #
@@ -116,6 +116,7 @@ xcrun swiftc \
   checks/AudioEngine/main.swift \
   checks/AudioEngine/Compare.swift \
   checks/AudioEngine/Timelines.swift \
+  checks/AudioEngine/Oracle.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
