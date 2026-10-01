@@ -74,6 +74,18 @@ checkGoToStart()
 // 11. 卸片之后晚到的时间回调不许把播放头写回旧位置（新建 / 打开工程）
 checkDetachDropsLateTicks(clip: URL(fileURLWithPath: CommandLine.arguments[1]))
 
+// 12. 播放头的外推（电平条读它，不问播放器）：停着就是最近一跳；播放中补上过去的时间、最多补一跳；时钟倒退按没过时间算。
+check(PlaybackTimeEstimate.estimate(tick: 8, tickHost: 100, now: 100.02, isPlaying: false, maxLead: 0.05) == 8,
+      "停着：就是最近一跳")
+check(abs(PlaybackTimeEstimate.estimate(tick: 8, tickHost: 100, now: 100.02, isPlaying: true, maxLead: 0.05) - 8.02) < 1e-9,
+      "播放中：补上过去的 20 ms")
+check(abs(PlaybackTimeEstimate.estimate(tick: 8, tickHost: 100, now: 100.9, isPlaying: true, maxLead: 0.05) - 8.05) < 1e-9,
+      "回调晚到：最多补一跳（50 ms），不许一直往前跑")
+check(PlaybackTimeEstimate.estimate(tick: 8, tickHost: 100, now: 99.5, isPlaying: true, maxLead: 0.05) == 8,
+      "时钟倒退：按没过时间算")
+check(PlaybackTimeEstimate.estimate(tick: 8, tickHost: 0, now: 100, isPlaying: true, maxLead: 0.05) == 8,
+      "还没收到过回调（tickHost 0）：不外推")
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 exit(failures == 0 ? 0 : 1)

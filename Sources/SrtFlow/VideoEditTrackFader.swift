@@ -159,7 +159,10 @@ struct TrackMeterBars: View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !clock.isPlaying)) { timeline in
             let reading = clock.isPlaying
                 ? source.engine.reading(
-                    for: source.key, at: clock.player.currentTime().seconds,
+                    // 时钟外推的播放头，**不问播放器**：`player.currentTime()` 要拿播放器内部的锁，
+                    // 多轨工程播放中它一忙，这里每秒 300 次的读就把主线程堵住几百毫秒到几秒
+                    //（docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md）。
+                    for: source.key, at: clock.estimatedTime,
                     now: timeline.date.timeIntervalSinceReferenceDate
                 )
                 : MeterReading(left: AudioGain.minimumDB, right: AudioGain.minimumDB,

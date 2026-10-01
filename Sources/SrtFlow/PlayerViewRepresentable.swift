@@ -26,6 +26,10 @@ struct PlayerViewRepresentable: NSViewRepresentable {
         view.player = player
         view.controlsStyle = controlsStyle
         view.showsFullScreenToggleButton = controlsStyle != .none
+        // 不让 AVKit 往「正在播放」（Now Playing）里报状态：它会在主线程上反复问播放器 `currentTime`，
+        // 播放器自己的队列一忙就把主线程堵住（2026-10-01 抓到一次 874 ms，
+        // docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md）。剪辑器也不该出现在系统的媒体控制里。
+        view.updatesNowPlayingInfoCenter = false
         return view
     }
 
