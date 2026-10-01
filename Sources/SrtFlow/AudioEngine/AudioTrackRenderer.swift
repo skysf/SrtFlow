@@ -21,22 +21,19 @@ final class AudioTrackRenderer: @unchecked Sendable {
     let fader: Atomic<Float>
     private let scratchLeft: UnsafeMutablePointer<Float>
     private let scratchRight: UnsafeMutablePointer<Float>
-    /// 全是 1：这一拍写进电平表时「要补乘的增益」—— 渲染块出来的采样已经乘过段增益和推子（tap 那条路才要补）。
-    let unitGains: UnsafeMutablePointer<Float>
+    /// 这条轨的电平表槽：每拍把混完（已乘段增益、场景、推子）的峰值交给它。
+    let meterSlot = MeterSlot()
 
     init(feeder: AudioTrackFeeder, fader: Float) {
         published = feeder.published
         self.fader = Atomic(fader)
         scratchLeft = .allocate(capacity: Self.maxFrames)
         scratchRight = .allocate(capacity: Self.maxFrames)
-        unitGains = .allocate(capacity: Self.maxFrames)
-        unitGains.initialize(repeating: 1, count: Self.maxFrames)
     }
 
     deinit {
         scratchLeft.deallocate()
         scratchRight.deallocate()
-        unitGains.deallocate()
     }
 
     /// 把这一拍混进 `outLeft` / `outRight`（调用方已清零）。返回环里没有、只能当静音的帧数（欠载）。
@@ -74,6 +71,7 @@ final class AudioTrackRenderer: @unchecked Sendable {
                 }
             }
         }
+        meterSlot.offer(frames: frames, left: outLeft, right: outRight)
         return missing
     }
 

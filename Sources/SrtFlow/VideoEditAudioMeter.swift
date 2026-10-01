@@ -123,6 +123,8 @@ final class AudioMeterEngine: @unchecked Sendable {
         var contexts: [Int32: TapContext] = [:]
         var taps: [Int32: MTAudioProcessingTap] = [:]
         var rings: [MeterKey: SampleRing] = [:]
+        /// 音频引擎那条路：每条表一个无锁槽（MeterSlot），渲染块按拍写峰值，这里取走；有槽的表不看环。
+        var slots: [MeterKey: MeterSlot] = [:]
         var display: [MeterKey: Display] = [:]
         var clipped: Set<MeterKey> = []
     }
@@ -153,8 +155,19 @@ final class AudioMeterEngine: @unchecked Sendable {
             state.contexts = [:]
             state.taps = [:]
             state.rings = [:]
+            state.slots = [:]
             state.display = [:]
         }
+    }
+
+    /// 音频引擎那条路：登记每条表的槽（引擎换配置时整批换）。登记过的表 `reading` 从槽里取，不看环。
+    func registerSlots(_ slots: [MeterKey: MeterSlot]) {
+        lock.withLock { $0.slots = slots }
+    }
+
+    /// 自检用：某条表的槽此刻的峰值（不清零）；没登记槽就是 nil。
+    func slotPeak(for key: MeterKey) -> (left: Float, right: Float)? {
+        lock.withLock { $0.slots[key] }?.peek()
     }
 
     /// 某条合成音轨的 tap：同一条合成里**复用同一个**（换 mix 时新建 tap 会让播放卡住），
@@ -215,7 +228,9 @@ final class AudioMeterEngine: @unchecked Sendable {
         let to = Int64((time * SampleRing.rate).rounded())
         let from = to - Int64(Self.window * SampleRing.rate)
         return lock.withLock { (state: inout State) -> MeterReading in
-            let peak: (left: Float, right: Float) = state.rings[key]?.peak(from: from, to: to) ?? (0, 0)
+            // 引擎那条路：取走自上次以来的峰值（30 帧/秒读，就是最近 33 ms 的峰值）；tap 那条路扫环。
+            let peak: (left: Float, right: Float) = state.slots[key]?.take()
+                ?? state.rings[key]?.peak(from: from, to: to) ?? (0, 0)
             if max(peak.left, peak.right) > 1 { state.clipped.insert(key) }
             var display = state.display[key] ?? Display()
             let elapsed = display.updated > 0 ? max(0, now - display.updated) : 0

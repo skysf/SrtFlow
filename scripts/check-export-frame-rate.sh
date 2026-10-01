@@ -102,6 +102,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditCompositionAudioTracks.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
+  Sources/SrtFlow/AudioEngine/MeterSlot.swift \
   Sources/SrtFlow/VideoEditMeterRing.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
