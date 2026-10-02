@@ -55,6 +55,36 @@ public enum SubtitleLanguageDetection {
     /// 不等式，防止以后有人把阈值调到 0.5 以下而悄悄恢复「无证据硬猜」）。
     public static let unknownConfidence = 0.5
 
+    /// 中日韩的候选：转写出来的字里中日韩的字（全角）至少要占这么多，才算「写成了这种语言」。
+    ///
+    /// **为什么要这一关（2026-10-02 南极工程，真机实测）**：中日韩的模型听到别的语言，会照着声音写出拉丁字母的「近似单词」，
+    /// 词置信度还不低 —— 中文模型转英文旁白写出「3red65 days」「rain forsts」，而这段停顿多的英文旁白，英文模型加权只有 0.873，
+    /// 被它超过，整段按中文转成了乱码。上面 0.80 的门槛是拿合成语音标定的（那时错误模型 ≤ 0.74），真素材上挡不住。
+    /// 这台机器的缓存里：中文模型转英文 0%，真中文 / 粤语 / 中英夹杂 43%–96%。取 25%：离两边都远。
+    public static let minimumCJKShare = 0.25
+
+    /// 这个候选的转写是不是写成了它那种语言的文字。只核对中日韩（会把别的语言写成拉丁字母乱码的就是它们），
+    /// 别的语言一律算是。一个字母都没有（全是数字、标点）也不算是。
+    public static func isWrittenInOwnScript(_ candidate: Candidate) -> Bool {
+        guard usesCJKScript(candidate.localeIdentifier) else { return true }
+        var letters = 0
+        var cjk = 0
+        for word in candidate.words {
+            for scalar in word.text.unicodeScalars where scalar.properties.isAlphabetic {
+                letters += 1
+                if SubtitleLineMeasure.isFullWidth(scalar) { cjk += 1 }
+            }
+        }
+        guard letters > 0 else { return false }
+        return Double(cjk) / Double(letters) >= minimumCJKShare
+    }
+
+    /// 这种语言是不是写中日韩的字：语言键（`languageKey`）的文字系统是简 / 繁 / 日 / 韩。
+    public static func usesCJKScript(_ localeIdentifier: String) -> Bool {
+        guard let key = languageKey(ofLocaleIdentifier: localeIdentifier) else { return false }
+        return ["-Hans", "-Hant", "-Hani", "-Jpan", "-Kore"].contains { key.hasSuffix($0) }
+    }
+
     /// 词数低于它的候选先排除（噪声上偶发一两个高置信词不算数）；
     /// 全部低于时退回全体比较 —— 短素材不能因此永远检测不了。
     ///
@@ -152,9 +182,12 @@ public enum SubtitleLanguageDetection {
     ///
     /// **全不过门槛返回 nil，候选只有一个时也一样** —— 调用方必须把 nil
     /// 当成「检测失败，请用户手选」，不许退化成「就它了」。
+    ///
+    /// 先过文字系统那一关（`isWrittenInOwnScript`）：中文模型把英文写成拉丁字母，把握再高也不参赛。
     public static func pick(_ candidates: [Candidate]) -> Verdict? {
-        let eligible = candidates.filter { $0.words.count >= minimumWordCount }
-        let pool = eligible.isEmpty ? candidates : eligible
+        let written = candidates.filter(isWrittenInOwnScript)
+        let eligible = written.filter { $0.words.count >= minimumWordCount }
+        let pool = eligible.isEmpty ? written : eligible
         var best: Verdict?
         for candidate in pool {
             let value = score(of: candidate.words)

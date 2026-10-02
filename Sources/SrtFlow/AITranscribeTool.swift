@@ -110,25 +110,28 @@ enum AITranscribeTool {
     // MARK: 缓存
 
     /// 缓存覆盖了这几段要的区间：返回语言和每个素材的那条缓存；有一段没覆盖就是 nil（要起任务）。
-    /// 几种语言都覆盖了（auto）时挑词的平均可信度最高的那份。
+    /// 点名了语言、或者这次运行里刚检测出一种语言：直接用那份。auto 又没检测过（重开过 App）时，缓存里有哪几种语言都拿去
+    /// 走和自动检测同一个裁决（`SubtitleLanguageDetection.pick`：门槛、按文字系统核对）—— 以前按平均可信度另挑，
+    /// 中文模型把英文旁白写成的拉丁乱码就这样被挑中（docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md）；过不了就起任务重新检测。
     static func cached(
         _ sounds: [SubtitleAudibleClips.SoundClip], language: String
     ) async -> (locale: String, entries: [String: TranscriptCacheEntry])? {
         var candidates: [String] = []
+        var trusted = false
         if language.lowercased() == "auto" {
             candidates = Array(Set(sounds.compactMap { detected[$0.fingerprint] })).sorted()
+            trusted = candidates.count == 1
             if candidates.isEmpty { candidates = await SpeechTranscriptionService.installedLocales().map(\.identifier).sorted() }
         } else if let matched = await SpeechTranscriptionService.matchedLocale(for: language) {
             candidates = [matched.identifier]
+            trusted = true
         }
-        var best: (locale: String, entries: [String: TranscriptCacheEntry], confidence: Double)?
-        for locale in candidates {
-            guard let entries = covering(sounds, locale: locale) else { continue }
-            let scores = entries.values.flatMap(\.words).compactMap(\.confidence)
-            let confidence = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
-            if best == nil || confidence > best!.confidence { best = (locale, entries, confidence) }
-        }
-        return best.map { ($0.locale, $0.entries) }
+        let covered = candidates.compactMap { locale in covering(sounds, locale: locale).map { (locale: locale, entries: $0) } }
+        if trusted { return covered.first }
+        let verdict = SubtitleLanguageDetection.pick(covered.map {
+            SubtitleLanguageDetection.Candidate(localeIdentifier: $0.locale, words: $0.entries.values.flatMap(\.words))
+        })
+        return verdict.flatMap { verdict in covered.first { $0.locale == verdict.localeIdentifier } }
     }
 
     private static func covering(
