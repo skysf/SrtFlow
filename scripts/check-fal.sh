@@ -6,7 +6,9 @@
 #   4. fal 回来的东西：每个端点的样例输出读出下载地址和后缀、旁白的词时间三种写法；
 #   5. FalClient：假 URLSession 协议按脚本回话 —— 提交的路径 / 头 / 体、照 fal 给的地址走、每种失败换成什么话、
 #      取消（Task 被取消 / 超时）时替 fal 也取消、下载的收尾、没有 Key 时一个请求也不发；
-#   6. 粘进来的 Key 怎么整理。
+#   6. 粘进来的 Key 怎么整理；
+#   7. 视频 upscale：六个档位的端点都有快照、每个档位 × 每档目标的请求体对着快照验、倍数按模型夹、估价钉在 2026-10-02 的账单上，
+#      以及 FalClient 的上传（initiate + PUT，PUT 不带 Key）和账单明细的查询。
 #
 # 不碰真的网络、不碰真的钥匙串（钥匙串在 scripts/check-fal-keychain.sh，本机手动）。
 # 「生成」这条工具在 App 里的接线（AIToolRouter、任务、横幅上的提问）由 scripts/check-mcp.sh 和它的扫描守卫钉着。
@@ -45,6 +47,8 @@ xcrun swiftc \
   Sources/SrtFlow/Fal/FalOutputs.swift \
   Sources/SrtFlow/Fal/FalClient.swift \
   Sources/SrtFlow/Fal/FalKeyStore.swift \
+  Sources/SrtFlow/Fal/FalUpscaleModels.swift \
+  Sources/SrtFlow/Fal/FalBilling.swift \
   checks/Fal/main.swift \
   checks/Fal/Harness.swift \
   checks/Fal/RegistryChecks.swift \
@@ -53,6 +57,7 @@ xcrun swiftc \
   checks/Fal/OutputChecks.swift \
   checks/Fal/ClientChecks.swift \
   checks/Fal/KeyChecks.swift \
+  checks/Fal/UpscaleChecks.swift \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 
 echo "==> 跑自检"

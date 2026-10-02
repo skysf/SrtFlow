@@ -26,9 +26,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 MODELS = ROOT / "Sources/SrtFlow/Fal/FalModels.swift"
+# 视频 upscale 的档位表（2026-10-02）：端点也登记在这里，快照和价格一起维护。
+UPSCALE = ROOT / "Sources/SrtFlow/Fal/FalUpscaleModels.swift"
 SCHEMAS = ROOT / "checks/Fal/schemas"
 UA = {"User-Agent": "Mozilla/5.0"}
-CATEGORIES = ["text-to-image", "text-to-video", "image-to-video", "text-to-speech", "text-to-audio", "audio-to-audio", "video-to-audio"]
+CATEGORIES = ["text-to-image", "text-to-video", "image-to-video", "video-to-video", "text-to-speech", "text-to-audio", "audio-to-audio", "video-to-audio"]
 
 
 def get(url: str, retries: int = 6) -> bytes:
@@ -44,7 +46,12 @@ def get(url: str, retries: int = 6) -> bytes:
 
 
 def registered_endpoints() -> list[str]:
-    return re.findall(r'endpoint: "([^"]+)"', MODELS.read_text(encoding="utf-8"))
+    found: list[str] = []
+    for path in (MODELS, UPSCALE):
+        for endpoint in re.findall(r'endpoint: "([^"]+)"', path.read_text(encoding="utf-8")):
+            if endpoint not in found:
+                found.append(endpoint)
+    return found
 
 
 def schemas() -> None:
@@ -94,7 +101,7 @@ def prices() -> None:
         # 先去掉标签再找：渲染出来的价格常被标签切开（「$」「0.027」「per image」各在一个 span 里）。
         page = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(get("https://fal.ai/models/" + endpoint).decode("utf-8", "replace"))))
         sentences = []
-        for match in re.finditer(r"(?:Your request will cost|Each voice clone request will cost|Video costs)[^\"\\]{0,170}", page):
+        for match in re.finditer(r"(?:Your request will cost|Each voice clone request will cost|Video costs|\$[0-9.]+ per (?:10 seconds|second|megapixel))[^\"\\]{0,170}", page):
             text = match.group(0).strip()
             if text not in sentences and len(text) > 30:
                 sentences.append(text)
@@ -105,6 +112,9 @@ def prices() -> None:
     registry = MODELS.read_text(encoding="utf-8")
     print("\n登记的单价（FalModels.swift）：")
     for line in re.findall(r'unitPrice: [0-9.]+|"(?:480|768|1080)P": [0-9.]+', registry):
+        print("   " + line)
+    print("\n登记的 upscale 价（FalUpscaleModels.swift）：")
+    for line in re.findall(r"pricing: \.[A-Za-z]+\([^)]*\)", UPSCALE.read_text(encoding="utf-8")):
         print("   " + line)
     print("\n价格页上的话和登记的对不上就改登记、并把 docs/architecture/fal-generation.md 价格表的日期改成今天。")
 
