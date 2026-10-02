@@ -68,7 +68,8 @@
   拖动计划的名单与成员（没有障碍、带宿主、不重复）。**反向验证**做过：拿掉「同 id 优先」、「跨段要一致」、「真删才删」、撞上让开，各红。
 - `checks/timeline-drag-wiring/linkage.sh`（`checks/timeline-drag-wiring.sh` 第 12 节）：`perform` / `liveApply` 收尾调 `follow`、位置在 packMain
   之后、画面账只有一份、真删的三个入口传 `deletesContent: true` 且只有它们传、三个拖动计划带上压着的东西、`realignCompanions` 按宿主平、
-  `get_timeline` 报开关、工具说明写了联动。
+  `get_timeline` 报开关、工具说明写了联动；第 12e 节：整份换回（AI 的「撤销这一轮」，`restoreTimeline`）不过磁吸、不过联动
+  （[案例](../bugfixes/2026-10-02-undo-round-repacks-v1.md)）。
 - 默认值：`checks/timeline-drag-wiring/toggles.sh` 第 11a 节、`scripts/check-timeline-zoom.sh` 第 4 节（`TogglesChecks.swift`）。
 
 ## 六、人工回归（改这些代码后过一遍）

@@ -12,7 +12,8 @@ AI_TIMELINE_TOOLS="Sources/SrtFlow/AITimelineTools.swift"
 AI_SPEECH_CUT="Sources/SrtFlow/AISpeechCutTool.swift"
 MCP_TIMELINE="Sources/SrtFlowMCPKit/MCPTimelineTools.swift"
 MCP_SMART="Sources/SrtFlowMCPKit/MCPSmartEditTools.swift"
-for f in "$LINKAGE" "$LINKAGE_LANDING" "$AI_TIMELINE_TOOLS" "$AI_SPEECH_CUT" "$MCP_TIMELINE" "$MCP_SMART"; do
+AI_SESSION="Sources/SrtFlow/AISession.swift"
+for f in "$LINKAGE" "$LINKAGE_LANDING" "$AI_TIMELINE_TOOLS" "$AI_SPEECH_CUT" "$MCP_TIMELINE" "$MCP_SMART" "$AI_SESSION"; do
   [ -f "$f" ] || fail "找不到 ${f}：联动的代码挪走了，这一节会扫个空"
 done
 
@@ -74,3 +75,19 @@ grep_code 'object\["linkage"\] = .bool(project.linkageEnabled)' "$AI_TIMELINE_TO
 # 措辞压得很短（清单总长度有 80,000 字的预算，docs/architecture/ai-control-mcp.md），只认「Linkage on:」这个记号。
 [ "$(grep -c 'Linkage on:' "$MCP_TIMELINE")" -ge 2 ] || fail "delete_items / freeze_frame 的说明没写联动开着时别的轨跟着动（要两处「Linkage on:」）"
 grep_code 'Linkage on:' "$MCP_SMART" || fail "cut_speech 的说明没写联动开着时压在片段上的东西跟着它的碎片走"
+
+# ── 12e. 整份换回（AI 的「撤销这一轮」）原样换回：不过磁吸、不过联动 ──────────
+# 走 perform 的话，收尾的磁吸会把快照里 V1 的缝又合上、联动再按合拢挪一遍：音频字幕回了原位、V1 没回
+#（docs/bugfixes/2026-10-02-undo-round-repacks-v1.md）。换回和 ⌘Z 走同一条收尾（adopt）。
+if BODY="$(require_func 'func restoreTimeline(' "$PROJECT")"; then
+  grep -q 'adopt(snapshot)' <<<"$BODY" || fail "restoreTimeline 没走撤销那条收尾（adopt）：选择、静帧、预览要和 ⌘Z 一样处理"
+  if grep -qE 'packMain|TimelineLinkage|perform' <<<"$BODY"; then
+    fail "restoreTimeline 里过了磁吸 / 联动 / perform：换回去的就不是快照了"
+  fi
+fi
+if BODY="$(require_func 'func undoRound(' "$AI_SESSION")"; then
+  grep -q 'project.restoreTimeline(snapshot)' <<<"$BODY" || fail "AISession.undoRound 没走 restoreTimeline（原样换回快照）"
+  if grep -q 'perform' <<<"$BODY"; then
+    fail "AISession.undoRound 走了 perform：磁吸开着时 V1 退不回去、音频字幕却回了原位"
+  fi
+fi

@@ -705,6 +705,21 @@ final class VideoEditProject {
                 target.applySnapshot(current)
             }
         }
+        adopt(snapshot)
+    }
+
+    /// 整份换回某一刻的时间线（AI 的「撤销这一轮」）：一步撤销，**原样**换回 —— 不磁吸、不联动。走 `perform { $0 = snapshot }`
+    /// 的话收尾的磁吸会把快照里 V1 的缝又合上：音频字幕回了原位、V1 没回（docs/bugfixes/2026-10-02-undo-round-repacks-v1.md）。
+    func restoreTimeline(_ snapshot: TimelineState) {
+        endLiveEdit(rebuildsPreview: false)
+        guard snapshot != state else { return }
+        registerUndo(state)
+        adopt(snapshot)
+    }
+
+    /// 撤销 / 重做 / 整轮换回的共同收尾：换上快照、摘掉已经不在的选择、补静帧、重建预览。
+    private func adopt(_ snapshot: TimelineState) {
+        let current = state
         let audioOnly = snapshot.differsOnlyInAudioMix(from: current)
         state = snapshot
         // 撤销/重做可能把选中的剪辑或形状整个撤没（cue 那一侧由 state 的 didSet 收）。
@@ -721,24 +736,7 @@ final class VideoEditProject {
 
     /// 把已经转完静帧的占位图片块补成真素材（不进撤销栈）。
     private func repairPendingStills() {
-        var next = state
-        var changed = false
-        for clip in next.allClips where clip.needsStillConversion {
-            // 查缓存要带上这一段自己的分辨率政策，见 `needsNativeResolution` 的注释。
-            guard let image = clip.stillImageURL,
-                  let video = StillImageClipFactory.cachedStillVideo(
-                    for: image,
-                    nativeResolution: StillImageClipFactory.needsNativeResolution(for: clip.info?.displaySize)
-                  ) else { continue }
-            let info = mediaProbes.cachedInfo(for: video)
-            next.update(clip.id) { pending in
-                pending.sourceURL = video
-                pending.needsStillConversion = false
-                if let info { pending.info = info }
-            }
-            changed = true
-        }
-        if changed { state = next }
+        if let next = PendingStillRepair.repaired(state, info: mediaProbes.cachedInfo(for:)) { state = next }
     }
 
     // MARK: - 添加素材
