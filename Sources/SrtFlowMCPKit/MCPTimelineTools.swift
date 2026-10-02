@@ -287,14 +287,17 @@ public enum MCPTimelineTools {
             Change one clip; only the fields you pass change. Move it (start, track), trim it (source_in/source_out are \
             seconds in the source file), or set speed, volume in dB, mute, hide, and audio fade in/out. A move or trim that \
             would overlap another clip on the same track fails and names that clip; ripple=true on V1 moves the later V1 \
-            clips along instead. Picture (video and image clips): fit=fill fills the whole frame and cuts off what sticks out. It aims at the subject SrtFlow finds in a few frames (faces, then \
+            clips along instead. Picture (video and image clips): fit=fill fills the whole frame and cuts off what \
+            sticks out. It aims at the subject SrtFlow finds in a few frames (faces, then \
             people, then text when there are no people, then whatever stands out; the result says what it found), at the \
             text only with focus=text (slides, screen recordings), or at \
             focus_x/focus_y; focus=center skips the search. When the subject moves, the crop follows it with a few position \
             keyframes (follow=false keeps one fixed crop). fit=fit shows the whole picture with bars (the default). fit \
             starts from the whole picture unless crop or remove_black_bars says which part to use; remove_black_bars=true \
-            looks at a few frames and cuts off letterbox / pillarbox bars. Without fit, x/y/scale place the picture yourself \
-            (x/y: its centre as fractions of the frame; scale 1 = the whole picture just fits). The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file. \
+            looks at a few frames and cuts off letterbox / pillarbox bars. Without fit, x/y/scale place the picture \
+            yourself \
+            (x/y: its centre as fractions of the frame; scale 1 = the whole picture just fits). The result's picture \
+            block says whether the frame is filled. SrtFlow edits the clip, never the file. \
             Also: rotation, opacity, flips, entrance / exit animations, volume_curve, sound_scene, markers, keyframes; see each field.
             """,
             input: MCPSchema.object([
