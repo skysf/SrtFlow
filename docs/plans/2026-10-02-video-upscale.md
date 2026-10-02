@@ -46,8 +46,8 @@ Compare with Original… / Revert to Original Clip / Upscale Again…。
 
 | 刀 | 做什么 | 状态 |
 | --- | --- | --- |
-| 1 地基 | `FalClient.upload`（initiate + PUT）、`billingEvents`（账单明细）、六个档位的表 `FalUpscaleTiers`（请求体、倍数夹、估价规律）、四个端点的接口定义快照、`refresh.py` 扫 upscale 表、自检第七 / 八组 | 本 PR |
-| 2 模型 | 片段上记 upscale 来源（`EditClip`，格式 v29）、单片段换源 + 源时间平移（关键帧 / 标记 / 音量曲线）、换回原片、旧文件留在素材表里、分割要抄新字段 | 待做 |
+| 1 地基 | `FalClient.upload`（initiate + PUT）、`billingEvents`（账单明细）、六个档位的表 `FalUpscaleTiers`（请求体、倍数夹、估价规律）、四个端点的接口定义快照、`refresh.py` 扫 upscale 表、自检第七 / 八组 | 已合并（PR #137） |
+| 2 模型 | 片段上记 upscale 来源（`EditClip`，格式 v29）、单片段换源 + 源时间平移（关键帧 / 标记 / 音量曲线）、换回原片、旧文件留在素材表里、分割要抄新字段 | 本 PR |
 | 3 任务 | 算范围（这一处 / 最长的那处 / 整个文件 + 余料）、裁出 H.264 中间件（AVAssetWriter，`MediaReadQueue`）、上传、排队、下载、封回原声（App 自带 ffmpeg，无损 copy）、命名落盘、对账实际扣费、进度与取消 | 待做 |
 | 4 界面 | 检查器一节、右键菜单、Upscale 面板、对比窗口、导出提示、块角标、三张语言表、人工回归清单、架构文档 | 待做 |
 

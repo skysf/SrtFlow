@@ -73,6 +73,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditMarkerTargets.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
+  Sources/SrtFlow/VideoEditClipUpscale.swift \
+  Sources/SrtFlow/VideoEditMediaReferences.swift \
   Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
   Sources/SrtFlow/VideoEditClipVisibility.swift \
@@ -113,6 +115,7 @@ xcrun swiftc \
   checks/ProjectFile/KeyframeEasing.swift \
   checks/ProjectFile/SubtitleLook.swift \
   checks/ProjectFile/Markers.swift \
+  checks/ProjectFile/Upscale.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----
