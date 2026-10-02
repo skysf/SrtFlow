@@ -155,6 +155,7 @@ enum AITimelineSummary {
         if overlay.animation.exit != .none { object["animation_out"] = .string(overlay.animation.exit.rawValue) }
         if overlay.animation.emphasis != .none { object["emphasis"] = .string(overlay.animation.emphasis.rawValue) }
         if abs(overlay.style.letterSpacing) > 0.01 { object["letter_spacing"] = AIFormat.seconds(overlay.style.letterSpacing) }
+        if abs(overlay.rotationDegrees) > 0.01 { object["rotation"] = AIFormat.seconds(overlay.rotationDegrees) }
         if overlay.isHidden { object["hidden"] = true }
         return .object(object)
     }

@@ -402,7 +402,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    - `set_text`：`letter_spacing`（字距）、`animation_in_duration` / `animation_out_duration`、`animation_intensity`、`emphasis`（breathe）、
      `number`（数字滚动：一个对象，只改给了的字段；没有数字的文字从检查器那一套默认值 `NumberRoll.default` 起；`remove` 变回普通文字，
      画面上留着终值，免得整段突然空掉）。都是模型里早就有、AI 调不到的；夹紧照旧只走 `updateTextOverlay`。强调和数字形态的词表
-     在小程序里抄了一份，和 App 的类型对账。
+     在小程序里抄了一份，和 App 的类型对账。2026-10-03 又补了 `rotation`（顺时针度数，界面上旋转把手转的那个，`get_timeline` /
+     结果里转过才报）；`font_size` 上限 400 → 1000（`TextStyle.fontSizeRange`，检查器同一个范围）—— 南极工程里 AI 想用一个「○」当圆环、
+     要更大的字号，还要它转。文字的关键帧（让它一直转）仍然没有，用户没选。
    - `set_shape filled`：长方形、正方形实心（电影遮幅、色块底、HUD 面板），线条永远是线；预览和导出都问 `drawsFilled`，
      导出的画法在 `ShapePNGRenderer`（v24，见 [工程文件](video-edit-project-file.md)）。
    - `get_timeline` 回数字、强调、字距和实心。

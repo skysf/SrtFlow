@@ -69,6 +69,7 @@ enum AIOverlayTools {
                              block.maxX / canvas.width, block.maxY / canvas.height]
                 .map { .number(($0 * 100).rounded() / 100) })
         ]
+        if abs(overlay.rotationDegrees) > 0.01 { result["rotation"] = AIFormat.seconds(overlay.rotationDegrees) }
         if !warnings.isEmpty { result["warnings"] = .array(warnings.map { .string($0) }) }
         return .ok(.object(result), changed: true)
     }
