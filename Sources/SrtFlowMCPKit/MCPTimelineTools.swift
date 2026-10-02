@@ -11,8 +11,10 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .getTimeline, title: "Read the timeline",
                 description: """
-                The whole timeline of the open project: every track and clip with its id (short; use it as shown), start/end on \
-                the timeline, source in/out in the file, speed, volume and transitions; texts; filters; subtitle tracks; canvas \
+                The whole timeline of the open project: every track and clip with its id (short; use it as shown), \
+                start/end on \
+                the timeline, source in/out in the file, speed, volume and transitions; texts; filters; subtitle \
+                tracks; canvas \
                 size and frame rate; music_credits for library music. Call it before editing and whenever you need fresh ids.
                 """,
                 readOnly: true
@@ -25,10 +27,14 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .setKeyframes, title: "Keyframes",
                 description: """
-                Animate a video or image clip over time: position (x/y = centre on the frame, 0–1), scale (1 = the whole picture \
-                just fits the frame, as in edit_clip), rotation (degrees) and opacity (0–1). Each list replaces that property's \
-                keyframes; [] removes them (the clip keeps its static values). Times are timeline seconds inside the clip, or \
-                fractions 0–1 of it with relative=true; each move eases in and out unless easing says otherwise. A slow zoom: \
+                Animate a video or image clip over time: position (x/y = centre on the frame, 0–1), scale (1 = the \
+                whole picture \
+                just fits the frame, as in edit_clip), rotation (degrees) and opacity (0–1). Each list replaces that \
+                property's \
+                keyframes; [] removes them (the clip keeps its static values). Times are timeline seconds inside the \
+                clip, or \
+                fractions 0–1 of it with relative=true; each move eases in and out unless easing says otherwise. A \
+                slow zoom: \
                 relative=true, scale [{time: 0, value: 1}, {time: 1, value: 1.15}]. Keyframed position or scale blocks \
                 edit_clip's fit/x/y/scale until removed.
                 """,
@@ -59,7 +65,8 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .setTrack, title: "Track settings",
                 description: """
-                Change a whole track: its fader (volume_db, on top of each clip's own volume) and whether it is hidden (left out \
+                Change a whole track: its fader (volume_db, on top of each clip's own volume) and whether it is \
+                hidden (left out \
                 of the preview and the export). track "master" is the fader after all tracks. Use it to duck music under a \
                 voice-over or mute a whole track.
                 """,
@@ -85,9 +92,10 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .freezeFrame, title: "Freeze frame",
                 description: """
-                Hold the picture at a moment: the clip is cut there and a still of that exact frame is inserted for duration \
-                seconds (default 2); later clips on the same track move right by that much (with Linkage on, what sits on \
-                those later V1 clips moves too; off, other tracks stay). Without clip_id it freezes the V1 clip at that time. Not for audio, images, hidden clips, or a moment \
+                Hold the picture: the clip is cut at that moment and a still of that frame is inserted for duration \
+                seconds (default 2); later clips on the same track move right by that much (Linkage on: what sits on them \
+                follows; off: other tracks stay). Without clip_id it freezes the V1 clip at that time. Not for \
+                audio, images, hidden clips, or a moment \
                 inside a V1 transition. The still is a PNG next to the project. To end on a clip's last frame, give a time \
                 inside that frame: a leftover shorter than one frame is dropped, a longer one keeps playing after the still \
                 (tail_id in the result).
@@ -103,9 +111,8 @@ public enum MCPTimelineTools {
                 .deleteItems, title: "Delete",
                 description: """
                 Delete clips, texts, filters or subtitle lines by id; kinds can be mixed. ripple=true closes the gaps this \
-                leaves on V1 by moving the later V1 clips left. With Linkage on (the user's toolbar toggle, on by default; \
-                get_timeline shows it) whatever sits on a deleted V1 clip is deleted with it and whatever sits on moved V1 \
-                clips moves along; off, other tracks stay. The result says what followed.
+                leaves on V1 by moving the later V1 clips left. Linkage on: what sits on deleted or moved V1 clips follows; \
+                off: other tracks stay.
                 """,
                 input: MCPSchema.object([
                     "ids": MCPSchema.array(of: MCPSchema.string("Id from get_timeline or get_subtitles."), "What to delete.", minItems: 1),
@@ -118,7 +125,8 @@ public enum MCPTimelineTools {
                 .duplicateItems, title: "Duplicate",
                 description: """
                 Copy clips, texts, shapes, filters or subtitle lines (ids can be mixed) and place the copies with the same \
-                spacing, the earliest at start (default: right after the last of them ends). Landing works like paste: a clip \
+                spacing, the earliest at start (default: right after the last of them ends). Landing works like \
+                paste: a clip \
                 that would overlap goes up to the next free video track (or another audio track), groups keep their order, \
                 linked audio comes along. track picks where a single group of clips goes. Returns the new ids.
                 """,
@@ -150,8 +158,10 @@ public enum MCPTimelineTools {
                 description: """
                 Draw a line, rectangle or square over the video for a while (an outline to point at or frame something; \
                 filled=true paints a solid block, e.g. letterbox bars or a colour panel behind a text), or change one when \
-                shape_id is given; only the fields you pass change. x/y is the centre as fractions of the frame; width (a line's \
-                length) and height are fractions of the frame (a square uses width). rotation turns lines only. line_width is \
+                shape_id is given; only the fields you pass change. x/y is the centre as fractions of the frame; \
+                width (a line's \
+                length) and height are fractions of the frame (a square uses width). rotation turns lines only. \
+                line_width is \
                 pixels on a 1080-high frame. Shapes are drawn under texts. kind=blur or mosaic draws nothing: it blurs or \
                 pixelates the picture under it (hide a watermark or burned-in subtitles; look text_scan gives the values); \
                 strength is the blur radius or mosaic cell in pixels on a 1080-high frame. Delete with delete_items.
@@ -177,11 +187,15 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .setFilter, title: "Filter",
                 description: """
-                Add a colour filter over a time range (it grades every video track there, not texts or subtitles), or change one \
-                when filter_id is given; only the fields you pass change. Presets: tealOrange (blockbuster teal shadows, warm \
+                Add a colour filter over a time range (it grades every video track there, not texts or subtitles), \
+                or change one \
+                when filter_id is given; only the fields you pass change. Presets: tealOrange (blockbuster teal \
+                shadows, warm \
                 skin), coldIron (cold, desaturated, hard, industrial), warmSun (warm golden daylight), flatGrey (flat \
-                low-saturation documentary), nightGold (night with amber highlights, deep blacks), fadedFilm (old faded film, \
-                lifted blacks), coldWhite (bright clean cool whites: products, interiors), mistBlue (misty morning blue, low \
+                low-saturation documentary), nightGold (night with amber highlights, deep blacks), fadedFilm (old \
+                faded film, \
+                lifted blacks), coldWhite (bright clean cool whites: products, interiors), mistBlue (misty morning \
+                blue, low \
                 contrast), inkShadow (hard black and white), neon (cyberpunk magenta and cyan, full saturation).
                 """,
                 input: MCPSchema.object([
@@ -273,16 +287,14 @@ public enum MCPTimelineTools {
             Change one clip; only the fields you pass change. Move it (start, track), trim it (source_in/source_out are \
             seconds in the source file), or set speed, volume in dB, mute, hide, and audio fade in/out. A move or trim that \
             would overlap another clip on the same track fails and names that clip; ripple=true on V1 moves the later V1 \
-            clips along instead. Picture (video and image clips): fit=fill fills the whole frame and cuts off what sticks \
-            out (turns wide footage into 9:16 and back). It aims at the subject SrtFlow finds in a few frames (faces, then \
+            clips along instead. Picture (video and image clips): fit=fill fills the whole frame and cuts off what sticks out. It aims at the subject SrtFlow finds in a few frames (faces, then \
             people, then text when there are no people, then whatever stands out; the result says what it found), at the \
-            text only with focus=text (slides, screen recordings; the result says how much text falls outside), or at \
+            text only with focus=text (slides, screen recordings), or at \
             focus_x/focus_y; focus=center skips the search. When the subject moves, the crop follows it with a few position \
             keyframes (follow=false keeps one fixed crop). fit=fit shows the whole picture with bars (the default). fit \
             starts from the whole picture unless crop or remove_black_bars says which part to use; remove_black_bars=true \
             looks at a few frames and cuts off letterbox / pillarbox bars. Without fit, x/y/scale place the picture yourself \
-            (x/y: its centre as fractions of the frame; scale 1 = the whole picture just fits), e.g. a small picture in a \
-            corner. The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file. \
+            (x/y: its centre as fractions of the frame; scale 1 = the whole picture just fits). The result's picture block says whether the frame is filled. SrtFlow edits the clip, never the file. \
             Also: rotation, opacity, flips, entrance / exit animations, volume_curve, sound_scene, markers, keyframes; see each field.
             """,
             input: MCPSchema.object([
