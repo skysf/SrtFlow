@@ -11,6 +11,8 @@ struct VideoEditInspectorView: View {
     /// 就跟到哪儿（拖播放头找关键帧照样实时），播放中不跟，停下来追上一次（preview-perf-ratchet.md 第十二节）。
     let clock: PlayerClock
     @ObservedObject var playhead: PacedPlayhead
+    /// Upscale 任务的增删（很少变）：「Upscale」那一节按它显示做着 / 做完 / 还没做（VideoEditInspector+Upscale.swift）。
+    @ObservedObject var upscaleActivity = UpscaleActivity.shared
     var onExport: () -> Void = {}
 
     var body: some View {
@@ -37,6 +39,8 @@ struct VideoEditInspectorView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Upscale 的面板和对比窗口从这里出（检查器在剪辑页里一直在；只订阅 UpscaleActivity 的两个字段）。
+        .background(UpscalePresenter(project: project).equatable())
     }
 
     // MARK: - 多选
@@ -213,6 +217,12 @@ struct VideoEditInspectorView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+
+        // 送 fal 放大（画面段才有；mockup 定的位置：头部信息下面、Speed 上面；VideoEditInspector+Upscale.swift）。
+        if !clip.isAudioOnly, !clip.isStillImage {
+            Divider()
+            upscaleSection(clip)
         }
 
         Divider()

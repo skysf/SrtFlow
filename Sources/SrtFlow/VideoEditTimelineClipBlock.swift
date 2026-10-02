@@ -222,6 +222,13 @@ struct ClipBlockView: View, Equatable {
                 if clip.isMuted, !clip.isAudioOnly {
                     Image(systemName: "speaker.slash").font(.system(size: 8))
                 }
+                // 用的是 upscale 过的文件：名字旁一枚短边的标（和静音图标同一处，不盖缩略图）。
+                if clip.upscale != nil, let info = clip.info {
+                    Text(verbatim: "\(Int(min(info.displaySize.width, info.displaySize.height)))p")
+                        .font(.system(size: 8, weight: .bold))
+                        .padding(.horizontal, 3)
+                        .background(.black.opacity(0.45), in: Capsule())
+                }
                 // 灰显本身还不够：轨道整条藏起来时块也是灰的，两种状态得分得开。
                 if clip.isHidden {
                     Image(systemName: "eye.slash").font(.system(size: 8))
@@ -418,6 +425,18 @@ struct ClipBlockView: View, Equatable {
                 Button("Move to Upper Track") { project.toggleOverlay(clip.id) }
             } else if case .overlay = slot {
                 Button("Move to Main Track") { project.toggleOverlay(clip.id) }
+            }
+            // 送 fal 放大（图片段没有）。已经换过源的多两项：比一比、换回原片（原片不在了就提示，不在菜单里查文件：块不做 IO）。
+            if !clip.isStillImage {
+                if clip.upscale == nil {
+                    Button("Upscale…") { UpscaleActivity.shared.present(panelFor: clip.id) }
+                } else {
+                    Button("Compare with Original…") { UpscaleActivity.shared.compare = .clip(clip.id) }
+                    Button("Revert to Original Clip") {
+                        if !project.revertUpscale(clip.id) { project.notice = L10n("The original file could not be found.") }
+                    }
+                    Button("Upscale Again…") { UpscaleActivity.shared.present(panelFor: clip.id) }
+                }
             }
         }
         Divider()

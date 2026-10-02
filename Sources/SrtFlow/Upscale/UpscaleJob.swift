@@ -30,6 +30,8 @@ final class UpscaleJob: ObservableObject, Identifiable {
     @Published private(set) var actualCost: Double?
     /// macOS 正在问要不要让 SrtFlow 用钥匙串里的 Key（界面提醒用户点「始终允许」）。
     @Published private(set) var keyPrompt = false
+    /// 做完（拿到文件）时叫一声：UpscaleActivity 用它弹对比窗口。
+    var onFinished: ((UpscaleJob) -> Void)?
 
     private var task: Task<Void, Never>?
     private var reserved: (amount: Double, day: Date)?
@@ -81,6 +83,7 @@ final class UpscaleJob: ObservableObject, Identifiable {
             resultReceived = true
             outcome = result
             state = .done
+            onFinished?(self)
             await lookUpCost(client: client, requestID: result.requestID, since: Date().addingTimeInterval(-result.elapsed - 600))
         } catch is CancellationError {
             refund(store)
@@ -123,24 +126,61 @@ final class UpscaleJob: ObservableObject, Identifiable {
     }
 }
 
-/// 正在做 / 做完还没处理的 upscale 任务（界面从这里读；切工程时清掉）。
+/// 面板要为哪一段打开（右键菜单、检查器都走这里）。
+struct UpscalePanelTarget: Identifiable, Equatable {
+    let id: UUID
+}
+
+/// 对比窗口看什么：做完还没处理的任务（点替换才换源），或已经换过源的一段（原片 vs 现在用的）。
+enum UpscaleCompareTarget: Identifiable, Equatable {
+    case job(UpscaleJob)
+    case clip(UUID)
+
+    var id: String {
+        switch self {
+        case .job(let job): return "job-" + job.id.uuidString
+        case .clip(let id): return "clip-" + id.uuidString
+        }
+    }
+
+    static func == (lhs: UpscaleCompareTarget, rhs: UpscaleCompareTarget) -> Bool { lhs.id == rhs.id }
+}
+
+/// 正在做 / 做完还没处理的 upscale 任务，以及界面上要摆出来的面板和对比窗口（界面从这里读；切工程时清掉）。
 @MainActor
 final class UpscaleActivity: ObservableObject {
     static let shared = UpscaleActivity()
     @Published private(set) var jobs: [UpscaleJob] = []
+    @Published var panel: UpscalePanelTarget?
+    @Published var compare: UpscaleCompareTarget?
 
     func add(_ job: UpscaleJob) {
         jobs.append(job)
+        job.onFinished = { [weak self] finished in
+            // 做完先弹对比窗口（方案第 15 条）；已经在看别的就不抢。
+            guard let self, self.jobs.contains(where: { $0.id == finished.id }), self.compare == nil else { return }
+            self.compare = .job(finished)
+        }
         job.start()
     }
 
     func remove(_ job: UpscaleJob) {
         job.cancel()
         jobs.removeAll { $0.id == job.id }
+        if compare == .job(job) { compare = nil }
     }
+
+    /// 这个原片有没有在做 / 做完还没处理的任务。
+    func job(forOriginal url: URL) -> UpscaleJob? {
+        jobs.first { $0.request.originalURL == url }
+    }
+
+    func present(panelFor clipID: UUID) { panel = UpscalePanelTarget(id: clipID) }
 
     func cancelAll() {
         for job in jobs { job.cancel() }
         jobs.removeAll()
+        panel = nil
+        compare = nil
     }
 }
