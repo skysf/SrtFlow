@@ -32,12 +32,14 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/StillImageClipFactory.swift \
+  Sources/SrtFlow/StillAlphaNaming.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
   Sources/SrtFlow/MediaReadQueue.swift \
   Sources/SrtFlow/AppLanguage.swift \
   checks/StillClipEncode/main.swift \
+  checks/StillClipEncode/Alpha.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

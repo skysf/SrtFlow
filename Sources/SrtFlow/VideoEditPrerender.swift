@@ -65,7 +65,8 @@ final class ExportCancellationToken: @unchecked Sendable {
 /// 忽略，文档明说），透明背景根本出不来 —— 所以走 fill + matte 双渲染：
 /// - fill：内容本身（带完整不透明度）合在黑底上；
 /// - matte：一块纯白素材套上**同一份**摆放/旋转/不透明度动画合在黑底上，
-///   白 = 可见、黑 = 透明，边缘的抗锯齿灰阶就是 alpha 渐变。
+///   白 = 可见、黑 = 透明，边缘的抗锯齿灰阶就是 alpha 渐变。带透明的静帧不用纯白，用它自己的灰度遮罩
+///   （`StillAlphaNaming.matteURL`），这样 matte = 图的 alpha × coverage × opacity，和 fill 的权重仍然一样。
 /// 两条的权重必须一字不差（都是 coverage×opacity）：ffmpeg 里先用 matte
 /// 把 fill 除回真实色再 `alphamerge` 合回带 alpha 的流，原位叠放——
 /// 权重不一致除法就约不干净（细节见 VideoEditExporter 的上层轨滤镜段）。
@@ -141,28 +142,34 @@ enum AnimatedClipPrerenderer {
             cancellation: cancellation
         )
 
-        guard let whiteURL = await BlackBaseVideoFactory.whiteVideoURL() else {
-            throw PrerenderError(
-                message: String(format: L10n("Could not prepare the animated clip %@ for export."), clip.name)
-            )
-        }
         let source = normalized(clip, fades: fades)
         var matte = source
-        matte.sourceURL = whiteURL
         matte.stillImageURL = nil
         matte.needsStillConversion = false
-        matte.crop = nil
-        matte.flippedHorizontally = false
-        matte.flippedVertically = false
-        matte.info = nil
         matte.placement = basePlacement
-        // 白块素材只有 1 秒：从 0 取满 1 秒，用变速拉伸到段长（纯色无所谓帧率）。
-        matte.sourceStart = 0
-        matte.sourceDuration = 1
-        matte.speed = 1 / max(source.timelineDuration, 0.05)
-        // 关键帧锚在源时间上，而 matte 的源时间轴和原素材不同 ——
-        // 把每个关键帧经由时间线时刻换算到 matte 自己的源轴上。
-        matte.animation = remappedAnimation(from: source, to: matte)
+        if source.isAlphaStill {
+            // 带透明的静帧：matte 是它自己的 alpha（同一张图转出来的灰度片，几何、帧数和静帧一模一样）—— 裁切、翻转、
+            // 时间、关键帧都照抄。纯白那块只管摆放框，透明的地方照样不透明：透明 PNG 带了关键帧就是黑方块（2026-10-03）。
+            matte.sourceURL = StillAlphaNaming.matteURL(forStill: source.sourceURL)
+        } else {
+            guard let whiteURL = await BlackBaseVideoFactory.whiteVideoURL() else {
+                throw PrerenderError(
+                    message: String(format: L10n("Could not prepare the animated clip %@ for export."), clip.name)
+                )
+            }
+            matte.sourceURL = whiteURL
+            matte.crop = nil
+            matte.flippedHorizontally = false
+            matte.flippedVertically = false
+            matte.info = nil
+            // 白块素材只有 1 秒：从 0 取满 1 秒，用变速拉伸到段长（纯色无所谓帧率）。
+            matte.sourceStart = 0
+            matte.sourceDuration = 1
+            matte.speed = 1 / max(source.timelineDuration, 0.05)
+            // 关键帧锚在源时间上，而 matte 的源时间轴和原素材不同 ——
+            // 把每个关键帧经由时间线时刻换算到 matte 自己的源轴上。
+            matte.animation = remappedAnimation(from: source, to: matte)
+        }
         var matteState = TimelineState()
         // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
         // 帧率不一致接缝处就对不上（计划 §3.3 点名的坑）。
