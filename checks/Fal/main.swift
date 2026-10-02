@@ -9,6 +9,8 @@ runInputChecks()
 runOutputChecks()
 await runClientChecks()
 runKeyChecks()
+runUpscaleChecks()
+await runUpscaleClientChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) fal checks failed.")

@@ -146,7 +146,9 @@
 ## 十一、回归与人工清单
 
 - `scripts/check-fal.sh`（`check-all` 第 2 组，不碰网络、不碰钥匙串）：模型表与估价、花钱把关、按天记账、**每个端点的请求体对着接口定义快照验**、样例输出与词时间、
-  `FalClient` 走全流程（假 URLSession：提交 / 三次轮询 / 取结果、照 fal 给的地址、每种失败换的话、Task 取消和超时都替 fal 取消、下载收尾、没 Key 时一个请求也不发）、Key 的整理。
+  `FalClient` 走全流程（假 URLSession：提交 / 三次轮询 / 取结果、照 fal 给的地址、每种失败换的话、Task 取消和超时都替 fal 取消、下载收尾、没 Key 时一个请求也不发）、Key 的整理；
+  **视频 upscale**（第十二节）：六个档位的端点都有快照、每个档位 × 每档目标 × 几种源的请求体对着快照验、倍数按模型夹、估价钉在 2026-10-02 的账单上（只高不低）、
+  上传（initiate 带 Key、PUT 不带、体是文件字节、`gcs` 被拒的那种错怎么报）、账单明细的查询和解析。
   **反向验证**做过：漏发必填的 `prompt_expansion_mode`、时长不夹、分辨率不规整、多发字段、上限刚好算超、取消不走 detached、Bearer 头、不用 fal 给的地址、
   音乐不满一分钟不向上取整、登记表对不上写法表、视频换成别的系列，各红。
 - `scripts/check-mcp.sh` 的 `ProviderChecks`（清单按 Key 列不列：真起小程序，老一代收 `list_changed`、新一代不收；小文件的读写）和 `FalVoiceChecks`（挑音色、词时间、WAV）。
@@ -164,3 +166,22 @@
   6. 用 `clone_from` 指一段自己的录音：出来的旁白像那个人；
   7. 装新版本后第一次生成：提示条先说「macOS 马上会问」，点「始终允许」后继续，之后不再弹；
   8. 点名一个没登记的端点（`model`）：先问（价格不明）。
+
+## 十二、视频 upscale 的地基（2026-10-02 起）
+
+> 来龙去脉和用户拍的板在 [视频 upscale 方案](../plans/2026-10-02-video-upscale.md)，实测数字在 [smoke test 实测](../reports/2026-10-02-upscale-smoke-test.md)。
+> 这一节只记长期约束。改 `FalUpscaleModels.swift`、`FalBilling.swift`、`FalClient.upload` / `billingEvents` 之前必读。
+
+| 决定 | 口径 |
+| --- | --- |
+| 档位 | **六个、四个端点**（`FalUpscaleTiers.all`，顺序就是界面的顺序）：Topaz precision（`Proteus`，真人脸）、Topaz generative（`Starlight Precise 2.6`，重绘细节）、FLUX precise / creative（`creativity` 0 / 1，**0 要显式传**，fal 默认是 1）、字节 standard / pro（`aigc` 预设、`fidelity high`、`scale_ratio`、**`target_fps` 传源帧率**，不传默认 30 会插帧）。用户 2026-10-02 去掉了 Topaz creative（5 秒十分半钟）和 Bria（只能 2x、提升不明显） |
+| 目标 | 按**短边**：1080p / 1440p / 4K（`FalUpscaleTarget`），和导出的分辨率档位一个口径。源的短边不比目标小就「没什么可升的」 |
+| 倍数 | 目标短边 ÷ 源短边，再按模型认的范围夹：Topaz 1–4、FLUX 1.5–3、字节 1.1–10（`FalUpscaleTier.plan`）。夹过之后输出可能够不到目标（360p 送 Topaz 要 4K 只到 1440p）或超过（1344×768 送 FLUX 要 1080p 出 2016×1152）：**估价和界面都按夹过的输出尺寸算**，不按目标 |
+| 请求体 | `FalUpscaleTier.body`：字段名和取值从接口定义快照来（`checks/Fal/schemas/topaz__upscale__video__precision.json` 等四份），自检逐条对着验；倍数按小数原样传（1.40625 正好 1890×1080） |
+| 估价 | `FalUpscalePricing`，规律是 19 条的账单量出来的：字节按输出秒分档（1080p $0.0072、2K ×2、4K ×4；pro ×10），分毫不差；FLUX 按输出百万像素·秒线性（precise $0.0715、creative $0.1001）；Topaz 按网页「每 10 秒」价折成每秒、**向上取整到 $0.10、最少一档**（precision 1080p $0.20、4K $0.60；generative $1.20 / $2.60；没有 2K 档，1440p 按 4K）。Topaz 实收约是它的一半，账户没有折扣（`percent_discount` 0），差在网页标题价和 fal「credits 每任务取整一次」的规则没公开。**估价只许比账单高或相等** |
+| 实际扣费 | `FalClient.billingEvents(requestIDs:since:)` 查 `GET https://api.fal.ai/v1/models/billing-events?start=…&request_id=…`，`FalBilling.events` 解析，`cost_total` 是实收；多数几分钟内出现。**要 ADMIN 权限的 Key**，只有 API 权限会 401 / 403，调用方当作查不到、照旧显示估价 |
+| 上传 | 视频不能当 data URI 内嵌：`FalClient.upload(fileURL:contentType:fileName:)` = `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3`（带 Key）拿 `upload_url` / `file_url` → `PUT` 字节到 `upload_url`（**不带 Key**，那是存储桶的签名地址）→ `file_url` 填进 `video_url`。旧文档的 `storage_type=gcs` 2026-10 起被拒（400 Invalid storage type）。`rest` / `api` 两个地址和队列地址一样是 `FalClient` 的构造参数，自检用假 URLSession |
+| 等多久 | 视频一律 25 分钟（`FalUpscaleTier.maxSeconds`） |
+| 维护 | `scripts/fal-models/refresh.sh` 也扫 `FalUpscaleModels.swift` 里的端点、目录按 video-to-video 列；改档位 / 改价同步这一节和自检 |
+
+还没做的（分刀见方案第三节）：片段上的来源记录与换源（第二刀）、裁范围 / 封回原声 / 落盘 / 进度的任务（第三刀）、界面（第四刀）。
