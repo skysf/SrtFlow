@@ -152,13 +152,14 @@ func runProtocolChecks() {
     check(servedDescription("export_video").contains("music_credits"), "export_video asks the AI to pass on the music credits")
     check(servedDescription("recipes").contains("which one you follow"), "recipes asks the AI to tell the user which style it follows")
     // 不按个数卡（2026-09-28 用户拍板，方案第 33 条），卡说明的总长度：工具说明每一轮都进 AI 的上下文，
-    // 用户那边还开着别的 MCP。上限约 2 万 token（按 3.6 个字符一个 token 估）；超了先把说明写短、或者并掉长得像的工具。
+    // 用户那边还开着别的 MCP。上限 80,000 字符、约 2.2 万 token（按 3.6 个字符一个 token 估；2026-10-02 用户定从 72,000 抬上来，
+    // 给 upscale_clip 腾地方）；超了先把说明写短、或者并掉长得像的工具。
     // 量的是**每个提供方都配好**时的全清单（最长的那种情况），不是某个用户此刻看到的。
     let fullList = talkToHelper([#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#], socket: app.path, providers: Set(MCPProvider.allCases))
     let fullTools = reply(fullList.messages, id: 1)?["result"]?["tools"]?.arrayValue ?? []
     checkEqual(fullTools.compactMap { $0["name"]?.stringValue }, MCPToolName.allCases.map(\.rawValue), "the full tools/list order and names")
     let catalogCharacters = fullTools.reduce(0) { $0 + $1.encodedString().count }
-    check(catalogCharacters <= 72_000, "the tool list stays under 72,000 characters (about 20k tokens); it is \(catalogCharacters)")
+    check(catalogCharacters <= 80_000, "the tool list stays under 80,000 characters (about 22k tokens); it is \(catalogCharacters)")
 
     // 3. 工具调用原样转给 App，客户端名字是 initialize 里报的那个；字符串 id 原样回。
     checkEqual(reply(messages, id: "abc")?["result"]?["content"]?.arrayValue?.first?["text"]?.stringValue,

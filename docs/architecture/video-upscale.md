@@ -20,7 +20,7 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 | 结果 | `UpscaleOutcome` | 文件、探测信息、`ClipUpscaleRecord`（原片、偏移、档位、原片的探测信息）、fal 的请求号、耗时。换源时拼成 `ClipSourceSwap.Replacement` 交给 `VideoEditProject.applyUpscale` |
 | 账 | `UpscaleJob` | 面板上的估价就是用户的确认（方案第 10 条）：开跑先把估算记进 fal 的账本，不再问；没做出来（失败 / 取消）退回，拿到结果就不退。做完每 30 秒问一次账单明细、最多六次，查到实际扣费就把账本里的估算换成实收、记进结果（要 ADMIN 权限的 Key；查不到只有估价） |
 | Key | `UpscaleJob` | `FalKeyCache.shared.key(willAsk:)`：新版本第一次读会弹 macOS 的授权框，`keyPrompt` 让界面提醒用户点「始终允许」 |
-| 进度 | `UpscaleJob.state` / `UpscaleActivity.shared` | 阶段：裁 → 上传 → 排队（带位置）→ 处理 → 下载 → 封声落盘。同一个阶段只报一次。界面从 `UpscaleActivity` 读；切工程 `cancelAll` |
+| 进度 | `UpscaleJob.state` / `UpscaleActivity.shared` | 阶段（`FalJobPhase`，[fal.ai 生成](fal-generation.md) 第十三节）：裁 → 上传（字节比例，1% 一格）→ 排队（带位置）→ 处理（这一阶段过了多久 + 这一档通常几分钟 `FalUpscaleTier.typicalSeconds`）→ 下载（字节比例）→ 封声落盘。同一阶段同一比例只报一次；换阶段才重记开始时刻（`FalJobProgress`）。界面从 `UpscaleActivity` 读：检查器那一节和编辑器顶上的状态行（`FalStatusRows`）同一份文字；切工程 `cancelAll` |
 
 ## 二、硬约束
 
@@ -41,9 +41,10 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 | 面板 | `Upscale/UpscalePanel.swift` + `UpscalePanelModel.swift` | sheet（套 `.appLanguage()`）。范围三选一（默认：别处用得更长就选最长的那处，否则这一段；有另一处更长就提示）、目标三档（默认按画布短边能到的那档，比画布大提示画布也要改）、六个档位各一行（一句话、大约几分钟、夹过的输出尺寸、估价；超过模型的时长 / 大小上限灰掉）、文件名预览、今天已花 / 上限（超限只标红）、没有 Key 才拦。点开始：`UpscaleJob` 进 `UpscaleActivity` |
 | 摆出来 | `Upscale/UpscalePresenter.swift` | 挂在检查器底下的不画东西的小视图，只订阅 `UpscaleActivity.panel` / `.compare`；右键、检查器、做完的任务都往那两个字段里写。`Equatable`（按工程的身份）+ `.equatable()`：检查器每重算一次不重算它 |
 | 对比窗口 | `Upscale/UpscaleCompareView.swift` + `UpscaleCompareStage.swift` + `UpscaleComparePlayback.swift` | 做完先弹（已经在看别的就不抢）。两个 AVPlayer 同一个主机时间起步（`setRate(_:time:atHostTime:)`，不读 `currentTime`），原片出声、upscale 文件静音，原片加 `sourceOffset`。分割线（点哪儿到哪儿、能拖、底下有滑杆）/ 并排；缩放 适合 / 100% / 200%（按 upscale 文件的像素，默认 100%：缩到窗口大小看不出差别），滚轮平移。按钮：Replace Clip（`applyUpscale`，工程里用这个原片且范围被盖住的段一起换，一步撤销）/ Keep Original（文件留着）/ Try Another Model…（回面板）；看已换源的段时是 Revert to Original / Close。实际扣费那一行单独订阅任务（账单几分钟后才有） |
+| 状态行 | `Fal/FalStatusRows.swift`（`UpscaleStatusRow`） | 编辑器顶上、「AI 正在剪辑」那条横幅底下，每个任务一行（mockup「Status row while upscaling」）：「Upscaling <段> with <档位>」、四个阶段的小标（过了的打勾、当前的带百分比 / 已用时间 / 通常约几分钟）、估价、Stop；做完：「<段> upscaled to 1920×1080 · est. / charged」+ Compare… / Dismiss；失败 / 取消一句 + Dismiss。不选中那一段也看得见（检查器那一节只有选中时才有）。只订阅 `UpscaleActivity`，没任务不画 |
 | 切工程 | `VideoEditProjectDocument.closeCurrentDocument` | `UpscaleActivity.cancelAll()`：在飞的作废（替 fal 也取消），做完的文件留在磁盘上 |
 
-还没做的：导出面板的「有几段低于目标分辨率」提示和编辑器状态行（mockup 第二排）；画布自定义尺寸；AI 工具（清单预算只剩 53 字）；多选；
+还没做的：导出面板的「有几段低于目标分辨率」提示（mockup 第二排）；画布自定义尺寸；AI 工具（清单预算只剩 53 字）；多选；
 Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
 
 ## 四、回归
@@ -51,6 +52,7 @@ Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
 - `scripts/check-upscale.sh`（`check-all` 第 2 组，要 ffmpeg 造带声音的素材）：范围（三选一、余料、对齐、夹住、谁被盖住、提示）、起名落盘、
   封回原声的参数（精确裁、画面复制、hvc1）、真裁一段（帧数 / 时长 / 尺寸、首帧是原片那一刻、没声音、能取消）、流水线对着假 fal 走全程
   （裁 → 上传 → 提交 → 排队 / 处理 → 下载 → 封声 → 落盘；整个 mp4 直接上传、超过模型上限还是裁、取消替 fal 也取消且不留文件、fal 拒绝就没有文件）。
+  阶段按顺序、上传 / 下载的比例只升不降且报到 100%、同一阶段同一比例只报一次（2026-10-02 进度那一刀）。
   反向验证：去掉 hvc1 的点名、把 `-ss` 挪到原片的 `-i` 之后、阶段重复报、整文件判定不看时长上限，各红。
 - `scripts/check-fal.sh` 第七 / 八组（档位、估价、上传、账单）；`scripts/check-project-file.sh` 第 41 组（换源）。
 - `checks/fal-wiring.sh`：用 Key 的只有生成任务、配旁白、upscale 任务三处。
@@ -59,7 +61,8 @@ Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
 - **人工回归**（发版前、拿真 Key）：
   1. 选一段 720p 的画面段：检查器头部下面有「Upscale」一节，一句说明 + Upscale…；音频段、图片段没有这一节；右键菜单有 Upscale…。
   2. 点开面板：默认范围（工程里另一处用得更长时选最长的那处并有提示）、默认目标按画布、六行价格随范围 / 目标变、文件名预览对；没有 Key 时按钮灰且指去设置。
-  3. 点开始：检查器那一节变成阶段 + 估价 + 取消，期间照常剪辑；取消后不扣钱、没有文件。
+  3. 点开始：检查器那一节变成阶段 + 估价 + 取消，编辑器顶上多一行状态（上传的百分比真的在走、排队位置、处理那一格每秒走、下载百分比），
+     换选中别的段那一行还在；期间照常剪辑；取消后不扣钱、没有文件。
   4. 做完弹对比窗口：分割线点哪儿到哪儿、并排、100% / 200% + 滚轮平移、空格播放两边同步、声音是原片的；Keep Original 文件留着、片段不变；
      Try Another Model… 回面板；Replace Clip 之后片段指向新文件、关键帧 / 标记 / 音量曲线位置不变、块名字旁有「1080p」、⌘Z 一步撤回。
   5. 换过源的片段：检查器显示档位 / 日期 / 扣费 / 原片，Compare… 看原片 vs 现在，Revert to Original 换回；把原片挪到别的文件夹再换回也行；

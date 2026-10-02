@@ -86,6 +86,9 @@ struct FalUpscaleTier: Equatable, Identifiable, Sendable {
     /// 输入最长几秒、最大几字节（fal 页面 / 接口定义写明的；nil = 没写）。
     let maxInputSeconds: Double?
     let maxInputBytes: Int?
+    /// 从提交到做完通常要几秒（含排队）：2026-10-02 在南极工程上 3–10 秒的片段实测（docs/reports/2026-10-02-upscale-smoke-test.md），
+    /// 取每档的中间值。进度里的「通常约几分钟」和面板上的「about N min」都从它算。
+    let typicalSeconds: Double
     /// 一次最多等多久（超了替 fal 取消）。视频一律 25 分钟。
     var maxSeconds: Double { 1_500 }
 
@@ -129,30 +132,33 @@ enum FalUpscaleTiers {
     static let all: [FalUpscaleTier] = [
         FalUpscaleTier(
             id: "topaz-precision", endpoint: "topaz/upscale/video/precision", title: "Topaz precision", detail: "Proteus", vendor: "Topaz Labs",
-            pricing: .perTenSeconds(p1080: 0.20, p2160: 0.60, step: 0.10), factorRange: 1...4, maxInputSeconds: 300, maxInputBytes: nil
+            pricing: .perTenSeconds(p1080: 0.20, p2160: 0.60, step: 0.10), factorRange: 1...4, maxInputSeconds: 300, maxInputBytes: nil,
+            typicalSeconds: 70
         ),
         FalUpscaleTier(
             id: "topaz-generative", endpoint: "topaz/upscale/video/generative", title: "Topaz generative", detail: "Starlight Precise 2.6",
             vendor: "Topaz Labs", pricing: .perTenSeconds(p1080: 1.20, p2160: 2.60, step: 0.10), factorRange: 1...4, maxInputSeconds: 300,
-            maxInputBytes: nil
+            maxInputBytes: nil, typicalSeconds: 190
         ),
         FalUpscaleTier(
             id: "flux-precise", endpoint: "blackforestlabs/flux-video-upscale", title: "FLUX video upscale", detail: "precise",
-            vendor: "Black Forest Labs", pricing: .perMegapixelSecond(0.0715), factorRange: 1.5...3, maxInputSeconds: 20, maxInputBytes: 50_000_000
+            vendor: "Black Forest Labs", pricing: .perMegapixelSecond(0.0715), factorRange: 1.5...3, maxInputSeconds: 20, maxInputBytes: 50_000_000,
+            typicalSeconds: 120
         ),
         FalUpscaleTier(
             id: "flux-creative", endpoint: "blackforestlabs/flux-video-upscale", title: "FLUX video upscale", detail: "creative",
-            vendor: "Black Forest Labs", pricing: .perMegapixelSecond(0.1001), factorRange: 1.5...3, maxInputSeconds: 20, maxInputBytes: 50_000_000
+            vendor: "Black Forest Labs", pricing: .perMegapixelSecond(0.1001), factorRange: 1.5...3, maxInputSeconds: 20, maxInputBytes: 50_000_000,
+            typicalSeconds: 200
         ),
         FalUpscaleTier(
             id: "bytedance-standard", endpoint: "fal-ai/bytedance-upscaler/upscale/video", title: "ByteDance upscaler", detail: "standard",
             vendor: "ByteDance", pricing: .perSecond(p1080: 0.0072, p1440: 0.0144, p2160: 0.0288), factorRange: 1.1...10, maxInputSeconds: nil,
-            maxInputBytes: nil
+            maxInputBytes: nil, typicalSeconds: 140
         ),
         FalUpscaleTier(
             id: "bytedance-pro", endpoint: "fal-ai/bytedance-upscaler/upscale/video", title: "ByteDance upscaler", detail: "pro",
             vendor: "ByteDance", pricing: .perSecond(p1080: 0.072, p1440: 0.144, p2160: 0.288), factorRange: 1.1...10, maxInputSeconds: nil,
-            maxInputBytes: nil
+            maxInputBytes: nil, typicalSeconds: 320
         )
     ]
 

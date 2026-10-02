@@ -2,7 +2,8 @@ import SwiftUI
 
 // MARK: - 检查器里正在做 / 做完还没处理的 upscale 任务
 //
-// 管什么：`UpscaleJobStatusView` 只订阅那一个任务，阶段每变一次只有它重算（检查器本体不动）。
+// 管什么：`UpscaleJobStatusView` 只订阅那一个任务，阶段每变一次只有它重算（检查器本体不动）；阶段文字（上传 / 下载的百分比、
+// 处理了多久、这一档通常几分钟）和状态行同一份（FalPhaseText）。
 // 检查器里「Upscale」那一节本身在 VideoEditInspector+Upscale.swift（是检查器的一段 body，不是单独的视图：
 // 预览性能 ratchet 数的是 body 次数，选一段多一个视图就是多一次）。
 // 不管什么：面板和对比窗口怎么摆（UpscalePresenter）、换源（VideoEditProject+Upscale）。
@@ -17,10 +18,12 @@ struct UpscaleJobStatusView: View {
         let tier = job.request.tier
         VStack(alignment: .leading, spacing: 6) {
             switch job.state {
-            case .running(let phase):
+            case .running(let progress):
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.mini)
-                    Text(verbatim: "\(tier.title) · \(tier.detail) · \(phaseText(phase))").font(.caption)
+                    // 「Topaz precision · Proteus · processing 1:12 · usually about 1 min」，每秒走一下（FalPhaseClock）。
+                    FalPhaseClock(progress: progress, prefix: "\(tier.title) · \(tier.detail) · ")
+                        .font(.caption)
                 }
                 if job.keyPrompt {
                     Text("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow.")
@@ -50,17 +53,6 @@ struct UpscaleJobStatusView: View {
                 Text("Upscale cancelled.").font(.caption).foregroundStyle(.secondary)
                 Button("Dismiss") { activity.remove(job) }.controlSize(.small)
             }
-        }
-    }
-
-    private func phaseText(_ phase: UpscalePhase) -> String {
-        switch phase {
-        case .preparing: return L10n("preparing")
-        case .uploading: return L10n("uploading")
-        case .queued(let position): return position.map { String(format: L10n("in queue (%d)"), $0) } ?? L10n("in queue")
-        case .processing: return L10n("processing")
-        case .downloading: return L10n("downloading")
-        case .finishing: return L10n("finishing")
         }
     }
 }

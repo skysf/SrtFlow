@@ -45,6 +45,17 @@ struct FalModel: Codable, Equatable, Identifiable, Sendable {
             case .imageToVideo, .textToVideo: return 1_500
             }
         }
+
+        /// 从提交到做完通常要几秒（含排队；generate_media 说明里的「an image takes about 10 s … a video 1–3 minutes」）：
+        /// 进度里「通常约几分钟」和 `get_job` 的 `typical_seconds` 用它。
+        var typicalSeconds: Double {
+            switch self {
+            case .image, .voice, .voiceClone: return 10
+            case .soundEffect: return 5
+            case .music: return 30
+            case .imageToVideo, .textToVideo: return 120
+            }
+        }
     }
 
     /// 计费的单位。

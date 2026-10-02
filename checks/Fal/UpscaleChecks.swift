@@ -170,12 +170,14 @@ func runUpscaleClientChecks() async {
         default: return .init(404, #"{"detail":"unexpected \#(seen.method) \#(seen.url)"}"#)
         }
     }
+    let fractions = FalFractionLog()
     do {
-        let link = try await client.upload(fileURL: file, contentType: "video/mp4", fileName: "clip01.mp4")
+        let link = try await client.upload(fileURL: file, contentType: "video/mp4", fileName: "clip01.mp4") { fractions.add($0) }
         checkEqual(link.absoluteString, "https://v3b.fal.media/files/b/x/clip01.mp4", "the upload answers with the file's address")
     } catch {
         check(false, "the upload failed: \(error)")
     }
+    check(fractions.isCompleteAndMonotonic, "upload progress only goes up and ends at 1 (\(fractions.all))")
     let log = FalStub.log
     checkEqual(log.map(\.method), ["POST", "PUT"], "initiate, then one PUT")
     checkEqual(log.first?.url, initiate, "initiate asks for fal-cdn-v3 storage (gcs is refused since 2026-10)")
@@ -212,14 +214,16 @@ func runUpscaleClientChecks() async {
     }
     // PUT 失败
     FalStub.reset { seen in seen.method == "POST" ? .init(200, #"{"upload_url":"\#(bucket)","file_url":"https://v3b.fal.media/f/clip.mp4"}"#) : .init(403, #"{"detail":"signature expired"}"#) }
+    let failedFractions = FalFractionLog()
     do {
-        _ = try await client.upload(fileURL: file, contentType: "video/mp4")
+        _ = try await client.upload(fileURL: file, contentType: "video/mp4") { failedFractions.add($0) }
         check(false, "a failed PUT should throw")
     } catch let error as FalError {
         checkEqual(error, .noBalance("signature expired"), "a failed PUT is reported")
     } catch {
         check(false, "a failed PUT threw \(error)")
     }
+    check(!failedFractions.all.contains(1), "a refused PUT never reports 100%")
     // 文件不存在、没有 Key：一个请求也不发
     FalStub.reset { _ in .init(200, "{}") }
     do {

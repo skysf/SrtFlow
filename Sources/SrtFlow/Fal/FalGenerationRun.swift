@@ -9,16 +9,19 @@ import SrtFlowMCPKit
 //    （`AISession.ask`：两个按钮，不弹模态框），问的时候任务是 running、带 `waiting_for_user`（AI 去转述）；用户按了「不要」或停止就结束，
 //    没花钱。决定和记账在同一步里做完（中间没有 await），同时起的几个任务不会各自以为还在额度内。
 // 2. 取 Key（钥匙串；ad-hoc 签名每出新版本第一次读会弹 macOS 的授权框：先在条上说一句这是什么）。
-// 3. 提交 → 轮询 → 取结果 → 下载到 `SrtFlow/生成`（FalClient）；停止 / cancel_job 时替 fal 也取消。
+// 3. 提交 → 轮询 → 取结果 → 下载到 `SrtFlow/生成`（FalClient）；停止 / cancel_job 时替 fal 也取消。阶段（排队带位置、处理、下载带
+//    字节比例）记在 `progress` 里：编辑器顶上的状态行订阅它，`get_job` 跑着时并进 phase / queue_position / transfer_percent 那几个字段。
 // 4. 账：提交前先记上估算；没做出来（失败 / 取消 / 超时）就退回，已经做出来了（下载失败）不退 —— fal 已经收了钱。
 // 不管什么：参数怎么读、结果怎么回（FalGenerateTool）、HTTP（FalClient）、请求体（FalInputs）。
 
 @MainActor
-final class FalGenerationRun {
+final class FalGenerationRun: ObservableObject, Identifiable {
+    let id = UUID()
     private let request: FalRequest
     private let model: FalModel
     private let body: JSONValue
-    private let estimate: Double?
+    /// 估价（登记了单价的模型才有）；状态行上「est. $0.06」。
+    let estimate: Double?
     private let usage: FalUsage
     private let folder: URL
     private let stem: String
@@ -26,6 +29,8 @@ final class FalGenerationRun {
 
     /// 在等用户点头时的那句话（给 AI 看，任务的 `waiting_for_user`）；没在等就是 nil。
     private(set) var waiting: String?
+    /// 跑到哪一步了：状态行（GenerationStatusRow）订阅它，`get_job` 从 `liveDetail` 读同一份；还没开始跑是 nil。
+    @Published private(set) var progress: FalJobProgress?
     private var job: AIJobs.Job?
     private var task: Task<Void, Never>?
     private var reserved: (amount: Double, day: Date)?
@@ -51,9 +56,11 @@ final class FalGenerationRun {
 
     func start() -> AIJobs.Job {
         let job = AIJobs.shared.start(
-            .generate, progress: { nil }, waitingForUser: { [weak self] in self?.waiting }, cancel: { [weak self] in self?.cancel() }
+            .generate, progress: { nil }, liveDetail: { [weak self] in self?.progress?.json() ?? [:] },
+            waitingForUser: { [weak self] in self?.waiting }, cancel: { [weak self] in self?.cancel() }
         )
         self.job = job
+        FalGenerationActivity.shared.add(self)
         // 强引用：调用它的工具回了任务号就不再拿着它，任务自己得把它撑到跑完（跑完这个闭包放掉，环就解开了）。
         task = Task { @MainActor in await self.execute() }
         return job
@@ -69,6 +76,9 @@ final class FalGenerationRun {
 
     private func execute() async {
         guard let job else { return }
+        // 怎么结束都从状态行上拿掉：结局 AI 会从 get_job 读到并告诉用户。
+        defer { FalGenerationActivity.shared.remove(self) }
+        advance(to: .preparing)
         let store = FalSettingsStore.shared
 
         // 1. 花钱的把关。
@@ -114,13 +124,25 @@ final class FalGenerationRun {
         // 3. 提交、等、取结果、下载。
         let client = FalClient(base: FalClient.configuredBase()) { key }
         do {
-            let outcome = try await client.run(endpoint: model.endpoint, body: body, maxSeconds: request.kind.maxSeconds)
+            let outcome = try await client.run(endpoint: model.endpoint, body: body, maxSeconds: request.kind.maxSeconds) { [weak self] status in
+                Task { @MainActor in
+                    switch status {
+                    case .queued(let position): self?.advance(to: .queued(position: position))
+                    case .running: self?.advance(to: .processing)
+                    case .completed: break   // 下一步就是下载
+                    }
+                }
+            }
             resultReceived = true
             let media = try FalOutputs.media(from: outcome.result, kind: request.kind)
             let destination = claimDestination(extension: media.fileExtension)
             defer { Self.claimedPaths.remove(destination.path) }
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            try await client.download(media.url, to: destination)
+            advance(to: .downloading(fraction: nil))
+            try await client.download(media.url, to: destination) { [weak self] fraction in
+                Task { @MainActor in self?.advance(to: .downloading(fraction: FalJobPhase.quantized(fraction))) }
+            }
+            advance(to: .finishing)
             done(destination, media, store)
         } catch is CancellationError {
             refund(store)
@@ -177,6 +199,27 @@ final class FalGenerationRun {
     private func finish(_ status: AIJobs.Status, _ message: String, detail: JSONValue? = nil) {
         guard let job else { return }
         AIJobs.shared.finish(job, status, message: message, detail: detail)
+    }
+
+    // MARK: 给状态行看的
+
+    var modelTitle: String { model.title }
+
+    /// 「图片」「视频」「音乐」「音效」：状态行上「Generating <什么> with <模型>」。
+    var kindLabel: String {
+        switch request.kind {
+        case .image: return L10n("Image")
+        case .imageToVideo, .textToVideo: return L10n("Video")
+        case .music: return L10n("Music")
+        case .soundEffect: return L10n("Sound effect")
+        case .voice, .voiceClone: return L10n("Voice")
+        }
+    }
+
+    /// 换阶段：同一阶段同一比例不重发（状态行和 get_job 读的是同一份）。
+    private func advance(to phase: FalJobPhase) {
+        let next = (progress ?? FalJobProgress(phase: phase, typicalSeconds: request.kind.typicalSeconds)).advanced(to: phase)
+        if progress != next { progress = next }
     }
 
     // MARK: 私有

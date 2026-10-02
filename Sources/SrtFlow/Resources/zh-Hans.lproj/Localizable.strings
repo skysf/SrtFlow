@@ -1076,7 +1076,9 @@
 "Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "有几个文件优化不了，预览对它们用原片。菜单里列着是哪几个";
 
 /* Upscale (clip → fal.ai, compare, replace) */
+"%@ charged" = "已扣 %@";
 "%@ s · est. %@" = "%@ 秒 · 估 %@";
+"%@ upscaled to %@ · %@" = "%@ 已放大到 %@ · %@";
 "%@ used by another clip, plus handles; covers this clip too" = "另一段用了 %@，加余料；也盖住这一段";
 "%@ used, plus %@ of handles on each side" = "用了 %@，两头各加 %@ 余料";
 "Add a fal.ai key in Settings → AI first." = "先在设置 → AI 里填 fal.ai 的密钥。";
@@ -1090,12 +1092,18 @@
 "Compare…" = "对比…";
 "Dismiss" = "知道了";
 "Do not replace the clip; the upscaled file stays on disk" = "不替换这一段；放大后的文件留在磁盘上";
+"Downloading" = "下载";
+"Downloading %d%%" = "下载 %d%%";
 "Estimated %@ · checking the bill · the original file stays where it is" = "估 %@ · 正在对账 · 原片留在原处";
 "Every use now and any future trim" = "现在用到的每一处，以后再裁也够";
 "Faithful. Best for real faces." = "忠实。最适合真人脸。";
 "Faithful. Clips up to 20 s." = "忠实。片段最长 20 秒。";
 "Files up to %d MB only" = "只收 %d MB 以内的文件";
+"Finishing" = "收尾";
 "Forget this result; the file stays on disk" = "不要这个结果；文件留在磁盘上";
+"Generating %@ with %@" = "正在生成%@ · %@";
+"In queue" = "排队";
+"In queue (%d)" = "排队（第 %d 位）";
 "Keep Original" = "保留原片";
 "Large-model restoration, 10 times the price." = "大模型修复，价格十倍。";
 "Larger than the canvas: raise the canvas size too, or the export will scale it back down." = "比画布大：画布也要跟着改大，不然导出会缩回去。";
@@ -1110,7 +1118,10 @@
 "Play or pause both sides together" = "两边一起播放 / 暂停";
 "Play the original and the upscaled file side by side" = "原片和放大后的文件并排播";
 "Point this clip back at the original file; the upscaled file stays on disk" = "把这一段指回原片；放大后的文件留在磁盘上";
+"Preparing" = "准备";
 "Prices for %@ of video, fal.ai rates as of %@" = "按 %@ 的视频算，fal.ai %@ 的价目";
+"Processing" = "处理";
+"Processing %@" = "处理 %@";
 "Re-draws detail: fur, leaves, water." = "重绘细节：毛发、树叶、水面。";
 "Replace Clip" = "替换片段";
 "Revert to Original" = "换回原片";
@@ -1119,6 +1130,7 @@
 "Saves next to the original as %@" = "存在原片旁边，叫 %@";
 "Send this clip to fal.ai for a sharper, larger version" = "把这一段送去 fal.ai 做一版更清楚、更大的";
 "Side by side" = "并排";
+"Sound effect" = "音效";
 "Sound from the original" = "声音放原片的";
 "Spent today %@ of your %@ daily limit · final cost shown after upload" = "今天已花 %@，每日上限 %@ · 实际扣费上传后显示";
 "Target resolution" = "目标分辨率";
@@ -1127,6 +1139,8 @@
 "This clip only" = "只做这一段";
 "This file is also used by another clip in this project (%@). Upscaling the longest range covers both places." = "这个文件在工程里还有另一段在用（%@）。按最长的那段做，两处都能换。";
 "Try Another Model…" = "换个模型重做…";
+"Uploading" = "上传";
+"Uploading %d%%" = "上传 %d%%";
 "Upscale" = "Upscale";
 "Upscale Again…" = "再做一次 Upscale…";
 "Upscale Clip" = "Upscale 这一段";
@@ -1136,18 +1150,19 @@
 "Upscaled with %@ on %@ · %@" = "%@ 做的，%@ · %@";
 "Upscaled. Compare it, then decide." = "做好了。比一比再决定。";
 "Upscale…" = "Upscale…";
+"Upscaling %@ with %@" = "正在放大 %@ · %@";
 "Upscaling adds real detail for a larger canvas or export." = "Upscale 补的是真细节，画布或导出更大时用得上。";
+"Voice" = "配音";
 "What to upscale" = "做哪一段";
 "Whole file" = "整个文件";
 "You can keep editing. The compare window opens when it is done." = "可以继续剪辑。做完会弹出对比窗口。";
-"about 1 min" = "约 1 分钟";
-"about 2 min" = "约 2 分钟";
-"about 3 min" = "约 3 分钟";
-"about 5 min" = "约 5 分钟";
+"about %d min" = "约 %d 分钟";
 "downloading" = "下载中";
+"est. %@" = "估 %@";
 "finishing" = "收尾中";
 "in queue" = "排队中";
 "in queue (%d)" = "排队中（第 %d 位）";
 "preparing" = "准备中";
 "processing" = "处理中";
 "uploading" = "上传中";
+"usually about %d min" = "通常约 %d 分钟";

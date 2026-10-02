@@ -106,14 +106,16 @@
   Claude Code 里只读前 2,048 字（[AI 接口（MCP）](ai-control-mcp.md) 第一节第 6 条）。
 - 清单会变，所以：握手声明 `tools.listChanged = true`，小程序每 2 秒看一眼那个文件，变了就给**握过手的老一代客户端**发 `notifications/tools/list_changed`；
   新一代（2026-07-28）没有会话，靠清单的缓存时间 —— `tools/list` 的 `ttlMs` 从一小时降到一分钟（`MCPServerCore.toolListTTLms`）。
-- 说明总长度的上限（72,000 字符）量的是**每个提供方都配好**时的全清单：2026-09-29 配齐时 70,377（没配 fal 时 67,208；`generate_media` 整条 3,169、说明 1,685）。
-  余量只剩不到 2 千，以后再加工具要先把别处写短。
+- 说明总长度的上限量的是**每个提供方都配好**时的全清单：原来 72,000 字符（2026-09-29 配齐时 70,377；没配 fal 时 67,208；`generate_media` 整条 3,169、说明 1,685），
+  到 2026-10-02 只剩 53 字：`generate_media` 的说明写上 `get_job` 的进度字段就到了 72,085，用户定抬到 **80,000**（约 2.2 万 token；`ProtocolChecks`），
+  也给下一个 PR 的 `upscale_clip` 腾地方。以后再加工具还是先把别处写短。
 
 ## 八、generate_media（`FalGenerateTool` / `FalGenerationRun`）
 
 - 参数：`kind`（image / image_to_video / text_to_video / music / sound_effect）、`prompt`，其余按种类：`image`（图生视频的首帧文件，点名文件夹以外的先问一次用户，
   同读别处的文件：图会发给 fal）、`duration`、`resolution`、`aspect_ratio`、`instrumental`、`name`、`model`、`options`。旁白不走它（`add_voiceover`）。
 - 立刻回任务号，带 `estimated_cost_usd`、今天已花、每日上限、`next_step`（告诉用户估价、用 `get_job` 等、做完用 `add_clips` 放上去；音乐音效放 `new_audio`）；
+  跑着的 `get_job` 带阶段（`phase` / `queue_position` / `transfer_percent` / `phase_seconds` / `typical_seconds`，第十三节）；
   完成的 `get_job` 带 `file`、`cost_usd`、宽高 / 时长（fal 报了的话）。H3 Max 的视频自带声音（环境声、拟音、配乐），**随片段一起播、不另开音频轨**（冒烟实测：放上时间线只有 V1 一个片段）——再配音乐 / 旁白时要压低或静音这个片段的音量（结果的 `note` 告诉 AI）。
 - 成品文件是 SrtFlow 自己做的：登记进「AI 可以读」的地方（`AIReadGrants`，不在点名文件夹 / 工程的家里时），AI 接着 `add_clips` 不会再被问。
 - 不改工程、不进撤销分组、不算这一轮的改动（`checks/fal-wiring.sh` 钉着路由）。
@@ -180,8 +182,30 @@
 | 请求体 | `FalUpscaleTier.body`：字段名和取值从接口定义快照来（`checks/Fal/schemas/topaz__upscale__video__precision.json` 等四份），自检逐条对着验；倍数按小数原样传（1.40625 正好 1890×1080） |
 | 估价 | `FalUpscalePricing`，规律是 19 条的账单量出来的：字节按输出秒分档（1080p $0.0072、2K ×2、4K ×4；pro ×10），分毫不差；FLUX 按输出百万像素·秒线性（precise $0.0715、creative $0.1001）；Topaz 按网页「每 10 秒」价折成每秒、**向上取整到 $0.10、最少一档**（precision 1080p $0.20、4K $0.60；generative $1.20 / $2.60；没有 2K 档，1440p 按 4K）。Topaz 实收约是它的一半，账户没有折扣（`percent_discount` 0），差在网页标题价和 fal「credits 每任务取整一次」的规则没公开。**估价只许比账单高或相等** |
 | 实际扣费 | `FalClient.billingEvents(requestIDs:since:)` 查 `GET https://api.fal.ai/v1/models/billing-events?start=…&request_id=…`，`FalBilling.events` 解析，`cost_total` 是实收；多数几分钟内出现。**要 ADMIN 权限的 Key**，只有 API 权限会 401 / 403，调用方当作查不到、照旧显示估价 |
-| 上传 | 视频不能当 data URI 内嵌：`FalClient.upload(fileURL:contentType:fileName:)` = `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3`（带 Key）拿 `upload_url` / `file_url` → `PUT` 字节到 `upload_url`（**不带 Key**，那是存储桶的签名地址）→ `file_url` 填进 `video_url`。旧文档的 `storage_type=gcs` 2026-10 起被拒（400 Invalid storage type）。`rest` / `api` 两个地址和队列地址一样是 `FalClient` 的构造参数，自检用假 URLSession |
+| 上传 | 视频不能当 data URI 内嵌：`FalClient.upload(fileURL:contentType:fileName:onProgress:)` = `POST https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3`（带 Key）拿 `upload_url` / `file_url` → `PUT` 到 `upload_url`（**不带 Key**，那是存储桶的签名地址；**文件流着发**：`uploadTask(with:fromFile:)`，不整个读进内存 —— 整个原片直接上传时可能是几个 GB；字节进度从任务代理来，见第十三节）→ `file_url` 填进 `video_url`。旧文档的 `storage_type=gcs` 2026-10 起被拒（400 Invalid storage type）。`rest` / `api` 两个地址和队列地址一样是 `FalClient` 的构造参数，自检用假 URLSession |
 | 等多久 | 视频一律 25 分钟（`FalUpscaleTier.maxSeconds`） |
 | 维护 | `scripts/fal-models/refresh.sh` 也扫 `FalUpscaleModels.swift` 里的端点、目录按 video-to-video 列；改档位 / 改价同步这一节和自检 |
 
 换源在 [工程文件与素材重链接](video-edit-project-file.md)「四之五」，任务那一层（范围、裁一段、封回原声、落盘、进度、账）在 [视频 upscale](video-upscale.md)；界面是第四刀。
+
+## 十三、进度：AI 从 `get_job` 看、用户从编辑器顶上的状态行看（2026-10-02 起）
+
+> 用户 2026-10-02 定：送 fal 的活（upscale、`generate_media`）在上传和生成中都要看得见进度。改 `FalJobPhase.swift`、`FalTransfer.swift`、
+> `FalStatusRows.swift`、`AIJobs.liveDetail` 之前必读。
+
+| 决定 | 口径 |
+| --- | --- |
+| 阶段是一份（`FalJobPhase`，纯值） | 六步：`preparing`（裁一段 / 把关花钱、取 Key）→ `uploading`（带字节比例）→ `queued`（带排队位置）→ `processing` → `downloading`（带字节比例）→ `finishing`（封回原声、落盘）。upscale 六步都走；`generate_media` 没有上传（图是内嵌的）。`FalJobProgress` 再记这一阶段从什么时候起（换比例不重记、换阶段才重记）和这一档通常要几秒 |
+| **fal 处理中没有百分比** | 队列接口只给 `IN_QUEUE`（带 `queue_position`）和 `IN_PROGRESS`，日志里的步数各模型格式不一，**不能当百分比**。能给的就是阶段、排队位置、这一阶段已用的秒数、这一档的典型时长 —— 「处理中 48 秒，这档通常约 1 分钟」，**不画假进度条** |
+| 典型时长 | upscale 每档一个数（`FalUpscaleTier.typicalSeconds`：2026-10-02 实测含排队，precision 70 s、generative 190 s、FLUX precise 120 s / creative 200 s、字节 standard 140 s / pro 320 s），面板上的「about N min」和进度里的「usually about N min」都从它算（`FalJobProgress.minutes`，不满一分钟算一分钟）；`generate_media` 按种类（`FalModel.Kind.typicalSeconds`：图 10 s、音效 5 s、音乐 30 s、视频 120 s，和工具说明里写的一致） |
+| 上传 / 下载的字节进度 | `FalTransfer`：上传 `uploadTask(with:fromFile:)` + `didSendBodyData`，下载 `downloadTask` + `didWriteData`（`didFinishDownloadingTo` 那一拍当场把系统的临时文件挪到成品旁边的 `.part` 文件，回调一返回系统就删它）；按 1% 一格、没变不报；服务器没说总长就不报比例；**成功时 `FalClient` 一定补报 1**，失败 / 拒绝不报 1。`URLSession` 只许出现在 `FalClient.swift` 和 `FalTransfer.swift`（`checks/fal-wiring.sh`） |
+| 给 AI 的 | `AIJobs.Job.liveDetail`：跑着的任务可以给一份明细，`get_job` 只在 running 时并进去。fal 的两种任务给 `FalJobProgress.json`：`phase`、`queue_position`（排队时）、`transfer_percent`（上传 / 下载时，整数）、`phase_seconds`、`typical_seconds`（知道时）。工具说明里写明这几个字段，AI 看了「排队第 3 位」「这档通常 2 分钟」就不会每 30 秒问一次只会说「还在跑」 |
+| 给用户的 | 编辑器顶上的状态行 `FalStatusRows`：挂在「AI 正在剪辑」那条横幅底下（mockup「Status row while upscaling」说的「复用编辑器那条状态行」），每个 upscale 任务（`UpscaleActivity.jobs`）和生成任务（`FalGenerationActivity.runs`）一行：做什么、四个阶段的小标（过了的打勾、当前的带百分比 / 已用时间 / 「通常约几分钟」、没到的灰着）、估价、停止；upscale 做完那一行 Compare… / Dismiss。生成任务做完 / 失败 / 取消就从行上消失（结局 AI 会告诉用户）。检查器那一节同一份文字（`FalPhaseText`）。只订阅两个小对象、不读工程；**没有任务时什么都不画、不醒**（性能场景里计数为零，所以它能挂在横幅底下而不动基线） |
+| 不改的 | `generate_media` 的结果和落点、upscale 做完先弹对比窗口的流程、钱怎么问、Key 怎么读 —— 这一节只加进度 |
+
+回归：`scripts/check-fal.sh` 第八组（阶段、进度账、get_job 的字段、典型时长折成的分钟数、同一阶段同一比例只报一次）和第五 / 七组
+（下载 / 上传的比例只升不降、成功最后是 1、失败不报 1、不留 `.part`）；`scripts/check-upscale.sh` 第五组（流水线的阶段按顺序、上传 / 下载报到 100%）；
+`checks/fal-wiring.sh` 第 2、9 条（传输只经 FalTransfer、上传 fromFile、liveDetail 接到 get_job、任务登记进 FalGenerationActivity、横幅底下挂着状态行）。
+人工：真 Key 做一次 upscale，状态行上「Uploading 35%」真的在走、排队位置变、处理那一格每秒走、下载百分比、做完 Compare…；
+AI 用 `generate_media` 做一段视频时 `get_job` 的 `phase` 从 queued 到 processing 到 downloading，状态行同步。
+

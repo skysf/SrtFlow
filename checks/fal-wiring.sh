@@ -7,7 +7,8 @@
 #
 # 钉的事（每条后面是它守的规矩，出处见 docs/architecture/fal-generation.md）：
 #   1. **不弹模态框**：fal 这几个文件里没有 NSAlert / runModal / 任何面板（方案第 9、10 条；要问就走 AISession.ask 的提示条）；
-#   2. **HTTP 只经 FalClient**：`queue.fal.run` 和 `URLSession` 只出现在 FalClient.swift（认证头、取消、错误换话都在那里）；
+#   2. **HTTP 只经 FalClient**：`queue.fal.run` 和 `URLSession` 只出现在 FalClient.swift 和它的传输代理 FalTransfer.swift
+#      （认证头、取消、错误换话都在 FalClient；FalTransfer 只管流着发 / 收和字节进度）；
 #   3. **Key 只经 FalKeyCache 读**：`FalKeyStore.read(` 只在 FalKeyStore.swift 里；用 Key 的只有生成任务、配旁白和 upscale 任务三处；
 #   4. **先问后花**：生成任务里 `store.decide(` 在 `client.run(` 之前，记账 `reserve(store)` 恰好两处（额度内 / 用户点头之后），
 #      问用户走 `AISession.shared.ask`；没做出来才退（`guard !resultReceived`）；
@@ -15,7 +16,10 @@
 #   6. **配旁白是同步工具，不许停下来等用户**：AIVoiceoverTool / AIFalVoice 里没有 `.ask(`，额度用 `allowsWithoutAsking` 判断，用不了就退档；
 #      fal 的声音也只经 `AIAudioFileWriter.writeVoiceover` 落盘（scripts/check-mcp.sh 那条扫描也钉着）；
 #   7. **清单跟着 Key 走**：`generate_media` 属于 fal（MCPToolName.provider）、Key 添加 / 删除都同步那个小文件、启动时也对一遍；
-#   8. 路由：generate_media 只起任务、不改工程（不排进撤销分组）；任务有 waitingForUser 和取消。
+#   8. 路由：generate_media 只起任务、不改工程（不排进撤销分组）；任务有 waitingForUser 和取消；
+#   9. **进度看得见**（docs/architecture/fal-generation.md 第十三节）：生成任务把阶段交给 AIJobs 的 liveDetail（get_job 的 phase /
+#      queue_position / transfer_percent）、get_job 真的并进去；任务起手登记进 FalGenerationActivity、结束拿掉；
+#      编辑器顶上的状态行（FalStatusRows）挂在 AI 那条横幅底下。
 #
 # 用法：checks/fal-wiring.sh
 set -euo pipefail
@@ -33,7 +37,10 @@ BANNER="Sources/SrtFlow/AIActivityBanner.swift"
 ROUTER="Sources/SrtFlow/AIToolRouter.swift"
 CATALOG="Sources/SrtFlowMCPKit/MCPToolCatalog.swift"
 APP="Sources/SrtFlow/SrtFlowApp.swift"
-for file in "${RUN}" "${TOOL}" "${CLIENT}" "${KEYS}" "${SETTINGS}" "${VOICE}" "${VOICEOVER}" "${SESSION}" "${BANNER}" "${ROUTER}" "${CATALOG}" "${APP}"; do
+TRANSFER="Sources/SrtFlow/Fal/FalTransfer.swift"
+JOBS="Sources/SrtFlow/AIJobs.swift"
+for file in "${RUN}" "${TOOL}" "${CLIENT}" "${KEYS}" "${SETTINGS}" "${VOICE}" "${VOICEOVER}" "${SESSION}" "${BANNER}" "${ROUTER}" "${CATALOG}" "${APP}" \
+            "${TRANSFER}" "${JOBS}"; do
   if [ ! -f "${file}" ]; then
     echo "✗ 找不到 ${file} —— 改名了就同步改这里（扫空 = 假绿）" >&2
     exit 1
@@ -54,11 +61,14 @@ for file in "${RUN}" "${TOOL}" "${VOICE}" "${SETTINGS}"; do
   fi
 done
 
-# 2. HTTP 只经 FalClient。
-others="$(grep -l 'queue\.fal\.run\|URLSession' "${FAL_FILES[@]}" | grep -v "^${CLIENT}\$" || true)"
+# 2. HTTP 只经 FalClient（和它的传输代理 FalTransfer：只管流着发 / 收和字节进度，不拼地址、不带 Key）。
+others="$(grep -l 'queue\.fal\.run\|URLSession' "${FAL_FILES[@]}" | grep -v "^${CLIENT}\$" | grep -v "^${TRANSFER}\$" || true)"
 if [ -n "${others}" ]; then
   fail "这些文件自己碰了 fal 的地址 / URLSession：$(tr '\n' ' ' <<<"${others}")—— 请求只经 FalClient（认证头、取消、错误换话都在那里）"
 fi
+grep -q 'queue\.fal\.run\|authorized(' "${TRANSFER}" && fail "${TRANSFER}：传输代理不许拼 fal 的地址、不许带 Key（那是 FalClient 的事）"
+[ "$(count 'FalTransfer.perform(' "${CLIENT}")" -eq 1 ] || fail "${CLIENT}：上传 / 下载要经 FalTransfer.perform（文件流着发、字节进度从任务代理来），且只在 transfer() 一处"
+[ "$(count 'session.uploadTask(with: put, fromFile: fileURL)' "${CLIENT}")" -eq 1 ] || fail "${CLIENT}：上传必须 fromFile（整个原片直接上传时可能是几个 GB，不许 Data(contentsOf:) 读进内存）"
 
 # 3. Key 只经 FalKeyCache 读。
 direct="$(grep -ln 'FalKeyStore\.read(' Sources/SrtFlow/*.swift Sources/SrtFlow/*/*.swift | grep -v "^${KEYS}\$" || true)"
@@ -125,6 +135,14 @@ if grep -q 'AIUndoGrouping' <<<"$(grep -n 'generateMedia' "${ROUTER}" || true)";
 fi
 grep -q 'waitingForUser: { \[weak self\] in self?.waiting }' "${RUN}" || fail "${RUN}：任务没把「在等用户」交给 AIJobs（AI 会对着 running 干等）"
 grep -q 'cancel: { \[weak self\] in self?.cancel() }' "${RUN}" || fail "${RUN}：任务没有取消动作（停止按钮取消不了）"
+
+# 9. 进度看得见：AI 从 get_job 看阶段，用户从编辑器顶上的状态行看。
+grep -q 'liveDetail: { \[weak self\] in self?.progress?.json() ?? \[:\] }' "${RUN}" \
+  || fail "${RUN}：生成任务没把阶段（FalJobProgress）交给 AIJobs 的 liveDetail（get_job 看不到 phase / queue_position / transfer_percent）"
+grep -q 'object.merge(job.liveDetail())' "${JOBS}" || fail "${JOBS}：get_job 的 JSON 没并进跑着时的明细（liveDetail）"
+[ "$(count 'FalGenerationActivity.shared.add(self)' "${RUN}")" -eq 1 ] && [ "$(count 'FalGenerationActivity.shared.remove(self)' "${RUN}")" -eq 1 ] \
+  || fail "${RUN}：生成任务起手要登记进 FalGenerationActivity、结束拿掉（状态行从它读；各恰好一处）"
+grep -q 'FalStatusRows()' "${BANNER}" || fail "${BANNER}：编辑器顶上的状态行没挂 FalStatusRows（用户看不到上传 / 排队 / 处理 / 下载到哪一步）"
 
 if [ "${FAILED}" -ne 0 ]; then
   echo "fal 接线守卫失败" >&2

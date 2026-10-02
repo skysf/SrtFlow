@@ -3,7 +3,7 @@ import Foundation
 // MARK: - 用户点了「开始」之后的那个任务：记账 → 取 Key → 跑流水线 → 对账实际扣费
 //
 // 管什么：面板上的估价已经是用户的确认（方案第 10 条：记进 fal 的账本、超限只标红不拦），所以这里不再问；取 Key（钥匙串，
-// 新版本第一次读会弹授权框，`keyPrompt` 让界面说一句）；跑 `UpscalePipeline`，阶段发给界面；做完几分钟内去账单明细里
+// 新版本第一次读会弹授权框，`keyPrompt` 让界面说一句）；跑 `UpscalePipeline`，阶段（含上传 / 下载的字节比例、这一阶段过了多久）发给界面；做完几分钟内去账单明细里
 // 把实际扣费查回来（要 ADMIN 权限的 Key，查不到就只有估价）。没做出来的钱退回（照 FalGenerationRun 的规矩：拿到结果就不退）。
 // 做完**不替换**：对比窗口里用户点了 Replace 才换（方案第 15 条）。
 // 不管什么：裁 / 传 / 下 / 封声（UpscalePipeline）、换源（VideoEditProject+Upscale）、界面。
@@ -11,7 +11,8 @@ import Foundation
 @MainActor
 final class UpscaleJob: ObservableObject, Identifiable {
     enum State: Equatable {
-        case running(UpscalePhase)
+        /// 跑着：阶段、这一阶段从什么时候起、这一档通常要多久（FalJobProgress）。
+        case running(FalJobProgress)
         case done
         case failed(String)
         case cancelled
@@ -19,12 +20,14 @@ final class UpscaleJob: ObservableObject, Identifiable {
 
     let id = UUID()
     let request: UpscaleRequest
+    /// 做的是哪一段（状态行上「Upscaling <名字> with …」）。
+    let title: String
     /// 范围被盖住、做完要换的段。
     let clipIDs: [UUID]
     /// 这段所在的工程（做完换源时核对还是不是它）。
     let projectGeneration: Int
 
-    @Published private(set) var state: State = .running(.preparing)
+    @Published private(set) var state: State
     @Published private(set) var outcome: UpscaleOutcome?
     /// 账单明细查到的实际扣费；nil = 还没查到 / 查不到。
     @Published private(set) var actualCost: Double?
@@ -37,10 +40,12 @@ final class UpscaleJob: ObservableObject, Identifiable {
     private var reserved: (amount: Double, day: Date)?
     private var resultReceived = false
 
-    init(request: UpscaleRequest, clipIDs: [UUID], projectGeneration: Int) {
+    init(request: UpscaleRequest, clipIDs: [UUID], projectGeneration: Int, title: String) {
         self.request = request
         self.clipIDs = clipIDs
         self.projectGeneration = projectGeneration
+        self.title = title
+        state = .running(FalJobProgress(phase: .preparing, typicalSeconds: request.tier.typicalSeconds))
     }
 
     static var workFolder: URL { FileManager.default.temporaryDirectory.appendingPathComponent("SrtFlowUpscale", isDirectory: true) }
@@ -75,9 +80,9 @@ final class UpscaleJob: ObservableObject, Identifiable {
         do {
             let result = try await UpscalePipeline.run(request, client: client, ffmpeg: ffmpeg, workFolder: Self.workFolder) { [weak self] phase in
                 Task { @MainActor in
-                    guard let self, case .running = self.state else { return }
-                    self.state = .running(phase)
-                    if phase == .downloading { self.resultReceived = true }
+                    guard let self, case .running(let progress) = self.state else { return }
+                    self.state = .running(progress.advanced(to: phase))
+                    if case .downloading = phase { self.resultReceived = true }
                 }
             }
             resultReceived = true

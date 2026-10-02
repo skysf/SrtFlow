@@ -11,6 +11,7 @@ await runClientChecks()
 runKeyChecks()
 runUpscaleChecks()
 await runUpscaleClientChecks()
+runPhaseChecks()
 
 if failures > 0 {
     print("✗ \(failures) of \(checks) fal checks failed.")
