@@ -34,6 +34,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditCanvasRatio.swift \
   Sources/SrtFlow/VideoEditMediaReferences.swift \
   Sources/SrtFlow/VideoEditClipUpscale.swift \
   Sources/SrtFlow/VideoEditClipUpscaleRecord.swift \

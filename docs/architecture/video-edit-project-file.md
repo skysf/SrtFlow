@@ -148,6 +148,18 @@ Finder**。App 只负责「快速回到最近那几条」。
 产品口径和可调范围见
 [视频轨对等化](video-tracks.md)。
 
+### 时间线里的 `mainMagnet`：这个工程的磁吸（2026-10-02 起）
+
+磁吸**跟着工程走**（同剪映每个草稿的 `maintrack_adsorb`），存在 `timeline.mainMagnet` 里 —— 和行高相反，**放进 `TimelineState`**：
+它决定 V1 上的东西在哪（拨开那一下就把 V1 排紧），拨它是一步撤销，⌘Z 要连开关带排布一起退回去；AI 的「撤销这一轮」快照里也要有它。
+
+- **按需写键**：磁吸关着不写，老工程存一轮之后 diff 是空的。**缺键 = 关**：2026-10-02 之前的工程都是磁吸关着时剪的居多（磁吸默认关），
+  打开工程永远不改工程 —— 不会因为这台机器上次拨开过磁吸，就在第一次编辑时把用户留的缝合上
+  （[案例](../bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md)）。
+- **打开时不排 V1**：文件里写着开、V1 却有缝（手改过的文件），打开也照原样；之后只有改到 V1 的排布才排（`MainMagnet`）。
+- **不开新的 formatVersion**：旧版丢掉这个键，丢的只是这个工程的开关 —— 成片一帧不变，和行高同一个口径。
+- 新建工程用上次拨的值（`VideoEditProject.newTimeline()` 读 `EditorToggles.magnet`），见 [剪辑页上记住的开关](editor-remembered-toggles.md)。
+
 ### 不进工程文件的东西
 
 - `EditClip.needsStillConversion` —— 导入过程中的临时状态。

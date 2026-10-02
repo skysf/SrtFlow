@@ -161,43 +161,6 @@ struct ClipPlacement: Hashable, Sendable {
     }
 }
 
-// MARK: - 画布比例
-
-/// 输出画面的宽高比。`auto` 跟随主轨第一段素材。
-enum CanvasRatio: String, CaseIterable, Identifiable, Hashable, Sendable {
-    case auto
-    case wide16x9
-    case tall9x16
-    case standard4x3
-    case tall3x4
-    case square
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .auto: return "Auto"
-        case .wide16x9: return "16:9"
-        case .tall9x16: return "9:16"
-        case .standard4x3: return "4:3"
-        case .tall3x4: return "3:4"
-        case .square: return "1:1"
-        }
-    }
-
-    /// 固定比例对应的标准输出尺寸；auto 返回 nil（按素材算）。
-    var fixedSize: CGSize? {
-        switch self {
-        case .auto: return nil
-        case .wide16x9: return CGSize(width: 1920, height: 1080)
-        case .tall9x16: return CGSize(width: 1080, height: 1920)
-        case .standard4x3: return CGSize(width: 1440, height: 1080)
-        case .tall3x4: return CGSize(width: 1080, height: 1440)
-        case .square: return CGSize(width: 1080, height: 1080)
-        }
-    }
-}
-
 // MARK: - 剪辑
 
 /// 时间线上的一段素材。
@@ -502,6 +465,9 @@ struct TimelineState: Hashable, Sendable {
     var mainClips: [EditClip] = []
     /// 主轨的整轨隐藏（预览成黑场，导出跳过）。
     var mainHidden = false
+    /// 主轨磁吸开没开。**跟着工程走**（2026-10-02 用户拍板，同剪映每个草稿各记各的）：进撤销栈、存进工程文件；老工程没这个键 = 关
+    /// （打开工程永远不改工程），新建工程用上次拨的值。什么时候排 V1 见 `MainMagnet`。旧版丢掉这个键只丢开关、成片一帧不变，不开新版本。
+    var mainMagnet = false
     /// 主轨的推子（主轨不是 `EditLane`，没地方放，同 `mainHidden`）。线性 0…2。
     var mainVolume = 1.0
     /// 总输出推子：所有轨混完之后再乘一次。线性 0…2。
@@ -963,7 +929,7 @@ extension TimelineState: Codable {
         case mainVolume, masterVolume
         case subtitle, subtitleHidden, translationHidden
         case subtitleLayout, translationLayout, subtitleURL, subtitleCompanion, shapes, textOverlays, canvasRatio
-        case frameRate, filters, projectSubtitleStyle, subtitleHighlight, rulerMarkers
+        case frameRate, filters, projectSubtitleStyle, subtitleHighlight, rulerMarkers, mainMagnet
     }
 
     init(from decoder: Decoder) throws {
@@ -971,6 +937,7 @@ extension TimelineState: Codable {
         self.init()
         mainClips = try c.decodeIfPresent([EditClip].self, forKey: .mainClips) ?? []
         mainHidden = try c.decodeIfPresent(Bool.self, forKey: .mainHidden) ?? false
+        mainMagnet = try c.decodeIfPresent(Bool.self, forKey: .mainMagnet) ?? false   // 2026-10-02 起才有：缺键 = 关
         // v19 起才有。缺键 = 推子在 0 dB（老版本根本没有推子）。
         mainVolume = AudioGain.clampedLinear(try c.decodeIfPresent(Double.self, forKey: .mainVolume) ?? 1)
         masterVolume = AudioGain.clampedLinear(try c.decodeIfPresent(Double.self, forKey: .masterVolume) ?? 1)
@@ -1000,6 +967,7 @@ extension TimelineState: Codable {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(mainClips, forKey: .mainClips)
         try c.encode(mainHidden, forKey: .mainHidden)
+        if mainMagnet { try c.encode(true, forKey: .mainMagnet) }   // 按需写键：磁吸关着的工程存一轮 diff 是空的
         // 推子没动过（0 dB）不写键，与 `requiresFormatVersion19` 同源。
         if mainVolume != 1 { try c.encode(mainVolume, forKey: .mainVolume) }
         if masterVolume != 1 { try c.encode(masterVolume, forKey: .masterVolume) }

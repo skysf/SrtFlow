@@ -37,6 +37,7 @@ xcrun swiftc \
   -I "$BUILD_DIR/Modules" \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
+  Sources/SrtFlow/VideoEditCanvasRatio.swift \
   Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
@@ -117,6 +118,7 @@ xcrun swiftc \
   checks/ProjectFile/SubtitleLook.swift \
   checks/ProjectFile/Markers.swift \
   checks/ProjectFile/Upscale.swift \
+  checks/ProjectFile/MainMagnet.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----

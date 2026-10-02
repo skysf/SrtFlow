@@ -13,10 +13,11 @@ import SrtFlowCore
 final class VideoEditProject {
     static let shared = VideoEditProject()
 
-    private(set) var state = TimelineState() {
+    private(set) var state = MainMagnet.newTimeline(remembered: EditorToggles.read(.magnet)) {
         // 时间线的所有写入最终都落在这里（perform / liveApply / applySnapshot
         // 都是给它赋值），所以脏标记和自动保存挂这一个点就够了。
         didSet {
+            if magnetEnabled != state.mainMagnet { magnetEnabled = state.mainMagnet }
             // 同一个理由：删字幕轨、外挂新 .srt、重新生成都会换掉整轨 cue 身份，
             // 选中的 cue 可能已经不存在了。收在这唯一入口，别指望每个改字幕的
             // 操作各自记得清一次（PR#22 复审 P2）。
@@ -269,10 +270,16 @@ final class VideoEditProject {
     /// 草稿留在视图里就会被漏掉。同样不进工程文件。
     var subtitleDraft: SubtitleTextDraft?
 
-    // 工具栏的四个开关：磁吸、吸附、链接、播放跟随。默认值和记忆（UserDefaults，不进工程文件）
+    // 工具栏的四个开关：磁吸、吸附、联动、播放跟随。默认值和记忆（UserDefaults，不进工程文件）
     // 都在 `EditorToggles`（2026-10-01 用户拍板四个一起记住）；这里只管「拨了之后做什么」。
-    var magnetEnabled = EditorToggles.read(.magnet) {
-        didSet { EditorToggles.write(.magnet, magnetEnabled); if magnetEnabled { perform { $0.packMain() } } }
+    // **磁吸跟着工程走**（2026-10-02 用户拍板，同剪映）：开没开是 `state.mainMagnet`，这里只是给界面读的镜子（state 变了才写，
+    // 工具栏读它不会被每次编辑叫醒）；拨它只走 `setMagnet`，记住的那个只当新建工程的默认。
+    private(set) var magnetEnabled = EditorToggles.read(.magnet)
+
+    func setMagnet(_ on: Bool) {
+        EditorToggles.write(.magnet, on)
+        guard on != state.mainMagnet else { return }
+        perform(rebuildsPreview: on) { $0.mainMagnet = on }   // 一步撤销；打开时 perform 收尾把 V1 排紧
     }
     var snappingEnabled = EditorToggles.read(.snapping) { didSet { EditorToggles.write(.snapping, snappingEnabled) } }
     var linkageEnabled = EditorToggles.read(.linkage) { didSet { EditorToggles.write(.linkage, linkageEnabled) } }
@@ -321,12 +328,7 @@ final class VideoEditProject {
     let defaultAudioRowHeight: Double
 
     func defaultRowHeight(for kind: TrackRowKind) -> Double {
-        switch kind {
-        case .video: return defaultVideoRowHeight
-        // 不可调的行（标尺 / 滤镜 / 文字 / 形状 / 字幕）自己写死高度，
-        // 永远走不到这里；给个音频轨的值只是为了函数是全的。
-        case .audio, .other: return defaultAudioRowHeight
-        }
+        kind.defaultHeight(video: defaultVideoRowHeight, audio: defaultAudioRowHeight)
     }
 
     /// 这条轨现在多高。**行高只从这里取**，别处不许再算一份。
@@ -455,10 +457,12 @@ final class VideoEditProject {
         let before = state
         var next = state
         mutate(&next)
-        if magnetEnabled { next.packMain() }
+        // 磁吸：只在改到了 V1 的排布（或者磁吸这次才打开）时排紧 V1 —— 改字幕、音量、别的轨永远不动 V1（`MainMagnet`）。
+        let packed = MainMagnet.settle(&next, after: before)
         // 联动：主轨的画面挪了，压在上面、这次没被碰过的东西跟着挪 / 删 —— 磁吸合拢之后、补色之前。
-        let linkage = linkageEnabled
+        var linkage = linkageEnabled
             ? TimelineLinkage.follow(from: before, to: &next, deletesContent: deletesContent) : TimelineLinkage.Report()
+        linkage.magnetPacked = packed
         next.assignMissingTrackColors()
         guard next != before else { return linkage }
         let audioOnly = next.differsOnlyInAudioMix(from: before)
@@ -491,7 +495,7 @@ final class VideoEditProject {
         guard let snapshot = liveEditSnapshot else { return }
         var next = snapshot
         mutate(&next)
-        if magnetEnabled { next.packMain() }
+        MainMagnet.settle(&next, after: snapshot)
         // 联动（同 `perform`）：裁主轨块的头尾、拖转场把手时，压在上面的东西实时跟着画面走；连续编辑从不真删。
         if linkageEnabled { TimelineLinkage.follow(from: snapshot, to: &next, deletesContent: false) }
         next.assignMissingTrackColors()
@@ -1134,16 +1138,8 @@ final class VideoEditProject {
 
     /// 在播放头处放一个形状，默认 3 秒，放完就选中它好接着调。
     func addShape(_ kind: ShapeKind) {
-        let start = clock.time
-        let shape: ShapeAnnotation
-        switch kind {
-        case .line:
-            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0)
-        case .rectangle, .blur, .mosaic:
-            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.3, height: 0.22)
-        case .square:
-            shape = ShapeAnnotation(kind: kind, timelineStart: start, width: 0.2, height: 0.2)
-        }
+        let size = kind.defaultSize
+        let shape = ShapeAnnotation(kind: kind, timelineStart: clock.time, width: size.width, height: size.height)
         perform(rebuildsPreview: false) { $0.shapes.append(shape) }
         selectedShapeIDs = [shape.id]
     }

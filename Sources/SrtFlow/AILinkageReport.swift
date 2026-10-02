@@ -17,4 +17,14 @@ enum AILinkageReport {
         entry["note"] = .string("Linkage is on: items on other tracks followed the V1 clips they sit on.")
         return .object(entry)
     }
+
+    /// 磁吸这次把 V1 排紧挪了几段（结果里的 `magnet`）：AI 没动 V1、V1 却变了的时候，它要知道是这个工程的磁吸开着
+    ///（2026-10-02 南极工程：AI 只看到「联动挪了 97 样」，查了半天才发现整条 V1 被合拢了）。
+    static func magnet(_ report: TimelineLinkage.Report) -> JSONValue? {
+        guard report.magnetPacked > 0 else { return nil }
+        return .object([
+            "moved": .number(Double(report.magnetPacked)),
+            "note": .string("The V1 magnet is on in this project: V1 clips were closed up after this edit."),
+        ])
+    }
 }

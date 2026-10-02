@@ -140,9 +140,8 @@ enum SmokeDriver {
         case .show:
             note(try SmokeUISteps.show(step, project: project))
         case .toggles:
-            // 四个开关不进工程文件（docs/architecture/timeline-drag-gestures.md 4.5），脚本里直接拨；
-            // 冒烟里起手是默认值、拨了也不落盘（EditorToggles）。
-            if let magnet = step.magnet { project.magnetEnabled = magnet }
+            // 脚本里直接拨；冒烟里起手是默认值、拨了也不落盘（EditorToggles）。磁吸跟着工程走（`state.mainMagnet`），只走 setMagnet。
+            if let magnet = step.magnet { project.setMagnet(magnet) }
             if let snapping = step.snapping { project.snappingEnabled = snapping }
             if let linkage = step.linkage { project.linkageEnabled = linkage }
             if let follows = step.followPlayhead { project.timelineFollowsPlayhead = follows }

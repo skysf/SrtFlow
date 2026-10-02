@@ -29,6 +29,15 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     var id: String { rawValue }
 
+    /// 在播放头处新放一个时的大小（相对画面的 0…1）：线条只有长度，长方形和盖一块一样大，正方形两边相等。
+    var defaultSize: (width: Double, height: Double) {
+        switch self {
+        case .line: return (0.3, 0)
+        case .rectangle, .blur, .mosaic: return (0.3, 0.22)
+        case .square: return (0.2, 0.2)
+        }
+    }
+
     var title: String {
         switch self {
         case .line: return "Line"

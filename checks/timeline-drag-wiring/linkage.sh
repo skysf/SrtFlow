@@ -23,8 +23,8 @@ if BODY="$(require_func 'func perform(' "$PROJECT")"; then
     || fail "perform 收尾没调 TimelineLinkage.follow（联动就只剩拖动那一条路，删 / 变速 / 定格 / AI 全不跟）"
   grep -q 'deletesContent: Bool = false' <<<"$BODY" \
     || fail "perform 没有 deletesContent 参数：真删和裁切分不开，要么裁一下就把字幕删了、要么删了画面字幕还在"
-  awk '/next.packMain\(\)/{p=NR} /TimelineLinkage.follow/{l=NR} /assignMissingTrackColors/{c=NR} END{exit !(p && l && c && p<l && l<c)}' <<<"$BODY" \
-    || fail "perform 里联动的位置不对：必须在 packMain 之后（按合拢后的位置算）、assignMissingTrackColors 之前"
+  awk '/MainMagnet.settle\(&next, after: before\)/{p=NR} /TimelineLinkage.follow/{l=NR} /assignMissingTrackColors/{c=NR} END{exit !(p && l && c && p<l && l<c)}' <<<"$BODY" \
+    || fail "perform 里联动的位置不对：必须在磁吸（MainMagnet.settle）之后（按合拢后的位置算）、assignMissingTrackColors 之前"
 fi
 if BODY="$(require_func 'func liveApply(' "$PROJECT")"; then
   grep -q 'TimelineLinkage.follow(from: snapshot, to: &next, deletesContent: false)' <<<"$BODY" \

@@ -101,7 +101,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    AI 多出来的只有两条：**给绝对值**（改入出点时起点不动；拖把手则是连起点一起挪）和**V1 往后推 / 往前拉**
    （`insert`、`ripple`，只动 V1 和它们的链接伙伴；别的轨、文字、滤镜、字幕由「联动」开关决定跟不跟 —— 开着（默认）压在挪动 /
    删掉的 V1 片段上的东西跟着挪 / 删（`perform` 收尾统一做，[联动](timeline-linkage.md)），写进了 delete_items / freeze_frame 的说明，
-   `get_timeline` 报 `linkage`、改动的结果带 `linkage: {moved, deleted}`）。
+   `get_timeline` 报 `linkage`、改动的结果带 `linkage: {moved, deleted}`）。**磁吸**跟着工程走：`get_timeline` 报 `magnet`；磁吸开着时
+   改到 V1 的排布会把 V1 排紧，那次的结果带 `magnet: {moved, note}`（AI 没动 V1、V1 却变了，要让它知道为什么；改字幕、音量、别的轨从来不排，
+   [案例](../bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md)）。
    同一次 add_clips 里两段都点名「新开一条轨」时第二段放进第一段开的那条；**只认点名要新开的**，前一段只是因为还没有
    音频轨才开了 A1，不算（[案例](../bugfixes/2026-09-28-new-audio-lands-on-a1.md)）。
 3. **排队**：改工程的调用按到达顺序一个接一个做（`AIToolRouter` 的 `tail`）。Claude 会在一条消息里并排发
