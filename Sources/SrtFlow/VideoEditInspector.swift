@@ -37,6 +37,8 @@ struct VideoEditInspectorView: View {
             .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Upscale 的面板和对比窗口从这里出（检查器在剪辑页里一直在；只订阅 UpscaleActivity 的两个字段）。
+        .background(UpscalePresenter(project: project))
     }
 
     // MARK: - 多选
@@ -213,6 +215,12 @@ struct VideoEditInspectorView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+
+        // 送 fal 放大（画面段才有；mockup 定的位置：头部信息下面、Speed 上面。UpscaleInspectorSection 只订阅任务的增删）。
+        if !clip.isAudioOnly, !clip.isStillImage {
+            Divider()
+            UpscaleInspectorSection(project: project, clip: clip)
         }
 
         Divider()

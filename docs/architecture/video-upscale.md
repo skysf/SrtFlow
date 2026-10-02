@@ -31,10 +31,20 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 5. **中间文件只在 `UpscaleJob.workFolder`**（临时目录），每次做完 / 取消 / 失败都删干净；成品只在原片旁边（或退路）。
 6. **不弹模态框、不进撤销分组**：任务本身不改工程；换源那一步是一次 `perform`。
 
-## 三、还没做的
+## 三、界面（2026-10-02 第四刀，mockup 定的样子）
 
-界面（第四刀：检查器一节、右键菜单、面板、对比窗口、导出提示、块角标、三张语言表）；AI 工具（清单预算只剩 53 字，第一版不开）；
-多选；Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
+| 哪里 | 文件 | 规矩 |
+| --- | --- | --- |
+| 检查器一节 | `Upscale/UpscaleInspectorSection.swift` | 画面段才有，放在头部信息下面、Speed 上面。三个状态：还没做（一句说明 + Upscale…）、做着（`UpscaleJobStatusView` **只订阅那一个任务**：阶段、估价、取消、钥匙串授权的提醒）、做完还没处理（Compare… / Discard）、已换源（档位、日期、扣费、原片在哪、Compare… / Revert to Original）。这一节只订阅 `UpscaleActivity`（任务的增删），不订阅工程 |
+| 右键菜单 | `VideoEditTimelineClipBlock.swift` | 图片段没有；普通块一项 Upscale…；换过源的块三项 Compare with Original… / Revert to Original Clip / Upscale Again…。**块不做 IO**：换回原片找不到文件时用 `project.notice` 说一句，菜单不灰 |
+| 块角标 | 同上 | 换过源的块名字旁一枚短边的标（`1080p`），和静音图标同一处，不盖缩略图 |
+| 面板 | `Upscale/UpscalePanel.swift` + `UpscalePanelModel.swift` | sheet（套 `.appLanguage()`）。范围三选一（默认：别处用得更长就选最长的那处，否则这一段；有另一处更长就提示）、目标三档（默认按画布短边能到的那档，比画布大提示画布也要改）、六个档位各一行（一句话、大约几分钟、夹过的输出尺寸、估价；超过模型的时长 / 大小上限灰掉）、文件名预览、今天已花 / 上限（超限只标红）、没有 Key 才拦。点开始：`UpscaleJob` 进 `UpscaleActivity` |
+| 摆出来 | `Upscale/UpscalePresenter.swift` | 挂在检查器底下的不画东西的小视图，只订阅 `UpscaleActivity.panel` / `.compare`；右键、检查器、做完的任务都往那两个字段里写 |
+| 对比窗口 | `Upscale/UpscaleCompareView.swift` + `UpscaleCompareStage.swift` + `UpscaleComparePlayback.swift` | 做完先弹（已经在看别的就不抢）。两个 AVPlayer 同一个主机时间起步（`setRate(_:time:atHostTime:)`，不读 `currentTime`），原片出声、upscale 文件静音，原片加 `sourceOffset`。分割线（点哪儿到哪儿、能拖、底下有滑杆）/ 并排；缩放 适合 / 100% / 200%（按 upscale 文件的像素，默认 100%：缩到窗口大小看不出差别），滚轮平移。按钮：Replace Clip（`applyUpscale`，工程里用这个原片且范围被盖住的段一起换，一步撤销）/ Keep Original（文件留着）/ Try Another Model…（回面板）；看已换源的段时是 Revert to Original / Close。实际扣费那一行单独订阅任务（账单几分钟后才有） |
+| 切工程 | `VideoEditProjectDocument.closeCurrentDocument` | `UpscaleActivity.cancelAll()`：在飞的作废（替 fal 也取消），做完的文件留在磁盘上 |
+
+还没做的：导出面板的「有几段低于目标分辨率」提示和编辑器状态行（mockup 第二排）；画布自定义尺寸；AI 工具（清单预算只剩 53 字）；多选；
+Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
 
 ## 四、回归
 
@@ -44,5 +54,15 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
   反向验证：去掉 hvc1 的点名、把 `-ss` 挪到原片的 `-i` 之后、阶段重复报、整文件判定不看时长上限，各红。
 - `scripts/check-fal.sh` 第七 / 八组（档位、估价、上传、账单）；`scripts/check-project-file.sh` 第 41 组（换源）。
 - `checks/fal-wiring.sh`：用 Key 的只有生成任务、配旁白、upscale 任务三处。
-- **人工回归**（发版前、拿真 Key，等第四刀的界面）：对一段 720p 的片段做 ByteDance standard 到 1080p：估价 ≈ 0.0072 × 秒数；做完弹对比窗口、
-  文件在原片旁边且名字对；替换后片段指向新文件、关键帧 / 标记位置不变；右键换回原片；账单明细几分钟后把实际扣费补上。
+- 界面这一层自动化够不着（真窗口、两个播放器、分割线手感），走人工回归；扫描守卫钉着：sheet 套 `.appLanguage()`、提示走 `.instantHelp`、
+  每个视图 body 计数、文案三张表配齐、用 Key 的只有三处。
+- **人工回归**（发版前、拿真 Key）：
+  1. 选一段 720p 的画面段：检查器头部下面有「Upscale」一节，一句说明 + Upscale…；音频段、图片段没有这一节；右键菜单有 Upscale…。
+  2. 点开面板：默认范围（工程里另一处用得更长时选最长的那处并有提示）、默认目标按画布、六行价格随范围 / 目标变、文件名预览对；没有 Key 时按钮灰且指去设置。
+  3. 点开始：检查器那一节变成阶段 + 估价 + 取消，期间照常剪辑；取消后不扣钱、没有文件。
+  4. 做完弹对比窗口：分割线点哪儿到哪儿、并排、100% / 200% + 滚轮平移、空格播放两边同步、声音是原片的；Keep Original 文件留着、片段不变；
+     Try Another Model… 回面板；Replace Clip 之后片段指向新文件、关键帧 / 标记 / 音量曲线位置不变、块名字旁有「1080p」、⌘Z 一步撤回。
+  5. 换过源的片段：检查器显示档位 / 日期 / 扣费 / 原片，Compare… 看原片 vs 现在，Revert to Original 换回；把原片挪到别的文件夹再换回也行；
+     原片删了提示找不到。
+  6. 账单：做完几分钟内对比窗口 / 检查器的扣费从「估」变成实收；设置 → AI 的「今天已花」跟着变。
+  7. 切工程：做到一半的任务取消，不弹对比窗口。
