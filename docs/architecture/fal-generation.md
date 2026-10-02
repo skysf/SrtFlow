@@ -184,4 +184,4 @@
 | 等多久 | 视频一律 25 分钟（`FalUpscaleTier.maxSeconds`） |
 | 维护 | `scripts/fal-models/refresh.sh` 也扫 `FalUpscaleModels.swift` 里的端点、目录按 video-to-video 列；改档位 / 改价同步这一节和自检 |
 
-还没做的（分刀见方案第三节）：片段上的来源记录与换源（第二刀）、裁范围 / 封回原声 / 落盘 / 进度的任务（第三刀）、界面（第四刀）。
+换源在 [工程文件与素材重链接](video-edit-project-file.md)「四之五」，任务那一层（范围、裁一段、封回原声、落盘、进度、账）在 [视频 upscale](video-upscale.md)；界面是第四刀。

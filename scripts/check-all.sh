@@ -142,6 +142,7 @@ run_check "timeline-zoom（缩放的锚点：钉指针 / 钉播放头 / 纵向�
 run_check "media-import（拖文件进轨道的落点）" scripts/check-media-import.sh
 run_check "optimized-media（优化媒体：判据、关键帧间隔、解码速度、真转一块、缓存）" scripts/check-optimized-media.sh
 run_check "fal（fal.ai 生成：模型表与估价、花钱把关、请求体对着接口定义快照验、假 URLSession 走全流程）" scripts/check-fal.sh
+run_check "upscale（视频 upscale 的任务：范围、起名、封回原声、真裁一段、流水线对着假 fal 走全程）" scripts/check-upscale.sh
 # 真跑好几遍 ffmpeg 导出，全场最慢的一项（CI 上约 45 秒），配的伙伴最少。
 run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨率）" scripts/check-export-frame-rate.sh
 

@@ -55,6 +55,7 @@ xcrun swiftc \
   checks/Fal/SpendChecks.swift \
   checks/Fal/InputChecks.swift \
   checks/Fal/OutputChecks.swift \
+  checks/Fal/FalStub.swift \
   checks/Fal/ClientChecks.swift \
   checks/Fal/KeyChecks.swift \
   checks/Fal/UpscaleChecks.swift \

@@ -8,7 +8,7 @@
 # 钉的事（每条后面是它守的规矩，出处见 docs/architecture/fal-generation.md）：
 #   1. **不弹模态框**：fal 这几个文件里没有 NSAlert / runModal / 任何面板（方案第 9、10 条；要问就走 AISession.ask 的提示条）；
 #   2. **HTTP 只经 FalClient**：`queue.fal.run` 和 `URLSession` 只出现在 FalClient.swift（认证头、取消、错误换话都在那里）；
-#   3. **Key 只经 FalKeyCache 读**：`FalKeyStore.read(` 只在 FalKeyStore.swift 里；用 Key 的只有生成任务和配旁白两处；
+#   3. **Key 只经 FalKeyCache 读**：`FalKeyStore.read(` 只在 FalKeyStore.swift 里；用 Key 的只有生成任务、配旁白和 upscale 任务三处；
 #   4. **先问后花**：生成任务里 `store.decide(` 在 `client.run(` 之前，记账 `reserve(store)` 恰好两处（额度内 / 用户点头之后），
 #      问用户走 `AISession.shared.ask`；没做出来才退（`guard !resultReceived`）；
 #   5. **提示条上的问题不管这一轮什么状态都摆出来**（AI 等结果时这一轮早「结束」了）；停止 / cancel_job 把问题收回（withdrawQuestions）；
@@ -65,9 +65,11 @@ direct="$(grep -ln 'FalKeyStore\.read(' Sources/SrtFlow/*.swift Sources/SrtFlow/
 if [ -n "${direct}" ]; then
   fail "这些文件直接读了钥匙串：$(tr '\n' ' ' <<<"${direct}")—— 读 Key 只经 FalKeyCache（一次运行最多问钥匙串一次、也就最多弹一次授权框）"
 fi
-users="$(grep -ln 'FalKeyCache\.shared\.key(' Sources/SrtFlow/*.swift Sources/SrtFlow/*/*.swift | tr '\n' ' ')"
-if [ "${users}" != "${VOICE} ${RUN} " ] && [ "${users}" != "${RUN} ${VOICE} " ]; then
-  fail "用 Key 的地方应该只有生成任务和配旁白两处，实际是：${users}"
+UPSCALE="Sources/SrtFlow/Upscale/UpscaleJob.swift"
+users="$(grep -ln 'FalKeyCache\.shared\.key(' Sources/SrtFlow/*.swift Sources/SrtFlow/*/*.swift | LC_ALL=C sort | tr '\n' ' ')"
+expected="$(printf '%s\n' "${VOICE}" "${RUN}" "${UPSCALE}" | LC_ALL=C sort | tr '\n' ' ')"
+if [ "${users}" != "${expected}" ]; then
+  fail "用 Key 的地方应该只有生成任务、配旁白和 upscale 任务三处，实际是：${users}"
 fi
 
 # 4. 先问后花。
