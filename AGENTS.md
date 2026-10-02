@@ -615,6 +615,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-02 状态行上「Downloading」小标折成两行](docs/bugfixes/2026-10-02-fal-status-pill-wraps.md) — 窗口 1424 宽、五个小标都在时 SwiftUI 把小标压折了而左边那句话没截；小标 `lineLimit(1)` + `fixedSize`。**一行里谁让步要明说。**
 - [2026-10-02 「撤销这一轮」退不回 V1](docs/bugfixes/2026-10-02-undo-round-repacks-v1.md) — `undoRound` 用 `perform { $0 = snapshot }` 换回快照，磁吸开着时收尾的 `packMain` 又把快照里 V1 的缝合上、联动按「V1 没挪」什么都不跟：音频字幕回了原位、V1 没回，比不撤还糟；单步 ⌘Z 走 `applySnapshot` 所以没事。改成 `restoreTimeline`（和 ⌘Z 同一条收尾 `adopt`，不过磁吸、联动）。**「换回某一刻」不是一次编辑，别走编辑的收尾。**
 - [2026-10-02 磁吸开着时改一条音量曲线就把整条 V1 的缝合上](docs/bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md) — 磁吸是全 App 一份、记住为开，`perform` 每次收尾都 `packMain`：打开一个磁吸关着时留了缝的工程，改字幕 / 音量 / 别的轨都把 V1 合拢，联动再挪 97 样；文档还把它写成了预期行为。改成**磁吸跟着工程走**（`state.mainMagnet`，同剪映 `maintrack_adsorb`，老工程缺键 = 关）+ 只在改到 V1 的排布时排（`MainMagnet.settle`）+ AI 看得见。**会改工程内容的开关是工程的属性；一次编辑只许改它碰到的东西。**
+- [2026-10-03 自动检测把英文旁白判成中文](docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md) — `pick` 只比把握：中文模型把英文写成「3red65 days」这种拉丁乱码、把握 0.9，停顿多的英文旁白英文模型只有 0.873（合成语音标定的 0.91 下限在真素材上不成立）。中日韩的候选先过「写成了这种语言的文字」（全角字 ≥ 25%）；`transcribe` 读缓存挑语言也走同一个 `pick`。**分不开两边时，找一个真能分开的特征，别调门槛。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

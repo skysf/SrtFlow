@@ -302,6 +302,12 @@ forbid "候选不许再按 locale 标识符自己去重截断（同语言变体�
 require "已装语言那一档必须排序（系统返回顺序实测会变）" \
   Sources/SrtFlow/SubtitleGen/TranscriptHarvester.swift \
   'installed\.map\(\\\.identifier\)\.sorted\(\)'
+# transcribe 读缓存那条路挑语言也只许走同一个裁决（门槛 + 按文字系统核对）：以前按平均可信度另挑一份，
+# 中文模型把英文旁白写成的拉丁乱码就这样被挑中（docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md）。
+require "transcribe 读缓存挑语言要走 SubtitleLanguageDetection.pick" \
+  Sources/SrtFlow/AITranscribeTool.swift 'SubtitleLanguageDetection\.pick\('
+forbid "transcribe 读缓存不许再按平均可信度另挑一份语言" \
+  Sources/SrtFlow/AITranscribeTool.swift 'confidence > best'
 
 # 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
 require "可听快照必须用 clip.hasAudio" \

@@ -7,9 +7,10 @@ import SrtFlowCore
 // 错误模型（zh_CN 转英文音频）≈0.44–0.74。
 
 func runLanguageDetectionChecks() {
-    func words(_ entries: [(start: Double, end: Double, confidence: Double?)]) -> [TimedWord] {
+    /// `text`：每个词的字（后面接序号）。中日韩的候选要写成中日韩的字 —— 它们先过「写成了这种语言的文字」那一关。
+    func words(_ entries: [(start: Double, end: Double, confidence: Double?)], text: String = "w") -> [TimedWord] {
         entries.enumerated().map { index, entry in
-            TimedWord(text: "w\(index)", start: entry.start, end: entry.end, confidence: entry.confidence)
+            TimedWord(text: "\(text)\(index)", start: entry.start, end: entry.end, confidence: entry.confidence)
         }
     }
 
@@ -57,7 +58,7 @@ func runLanguageDetectionChecks() {
     // 实测的错误模型形态（zh_CN 转英文音频），加权分 0.55。
     let wrongModel = SubtitleLanguageDetection.Candidate(
         localeIdentifier: "zh_CN",
-        words: words([(0, 1, 0.6), (1, 2, 0.5), (2, 3, 0.55)])
+        words: words([(0, 1, 0.6), (1, 2, 0.5), (2, 3, 0.55)], text: "字")
     )
     checkEqual(
         SubtitleLanguageDetection.pick([wrongModel, english])?.localeIdentifier, "en_US",
@@ -73,7 +74,7 @@ func runLanguageDetectionChecks() {
     // 两个候选**都**是错误模型：有得挑也不代表挑得对。
     let wrongModelB = SubtitleLanguageDetection.Candidate(
         localeIdentifier: "ko_KR",
-        words: words([(0, 1, 0.52), (1, 2, 0.61), (2, 3, 0.48)])
+        words: words([(0, 1, 0.52), (1, 2, 0.61), (2, 3, 0.48)], text: "말")
     )
     check(
         SubtitleLanguageDetection.pick([wrongModel, wrongModelB]) == nil,
@@ -104,7 +105,7 @@ func runLanguageDetectionChecks() {
     // 全部低于阈值 → nil（让用户手选，不硬猜）。
     let noise = SubtitleLanguageDetection.Candidate(
         localeIdentifier: "ja_JP",
-        words: words([(0, 1, 0.2), (1, 2, 0.3), (2, 3, 0.25)])
+        words: words([(0, 1, 0.2), (1, 2, 0.3), (2, 3, 0.25)], text: "の")
     )
     check(
         SubtitleLanguageDetection.pick([noise]) == nil,
@@ -125,7 +126,7 @@ func runLanguageDetectionChecks() {
     // 足数候选取 0.9 而不是贴着阈值的 0.8：这条用例守的是「谁有资格参赛」，
     // 别让它同时吊在门槛的浮点边界上。
     let sparse = SubtitleLanguageDetection.Candidate(
-        localeIdentifier: "ko_KR", words: words([(0, 1, 0.99), (1, 2, 0.99)])
+        localeIdentifier: "ko_KR", words: words([(0, 1, 0.99), (1, 2, 0.99)], text: "말")
     )
     let full = SubtitleLanguageDetection.Candidate(
         localeIdentifier: "en_GB", words: words([(0, 1, 0.9), (1, 2, 0.9), (2, 3, 0.9)])
@@ -156,6 +157,8 @@ func runLanguageDetectionChecks() {
         SubtitleLanguageDetection.pick([sparseNoConfidence]) == nil,
         "检测裁决：短且无置信度的候选必须判失败"
     )
+
+    runScriptCheckCases(words: words)
 
     // ---- 候选构造：同一语言只占一个名额（PR#22 复审第二轮 P2）----
     //
@@ -239,3 +242,77 @@ func runLanguageDetectionChecks() {
         "候选构造：空来源给空结果"
     )
 }
+
+// ---- 中日韩的候选要写成中日韩的字（2026-10-02 南极工程）----
+//
+// 真机：英文旁白，中文模型写出「3red65 days」「rain forsts」这种拉丁字母，词置信度不低；英文模型这段停顿多，
+// 加权只有 0.873。以前 `pick` 只比把握，中文以 0.9 胜出、整段转成乱码（docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md）。
+// 下面的英文词是那段旁白的真实转写（本机缓存，9.35–23.64 秒，35 个词，时间和置信度原样抄来）。
+private func runScriptCheckCases(words: ([(start: Double, end: Double, confidence: Double?)], String) -> [TimedWord]) {
+    let narration: [(String, Double, Double, Double)] = [
+        (" the", 9.851, 10.091, 0.999), (" lives", 10.091, 10.211, 1.000), (" of", 10.211, 10.571, 0.999),
+        (" people", 10.571, 10.751, 0.998), (" far", 10.751, 11.231, 0.998), (" from", 11.231, 11.531, 0.999),
+        (" the", 11.531, 11.711, 0.996), (" modern", 11.711, 12.071, 0.998), (" world.", 12.071, 12.551, 0.748),
+        (" Past", 12.671, 13.451, 0.537), (" Wales", 13.451, 13.871, 0.959), (" in", 13.871, 14.111, 0.954),
+        (" the", 14.111, 14.231, 0.994), (" Southern", 14.231, 14.591, 0.811), (" Ocean,", 14.591, 15.131, 0.672),
+        (" over", 15.131, 15.791, 0.767), (" the", 15.791, 16.091, 0.998), (" equator,", 16.091, 16.751, 0.898),
+        (" head", 16.751, 17.351, 0.940), (" for", 17.351, 17.651, 0.995), (" the", 17.651, 17.771, 0.998),
+        (" other", 17.771, 17.951, 0.977), (" end", 17.951, 18.131, 0.992), (" of", 18.131, 18.311, 0.998),
+        (" the", 18.311, 18.431, 0.997), (" world,", 18.431, 18.911, 0.793), (" meeting", 18.911, 19.691, 0.634),
+        (" life", 19.691, 20.111, 0.992), (" I", 20.111, 20.471, 0.997), (" have", 20.471, 20.591, 0.993),
+        (" never", 20.591, 20.771, 0.999), (" seen", 20.771, 21.011, 0.999), (" before,", 21.011, 21.731, 0.754),
+        (" pole", 21.731, 22.631, 0.952), (" to", 22.631, 22.871, 0.998),
+    ]
+    let english = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "en_US",
+        words: narration.map { TimedWord(text: $0.0, start: $0.1, end: $0.2, confidence: $0.3) }
+    )
+    let englishScore = SubtitleLanguageDetection.score(of: english.words)
+    check(englishScore > 0.86 && englishScore < 0.88, "真实英文旁白的分数是 0.873（停顿多，比合成语音标定的 0.91 低）：\(englishScore)")
+    // 中文模型转同一段：拉丁字母的近似单词，词置信度 0.9（比英文模型还高 —— 以前就是这样赢的）。
+    let garbled = ["3red65", "days", "seven", "contenents", "into", "the", "deepest", "rain", "forsts", "across",
+                   "the", "whides", "desits", "into", "the", "lifes", "of", "peeple"]
+    let chinese = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "zh_CN",
+        words: garbled.enumerated().map { TimedWord(text: $1, start: 9.85 + Double($0) * 0.7, end: 10.5 + Double($0) * 0.7, confidence: 0.9) }
+    )
+    check(SubtitleLanguageDetection.score(of: chinese.words) > englishScore, "前提：中文模型的乱码分数比英文模型高（只比把握就会选它）")
+    check(!SubtitleLanguageDetection.isWrittenInOwnScript(chinese), "中文模型写出来全是拉丁字母：不算写成了中文")
+    check(SubtitleLanguageDetection.isWrittenInOwnScript(english), "英文候选不核对文字系统")
+    checkEqual(SubtitleLanguageDetection.pick([english, chinese])?.localeIdentifier, "en_US", "南极工程：英文旁白判成英文（不是中文）")
+    checkEqual(SubtitleLanguageDetection.pick([chinese, english])?.localeIdentifier, "en_US", "南极工程：中文排在前面也判成英文")
+    check(SubtitleLanguageDetection.pick([chinese]) == nil, "只有中文模型、写出来是拉丁乱码：判失败（让 AI 带 language 再调），不是判成中文")
+
+    // 正面对照：真中文照样认得出来，中英夹杂也是。
+    let mandarin = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "zh_CN", words: words([(0, 1, 0.93), (1, 2, 0.95), (2, 3, 0.94)], "南极")
+    )
+    let weakEnglish = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "en_US", words: words([(0, 1, 0.6), (1, 2, 0.55), (2, 3, 0.6)], "w")
+    )
+    checkEqual(SubtitleLanguageDetection.pick([weakEnglish, mandarin])?.localeIdentifier, "zh_CN", "真中文照样判成中文")
+    // 中英夹杂：一半的字是汉字（缓存里真中文的最低一档 43%）。
+    let mixed = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "zh_CN",
+        words: [TimedWord(text: "今天", start: 0, end: 1, confidence: 0.92), TimedWord(text: "AI", start: 1, end: 2, confidence: 0.9),
+                TimedWord(text: "剪辑", start: 2, end: 3, confidence: 0.93)]
+    )
+    check(SubtitleLanguageDetection.isWrittenInOwnScript(mixed), "中英夹杂（汉字占 2/3）算写成了中文")
+    let mostlyLatin = SubtitleLanguageDetection.Candidate(
+        localeIdentifier: "zh_CN",
+        words: [TimedWord(text: "hello", start: 0, end: 1, confidence: 0.9), TimedWord(text: "world", start: 1, end: 2, confidence: 0.9),
+                TimedWord(text: "好", start: 2, end: 3, confidence: 0.9)]
+    )
+    check(!SubtitleLanguageDetection.isWrittenInOwnScript(mostlyLatin), "汉字只占 1/11（低于 25%）：不算写成了中文")
+    let japanese = SubtitleLanguageDetection.Candidate(localeIdentifier: "ja_JP", words: words([(0, 1, 0.9)], "こんにちは"))
+    let korean = SubtitleLanguageDetection.Candidate(localeIdentifier: "ko_KR", words: words([(0, 1, 0.9)], "안녕하세요"))
+    check(SubtitleLanguageDetection.isWrittenInOwnScript(japanese), "日文假名算写成了日文")
+    check(SubtitleLanguageDetection.isWrittenInOwnScript(korean), "韩文谚文算写成了韩文")
+    let digitsOnly = SubtitleLanguageDetection.Candidate(localeIdentifier: "zh_CN", words: words([(0, 1, 0.95)], "365"))
+    check(!SubtitleLanguageDetection.isWrittenInOwnScript(digitsOnly), "一个字母都没有（全是数字）：不算写成了中文")
+    check(SubtitleLanguageDetection.usesCJKScript("yue_CN") && SubtitleLanguageDetection.usesCJKScript("zh_TW"),
+          "粤语、繁体中文也核对文字系统")
+    check(!SubtitleLanguageDetection.usesCJKScript("es_ES") && !SubtitleLanguageDetection.usesCJKScript("en_US"),
+          "西班牙语、英语不核对")
+}
+
