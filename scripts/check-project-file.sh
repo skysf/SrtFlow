@@ -74,6 +74,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditMarkerTargets.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/VideoEditClipUpscale.swift \
+  Sources/SrtFlow/VideoEditClipUpscaleRecord.swift \
   Sources/SrtFlow/VideoEditMediaReferences.swift \
   Sources/SrtFlow/FreezeSliver.swift \
   Sources/SrtFlow/VideoEditTimelineRowSelection.swift \
