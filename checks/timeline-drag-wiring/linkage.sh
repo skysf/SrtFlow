@@ -71,5 +71,6 @@ fi
 # ── 12d. 默认开、AI 的说明和结果说了联动 ────────────────────────────────
 grep_code 'object\["linkage"\] = .bool(project.linkageEnabled)' "$AI_TIMELINE_TOOLS" \
   || fail "get_timeline 的结果里没报联动开关（AI 不知道删一段会不会把字幕一起删掉）"
-grep_code 'With Linkage on' "$MCP_TIMELINE" || fail "delete_items / freeze_frame 的说明没写联动开着时别的轨跟着动"
-grep_code 'With Linkage' "$MCP_SMART" || fail "cut_speech 的说明没写联动开着时压在片段上的东西跟着它的碎片走"
+# 措辞压得很短（清单总长度有 72,000 字的预算，docs/architecture/ai-control-mcp.md），只认「Linkage on:」这个记号。
+[ "$(grep -c 'Linkage on:' "$MCP_TIMELINE")" -ge 2 ] || fail "delete_items / freeze_frame 的说明没写联动开着时别的轨跟着动（要两处「Linkage on:」）"
+grep_code 'Linkage on:' "$MCP_SMART" || fail "cut_speech 的说明没写联动开着时压在片段上的东西跟着它的碎片走"
