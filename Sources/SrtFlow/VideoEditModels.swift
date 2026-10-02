@@ -288,6 +288,10 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// docs/architecture/sound-scenes.md。不进 `init`（同 `markers`）。
     var soundScene: SoundScene?
 
+    /// 这段的素材是 upscale 出来的文件时，记着原片在哪、新文件的 0 秒对应原片的第几秒、用的哪个档位
+    /// （换回原片、再次 upscale 都靠它；合同见 VideoEditClipUpscale.swift）。不进 `init`（同 `markers`）。
+    var upscale: ClipUpscaleRecord?
+
     /// 探测到的源信息（时长、尺寸、有没有音轨）。纯音频素材是 nil。
     var info: MediaInfo?
     /// 纯音频素材的总时长（MediaProbe 只管视频，音频单独记）。
@@ -808,6 +812,7 @@ extension EditClip: Codable {
         case fadeInDuration, fadeOutDuration
         case isHidden
         case volumeCurve, soundScene
+        case upscale
     }
 
     init(from decoder: Decoder) throws {
@@ -855,6 +860,8 @@ extension EditClip: Codable {
         )
         // v20 起才有。认不出的场景（更新的版本加的）整个不认、当作没有（`SoundScene` 的解码）。
         soundScene = (try? c.decodeIfPresent(SoundScene.self, forKey: .soundScene)) ?? nil
+        // v29 起才有。缺键 = 用的就是原片。认不出的记录整个不认（只有原片路径是必需的，其余缺了走默认）。
+        upscale = (try? c.decodeIfPresent(ClipUpscaleRecord.self, forKey: .upscale)) ?? nil
         // v14 及更早：画面渐变只有时长、没有"效果"这个概念。合并成一个槽之后，
         // 这些段就是 In/Out = Fade —— 不认回来的话，老工程一打开，调好的淡入淡出
         // 会因为 `kind == .none` 当场失效（不变量见 `ClipPresetAnimation.isEmpty`）。
@@ -917,6 +924,8 @@ extension EditClip: Codable {
         if !volumeCurve.isEmpty { try c.encode(volumeCurve, forKey: .volumeCurve) }
         // 没挂场景的段不写这个键（判据与格式版本闸门 `requiresFormatVersion20` 同源）。
         try c.encodeIfPresent(soundScene, forKey: .soundScene)
+        // 没换过源的段不写这个键（判据与格式版本闸门 `requiresFormatVersion29` 同源）。
+        try c.encodeIfPresent(upscale, forKey: .upscale)
     }
 }
 
@@ -1022,44 +1031,3 @@ extension TimelineState: Codable {
     }
 }
 
-/// 时间线里出现的所有素材路径（含字幕文件）。存盘时给它们各配一份书签。
-extension TimelineState {
-    var mediaURLs: [URL] {
-        var seen = Set<URL>()
-        var result: [URL] = []
-        func add(_ url: URL?) {
-            guard let url, !seen.contains(url) else { return }
-            seen.insert(url)
-            result.append(url)
-        }
-        for clip in allClips {
-            // 图片段存的是原图，不是生成出来的静帧视频（那个是缓存，能重生成）。
-            if let image = clip.stillImageURL {
-                add(image)
-            } else {
-                add(clip.sourceURL)
-            }
-        }
-        add(subtitleURL)
-        return result
-    }
-
-    /// 把所有指向 `old` 的引用改成 `new`。重新链接素材时用。
-    mutating func replaceMedia(_ old: URL, with new: URL) {
-        func fix(_ clip: inout EditClip) {
-            if clip.stillImageURL == old {
-                clip.stillImageURL = new
-            } else if clip.sourceURL == old {
-                clip.sourceURL = new
-            }
-        }
-        for index in mainClips.indices { fix(&mainClips[index]) }
-        for lane in overlayTracks.indices {
-            for index in overlayTracks[lane].clips.indices { fix(&overlayTracks[lane].clips[index]) }
-        }
-        for lane in audioTracks.indices {
-            for index in audioTracks[lane].clips.indices { fix(&audioTracks[lane].clips[index]) }
-        }
-        if subtitleURL == old { subtitleURL = new }
-    }
-}

@@ -33,7 +33,7 @@ struct VideoEditProjectFile: Codable {
     var rowHeights: TimelineRowHeights
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 28
+    static let latestFormatVersion = 29
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
     /// `...7` … `...14`（登记清单在那边）。
@@ -76,6 +76,7 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion26
         _ = timeline.requiresFormatVersion27
         _ = timeline.requiresFormatVersion28
+        _ = timeline.requiresFormatVersion29
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
@@ -209,7 +210,8 @@ enum VideoEditProjectIO {
         rowHeights: TimelineRowHeights = TimelineRowHeights()
     ) throws -> [String: MediaRecord] {
         let directory = url.deletingLastPathComponent()
-        let media = timeline.mediaURLs.map {
+        // 换成 upscale 文件的段的原片也配书签（换回去时找得到），但它不在 mediaURLs 里：播放用不着、删了不亮「缺素材」。
+        let media = (timeline.mediaURLs + timeline.upscaleOriginalURLs).map {
             MediaRecord(url: $0, projectDirectory: directory, previous: knownRecords[$0.path])
         }
         let file = VideoEditProjectFile(timeline: timeline, media: media, rowHeights: rowHeights)

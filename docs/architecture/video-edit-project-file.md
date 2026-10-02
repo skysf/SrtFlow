@@ -94,6 +94,7 @@ Finder**。App 只负责「快速回到最近那几条」。
 | v26 | `ShapeKind.blur` / `.mosaic`（盖一块，2026-09-29）与 `ShapeAnnotation.coverAmount`（力度；**按需写入**：只有盖一块落键） | **直接决定成片**：只认 v25 的旧版把不认识的种类宽容回落成长方形，该糊的地方变成一圈描边、水印 / 旧字幕重新露出来，随手编辑触发自动保存即永久丢失。合同见 [盖一块](cover-blur-mosaic.md) |
 | v27 | `Keyframe.easing` —— 关键帧的缓动（2026-09-30；**按需写入**：linear 不落键） | **直接决定成片**：只认 v26 的旧版不认识这个键，缓入缓出的推镜、位移退回直线，画面的节奏当场不一样；随手编辑触发自动保存即永久丢失。合同见 [关键帧动画](keyframe-animation.md)「缓动」 |
 | v28 | `TextOverlay.markers` / `ShapeAnnotation.markers` / `FilterClip.markers` —— 文字、形状、滤镜段上的标记；`TimelineState.rulerMarkers` —— 标尺上的标记（2026-09-30；都**按需写入**：一枚都没有的不落键） | 理由同 v8：成片一帧不变，但这是纯手工输入的标注和备注，只认 v27 的旧版随手编辑触发自动保存就把它们抹掉，丢了只能重标一遍。合同见 [标记](clip-markers.md) |
+| v29 | `EditClip.upscale` —— 这段的素材换成了 upscale 出来的文件：原片在哪、新文件的 0 秒对应原片的第几秒、档位、原片的探测信息和库键（2026-10-02；**按需写入**：没换过源的段不落键） | 成片一帧不变（段指着的文件旧版照样播），但只认 v28 的旧版随手编辑触发自动保存就把这条记录抹掉：「换回原片」从此找不到原片、入点差多少也没人知道。合同见下面「四之五」 |
 
 > v7 还带一条**读时迁移**：v6 及更早的工程按 `formatVersion < 7` 判断，
 > 载入时把 `translationHidden` 置为 true。那些版本的默认预览/烧录就是
@@ -264,6 +265,24 @@ Finder**。App 只负责「快速回到最近那几条」。
 - 自检 `scripts/check-preview-composition.sh`（`checks/PreviewComposition/AssetCache.swift`）钉着：
   同一份状态建两次第二次一个文件都不重开、取出来的帧一样；同一路径换成黑视频之后必须重开、
   帧变黑；原地改写成白视频之后也必须重开、帧变白。
+
+### 换成 upscale 文件的段（2026-10-02 起）
+
+规则在 `VideoEditClipUpscale.swift`（纯值，`checks/ProjectFile/Upscale.swift` 第 41 组钉着），方案见
+[视频 upscale](../plans/2026-10-02-video-upscale.md)：
+
+1. **记在段上**（`EditClip.upscale: ClipUpscaleRecord`）：原片路径、`sourceOffset`（新文件的 0 秒 = 原片的第几秒）、档位、原片的探测信息、
+   原片的音频库键。读得宽：只有原片路径是必需的。
+2. **换源 = 源时间整体平移**（`ClipSourceSwap.apply`）：入点减去偏移，关键帧、标记、音量曲线一起挪，时间线上的位置和长度不动。
+   新文件盖不住这段用到的范围就不换（差一帧以内算盖住：FLUX 会多一帧或少一帧，零头由合成 / 导出各自夹到素材末尾）。
+   换源之后段上的 `remoteKey` 清掉、记进记录（留着的话重链接会按键把 upscale 文件换回库里的原片）。
+3. **再次 upscale 仍按原片算**：`sourceOffset` 永远相对原片；记录里的原片只记第一次的。
+4. **换回原片**（`ClipSourceSwap.revert`）逐字段还原。原片挪了按存盘时配的书签找（`VideoEditProject.upscaleOriginalURL`），找不到就不换、菜单灰掉。
+5. **原片配书签但不进 `mediaURLs`**：存盘的素材表是 `mediaURLs + upscaleOriginalURLs`（`VideoEditMediaReferences.swift`）；
+   `mediaURLs` 只有此刻播的文件 —— 原片删了不该亮「缺素材」。重链接（`replaceMedia`）把记录里的原片路径一起改。
+6. **从旧段构造新段要抄这个字段**：分割抄给右半（`checks/project-file-wiring.sh` 钉着）；复制粘贴走编码往返自然带着；
+   分离出来的音频**不带**（声音留在原片上，upscale 只管画面）。
+7. 工程里用同一个原片的画面段**一起换**（`TimelineState.clipIDs(usingPicture:)` / `applyUpscale`），范围被盖住的才换；分离出来的音频不算。
 
 ## 五、脏标记与自动保存
 

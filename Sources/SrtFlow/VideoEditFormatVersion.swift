@@ -393,6 +393,18 @@ extension TimelineState {
     /// 随手编辑触发自动保存就把它们连同备注一起抹掉，丢了只能重标一遍。
     var requiresFormatVersion28: Bool { hasMarkersBeyondClips }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v29-only 持久数据。
+    ///
+    /// **登记清单（新增 v29-only 字段必须同步补进来）：**
+    /// 1. `EditClip.upscale` —— 这段的素材换成了 upscale 出来的文件：原片在哪、新文件的 0 秒对应原片的第几秒、档位
+    ///    （2026-10-02；**按需写入**：没换过源的段不落键）。
+    ///
+    /// 为什么要抬：成片一帧不变（段指着的文件旧版照样播），但只认 v28 的旧版随手编辑触发自动保存就把这条记录抹掉：
+    /// 「换回原片」从此找不到原片、入点差多少也没人知道。
+    var requiresFormatVersion29: Bool {
+        allClips.contains { $0.upscale != nil }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

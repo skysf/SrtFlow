@@ -402,7 +402,7 @@ do {
     //
     // 数字**写死**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。升版本时这里要一起改。
-    checkEqual(raw?["formatVersion"] as? Int, 28, "新版写盘一律用 v28")
+    checkEqual(raw?["formatVersion"] as? Int, 29, "新版写盘一律用 v29")
     check(
         VideoEditProjectFile.baselineFormatVersion >= 3,
         "带关键帧动画字段的格式起码是 v3，旧版才会拒开而不是默默毁字段"
@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 28, "只有原文轨的工程也写 v28")
+    checkEqual(try savedVersion(), 29, "只有原文轨的工程也写 v29")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 28, "往返后仍是 v28")
+    checkEqual(try savedVersion(), 29, "往返后仍是 v29")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -447,7 +447,7 @@ do {
         translationLinks: [tA.id: TranslationLink(sourceIDs: [cueA.id], sourceText: "hi", timeEdited: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 28, "带译文轨的工程写 v28（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 29, "带译文轨的工程写 v29（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -520,7 +520,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 28, "新版 writer 一律写 latest")
+    checkEqual(try savedVersion(), 29, "新版 writer 一律写 latest")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -540,7 +540,7 @@ do {
     v6State.subtitleHidden = true
     try VideoEditProjectIO.save(v6State, to: v6Project)
     let v6Raw = try JSONSerialization.jsonObject(with: Data(contentsOf: v6Project)) as? [String: Any]
-    checkEqual(v6Raw?["formatVersion"] as? Int, 28, "带字幕布局的工程必须写 latest（v28）")
+    checkEqual(v6Raw?["formatVersion"] as? Int, 29, "带字幕布局的工程必须写 latest（v29）")
     let v6Loaded = try VideoEditProjectIO.load(from: v6Project).timeline
     checkEqual(v6Loaded.subtitleLayout, v6State.subtitleLayout, "往返：布局无损")
     checkEqual(v6Loaded.subtitleHidden, true, "往返：隐藏状态无损")
@@ -597,7 +597,7 @@ do {
     try VideoEditProjectIO.save(textState, to: textFile)
     let textRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: textFile)) as? [String: Any]
-    checkEqual(textRaw?["formatVersion"] as? Int, 28, "带文字的工程必须写 latest（v28）")
+    checkEqual(textRaw?["formatVersion"] as? Int, 29, "带文字的工程必须写 latest（v29）")
 
     let textBack = try VideoEditProjectIO.load(from: textFile).timeline
     checkEqual(textBack.textOverlays.count, 1, "文字往返后还在")
@@ -642,7 +642,7 @@ do {
     try VideoEditProjectIO.save(animated, to: animFile)
     let animRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: animFile)) as? [String: Any]
-    checkEqual(animRaw?["formatVersion"] as? Int, 28, "带动画的工程必须写 latest（v28）")
+    checkEqual(animRaw?["formatVersion"] as? Int, 29, "带动画的工程必须写 latest（v29）")
 
     if let back = try VideoEditProjectIO.load(from: animFile).timeline.textOverlays.first {
         checkEqual(back.animation.entrance, .cascade, "入场效果往返不变")
@@ -688,7 +688,7 @@ do {
     try VideoEditProjectIO.save(numbered, to: numberFile)
     let numberRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: numberFile)) as? [String: Any]
-    checkEqual(numberRaw?["formatVersion"] as? Int, 28, "数字元件的工程必须写 latest（v28）")
+    checkEqual(numberRaw?["formatVersion"] as? Int, 29, "数字元件的工程必须写 latest（v29）")
 
     if let back = try VideoEditProjectIO.load(from: numberFile).timeline.textOverlays.first?.number {
         checkEqual(back.from, -12.5, "起始值往返不变")
@@ -728,7 +728,7 @@ do {
     try VideoEditProjectIO.save(focused, to: focusFile)
     let focusRaw = try JSONSerialization.jsonObject(
         with: Data(contentsOf: focusFile)) as? [String: Any]
-    checkEqual(focusRaw?["formatVersion"] as? Int, 28, "用了对焦的工程必须写 latest（v28）")
+    checkEqual(focusRaw?["formatVersion"] as? Int, 29, "用了对焦的工程必须写 latest（v29）")
 
     if let back = try VideoEditProjectIO.load(from: focusFile).timeline.textOverlays.first?.animation {
         checkEqual(back.entrance, .focus, "对焦入场往返不变")
@@ -747,14 +747,14 @@ do {
     let nonFocusAnimation = nonFocusOverlays?.first?["animation"] as? [String: Any]
     check(nonFocusAnimation?["focusStartOpacity"] == nil, "没用对焦时不该写 focusStartOpacity 键")
 
-    // 闸门另一侧：比 reader 上限更高的 v29 必须拒开。
+    // 闸门另一侧：比 reader 上限更高的 v30 必须拒开。
     // **每次抬 latestFormatVersion 都要把这里跟着抬**：拿旧的版本号当「未来」，
     // 这条断言就变成在测一个 reader 已经认识的版本，闸门坏了也照样绿。
-    let future = dir.appendingPathComponent("v29.srtflowproj")
+    let future = dir.appendingPathComponent("v30.srtflowproj")
     try Data("""
-    { "formatVersion": 29, "timeline": { "mainClips": [] }, "media": [] }
+    { "formatVersion": 30, "timeline": { "mainClips": [] }, "media": [] }
     """.utf8).write(to: future)
-    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v29）必须拒开")
+    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v30）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -764,7 +764,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 28, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 29, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -772,7 +772,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 28, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 29, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
@@ -1936,7 +1936,7 @@ do {
     let fadeRaw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 9**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言，
     // 版本忘了升照样绿（2026-08-07 案例的教训）。
-    checkEqual(fadeRaw?["formatVersion"] as? Int, 28, "带渐变的工程必须写 latest（v28）")
+    checkEqual(fadeRaw?["formatVersion"] as? Int, 29, "带渐变的工程必须写 latest（v29）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     checkEqual(reloaded.clip(with: clipID)?.fadeInDuration, 1.5, "渐入要存得住")
@@ -2153,7 +2153,7 @@ do {
     try VideoEditProjectIO.save(state, to: project)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     // 数字**写死 15**，不引用 `latestFormatVersion`：拿常量跟自己比是自反断言。
-    checkEqual(raw?["formatVersion"] as? Int, 28, "带动画的工程必须写 latest（v28）")
+    checkEqual(raw?["formatVersion"] as? Int, 29, "带动画的工程必须写 latest（v29）")
 
     let reloaded = try VideoEditProjectIO.load(from: project).timeline
     let back = reloaded.clip(with: clipID)
@@ -2324,7 +2324,7 @@ do {
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
     let stored = ((raw?["timeline"] as? [String: Any])?["filters"] as? [[String: Any]]) ?? []
     checkEqual(stored.count, 2, "两段滤镜都落了盘")
-    checkEqual(raw?["formatVersion"] as? Int, 28, "带滤镜的工程必须写 latest（v28）")
+    checkEqual(raw?["formatVersion"] as? Int, 29, "带滤镜的工程必须写 latest（v29）")
 
     let back = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(back.filters.count, 2, "往返不丢滤镜段")
@@ -2390,7 +2390,7 @@ do {
 
     try VideoEditProjectIO.save(state, to: file)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 28, "带音频库素材的工程必须写 latest（v28）")
+    checkEqual(raw?["formatVersion"] as? Int, 29, "带音频库素材的工程必须写 latest（v29）")
     let lane = ((raw?["timeline"] as? [String: Any])?["audioTracks"] as? [[String: Any]])?.first
     let stored = (lane?["clips"] as? [[String: Any]])?.first
     checkEqual(stored?["remoteKey"] as? String, "mus_1048289", "remoteKey 落了盘")

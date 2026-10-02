@@ -21,6 +21,7 @@ func runSplitOutGroups(root: URL) {
         ("盖一块（模糊 / 马赛克）", checkCoverShapes),   // 38：CoverShapes.swift
         ("关键帧的缓动", checkKeyframeEasing),          // 39：KeyframeEasing.swift
         ("标记：所有块 + 标尺", checkMarkersEverywhere),  // 40：Markers.swift
+        ("片段换成 upscale 文件 / 换回原片", checkUpscaleSwap),  // 41：Upscale.swift
     ]
     for group in groups {
         do {
