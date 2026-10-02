@@ -55,7 +55,7 @@ enum AIBeatCutTool {
         }
         var next = plan.state
         AIBeatCuts.apply(plan.placed, in: &next)
-        project.perform { $0 = next }
+        let linkage = project.perform { $0 = next }
         let ids = AIShortIDs(state: project.state)
         var result: [String: JSONValue] = [
             "tempo_bpm": .number((plan.bpm * 10).rounded() / 10),
@@ -71,6 +71,7 @@ enum AIBeatCutTool {
             }),
             "timeline_duration": AIFormat.seconds(project.state.duration)
         ]
+        if let followed = AILinkageReport.json(linkage) { result["linkage"] = followed }
         let missed = plan.placed.filter { $0.beats == nil }.count
         if missed > 0 {
             result["note"] = .string(

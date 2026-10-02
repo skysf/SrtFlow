@@ -46,10 +46,10 @@ enum MCPSmartEditTools {
                 Tighten a talking clip on V1 in one step: cut out ranges (by text — pass sentence or word times from \
                 transcribe), or keep only some ranges; shorten pauses; remove filler words (um, uh and Chinese ones) and words \
                 said twice in a row. Cuts land in the gaps between words, never inside one. The clip becomes pieces placed back \
-                to back and later V1 clips move left; its linked sound is cut with it even when linking is off. Music, texts and \
-                subtitles on other tracks do not move — regenerate subtitles afterwards (the transcript is cached, so it is \
-                quick). Filler words and repeats need transcribe first. One undo step. Returns what was removed (times before \
-                the cut) and the new pieces.
+                to back and later V1 clips move left; its linked sound is cut with it even with Linkage off. Linkage on: \
+                subtitles, texts and sounds on the clip follow its pieces (those only on a cut part are deleted; music across \
+                clips stays); off: other tracks stay — regenerate subtitles afterwards. Filler words and repeats need \
+                transcribe first. One undo step. Returns what was removed (times before the cut) and the new pieces.
                 """,
                 input: MCPSchema.object([
                     "clip_id": MCPSchema.string("The talking clip on V1."),

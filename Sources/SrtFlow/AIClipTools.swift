@@ -95,7 +95,7 @@ enum AIClipTools {
         }
         // 什么都没变（没找到黑边、给的就是现在的值）：不提交，免得撤销栈里多一步空的。
         let changed = next != state
-        if changed { project.perform { $0 = next } }
+        let linkage = changed ? project.perform { $0 = next } : TimelineLinkage.Report()
         let fresh = project.state
         guard let clip = fresh.clip(with: plan.id), let location = fresh.location(of: plan.id) else {
             return .ok(["changed": .string(ids.short(plan.id))], changed: true)
@@ -115,6 +115,7 @@ enum AIClipTools {
            let note = AIKeyframes.editNote(policy: plan.change.keyframes ?? .keepFrames, old: old, new: clip, frameRate: fresh.frameRate) {
             summary["keyframes_note"] = .string(note)
         }
+        if let followed = AILinkageReport.json(linkage) { summary["linkage"] = followed }
         if !changed { summary["unchanged"] = true }
         return .ok(.object(summary), changed: changed)
     }

@@ -99,7 +99,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    切走 `split(clipID:at:)`，转场能不能放问 `transitionCapacity`，删和 ⌫ 同一口径（链接开着带上伙伴），
    素材 → 片段走 `clip(for:)`，生成 / 翻译字幕走面板上那同一个任务，导出走 `VideoEditExporter`。
    AI 多出来的只有两条：**给绝对值**（改入出点时起点不动；拖把手则是连起点一起挪）和**V1 往后推 / 往前拉**
-   （`insert`、`ripple`，只动 V1 和它们的链接伙伴，别的轨、文字、滤镜、字幕不动 —— 写进了说明里）。
+   （`insert`、`ripple`，只动 V1 和它们的链接伙伴；别的轨、文字、滤镜、字幕由「联动」开关决定跟不跟 —— 开着（默认）压在挪动 /
+   删掉的 V1 片段上的东西跟着挪 / 删（`perform` 收尾统一做，[联动](timeline-linkage.md)），写进了 delete_items / freeze_frame 的说明，
+   `get_timeline` 报 `linkage`、改动的结果带 `linkage: {moved, deleted}`）。
    同一次 add_clips 里两段都点名「新开一条轨」时第二段放进第一段开的那条；**只认点名要新开的**，前一段只是因为还没有
    音频轨才开了 A1，不算（[案例](../bugfixes/2026-09-28-new-audio-lands-on-a1.md)）。
 3. **排队**：改工程的调用按到达顺序一个接一个做（`AIToolRouter` 的 `tail`）。Claude 会在一条消息里并排发
@@ -328,7 +330,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      对齐到工程帧、不到两帧的不剪。
    - 落到时间线上用手动那一套：从最后一刀往前 `LinkRegrouping.split` 切开、`AITimelineEdits.delete` 带波纹删中间那块，后面的
      V1 片段往前补；**链接的声音不管开关都跟着剪**（剪口播剪到画面和声音对不上，不会是 AI 想要的）。片段自己静音了、声音分离到
-     音频轨上时，量停顿、读转写都用链接的那段声音。其他轨（音乐、文字、字幕）不动，结果里提醒 AI 剪完重新生成字幕（有缓存，快）。
+     音频轨上时，量停顿、读转写都用链接的那段声音。其他轨看「联动」开关（2026-10-02 起，[联动](timeline-linkage.md)）：开着（默认）
+     压在剪掉那几块上的东西一起删、后面的字幕 / 文字跟着画面前移（`perform(deletesContent: true)`），关着才不动、结果里提醒 AI
+     剪完重新生成字幕（有缓存，快）；`next_step` 按开关分两种说法。
    - 两步：`plan` 可以 await（量声音、读转写缓存），`apply` 同步提交、路由包 `AIUndoGrouping.step`（同 edit_clip，
      `check-mcp.sh` 钉着）；中途时间线变了就不提交、请 AI 重来。
 

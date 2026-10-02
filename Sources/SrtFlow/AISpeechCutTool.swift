@@ -80,7 +80,8 @@ enum AISpeechCutTool {
         }
         var next = plan.state
         let pieces = AISpeechCuts.apply(plan.cuts, to: plan.clipID, in: &next)
-        project.perform { $0 = next }
+        // 真删：联动开着时压在剪掉那几块上的东西一起删、后面的跟着画面前移。
+        let linkage = project.perform(deletesContent: true) { $0 = next }
         let state = project.state
         let now = AIShortIDs(state: state)
         result["clip"] = .string(ids.short(plan.clipID))
@@ -94,9 +95,13 @@ enum AISpeechCutTool {
             }
         })
         result["timeline_duration"] = AIFormat.seconds(state.duration)
-        result["next_step"] = .string(
-            "Removed times are where they were before the cut. Later V1 clips moved left; music, texts and subtitles did "
-                + "not move — regenerate subtitles if the clip had them (the transcript is cached, so it is quick)."
+        if let followed = AILinkageReport.json(linkage) { result["linkage"] = followed }
+        result["next_step"] = .string(project.linkageEnabled
+            ? "Removed times are where they were before the cut. Later V1 clips moved left and, with Linkage on, subtitles, "
+                + "texts and sounds sitting on the clip moved with its pieces; those sitting only on a removed part were deleted. "
+                + "Music spanning several clips stays."
+            : "Removed times are where they were before the cut. Later V1 clips moved left; music, texts and subtitles did "
+                + "not move (Linkage is off) — regenerate subtitles if the clip had them (the transcript is cached, so it is quick)."
         )
         AIEditorPresenter.reveal(.init(clips: Set(pieces), time: plan.cuts.first?.start), project: project)
         return .ok(.object(result), changed: true)

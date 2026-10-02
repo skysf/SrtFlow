@@ -228,7 +228,7 @@
 "Detach the audio onto its own track" = "把声音分离到独立音轨";
 "Main track magnet (auto close gaps)" = "主轨磁吸（自动合拢空隙）";
 "Auto snapping while dragging" = "拖动时自动吸附";
-"Linkage: detached audio moves with its video" = "链接：分离的音频跟着视频一起动";
+"Linkage: what sits on a V1 clip moves and deletes with it" = "联动：压在主轨块上的字幕、文字、音效等跟着它挪、跟着它删";
 "Follow the playhead during playback (page the timeline when it reaches the edge)" = "播放时跟随播放头（播放头快出视口时时间线翻页）";
 "Zoom out" = "缩小时间线";
 "Zoom in" = "放大时间线";

@@ -109,7 +109,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 构建、打包、版本、授权、shell、CI | [构建与打包](docs/build/build-and-packaging.md)、[构建版本与 shell 陷阱](docs/bugfixes/2026-08-06-build-version-and-shell-traps.md)、[包内授权声明](docs/bugfixes/2026-08-06-stale-bundled-license-notice.md)、[CI 首跑与吞错](docs/bugfixes/2026-08-08-ci-first-run-sdk-and-swallowed-errors.md) |
 | 工程存盘、格式版本、素材路径、自动保存、**重建预览时开素材（`MediaAssetCache`）**、**新建 / 打开工程（切工程时清掉上一个的运行时状态、播放头归零）** | [工程文件与素材重链接](docs/architecture/video-edit-project-file.md)（四之末：运行中素材只开一次，按路径 + 文件身份认，原地改写也算换了文件；五：卸片之后播放器的时间回调晚到一拍、没挂条目就丢掉，换完整份时间线就要 `scheduleRebuild()`）、[新工程停在上一个工程的位置](docs/bugfixes/2026-09-29-new-project-keeps-old-playhead.md)、[工程生命周期事故](docs/bugfixes/2026-08-03-project-file-lifecycle.md)、[运行期素材重链接](docs/bugfixes/2026-08-08-runtime-media-relink.md)、[重建把每个素材重新打开一遍](docs/bugfixes/2026-09-25-rebuild-reopens-every-asset.md) |
 | 时间线捏合、滚动、移动、裁切（一段能裁多少、多段一起裁、链接伙伴一起裁）、吸附与对齐线（裁切也吸）、框选、点击落点（点空白 / 点块本体都移播放头，唯一入口 `VideoEditProject.seekFromTimeline`，§5f）、扫帧预览、**拖动 / 拉框进行中的视图状态（`TimelineDragBox`）**、**缩放的锚点（捏合钉指针、工具栏钉播放头）与纵向缩放（统一行高）** | [捏合缩放](docs/architecture/timeline-pinch-zoom.md)（锚点从时间线自己的滚动几何量，别按坐标 hitTest 找滚动视图；纵向缩放统一成一个高度）、[锚点从来没生效](docs/bugfixes/2026-09-26-pinch-zoom-anchor-never-applied.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§0b 会话不进时间线的 `@State`：盒子持有不订阅、块只收自己那份；§3.6 裁的算法只有 `TimelineTrim` 一份、整组一起停）、[拖动卡顿与落点](docs/bugfixes/2026-08-09-timeline-clip-drag-lag-and-alignment.md) 、[拖文件进轨道](docs/plans/2026-09-22-media-file-drop.md)、[裁切不跟链接](docs/bugfixes/2026-09-25-trim-ignores-linked-clips.md)、[拖动会话住在时间线的 @State 里](docs/bugfixes/2026-09-25-drag-session-in-timeline-state.md) |
-| 工具栏右边那组开关（磁吸 / 吸附 / 链接 / **播放跟随**）、剪辑页字幕列表的跟随按钮、**播放时时间线跟不跟播放头**（`PlayheadFollow`、`TimelinePlayheadLines.followPlayhead`）、冒烟 / 性能场景起手的开关状态、新加一个要记住的开关 | [剪辑页上记住的开关](docs/architecture/editor-remembered-toggles.md)（默认值和记忆只有 `EditorToggles` 一份、字面量就是产品口径；脚本驱动时永远默认值、写不落盘；播放跟随默认关、只碰横向、停下不滚回、Return 回到开头照旧滚回最左）、[拖动手势 §4.5 / §5](docs/architecture/timeline-drag-gestures.md)、[预览性能 ratchet 第十二节](docs/architecture/preview-perf-ratchet.md)（时间线上只有播放头竖线和标尺把手订阅时钟） |
+| **联动**（工具栏的链子开关开着时，压在主轨块上的上层轨 / 音频轨 / 文字 / 形状 / 滤镜 / 字幕句跟着它挪、跟着它删；`TimelineLinkage` / `TimelineLinkageLanding`、`perform(deletesContent:)`、拖动计划的 `host`）、删 / 挪 / 裁 / 变速 / 定格之后别的轨跟不跟、AI 工具结果里的 `linkage` | [联动](docs/architecture/timeline-linkage.md)（跟着**画面**走不跟 id、完全在一段里的才跟、跨段的全部挪同一个量才跟、只有真删才连带删、规则只在 `perform` / `liveApply` 收尾一处、拖动中压着的东西是成员且没有障碍、撞上让开）、[方案](docs/plans/2026-10-02-timeline-linkage.md)（每条怎么定的）、[拖动手势 §3.7](docs/architecture/timeline-drag-gestures.md) |
+| 工具栏右边那组开关（磁吸 / 吸附 / **联动** / **播放跟随**）、剪辑页字幕列表的跟随按钮、**播放时时间线跟不跟播放头**（`PlayheadFollow`、`TimelinePlayheadLines.followPlayhead`）、冒烟 / 性能场景起手的开关状态、新加一个要记住的开关 | [剪辑页上记住的开关](docs/architecture/editor-remembered-toggles.md)（默认值和记忆只有 `EditorToggles` 一份、字面量就是产品口径；脚本驱动时永远默认值、写不落盘；联动默认开（2026-10-02）、播放跟随默认关、只碰横向、停下不滚回、Return 回到开头照旧滚回最左）、[联动](docs/architecture/timeline-linkage.md)、[拖动手势 §4.5 / §5](docs/architecture/timeline-drag-gestures.md)、[预览性能 ratchet 第十二节](docs/architecture/preview-perf-ratchet.md)（时间线上只有播放头竖线和标尺把手订阅时钟） |
 | 插进两条轨之间（缝拉开）、整条轨上下换位置、轨道头的拖动（换位 / 下边缘调行高） | [插入缝与整轨换位方案](docs/plans/2026-09-24-track-insert-and-reorder.md)、[拖动手势](docs/architecture/timeline-drag-gestures.md)（§5h 插入缝、§5i 整轨换位）、[视频轨对等化](docs/architecture/video-tracks.md)（轨道头这一列）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（轨道头的行每跳不重算，别往它的输入里塞闭包） |
 | 编辑器分栏、预览区/时间线的行结构与最小高度 | [播放条压到工具栏上](docs/bugfixes/2026-08-12-preview-transport-row-overlap.md) |
 | 预览变换、叠化、上层视频轨、导出滤镜、**预览合成往合成轨上接东西（只从末尾接、合成完裁到总长、换格子别改成四舍五入、切片表按格子去重、主轨接缝不到 0.01 秒的零头不算空隙）** | [预览自由变换](docs/architecture/preview-free-transform.md)（「一份时间账」：多一格就黑屏）、[加了音效预览整个黑屏](docs/bugfixes/2026-09-27-preview-black-after-audio-tick-pushed-past-end.md)、[叠化 + 关键帧之后预览全黑](docs/bugfixes/2026-09-29-preview-black-slice-boundaries-straddle-a-tick.md)（边界各自截断落在相邻两格；两条管线同一个 `mainGapTolerance`）、[视频轨对等化](docs/architecture/video-tracks.md)、[关键帧动画](docs/architecture/keyframe-animation.md)、[Transform 复审](docs/bugfixes/2026-08-04-transform-review.md)、[预渲染复审](docs/bugfixes/2026-08-05-export-prerender-review.md) |
@@ -252,9 +253,11 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   `checks/timeline-drag-wiring.sh` 的缩放一节（`checks/timeline-drag-wiring/zoom.sh`），记住的开关 / 播放跟随的接线
   （默认值的字面量、只从 `EditorToggles` 读写、工具栏四个开关在小视图里、播放头竖线里推横向滚动正好两处）在
   `checks/timeline-drag-wiring/toggles.sh`。
-- 时间线吸附、框选命中与生产落点，以及点一下播放头落到哪（全局夹紧、点块不出这一块：`TimelineSeek`）：`scripts/check-timeline-snap.sh`；拖动/框选
-  接线扫描：`checks/timeline-drag-wiring.sh`（拆在 `checks/timeline-drag-wiring/` 下的几节一起
-  `source` 进来，含「拖动会话不进时间线的 @State」`drag-box.sh`）。
+- 时间线吸附、框选命中与生产落点，以及点一下播放头落到哪（全局夹紧、点块不出这一块：`TimelineSeek`），还有**联动**（压在主轨块上的东西跟着
+  它的画面走：删 / 换位 / 切删 / 裁头 / 变速 / 定格 / 粘贴的同素材新段不算 / 撞上让开 / 拖动计划的名单，第 1f 组 `checks/TimelineSnap/Linkage.swift`）：
+  `scripts/check-timeline-snap.sh`；拖动/框选接线扫描：`checks/timeline-drag-wiring.sh`（拆在 `checks/timeline-drag-wiring/` 下的几节一起
+  `source` 进来，含「拖动会话不进时间线的 @State」`drag-box.sh`、联动的接线 `linkage.sh`：`perform` / `liveApply` 收尾调 `TimelineLinkage.follow`、
+  只有 ⌫ / delete_items / cut_speech 传 `deletesContent: true`、三个拖动计划带上压着的东西）。
 - **进程内 GUI 冒烟**（人在用这台机器时也能跑：不动鼠标、不抢前台，按步骤表点 / 拖 / 滚 / 按键，
   结果里带选择、各段位置和每个视图重算了几次）：`scripts/gui-smoke/in-process/run.sh <步骤.json> [工程拷贝]`。
   **要图形会话，不在 `check-all.sh` 里**；格式与坑见 [GUI 冒烟流程](docs/testing/gui-smoke-testing.md)「四之六」。
@@ -393,6 +396,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   探每个源的关键帧间隔 + 这台机器的解码速度，只转长 GOP 的源、只转时间线用到的块（源时间 10 秒一块）、原分辨率 H.264 0.5 秒一个关键帧无 B 帧、
   4K 减半、HDR 出 HEVC Main10；builder 按段换源、转好之前照用原片、停着时才换；预览窗口「优化媒体 / 原片」默认优化、成片永远原片；
   缓存 ~/Library/Caches 上限 10 GB、LRU、30 天不用自动删；探针数字（关键帧 0.5 秒 → seek 27–36 ms）、自检、三刀。
+- [联动：主轨块挪到哪、删没删，压在它上面的东西跟着走](docs/plans/2026-10-02-timeline-linkage.md) — 2026-10-02 用户要「和剪映一样」、授权我按用户体验定全部细节：
+  跟着画面走不跟块的 id（分割 / cut_speech / 定格切出来的新 id 照样认）、完全在一段里的才跟、跨段的全部挪同一个量才跟（配乐铺整片永远不被顺手删掉）、
+  只有真删才连带删（裁切让画面没了的留在原地）、单向、撞上让开、同一个开关语义扩大且默认改成开、AI 按开关走、一处收口（`perform` 收尾）；
+  场景表就是自检的用例。
 - [界面语言：加西班牙语、法语、土耳其语，按系统自动选](docs/plans/2026-09-30-ui-languages.md) — 2026-09-30 用户定：「按系统自动选」本来就有（`.system` + 包里的 `.lproj`）；
   先一个 PR 把枚举和守卫改成任意多种语言，再先做西班牙语一种在真窗口看排版、之后定法语 / 土耳其语；泛化的 `es` / `fr` / `tr`；
   译文由 AI 出、**用户不做审核、直接算正式、不标 Beta**；复数和小数点先照英文。风险：法 / 西比英文长两到三成而检查器是窄栏、每个 PR 从此要给每种语言译文。
@@ -415,7 +422,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [音频引擎](docs/architecture/audio-engine.md) — 时间线的声音只有这一份：预览实时播、成片离线渲（`Sources/SrtFlow/AudioEngine/`；2026-10-01 PR3b 起 AVPlayer 那条声音路删了，播放器的合成里只有画面）：配置是从时间线算出来的纯值（自己排序、展开转场；增益表 `AudioGainTable.swift`）、播放头只是几个数（锚点）、渲染块实时安全、喂样在普通线程、一段一条流、不缓存、离线和实时同一张图；声音是主时钟、视频 `setRate` 钉到引擎；配乐比画面长时 builder 垫黑底铺到总长；电平表是无锁槽；引擎的时钟只从渲染块的时间戳来（声卡 44.1 kHz 的采样时间不能拿来算 48 kHz 的位置）；自检对着纯 Swift 的 oracle 混音器比。
 - [fal.ai 生成](docs/architecture/fal-generation.md) — Key（钥匙串：只读属性不弹框、读密钥每个新签名弹一次、`.silent` / `.interactive` 两档、`FalKeyCache` 一次运行最多弹一次、别改成 `LAContext`）、每日上限（只设每天的、额度内不问、超了 / 价格不明先在提示条上问、决定和记账同一步、没做出来的退回）、模型表（2026-09-29 用户定：视频只用 `minimax/h3-max/`、其余各类当前最新的；挑法、价格、更新办法）、请求体对着接口定义快照验、队列接口（照 fal 给的地址、取消要在 detached Task 里发）、`generate_media`（任务、成品放哪、不改工程）、清单跟着 Key 走（`mcp-providers.json`、`list_changed`、缓存一分钟）、配旁白三档与克隆、已知不足（真 Key 第一次要对的六条）、回归与人工清单。
 - [合成音效](docs/architecture/sound-effect-synth.md) — SrtFlow 自己合成的 16 个剪辑动效音（AI 用 `add_clips` 的 `sound_effect`）：落点 `hit_at` 是合同（自检钉 ±25 ms）、混响按干声峰值比例混、峰值 −1 dBFS + K 加权 ≤ −9 LUFS、同参数同种子同文件（改声音要 +1 version 并再给用户听）、默认都短、写文件只经 `AIAudioFileWriter`、渲染在 `MediaReadQueue.analysis`；riser / downlifter 照 ElevenLabs 参照量出来的形状做。
-- [剪辑页上记住的开关](docs/architecture/editor-remembered-toggles.md) — 2026-10-01 用户拍板：播放跟随是开关、默认关（关着播放头走出视口、停下不滚回；开着翻页式，`PlayheadFollow` 纯值、只碰横向；Return 回到开头照旧滚回最左）；磁吸 / 吸附 / 链接 / 播放跟随四个工具栏开关和剪辑页字幕列表的跟随按钮都记在 UserDefaults，键、默认值、读写只有 `EditorToggles` 一份（默认值的字面量就是产品口径）；冒烟 / 性能场景起手永远默认值、拨了不落盘；加一个记住的开关怎么做；人工回归。
+- [联动：压在主轨块上的东西跟着它的画面走](docs/architecture/timeline-linkage.md) — 2026-10-02 起「联动」开关（原「链接」，默认开）：十条规矩（跟着画面走、完全在一段里的才跟、
+  跨段的全部挪同一个量才跟、真删才删、这次操作碰过的不再碰、撞上让开、规则只在 `TimelineLinkage.follow` 一处且钩在 `perform` / `liveApply` 收尾、拖动中压着的东西是没有障碍的成员并按宿主的实际落点再平、
+  哪些算「任何东西」、关着只剩显式链接组）、场景表、给 AI 的那一面（`get_timeline` 的 `linkage`、结果里的 `linkage`）、已知不足、守卫、人工回归。
+- [剪辑页上记住的开关](docs/architecture/editor-remembered-toggles.md) — 2026-10-01 用户拍板：播放跟随是开关、默认关（关着播放头走出视口、停下不滚回；开着翻页式，`PlayheadFollow` 纯值、只碰横向；Return 回到开头照旧滚回最左）；磁吸 / 吸附 / 联动（2026-10-02 起默认开）/ 播放跟随四个工具栏开关和剪辑页字幕列表的跟随按钮都记在 UserDefaults，键、默认值、读写只有 `EditorToggles` 一份（默认值的字面量就是产品口径）；冒烟 / 性能场景起手永远默认值、拨了不落盘；加一个记住的开关怎么做；人工回归。
 - [时间线缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案、**锚点**（捏合钉指针底下那一刻、工具栏钉播放头，滚动视图只从 `TimelineScrollGeometry` 拿、`keepAnchored` 同一拍挪 + 下一轮补挪）、**纵向缩放**（⌥ 捏合 / ⌥ + Ctrl + 滚轮 / ⌘↓ ⌘↑，视频和音频轨统一成一个高度、细行不变、按行认锚点）、人工回归清单。
 - [时间线上的复制 / 剪切 / 粘贴](docs/architecture/timeline-clipboard.md) — 能拷什么（标记、转场跟着段走）、入口（编辑菜单在响应链末端、右键菜单是函数不是视图）、系统剪贴板一套自己的类型且不写纯文本（滤镜那套并进来了）、落点鼠标优先否则播放头（右键菜单用右键按下的那一处）、换新身份走编码往返、各类落到哪（剪辑整组同轨、撞上往上抬、画面组上下关系不变；文字 / 滤镜往上找空的；字幕句按指着的轨）、粘完选中且一步撤销、剪切 = 拷贝 + ⌫、人工回归清单。
 - [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式（版本表到 v28）、定位、脏标记与自动保存。

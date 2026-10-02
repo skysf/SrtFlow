@@ -9,4 +9,5 @@ func runSplitOutGroups() {
     checkAlignmentGuides()  // 1c：对齐点、整组外沿、磁吸也亮线（Guides.swift）
     checkTrimSnap()         // 1d：裁切的吸附与对齐线（TrimSnap.swift）
     checkSeek()             // 1e：点一下播放头落到哪（Seek.swift）
+    checkLinkage()          // 1f：联动 —— 压在主轨块上的东西跟着它的画面走（Linkage.swift）
 }

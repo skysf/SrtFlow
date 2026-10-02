@@ -240,6 +240,9 @@ struct ClipDragPlan: Equatable {
         /// 成员的障碍一起决定，绝不逐块独立夹取 —— 那样会把相对错位夹坏。
         var obstacles: [TimelineSpan]
         var kind: Kind = .clip
+        /// 联动带进来的成员压在哪段主轨块上（`TimelineLinkage.attachments`）。磁吸下那段主轨块由 `packMain` 定位，
+        /// 它实际落到哪、这个成员就跟着平多少（`realignCompanions`）；nil = 不是联动带进来的。
+        var host: UUID? = nil
     }
 
     /// 被直接拖的那个（跨轨落地搬的是它，跟随块只做水平平移）。
@@ -338,6 +341,27 @@ struct ClipDragPlan: Equatable {
         for cue in cues where !existing.contains(cue.id) {
             plan.members.append(Member(id: cue.id, span: cue.span, obstacles: [], kind: .subtitleCue))
         }
+        return plan
+    }
+
+    /// 把**联动**带进来的成员挂进计划（压在被拖的主轨块上的段 / 形状 / 文字 / 字幕句 / 滤镜，
+    /// `TimelineLinkage.attachments`）。都不带障碍：它们只是跟着走，不许反过来挡住主轨块的拖动 —— 撞上了松手之后
+    /// 由 `TimelineLinkageLanding` 让开。每个记着自己的 `host`，磁吸下按那段主轨块实际落到哪再平一次。
+    /// 已经在计划里的（框选一起选中的）不重复挂。纯值函数，自检直接调。
+    func adding(attachments: TimelineLinkage.Attachments) -> ClipDragPlan {
+        var plan = self
+        var existing = Set(plan.members.map(\.id))
+        func add(_ list: [TimelineLinkage.Attachment], _ kind: Member.Kind) {
+            for item in list where !existing.contains(item.id) {
+                plan.members.append(Member(id: item.id, span: item.span, obstacles: [], kind: kind, host: item.host))
+                existing.insert(item.id)
+            }
+        }
+        add(attachments.clips, .clip)
+        add(attachments.filters, .filter)
+        add(attachments.shapes, .shape)
+        add(attachments.texts, .text)
+        add(attachments.cues, .subtitleCue)
         return plan
     }
 

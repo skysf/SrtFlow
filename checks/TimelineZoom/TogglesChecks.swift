@@ -17,8 +17,8 @@ func runEditorTogglesChecks() {
     // 1. 默认值 = 产品口径：只开吸附（2026-09-18），播放跟随、字幕列表跟随默认关（2026-10-01）。
     check(Key.allCases.count == 5, "五个开关，一个不多一个不少（加开关要同步这里和文档）")
     check(Key.magnet.defaultValue == false, "磁吸默认关：用户的剪法要留间隙")
-    check(Key.snapping.defaultValue == true, "吸附默认开：五个里只有它默认开")
-    check(Key.linkage.defaultValue == false, "链接默认关：默认会把分离出来的音频一起拖走")
+    check(Key.snapping.defaultValue == true, "吸附默认开：它不改任何自动行为")
+    check(Key.linkage.defaultValue == true, "联动默认开（2026-10-02，同剪映）：关着剪掉一段之后后面的字幕、音效全错位")
     check(Key.followPlayhead.defaultValue == false, "播放跟随默认关：播放时轨道区域停在哪就停在哪")
     check(Key.subtitleListFollows.defaultValue == false, "字幕列表默认不跟着播放滚")
     check(Set(Key.allCases.map(\.rawValue)).count == Key.allCases.count, "五个键互不相同")
