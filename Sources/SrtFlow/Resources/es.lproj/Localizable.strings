@@ -228,7 +228,7 @@
 "Detach the audio onto its own track" = "Separar el audio a su propia pista";
 "Main track magnet (auto close gaps)" = "Imán de la pista principal (cierra los huecos)";
 "Auto snapping while dragging" = "Ajuste automático al arrastrar";
-"Linkage: detached audio moves with its video" = "Vínculo: el audio separado se mueve con su video";
+"Linkage: what sits on a V1 clip moves and deletes with it" = "Vinculación: lo que está sobre un clip de V1 se mueve y se borra con él";
 "Follow the playhead during playback (page the timeline when it reaches the edge)" = "Seguir el cabezal durante la reproducción (la línea de tiempo pasa de página al llegar al borde)";
 "Zoom out" = "Alejar";
 "Zoom in" = "Acercar";

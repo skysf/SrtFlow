@@ -1,4 +1,4 @@
-# 剪辑页上记住的开关：磁吸 / 吸附 / 链接 / 播放跟随，和字幕列表的跟随
+# 剪辑页上记住的开关：磁吸 / 吸附 / 联动 / 播放跟随，和字幕列表的跟随
 
 > 2026-10-01 用户拍板。来由：播放预览时白色播放头走到视口右边，时间线自己翻了一页，用户要
 > 「正常播放，但轨道区域停在哪里就停在哪，不要去动」。顺带把工具栏那几个开关从「每次启动回到默认」
@@ -12,7 +12,7 @@
 | 2 | 停下来时播放头在视口外：**不动** | 按空格停下多半是想看眼前这一块。想找播放头，以后可以加「滚到播放头」的快捷键，这次不做 |
 | 3 | 剪辑页的字幕列表「播放时滚到正在说的那句」：**默认关**、按钮留着、记住。烧录页的字幕表**不动**（默认跟、不记） | 烧录页上跟着看字幕是核对的主要用法 |
 | 4 | Return / Home 回到开头照旧滚回最左，播放中按也滚 | 那是用户自己按的，开关不管它 |
-| 5 | 磁吸、吸附、链接、播放跟随**四个工具栏开关一起记住**（UserDefaults，全 App 一份，不进工程文件）；字幕列表那个也记 | 用户：「这四个最好一起都是被记住的」。此前三个每次启动回到默认（[拖动手势 §4.5](timeline-drag-gestures.md) 2026-09-18 口径里「不写 UserDefaults」那一句作废，默认值不变） |
+| 5 | 磁吸、吸附、链接（2026-10-02 起叫联动）、播放跟随**四个工具栏开关一起记住**（UserDefaults，全 App 一份，不进工程文件）；字幕列表那个也记 | 用户：「这四个最好一起都是被记住的」。此前三个每次启动回到默认（[拖动手势 §4.5](timeline-drag-gestures.md) 2026-09-18 口径里「不写 UserDefaults」那一句作废，默认值不变） |
 
 磁吸记住为开的一个后果：启动后打开一个主轨有缝的工程，缝会在**第一次改动**时被合上（`perform` 之后的
 `packMain`）—— 和现在同一次运行里换工程是一样的行为，不另加「打开就合」（那会在打开时改工程、标脏、进撤销栈）。
@@ -25,12 +25,14 @@
 | --- | --- | --- | --- |
 | `.magnet` | `magnetEnabled` | 关 | `VideoEditProject.magnetEnabled`（`didSet` 回写，顺带 `packMain`） |
 | `.snapping` | `snappingEnabled` | **开** | `VideoEditProject.snappingEnabled` |
-| `.linkage` | `linkageEnabled` | 关 | `VideoEditProject.linkageEnabled` |
+| `.linkage` | `linkageEnabled` | **开**（2026-10-02 起） | `VideoEditProject.linkageEnabled`（联动，[timeline-linkage.md](timeline-linkage.md)） |
 | `.followPlayhead` | `timelineFollowsPlayhead` | 关 | `VideoEditProject.timelineFollowsPlayhead` → 时间线按值传给 `TimelinePlayheadLines(follows:)` |
 | `.subtitleListFollows` | `subtitleListFollowsPlayback` | 关 | `VideoEditSubtitlePanel` 的 `@State followsPlayback`（`onChange` 回写） |
 
-- **默认值的字面量就是产品口径**：磁吸默认关是因为这个用户的剪法就是留着间隙，链接默认关是因为分离音频就是
-  为了单独动它，吸附默认开是因为它不改任何自动行为（2026-09-18）；播放跟随、字幕列表跟随默认关（2026-10-01）。
+- **默认值的字面量就是产品口径**：磁吸默认关是因为这个用户的剪法就是留着间隙，吸附默认开是因为它不改任何自动行为
+  （2026-09-18）；播放跟随、字幕列表跟随默认关（2026-10-01）；**联动默认开**（2026-10-02，同剪映：压在主轨块上的东西跟着
+  它挪、跟着它删，关着剪掉一段之后后面的字幕、音效全错位；以前叫「链接」、默认关，理由「分离音频就是为了单独动它」在联动下
+  照样成立 —— 拖音频本身永远只动音频）。
   顺手「改回 true」会静默改掉整个剪辑手感，所以守卫按字面量钉。
 - 没记过、或记的不是布尔 → 默认值。写回只在 `didSet` / `onChange` 里，拨一下记一下。
 - 这几个键**别处不许**拿字符串直接去 `UserDefaults` / `@AppStorage` 读：那样就绕开了下一节的规矩（守卫钉着）。

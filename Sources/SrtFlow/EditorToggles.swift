@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 剪辑页上记住的开关
 //
-// 管什么：工具栏的磁吸 / 吸附 / 链接 / 播放跟随，和字幕列表的「播放时滚到正在说的那句」——
+// 管什么：工具栏的磁吸 / 吸附 / 联动 / 播放跟随，和字幕列表的「播放时滚到正在说的那句」——
 // 每个开关的键、默认值、怎么读回来、怎么记下去。记在 UserDefaults（全 App 一份，不进工程文件），
 // 2026-10-01 用户拍板：四个工具栏开关一起记住、字幕列表那个也记，新加的「播放跟随」默认关。
 // 不管什么：拨了之后做什么（磁吸合拢主轨在 VideoEditProject、翻页在 TimelinePlayheadLines、
@@ -20,7 +20,9 @@ enum EditorToggles {
         case magnet = "magnetEnabled"
         /// 拖动时吸附。默认开：只在边缘附近帮忙对齐，不改任何自动行为。
         case snapping = "snappingEnabled"
-        /// 链接：分离出来的音频跟着视频走。默认关：分离本来就是为了单独动它。
+        /// 联动：压在主轨块上的东西（上层轨 / 音频轨的段、文字、形状、滤镜、字幕句）跟着它挪、跟着它删，分离出来的音频照旧
+        /// 跟着视频走。默认开（2026-10-02，同剪映）：没有它，剪掉一段之后后面的字幕、音效全错位；拖音频本身永远只动音频，
+        /// 所以「分离音频是为了单独动它」照样成立（docs/architecture/timeline-linkage.md）。
         case linkage = "linkageEnabled"
         /// 播放时时间线跟着播放头翻页。默认关：播放时轨道区域停在哪就停在哪（2026-10-01 拍板）。
         case followPlayhead = "timelineFollowsPlayhead"
@@ -33,7 +35,7 @@ enum EditorToggles {
             switch self {
             case .magnet: false
             case .snapping: true
-            case .linkage: false
+            case .linkage: true
             case .followPlayhead: false
             case .subtitleListFollows: false
             }

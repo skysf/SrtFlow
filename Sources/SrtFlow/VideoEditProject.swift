@@ -442,25 +442,34 @@ final class VideoEditProject {
 
     // MARK: - 所有修改的必经之路
 
-    /// 一步到位的修改：登记撤销、磁吸排列、重建预览。
+    /// 一步到位的修改：登记撤销、磁吸排列、联动、重建预览。
     /// `rebuildsPreview: false` 给只影响叠层（形状）不影响 AV 合成的改动。
-    func perform(rebuildsPreview: Bool = true, _ mutate: (inout TimelineState) -> Void) {
+    /// `deletesContent`：这次是真删（⌫、AI 的 delete_items / cut_speech）—— 联动开着时压在被删画面上的东西一起删；
+    /// 别的改动（裁切、变速）让画面没了的，东西留在原地（docs/architecture/timeline-linkage.md）。返回联动挪了 / 删了几样。
+    @discardableResult
+    func perform(
+        rebuildsPreview: Bool = true, deletesContent: Bool = false, _ mutate: (inout TimelineState) -> Void
+    ) -> TimelineLinkage.Report {
         // 有连续编辑挂着（比如滑块拖到一半直接点了按钮）就先把它结成一步。
         endLiveEdit(rebuildsPreview: false)
         let before = state
         var next = state
         mutate(&next)
         if magnetEnabled { next.packMain() }
+        // 联动：主轨的画面挪了，压在上面、这次没被碰过的东西跟着挪 / 删 —— 磁吸合拢之后、补色之前。
+        let linkage = linkageEnabled
+            ? TimelineLinkage.follow(from: before, to: &next, deletesContent: deletesContent) : TimelineLinkage.Report()
         next.assignMissingTrackColors()
-        guard next != before else { return }
+        guard next != before else { return linkage }
         let audioOnly = next.differsOnlyInAudioMix(from: before)
         registerUndo(before)
         state = next
         if rebuildsPreview {
             // 只动了音量/渐变就别重建：重建要 replaceCurrentItem，画面会闪一下。
-            if audioOnly, refreshAudioMix() { return }
+            if audioOnly, refreshAudioMix() { return linkage }
             scheduleRebuild()
         }
+        return linkage
     }
 
     // MARK: - 连续修改（拖动、滑块）
@@ -479,9 +488,12 @@ final class VideoEditProject {
     /// 从快照出发应用一次完整修改。反复调用不会叠加。
     func liveApply(_ mutate: (inout TimelineState) -> Void) {
         beginLiveEdit()
-        guard var next = liveEditSnapshot else { return }
+        guard let snapshot = liveEditSnapshot else { return }
+        var next = snapshot
         mutate(&next)
         if magnetEnabled { next.packMain() }
+        // 联动（同 `perform`）：裁主轨块的头尾、拖转场把手时，压在上面的东西实时跟着画面走；连续编辑从不真删。
+        if linkageEnabled { TimelineLinkage.follow(from: snapshot, to: &next, deletesContent: false) }
         next.assignMissingTrackColors()
         state = next
     }
@@ -536,13 +548,16 @@ final class VideoEditProject {
         // 被拖的块在选中集合里时，框选一起选中的形状和字幕 cue 也跟着走。
         // 拖一个**没**选中的块是单选它（见 `beginClipDrag`），那时候不带任何伙伴。
         let companions = movingCompanions(draggedID: id, movingClipIDs: movingIDs)
+        // 联动：压在要动的主轨块上的东西也是成员（实时跟着画、没有障碍、不当吸附参考点）。
+        let attached = linkedAttachments(of: movingIDs)
         return ClipDragPlan.make(
             in: state,
             draggedID: id,
             movingIDs: movingIDs,
-            candidates: snapCandidates(moving: movingIDs.union(companions.ids)),
+            candidates: snapCandidates(moving: movingIDs.union(companions.ids).union(attached.ids)),
             magnetMain: slot.isMain && magnetEnabled
         )?.adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
+        .adding(attachments: attached)
     }
 
     /// 形状块的拖动会话。形状行允许重叠，所以没有障碍；其余（冻结候选、
@@ -565,13 +580,15 @@ final class VideoEditProject {
         // 整组的可行位移由所有成员一起决定（`fittedDelta`）。
         let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .shape)]
             + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
+        let attached = linkedAttachments(of: clipIDs)
         return ClipDragPlan(
             draggedID: id,
             draggedSpan: span,
             members: members,
-            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
+            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union(attached.ids).union([id])),
             magnet: nil
         ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
+        .adding(attachments: attached)
     }
 
     /// 字幕 cue 块的拖动会话。与形状那条严格对称 —— cue 行不参与碰撞，所以
@@ -594,13 +611,15 @@ final class VideoEditProject {
         let companions = movingCompanions(draggedID: id, movingClipIDs: clipIDs)
         let members = [ClipDragPlan.Member(id: id, span: span, obstacles: [], kind: .subtitleCue)]
             + ClipDragPlan.clipMembers(in: state, movingIDs: clipIDs)
+        let attached = linkedAttachments(of: clipIDs)
         return ClipDragPlan(
             draggedID: id,
             draggedSpan: span,
             members: members,
-            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union([id])),
+            candidates: snapCandidates(moving: clipIDs.union(companions.ids).union(attached.ids).union([id])),
             magnet: nil
         ).adding(shapes: companions.shapes, texts: companions.texts, cues: companions.cues, filters: companions.filters)
+        .adding(attachments: attached)
     }
 
     /// 形状 / 文字 / 字幕 cue 起手的拖动落地：一步撤销。
@@ -1003,7 +1022,7 @@ final class VideoEditProject {
         guard !clipIDs.isEmpty || !shapeIDs.isEmpty || !textIDs.isEmpty || !cueIDs.isEmpty || !filterIDs.isEmpty else { return }
         // 只删形状/文字/字幕时不重建预览：三者都不参与 AV 合成（叠层是 SwiftUI
         // 画的），白重建一次会让画面黑一下。
-        perform(rebuildsPreview: !clipIDs.isEmpty) { state in
+        perform(rebuildsPreview: !clipIDs.isEmpty, deletesContent: true) { state in
             for member in clipIDs { state.remove(member) }
             if !shapeIDs.isEmpty { state.shapes.removeAll { shapeIDs.contains($0.id) } }
             if !textIDs.isEmpty { state.textOverlays.removeAll { textIDs.contains($0.id) }; state.compactTextRows() }
@@ -1013,72 +1032,6 @@ final class VideoEditProject {
             }
         }
         selection.clear()
-    }
-
-    func setSpeed(_ id: UUID, speed: Double) {
-        let clamped = min(max(speed, 0.1), 8)
-        let ids = linkageEnabled ? state.linkedClipIDs(of: id) : [id]
-        perform { state in
-            for member in ids {
-                state.update(member) { $0.speed = clamped }
-            }
-        }
-    }
-
-    func setVolume(_ id: UUID, volume: Double) {
-        perform { state in
-            state.update(id) { $0.volume = min(max(volume, 0), 2) }
-        }
-    }
-
-    func setMuted(_ id: UUID, muted: Bool) {
-        perform { state in
-            state.update(id) { $0.isMuted = muted }
-        }
-    }
-
-    /// 声音渐入/渐出（时间线秒）。文本提交和箭头点击走这条，一次一步撤销。
-    func setAudioFade(_ id: UUID, edge: AudioFadeEdge, seconds: Double) {
-        perform(audioFadeMutation(id, edge: edge, seconds: seconds))
-    }
-
-    /// Inspector 数值框横向拖调用：同 `setAudioFade`，整次拖动结成一步。
-    func liveSetAudioFade(_ id: UUID, edge: AudioFadeEdge, seconds: Double) {
-        liveApply(audioFadeMutation(id, edge: edge, seconds: seconds))
-    }
-
-    /// 夹紧只写在这一份里，discrete 和 live 永不分叉（Inspector 数值框合同）。
-    /// 这里只挡住负数和 NaN，「不超过段长」由 `EditClip.audioFades` 在读侧统一
-    /// 收口 —— 存的是用户设的意图，段被拉长之后渐变应当跟着恢复，而不是在
-    /// 写入那一刻就被当时的段长永久截短。
-    private func audioFadeMutation(
-        _ id: UUID, edge: AudioFadeEdge, seconds: Double
-    ) -> (inout TimelineState) -> Void {
-        let clamped = max(0, seconds.isFinite ? seconds : 0)
-        return { state in
-            state.update(id) { clip in
-                switch edge {
-                case .fadeIn: clip.fadeInDuration = clamped
-                case .fadeOut: clip.fadeOutDuration = clamped
-                }
-            }
-        }
-    }
-
-    /// 把视频段的声音分离成音频轨上的一段，两边用链接组绑在一起。
-    func detachAudio(from id: UUID) {
-        guard let clip = state.clip(with: id), !clip.isAudioOnly, clip.hasAudio, !clip.isMuted else { return }
-        perform { state in
-            let group = clip.linkGroup ?? UUID()
-            // 源还是那个视频文件，isAudioOnly 只表示这段只取它的声音。
-            // 音量 / 曲线 / 渐变跟着声音走（见 `EditClip.detachedAudio`）。
-            let detached = clip.detachedAudio(linkGroup: group)
-            state.update(id) { original in
-                original.isMuted = true
-                original.linkGroup = group
-            }
-            _ = state.place(detached, intoAudio: true)
-        }
     }
 
     /// 垂直拖动的落点：某条现有轨，或者在最上/最下开一条新轨。

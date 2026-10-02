@@ -86,8 +86,8 @@ public enum MCPTimelineTools {
                 .freezeFrame, title: "Freeze frame",
                 description: """
                 Hold the picture at a moment: the clip is cut there and a still of that exact frame is inserted for duration \
-                seconds (default 2); later clips on the same track move right by that much (other tracks, texts and subtitles \
-                stay). Without clip_id it freezes the V1 clip at that time. Not for audio, images, hidden clips, or a moment \
+                seconds (default 2); later clips on the same track move right by that much (with Linkage on, what sits on \
+                those later V1 clips moves too; off, other tracks stay). Without clip_id it freezes the V1 clip at that time. Not for audio, images, hidden clips, or a moment \
                 inside a V1 transition. The still is a PNG next to the project. To end on a clip's last frame, give a time \
                 inside that frame: a leftover shorter than one frame is dropped, a longer one keeps playing after the still \
                 (tail_id in the result).
@@ -103,7 +103,9 @@ public enum MCPTimelineTools {
                 .deleteItems, title: "Delete",
                 description: """
                 Delete clips, texts, filters or subtitle lines by id; kinds can be mixed. ripple=true closes the gaps this \
-                leaves on V1 by moving the later V1 clips left (other tracks, texts, filters and subtitles stay).
+                leaves on V1 by moving the later V1 clips left. With Linkage on (the user's toolbar toggle, on by default; \
+                get_timeline shows it) whatever sits on a deleted V1 clip is deleted with it and whatever sits on moved V1 \
+                clips moves along; off, other tracks stay. The result says what followed.
                 """,
                 input: MCPSchema.object([
                     "ids": MCPSchema.array(of: MCPSchema.string("Id from get_timeline or get_subtitles."), "What to delete.", minItems: 1),

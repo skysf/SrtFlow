@@ -71,7 +71,7 @@ struct ToolbarToggle: View {
 
 // MARK: - 工具栏右边那组开关
 
-/// 磁吸 / 吸附 / 链接 / 播放跟随四个开关。单拎成小视图：拨一个只重算这一小块，不叫醒整个编辑器；
+/// 磁吸 / 吸附 / 联动 / 播放跟随四个开关。单拎成小视图：拨一个只重算这一小块，不叫醒整个编辑器；
 /// 四个都记在 `EditorToggles`（默认值也在那儿），这里只是把它们摆出来。
 struct TimelineToolbarToggles: View {
     @Bindable var project: VideoEditProject
@@ -80,7 +80,7 @@ struct TimelineToolbarToggles: View {
         let _ = PerfCounters.body(Self.self)
         ToolbarToggle(icon: "arrow.right.and.line.vertical.and.arrow.left", help: "Main track magnet (auto close gaps)", isOn: $project.magnetEnabled)
         ToolbarToggle(icon: "arrow.down.to.line.compact", help: "Auto snapping while dragging", isOn: $project.snappingEnabled)
-        ToolbarToggle(icon: "link", help: "Linkage: detached audio moves with its video", isOn: $project.linkageEnabled)
+        ToolbarToggle(icon: "link", help: "Linkage: what sits on a V1 clip moves and deletes with it", isOn: $project.linkageEnabled)
         // 播放跟随默认关（2026-10-01 用户拍板）：开着时播放头快出视口就翻一页，关着时轨道区域停在哪就停在哪。
         ToolbarToggle(
             icon: "arrow.right.to.line", help: "Follow the playhead during playback (page the timeline when it reaches the edge)",

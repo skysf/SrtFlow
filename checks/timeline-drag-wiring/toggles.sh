@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# checks/timeline-drag-wiring.sh 的一节：剪辑页上记住的开关（磁吸 / 吸附 / 链接 / 播放跟随 + 字幕列表的跟随）
+# checks/timeline-drag-wiring.sh 的一节：剪辑页上记住的开关（磁吸 / 吸附 / 联动 / 播放跟随 + 字幕列表的跟随）
 # 和播放跟随的接线。
 #
 # **不单独跑**：由 timeline-drag-wiring.sh 用 `source` 装进来，共用它的 fail / grep_code / require_func
 # 和路径变量（PROJECT、PLAYHEAD、VIEW …）。默认值和记忆的纯值规则由 scripts/check-timeline-zoom.sh 第 4 节钉；
 # 这里钉「接没接对」。长期约束见 docs/architecture/editor-remembered-toggles.md。
 #
-# 默认值是产品口径（2026-09-18：只开吸附；2026-10-01：播放跟随、字幕列表跟随默认关，四个工具栏开关一起记住）：
+# 默认值是产品口径（2026-09-18：吸附开、磁吸关；2026-10-01：播放跟随、字幕列表跟随默认关，四个工具栏开关一起记住；
+# 2026-10-02：联动默认开）：
 # 顺手「改回 true」会静默改掉整个剪辑手感，所以字面量钉在 EditorToggles 里、这里再对一遍。
 
 TOGGLES="Sources/SrtFlow/EditorToggles.swift"
@@ -22,9 +23,9 @@ done
 grep_code '^            case \.magnet: false' "$TOGGLES" \
   || fail "磁吸的默认值不是关：用户的剪法要留间隙，默认合拢会把间隙吃掉"
 grep_code '^            case \.snapping: true' "$TOGGLES" \
-  || fail "吸附的默认值不是开：五个开关里只有它该默认开着"
-grep_code '^            case \.linkage: false' "$TOGGLES" \
-  || fail "链接的默认值不是关：默认会把分离出来的音频一起拖走"
+  || fail "吸附的默认值不是开：它不改任何自动行为"
+grep_code '^            case \.linkage: true' "$TOGGLES" \
+  || fail "联动的默认值不是开（2026-10-02 拍板，同剪映）：关着剪掉一段之后后面的字幕、音效全错位"
 grep_code '^            case \.followPlayhead: false' "$TOGGLES" \
   || fail "播放跟随的默认值不是关：用户拍板播放时轨道区域停在哪就停在哪"
 grep_code '^            case \.subtitleListFollows: false' "$TOGGLES" \

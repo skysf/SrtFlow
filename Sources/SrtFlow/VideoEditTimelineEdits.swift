@@ -544,14 +544,19 @@ extension TimelineState {
         guard magnet else { return move(plan.members, by: actual) }
 
         let pinned = Set(mainClips.map(\.id))
-        // 被 packMain 排过的主轨成员：各自实际挪了多少，它的链接伙伴就挪多少。
+        // 被 packMain 排过的主轨成员：各自实际挪了多少，它的链接伙伴和联动压在它上面的东西（`host`）就挪多少。
         var followers: [UUID: Double] = [:]
+        var hostDeltas: [UUID: Double] = [:]
         for member in plan.members where pinned.contains(member.id) {
             guard let clip = clip(with: member.id) else { continue }
             let delta = clip.timelineStart - member.span.start
+            hostDeltas[member.id] = delta
             for partner in linkedClipIDs(of: member.id) where !pinned.contains(partner) {
                 followers[partner] = delta
             }
+        }
+        for member in plan.members where !pinned.contains(member.id) {
+            if let host = member.host, let delta = hostDeltas[host] { followers[member.id] = delta }
         }
         for member in plan.members {
             guard let delta = followers[member.id] else { continue }

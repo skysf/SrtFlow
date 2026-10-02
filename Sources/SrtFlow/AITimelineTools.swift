@@ -23,8 +23,10 @@ enum AITimelineTools {
         )
         var summary = AITimelineSummary.make(state, context)
         let credits = AIAudioLibraryTools.projectCredits(state)
-        if !credits.isEmpty, case .object(var object) = summary {
-            object["music_credits"] = .array(credits.map { .string($0) })
+        if case .object(var object) = summary {
+            // 联动开关（docs/architecture/timeline-linkage.md）：开着时删 / 挪 V1 片段，压在上面的东西跟着；AI 要知道它在不在。
+            object["linkage"] = .bool(project.linkageEnabled)
+            if !credits.isEmpty { object["music_credits"] = .array(credits.map { .string($0) }) }
             summary = .object(object)
         }
         return .ok(summary)
@@ -341,9 +343,12 @@ enum AITimelineTools {
         let deletion = try AITimelineEdits.deletion(of: raw, in: state)
         var next = state
         AITimelineEdits.delete(deletion, ripple: try args.bool("ripple") ?? false, linkage: project.linkageEnabled, in: &next)
-        project.perform(rebuildsPreview: !deletion.clips.isEmpty) { $0 = next }
+        // 真删：联动开着时压在被删画面上的东西一起删、后面的跟着合拢（结果里带一笔，AI 不用再对一遍）。
+        let linkage = project.perform(rebuildsPreview: !deletion.clips.isEmpty, deletesContent: true) { $0 = next }
         project.clearSelection()
-        return .ok(["deleted": .number(Double(raw.count)), "timeline_duration": AIFormat.seconds(project.state.duration)], changed: true)
+        var result: [String: JSONValue] = ["deleted": .number(Double(raw.count)), "timeline_duration": AIFormat.seconds(project.state.duration)]
+        if let followed = AILinkageReport.json(linkage) { result["linkage"] = followed }
+        return .ok(.object(result), changed: true)
     }
 
     static func transition(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 时间线拖动的吸附 / 对齐线 / 主轨插入位置 / 框选命中自检：两条边都参与吸附、
-# 跟着动的块不许当参考点、指示线和落点是同一个数、框相交即选中。
+# 跟着动的块不许当参考点、指示线和落点是同一个数、框相交即选中；外加联动
+#（压在主轨块上的东西跟着它的画面走，checks/TimelineSnap/Linkage.swift）。
 #
 # 用法：
 #   scripts/check-timeline-snap.sh
@@ -66,9 +67,12 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditKeyframeEasing.swift \
   Sources/SrtFlow/VideoEditTimelineEdits.swift \
   Sources/SrtFlow/FreezeSliver.swift \
+  Sources/SrtFlow/VideoEditLinkRegrouping.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditTimelineTrim.swift \
   Sources/SrtFlow/VideoEditTimelineTrimSnap.swift \
+  Sources/SrtFlow/VideoEditTimelineLinkage.swift \
+  Sources/SrtFlow/VideoEditTimelineLinkageLanding.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditTimelineSeek.swift \
   Sources/SrtFlow/VideoEditTimelineSeams.swift \
@@ -88,6 +92,7 @@ xcrun swiftc \
   checks/TimelineSnap/Guides.swift \
   checks/TimelineSnap/TrimSnap.swift \
   checks/TimelineSnap/Seek.swift \
+  checks/TimelineSnap/Linkage.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"
