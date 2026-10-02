@@ -57,17 +57,17 @@ struct UpscalePanel: View {
             if let longer = model.longerElsewhere {
                 Label(
                     String(format: L10n("This file is also used by another clip in this project (%@). Upscaling the longest range covers both places."),
-                           MediaFormatting.duration(longer.duration)),
+                           seconds(longer.duration)),
                     systemImage: "info.circle"
                 )
                 .font(.caption)
                 .fixedSize(horizontal: false, vertical: true)
             }
             rangeRow(.thisClip, title: L10n("This clip only"),
-                     detail: model.thisUse.map { String(format: L10n("%@ used, plus %@ of handles on each side"), MediaFormatting.duration($0.duration), MediaFormatting.duration(UpscaleRange.handle)) } ?? "")
+                     detail: model.thisUse.map { String(format: L10n("%@ used, plus %@ of handles on each side"), seconds($0.duration), seconds(UpscaleRange.handle)) } ?? "")
             if model.uses.count > 1 {
                 rangeRow(.longestUse, title: L10n("Longest use in this project (recommended)"),
-                         detail: UpscaleRange.longestUse(model.uses).map { String(format: L10n("%@ used by another clip, plus handles; covers this clip too"), MediaFormatting.duration($0.duration)) } ?? "")
+                         detail: UpscaleRange.longestUse(model.uses).map { String(format: L10n("%@ used by another clip, plus handles; covers this clip too"), seconds($0.duration)) } ?? "")
             }
             rangeRow(.wholeFile, title: L10n("Whole file"), detail: L10n("Every use now and any future trim"))
         }
@@ -169,6 +169,9 @@ struct UpscalePanel: View {
             .disabled(!store.hasKey || selected.unavailableReason != nil)
         }
     }
+
+    /// 面板上的秒数一律「6.0 s」这种写法（m:ss 对一两秒的余料不好读）。
+    private func seconds(_ value: Double) -> String { String(format: "%.1f s", value) }
 
     private func start(selected: UpscaleTierRow, range: UpscaleRange) {
         let request = model.request(choice: choice, target: target, tier: selected.tier)
