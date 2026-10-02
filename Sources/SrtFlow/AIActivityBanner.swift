@@ -1,8 +1,9 @@
 import SwiftUI
 
-// MARK: - 顶上那条「AI 正在剪辑」
+// MARK: - 顶上那条「AI 正在剪辑」（底下跟着送 fal 的活的状态行）
 //
 // 管什么：AI 在剪的时候显示是谁、给一个停止按钮；这一轮结束或被停下之后，给「撤销这一轮」和关掉。
+// 同一个位置底下挂着 `FalStatusRows`（mockup「Status row while upscaling」：进度复用编辑器顶上这条状态行）。
 // 只订阅 `AISession`（一个小对象），不读工程 —— 挂在主窗口上，工程每改一下它都不用重算
 // （docs/architecture/preview-perf-ratchet.md 第十三节）。
 // 不管什么：这一轮怎么算、停止之后拒绝多久（AISession）。
@@ -12,6 +13,16 @@ struct AIActivityBanner: View {
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)
+        VStack(spacing: 0) {
+            aiBar
+            // 送 fal 的活（upscale、generate_media）各一行：做到哪一步、能停。只订阅两个小对象，没任务时什么都不画；
+            // `.equatable()`：这条横幅重算时不带着它重算（性能 ratchet 数着每个视图的 body）。
+            FalStatusRows().equatable()
+        }
+    }
+
+    @ViewBuilder
+    private var aiBar: some View {
         if let question = session.question {
             // 要用户点头的问题不管这一轮是什么状态都摆出来：AI 在等结果时这一轮可能早已「结束」，条不能因此收起来。
             // accessibilityIdentifier：冒烟用辅助功能点按钮（SwiftUI 的按钮没有名字可找；docs/testing/gui-smoke-testing.md 四之八）。

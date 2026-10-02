@@ -68,9 +68,12 @@ func makeVideoWithAudio(seconds: Double, name: String) async throws -> URL {
 
 final class PhaseLog: @unchecked Sendable {
     private let lock = NSLock()
-    private var items: [UpscalePhase] = []
-    func add(_ phase: UpscalePhase) { lock.lock(); items.append(phase); lock.unlock() }
-    var all: [UpscalePhase] { lock.lock(); defer { lock.unlock() }; return items }
+    private var items: [FalJobPhase] = []
+    func add(_ phase: FalJobPhase) { lock.lock(); items.append(phase); lock.unlock() }
+    var all: [FalJobPhase] { lock.lock(); defer { lock.unlock() }; return items }
+    /// 阶段的名字按先后、连续相同的并成一个（上传 0% → 100% 是同一阶段）。
+    var steps: [String] { all.map(\.name).reduce(into: []) { if $0.last != $1 { $0.append($1) } } }
+    func fractions(of name: String) -> [Double] { all.filter { $0.name == name }.compactMap(\.fraction) }
 }
 
 let semaphore = DispatchSemaphore(value: 0)
@@ -209,7 +212,12 @@ Task {
         } catch {
             check(false, "流水线失败：\(error)")
         }
-        checkEqual(phases.all, [.preparing, .uploading, .queued(position: 1), .processing, .downloading, .finishing], "阶段按顺序报")
+        checkEqual(phases.steps, ["preparing", "uploading", "queued", "processing", "downloading", "finishing"], "阶段按顺序报")
+        check(phases.all.contains(.queued(position: 1)), "排队带位置")
+        checkEqual(phases.fractions(of: "uploading").last, 1, "上传报到 100%")
+        check(phases.fractions(of: "uploading") == phases.fractions(of: "uploading").sorted(), "上传的比例只升不降")
+        checkEqual(phases.fractions(of: "downloading").last, 1, "下载报到 100%")
+        check(zip(phases.all, phases.all.dropFirst()).allSatisfy { $0 != $1 }, "同一阶段同一比例只报一次")
         let log = FalStub.log
         let put = log.first { $0.method == "PUT" && $0.url == bucket }
         check((put?.body?.count ?? 0) > 0 && (put?.body?.count ?? 0) < (try! Data(contentsOf: ramp)).count, "上传的是裁出来的那一段，不是整个原片")

@@ -1076,7 +1076,9 @@
 "Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "Algunos archivos no se pudieron optimizar, así que la previsualización usa sus archivos originales. El menú indica cuáles";
 
 /* Upscale (clip → fal.ai, compare, replace) */
+"%@ charged" = "%@ cobrados";
 "%@ s · est. %@" = "%@ s · est. %@";
+"%@ upscaled to %@ · %@" = "%@ ampliado a %@ · %@";
 "%@ used by another clip, plus handles; covers this clip too" = "%@ usado por otro clip, más márgenes; cubre también este clip";
 "%@ used, plus %@ of handles on each side" = "%@ usado, más %@ de margen a cada lado";
 "Add a fal.ai key in Settings → AI first." = "Añade primero una clave de fal.ai en Ajustes → IA.";
@@ -1090,12 +1092,18 @@
 "Compare…" = "Comparar…";
 "Dismiss" = "Descartar";
 "Do not replace the clip; the upscaled file stays on disk" = "No reemplazar el clip; el archivo escalado se queda en el disco";
+"Downloading" = "Descargando";
+"Downloading %d%%" = "Descargando %d%%";
 "Estimated %@ · checking the bill · the original file stays where it is" = "Estimado %@ · comprobando la factura · el archivo original se queda donde está";
 "Every use now and any future trim" = "Todos los usos actuales y cualquier recorte futuro";
 "Faithful. Best for real faces." = "Fiel. Ideal para caras reales.";
 "Faithful. Clips up to 20 s." = "Fiel. Clips de hasta 20 s.";
 "Files up to %d MB only" = "Solo archivos de hasta %d MB";
+"Finishing" = "Finalizando";
 "Forget this result; the file stays on disk" = "Olvidar este resultado; el archivo se queda en el disco";
+"Generating %@ with %@" = "Generando %@ con %@";
+"In queue" = "En cola";
+"In queue (%d)" = "En cola (%d)";
 "Keep Original" = "Conservar original";
 "Large-model restoration, 10 times the price." = "Restauración con modelo grande, 10 veces el precio.";
 "Larger than the canvas: raise the canvas size too, or the export will scale it back down." = "Mayor que el lienzo: aumenta también el lienzo o la exportación lo reducirá.";
@@ -1110,7 +1118,10 @@
 "Play or pause both sides together" = "Reproducir o pausar ambos lados a la vez";
 "Play the original and the upscaled file side by side" = "Reproducir el original y el archivo escalado lado a lado";
 "Point this clip back at the original file; the upscaled file stays on disk" = "Volver a apuntar este clip al archivo original; el escalado se queda en el disco";
+"Preparing" = "Preparando";
 "Prices for %@ of video, fal.ai rates as of %@" = "Precios para %@ de vídeo, tarifas de fal.ai a %@";
+"Processing" = "Procesando";
+"Processing %@" = "Procesando %@";
 "Re-draws detail: fur, leaves, water." = "Redibuja el detalle: pelaje, hojas, agua.";
 "Replace Clip" = "Reemplazar clip";
 "Revert to Original" = "Volver al original";
@@ -1119,6 +1130,7 @@
 "Saves next to the original as %@" = "Se guarda junto al original como %@";
 "Send this clip to fal.ai for a sharper, larger version" = "Enviar este clip a fal.ai para una versión más nítida y grande";
 "Side by side" = "Lado a lado";
+"Sound effect" = "Efecto de sonido";
 "Sound from the original" = "Sonido del original";
 "Spent today %@ of your %@ daily limit · final cost shown after upload" = "Gastado hoy %@ de tu límite diario de %@ · el coste final se muestra tras subir";
 "Target resolution" = "Resolución objetivo";
@@ -1127,6 +1139,8 @@
 "This clip only" = "Solo este clip";
 "This file is also used by another clip in this project (%@). Upscaling the longest range covers both places." = "Otro clip de este proyecto también usa este archivo (%@). Escalar el rango más largo cubre ambos lugares.";
 "Try Another Model…" = "Probar otro modelo…";
+"Uploading" = "Subiendo";
+"Uploading %d%%" = "Subiendo %d%%";
 "Upscale" = "Escalar";
 "Upscale Again…" = "Escalar de nuevo…";
 "Upscale Clip" = "Escalar clip";
@@ -1136,18 +1150,19 @@
 "Upscaled with %@ on %@ · %@" = "Escalado con %@ el %@ · %@";
 "Upscaled. Compare it, then decide." = "Escalado. Compáralo y decide.";
 "Upscale…" = "Escalar…";
+"Upscaling %@ with %@" = "Ampliando %@ con %@";
 "Upscaling adds real detail for a larger canvas or export." = "Escalar añade detalle real para un lienzo o exportación mayores.";
+"Voice" = "Voz";
 "What to upscale" = "Qué escalar";
 "Whole file" = "Archivo completo";
 "You can keep editing. The compare window opens when it is done." = "Puedes seguir editando. La ventana de comparación se abrirá al terminar.";
-"about 1 min" = "aprox. 1 min";
-"about 2 min" = "aprox. 2 min";
-"about 3 min" = "aprox. 3 min";
-"about 5 min" = "aprox. 5 min";
+"about %d min" = "aprox. %d min";
 "downloading" = "descargando";
+"est. %@" = "est. %@";
 "finishing" = "finalizando";
 "in queue" = "en cola";
 "in queue (%d)" = "en cola (%d)";
 "preparing" = "preparando";
 "processing" = "procesando";
 "uploading" = "subiendo";
+"usually about %d min" = "normalmente unos %d min";

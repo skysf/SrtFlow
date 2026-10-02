@@ -84,3 +84,13 @@ final class FalStub: URLProtocol {
 
     override func stopLoading() {}
 }
+
+/// 上传 / 下载报上来的字节比例（回调在 URLSession 的线程上）。
+final class FalFractionLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [Double] = []
+    func add(_ fraction: Double) { lock.lock(); items.append(fraction); lock.unlock() }
+    var all: [Double] { lock.lock(); defer { lock.unlock() }; return items }
+    /// 只升不降、都在 0…1 里、最后一个是 1。
+    var isCompleteAndMonotonic: Bool { all == all.sorted() && all.allSatisfy { (0...1).contains($0) } && all.last == 1 }
+}

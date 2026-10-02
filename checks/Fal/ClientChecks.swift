@@ -198,13 +198,17 @@ func runClientChecks() async {
     let file = folder.appendingPathComponent("out.mp4")
     let payload = Data((0..<5000).map { UInt8($0 % 251) })
     FalStub.reset { _ in .init(status: 200, data: payload) }
+    let fractions = FalFractionLog()
     do {
-        try await makeClient().download(URL(string: "https://v3b.fal.media/files/x/clip.mp4")!, to: file)
+        try await makeClient().download(URL(string: "https://v3b.fal.media/files/x/clip.mp4")!, to: file) { fractions.add($0) }
         checkEqual(try? Data(contentsOf: file), payload, "the file arrives whole")
     } catch {
         check(false, "the download failed: \(error)")
     }
     check(FalStub.log.allSatisfy { $0.authorization == nil }, "the key is not sent to the file host")
+    check(fractions.isCompleteAndMonotonic, "download progress only goes up and ends at 1 (\(fractions.all))")
+    check(!(try! FileManager.default.contentsOfDirectory(atPath: folder.path)).contains { $0.hasSuffix(".part") || $0.contains(".part-") },
+          "no partial file is left next to the download")
     // 已经有同名文件：换成新的（调用方负责起不撞名的名字，这里不该失败）
     try? Data("old".utf8).write(to: file)
     try? await makeClient().download(URL(string: "https://v3b.fal.media/files/x/clip.mp4")!, to: file)
@@ -214,8 +218,12 @@ func runClientChecks() async {
     FalStub.reset { _ in .init(status: 200, data: Data()) }
     await expect(.badAnswer("the downloaded file was empty"), "an empty download") { try await makeClient().download(URL(string: "https://x.test/a")!, to: missing) }
     FalStub.reset { _ in .init(404, "{}") }
-    await expect(.badAnswer("the file download answered HTTP 404"), "a failed download") { try await makeClient().download(URL(string: "https://x.test/a")!, to: missing) }
+    let failedFractions = FalFractionLog()
+    await expect(.badAnswer("the file download answered HTTP 404"), "a failed download") {
+        try await makeClient().download(URL(string: "https://x.test/a")!, to: missing) { failedFractions.add($0) }
+    }
     check(!FileManager.default.fileExists(atPath: missing.path), "a failed download leaves no file")
+    check(!failedFractions.all.contains(1), "a failed download never reports 100%")
 
     // ---- HTTP 错误体的几种写法
     checkEqual(FalError.fromHTTP(status: 422, body: Data(#"{"detail":[]}"#.utf8)), .invalidInput("HTTP 422"), "an empty detail list falls back to the status")

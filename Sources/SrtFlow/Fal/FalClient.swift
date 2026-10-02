@@ -208,20 +208,36 @@ final class FalClient: @unchecked Sendable {
         }
     }
 
-    /// 把成品下载到 `destination`（先下到临时文件再挪过去，下到一半断了不留半个文件）。
-    func download(_ url: URL, to destination: URL) async throws {
+    /// 把成品下载到 `destination`（先下到它旁边的临时文件再挪过去，下到一半断了不留半个文件）。
+    /// `onProgress`：收到的字节比例（服务器说了总长才有），做完一定报 1。
+    func download(_ url: URL, to destination: URL, onProgress: @escaping @Sendable (Double) -> Void = { _ in }) async throws {
+        let partial = destination.deletingLastPathComponent()
+            .appendingPathComponent(".\(destination.lastPathComponent).part-\(UUID().uuidString.prefix(8))")
+        defer { try? FileManager.default.removeItem(at: partial) }
+        let delegate = FalTransferDelegate(moveDestination: partial, onProgress: onProgress)
+        let task = session.downloadTask(with: URLRequest(url: url))
+        try await transfer(task, delegate: delegate)
+        if let http = task.response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw FalError.badAnswer("the file download answered HTTP \(http.statusCode)")
+        }
+        guard let file = delegate.downloadedFile else {
+            throw FalError.network("the download did not produce a file" + (delegate.downloadMoveError.map { ": \($0.localizedDescription)" } ?? ""))
+        }
+        let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int) ?? 0
+        guard size > 0 else { throw FalError.badAnswer("the downloaded file was empty") }
         do {
-            let (temporary, response) = try await session.download(from: url)
-            defer { try? FileManager.default.removeItem(at: temporary) }
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                throw FalError.badAnswer("the file download answered HTTP \(http.statusCode)")
-            }
-            let size = (try? FileManager.default.attributesOfItem(atPath: temporary.path)[.size] as? Int) ?? 0
-            guard size > 0 else { throw FalError.badAnswer("the downloaded file was empty") }
             try? FileManager.default.removeItem(at: destination)
-            try FileManager.default.moveItem(at: temporary, to: destination)
-        } catch let error as FalError {
-            throw error
+            try FileManager.default.moveItem(at: file, to: destination)
+        } catch {
+            throw FalError.network(error.localizedDescription)
+        }
+        onProgress(1)
+    }
+
+    /// 跑一个传文件的任务：Task 被取消 / URLSession 报 cancelled 都换成 CancellationError，别的网络错换话。
+    private func transfer(_ task: URLSessionTask, delegate: FalTransferDelegate) async throws {
+        do {
+            try await FalTransfer.perform(task, delegate: delegate)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {
@@ -236,12 +252,12 @@ final class FalClient: @unchecked Sendable {
     /// fal 的存储：`POST <rest>/storage/upload/initiate?storage_type=fal-cdn-v3` 拿到 `upload_url` / `file_url`，把字节 `PUT` 到
     /// `upload_url`（这一步不带 Key：那是存储桶的签名地址），`file_url` 就是能填进 `video_url` 的地址。
     /// 2026-10-02 实测：旧 SDK / 旧文档写的 `storage_type=gcs` 已经被拒（400 Invalid storage type）。
-    func upload(fileURL: URL, contentType: String, fileName: String? = nil) async throws -> URL {
-        let bytes: Data
-        do {
-            bytes = try Data(contentsOf: fileURL)
-        } catch {
-            throw FalError.network("could not read \(fileURL.lastPathComponent): \(error.localizedDescription)")
+    /// `onProgress`：发出去的字节比例（0…1，按 1% 一格），PUT 成功时一定报 1。
+    func upload(
+        fileURL: URL, contentType: String, fileName: String? = nil, onProgress: @escaping @Sendable (Double) -> Void = { _ in }
+    ) async throws -> URL {
+        guard FileManager.default.isReadableFile(atPath: fileURL.path) else {
+            throw FalError.network("could not read \(fileURL.lastPathComponent)")
         }
         var components = URLComponents(url: rest.appendingPathComponent("storage/upload/initiate"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "storage_type", value: "fal-cdn-v3")]
@@ -256,22 +272,17 @@ final class FalClient: @unchecked Sendable {
               let fileLink = answer["file_url"]?.stringValue.flatMap(URL.init(string:)) else {
             throw FalError.badAnswer("no upload_url / file_url")
         }
+        // 文件流着发（不整个读进内存），字节进度从任务的代理来（FalTransfer）。
         var put = URLRequest(url: uploadURL)
         put.httpMethod = "PUT"
         put.timeoutInterval = 600
         put.setValue(contentType, forHTTPHeaderField: "Content-Type")
-        put.httpBody = bytes
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await session.data(for: put)
-        } catch let error as URLError where error.code == .cancelled {
-            throw CancellationError()
-        } catch {
-            throw FalError.network(error.localizedDescription)
-        }
-        guard let http = response as? HTTPURLResponse else { throw FalError.badAnswer("not an HTTP answer") }
-        guard (200..<300).contains(http.statusCode) else { throw FalError.fromHTTP(status: http.statusCode, body: data) }
+        let delegate = FalTransferDelegate(moveDestination: nil, onProgress: onProgress)
+        let task = session.uploadTask(with: put, fromFile: fileURL)
+        try await transfer(task, delegate: delegate)
+        guard let http = task.response as? HTTPURLResponse else { throw FalError.badAnswer("not an HTTP answer") }
+        guard (200..<300).contains(http.statusCode) else { throw FalError.fromHTTP(status: http.statusCode, body: delegate.data) }
+        onProgress(1)
         return fileLink
     }
 

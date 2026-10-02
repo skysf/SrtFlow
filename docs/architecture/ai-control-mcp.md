@@ -135,6 +135,9 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    一句 `note` 叫 AI 用 `set_track master volume_db` 压下去再导，[成片的声音](export-audio-mixdown.md) 第二节第 3 条；生成字幕挂在 `stage`
    上并且 `dropFirst`，订阅那一刻发的是上一次任务留下的结局）。AI 指定的分辨率只用于这一次
    （`settingsOverride`），不写回用户在面板上记住的设置；压缩 / 烧录同理（第 24 条）。
+   送 fal 的任务（`generate_media`、upscale）跑着时 `get_job` 带阶段：`phase`（queued / processing / downloading…）、`queue_position`、
+   `transfer_percent`、`phase_seconds`、`typical_seconds`（`AIJobs.Job.liveDetail`，[fal.ai 生成](fal-generation.md) 第十三节：fal 处理中没有百分比，
+   给的是阶段 + 排队位置 + 已用时间 + 典型时长）。
    **任务在等用户动手时必须说出来**：结果和 `get_job` 里带 `waiting_for_user`（总说明要求 AI 立刻转告），
    SrtFlow 顶上的提示条同步显示。现在只有一种：翻译缺语言、macOS 弹下载框（只能由用户点，苹果不给静默下载）——
    这时把 SrtFlow **激活**、主窗口摆到最前面（AI 接口里唯一故意抢前台的地方），并由 `AIDownloadWatch`

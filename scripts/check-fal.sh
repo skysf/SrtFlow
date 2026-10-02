@@ -8,7 +8,9 @@
 #      取消（Task 被取消 / 超时）时替 fal 也取消、下载的收尾、没有 Key 时一个请求也不发；
 #   6. 粘进来的 Key 怎么整理；
 #   7. 视频 upscale：六个档位的端点都有快照、每个档位 × 每档目标的请求体对着快照验、倍数按模型夹、估价钉在 2026-10-02 的账单上，
-#      以及 FalClient 的上传（initiate + PUT，PUT 不带 Key）和账单明细的查询。
+#      以及 FalClient 的上传（initiate + PUT，PUT 不带 Key，文件流着发、字节进度只升不降且最后报 1）和账单明细的查询；
+#   8. 阶段与进度账（FalJobPhase / FalJobProgress）：名字、比例、排队位置、先后，同一阶段换比例不重记开始时刻，
+#      get_job 的 phase / queue_position / transfer_percent / phase_seconds / typical_seconds，每个档位的典型时长折成的分钟数。
 #
 # 不碰真的网络、不碰真的钥匙串（钥匙串在 scripts/check-fal-keychain.sh，本机手动）。
 # 「生成」这条工具在 App 里的接线（AIToolRouter、任务、横幅上的提问）由 scripts/check-mcp.sh 和它的扫描守卫钉着。
@@ -46,6 +48,8 @@ xcrun swiftc \
   Sources/SrtFlow/Fal/FalInputs.swift \
   Sources/SrtFlow/Fal/FalOutputs.swift \
   Sources/SrtFlow/Fal/FalClient.swift \
+  Sources/SrtFlow/Fal/FalTransfer.swift \
+  Sources/SrtFlow/Fal/FalJobPhase.swift \
   Sources/SrtFlow/Fal/FalKeyStore.swift \
   Sources/SrtFlow/Fal/FalUpscaleModels.swift \
   Sources/SrtFlow/Fal/FalBilling.swift \
@@ -59,6 +63,7 @@ xcrun swiftc \
   checks/Fal/ClientChecks.swift \
   checks/Fal/KeyChecks.swift \
   checks/Fal/UpscaleChecks.swift \
+  checks/Fal/PhaseChecks.swift \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o
 
 echo "==> 跑自检"

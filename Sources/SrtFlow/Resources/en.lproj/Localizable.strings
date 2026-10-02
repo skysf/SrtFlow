@@ -1076,7 +1076,9 @@
 "Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones" = "Some files couldn’t be optimized, so the preview uses the original files for them. The menu lists which ones";
 
 /* Upscale (clip → fal.ai, compare, replace) */
+"%@ charged" = "%@ charged";
 "%@ s · est. %@" = "%@ s · est. %@";
+"%@ upscaled to %@ · %@" = "%@ upscaled to %@ · %@";
 "%@ used by another clip, plus handles; covers this clip too" = "%@ used by another clip, plus handles; covers this clip too";
 "%@ used, plus %@ of handles on each side" = "%@ used, plus %@ of handles on each side";
 "Add a fal.ai key in Settings → AI first." = "Add a fal.ai key in Settings → AI first.";
@@ -1090,12 +1092,18 @@
 "Compare…" = "Compare…";
 "Dismiss" = "Dismiss";
 "Do not replace the clip; the upscaled file stays on disk" = "Do not replace the clip; the upscaled file stays on disk";
+"Downloading" = "Downloading";
+"Downloading %d%%" = "Downloading %d%%";
 "Estimated %@ · checking the bill · the original file stays where it is" = "Estimated %@ · checking the bill · the original file stays where it is";
 "Every use now and any future trim" = "Every use now and any future trim";
 "Faithful. Best for real faces." = "Faithful. Best for real faces.";
 "Faithful. Clips up to 20 s." = "Faithful. Clips up to 20 s.";
 "Files up to %d MB only" = "Files up to %d MB only";
+"Finishing" = "Finishing";
 "Forget this result; the file stays on disk" = "Forget this result; the file stays on disk";
+"Generating %@ with %@" = "Generating %@ with %@";
+"In queue" = "In queue";
+"In queue (%d)" = "In queue (%d)";
 "Keep Original" = "Keep Original";
 "Large-model restoration, 10 times the price." = "Large-model restoration, 10 times the price.";
 "Larger than the canvas: raise the canvas size too, or the export will scale it back down." = "Larger than the canvas: raise the canvas size too, or the export will scale it back down.";
@@ -1110,7 +1118,10 @@
 "Play or pause both sides together" = "Play or pause both sides together";
 "Play the original and the upscaled file side by side" = "Play the original and the upscaled file side by side";
 "Point this clip back at the original file; the upscaled file stays on disk" = "Point this clip back at the original file; the upscaled file stays on disk";
+"Preparing" = "Preparing";
 "Prices for %@ of video, fal.ai rates as of %@" = "Prices for %@ of video, fal.ai rates as of %@";
+"Processing" = "Processing";
+"Processing %@" = "Processing %@";
 "Re-draws detail: fur, leaves, water." = "Re-draws detail: fur, leaves, water.";
 "Replace Clip" = "Replace Clip";
 "Revert to Original" = "Revert to Original";
@@ -1119,6 +1130,7 @@
 "Saves next to the original as %@" = "Saves next to the original as %@";
 "Send this clip to fal.ai for a sharper, larger version" = "Send this clip to fal.ai for a sharper, larger version";
 "Side by side" = "Side by side";
+"Sound effect" = "Sound effect";
 "Sound from the original" = "Sound from the original";
 "Spent today %@ of your %@ daily limit · final cost shown after upload" = "Spent today %@ of your %@ daily limit · final cost shown after upload";
 "Target resolution" = "Target resolution";
@@ -1127,6 +1139,8 @@
 "This clip only" = "This clip only";
 "This file is also used by another clip in this project (%@). Upscaling the longest range covers both places." = "This file is also used by another clip in this project (%@). Upscaling the longest range covers both places.";
 "Try Another Model…" = "Try Another Model…";
+"Uploading" = "Uploading";
+"Uploading %d%%" = "Uploading %d%%";
 "Upscale" = "Upscale";
 "Upscale Again…" = "Upscale Again…";
 "Upscale Clip" = "Upscale Clip";
@@ -1136,18 +1150,19 @@
 "Upscaled with %@ on %@ · %@" = "Upscaled with %@ on %@ · %@";
 "Upscaled. Compare it, then decide." = "Upscaled. Compare it, then decide.";
 "Upscale…" = "Upscale…";
+"Upscaling %@ with %@" = "Upscaling %@ with %@";
 "Upscaling adds real detail for a larger canvas or export." = "Upscaling adds real detail for a larger canvas or export.";
+"Voice" = "Voice";
 "What to upscale" = "What to upscale";
 "Whole file" = "Whole file";
 "You can keep editing. The compare window opens when it is done." = "You can keep editing. The compare window opens when it is done.";
-"about 1 min" = "about 1 min";
-"about 2 min" = "about 2 min";
-"about 3 min" = "about 3 min";
-"about 5 min" = "about 5 min";
+"about %d min" = "about %d min";
 "downloading" = "downloading";
+"est. %@" = "est. %@";
 "finishing" = "finishing";
 "in queue" = "in queue";
 "in queue (%d)" = "in queue (%d)";
 "preparing" = "preparing";
 "processing" = "processing";
 "uploading" = "uploading";
+"usually about %d min" = "usually about %d min";

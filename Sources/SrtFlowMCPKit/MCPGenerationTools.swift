@@ -17,7 +17,8 @@ enum MCPGenerationTools {
                 the user added a fal.ai key in SrtFlow's settings). Not for subtitles (generate_subtitles), narration \
                 (add_voiceover), effects add_clips sound_effect can make, or footage the user already has. One result per \
                 call. It returns a job_id at once: wait with get_job (an image takes about 10 s, a sound effect 5 s, music 30 s, \
-                a video 1–3 minutes). The finished job has file (a path in the user's SrtFlow folder; put it on the timeline \
+                a video 1–3 minutes); while it runs get_job shows phase (queued, processing, downloading), queue_position, \
+                transfer_percent, phase_seconds and typical_seconds. The finished job has file (a path in the user's SrtFlow folder; put it on the timeline \
                 with add_clips) and cost_usd. kind: image | text_to_video | image_to_video | music | sound_effect. Video: \
                 MiniMax H3 Max, 5–15 s per clip with sound built in; resolution 480p (cheapest, for drafts), 768p (default) or \
                 1080p; text_to_video takes aspect_ratio (default: the project's canvas); image_to_video takes image (the first \

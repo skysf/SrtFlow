@@ -4,21 +4,10 @@ import SrtFlowMCPKit
 // MARK: - 一次 upscale 从原片到落盘的流水线（不碰界面、不碰账本、不碰钥匙串）
 //
 // 管什么：裁出那一段（或整个 mp4 直接用）→ 上传 → 提交、等、取结果 → 下载 → 把原片那一段声音封回去 → 探测 → 起名落盘，
-// 每一步报阶段（`UpscalePhase`），Task 被取消时每一步都停得下来（在飞的 fal 请求替 fal 也取消，中间文件不留）。
+// 每一步报阶段（`FalJobPhase`，上传 / 下载带字节比例），Task 被取消时每一步都停得下来（在飞的 fal 请求替 fal 也取消，中间文件不留）。
 // 结果是一个 `UpscaleOutcome`：文件、探测信息、来源记录（换源时拼成 `ClipSourceSwap.Replacement`）。
 // 自检用假 URLSession 走整条线（checks/Upscale）。
 // 不管什么：花钱的把关和记账、Key（UpscaleJob）；换源（VideoEditClipUpscale.swift）；界面（第四刀）。
-
-enum UpscalePhase: Equatable, Sendable {
-    /// 裁出那一段。
-    case preparing
-    case uploading
-    case queued(position: Int?)
-    case processing
-    case downloading
-    /// 封回原声、探测、落盘。
-    case finishing
-}
 
 struct UpscaleRequest: Sendable {
     var originalURL: URL
@@ -56,20 +45,6 @@ enum UpscalePipelineError: Error, Equatable {
     }
 }
 
-/// 上一次报过的阶段（带锁：fal 的回调在别的线程上）。
-final class UpscalePhaseBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var last: UpscalePhase?
-    /// 换成 `next`；和上一次一样就返回 false。
-    func swap(_ next: UpscalePhase) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        if last == next { return false }
-        last = next
-        return true
-    }
-}
-
 /// 取消的标志：阻塞的裁切跑在 OperationQueue 的线程上，那里看不见 Task 的取消，用这个盒子传。
 final class UpscaleCancelFlag: @unchecked Sendable {
     private let lock = NSLock()
@@ -91,12 +66,12 @@ enum UpscalePipeline {
 
     static func run(
         _ request: UpscaleRequest, client: FalClient, ffmpeg: URL?, workFolder: URL,
-        phase report: @escaping @Sendable (UpscalePhase) -> Void
+        phase report: @escaping @Sendable (FalJobPhase) -> Void
     ) async throws -> UpscaleOutcome {
         let started = Date()
-        // 同一个阶段只报一次（轮询每 1–4 秒回一次 IN_PROGRESS，界面不用每次都醒）。
-        let last = UpscalePhaseBox()
-        let phase: @Sendable (UpscalePhase) -> Void = { next in
+        // 同一个阶段同一个比例只报一次（轮询每 1–4 秒回一次 IN_PROGRESS，界面不用每次都醒）。
+        let last = FalPhaseBox()
+        let phase: @Sendable (FalJobPhase) -> Void = { next in
             guard last.swap(next) else { return }
             report(next)
         }
@@ -121,8 +96,10 @@ enum UpscalePipeline {
         try Task.checkCancellation()
 
         // 2. 上传、提交、等、取结果、下载。
-        phase(.uploading)
-        let link = try await client.upload(fileURL: input, contentType: "video/mp4", fileName: "upscale-input.mp4")
+        phase(.uploading(fraction: nil))
+        let link = try await client.upload(fileURL: input, contentType: "video/mp4", fileName: "upscale-input.mp4") { fraction in
+            phase(.uploading(fraction: FalJobPhase.quantized(fraction)))
+        }
         let body = request.tier.body(videoURL: link.absoluteString, plan: request.plan, sourceFrameRate: request.originalInfo.frameRate)
         let outcome = try await client.run(endpoint: request.tier.endpoint, body: body, maxSeconds: request.tier.maxSeconds) { status in
             switch status {
@@ -132,8 +109,10 @@ enum UpscalePipeline {
             }
         }
         let media = try FalOutputs.media(from: outcome.result, kind: .textToVideo)
-        phase(.downloading)
-        try await client.download(media.url, to: temporaries[1])
+        phase(.downloading(fraction: nil))
+        try await client.download(media.url, to: temporaries[1]) { fraction in
+            phase(.downloading(fraction: FalJobPhase.quantized(fraction)))
+        }
         try Task.checkCancellation()
 
         // 3. 探测；原片有声音就把那一段封回去（fal 给的声音不可信）；再探一遍。

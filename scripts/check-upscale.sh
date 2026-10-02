@@ -5,7 +5,8 @@
 #   3. 封回原声的 ffmpeg 参数：精确裁原片的声音、画面流复制、HEVC 点名 hvc1；
 #   4. 真裁一段（AVAssetReader → AVAssetWriter，MediaReadQueue.export）：帧数 / 时长 / 尺寸对、首帧是原片那一刻的画面、没有声音、能取消；
 #   5. 整条流水线对着假 fal（FalStub）走一遍：裁 → 上传（initiate + PUT）→ 提交 → 排队 / 处理 → 下载 → 封回原声（真跑 ffmpeg）→ 探测 → 落盘，
-#      整个 mp4 直接上传、超过模型上限还是裁、取消替 fal 也取消且不留文件、fal 拒绝就没有文件。
+#      整个 mp4 直接上传、超过模型上限还是裁、取消替 fal 也取消且不留文件、fal 拒绝就没有文件；阶段按顺序报、上传 / 下载的比例
+#      只升不降且报到 100%、同一阶段同一比例只报一次。
 #
 # 素材：AVAssetWriter 现写的渐变灰视频（画面）；带声音的原片用 ffmpeg 现造（SRTFLOW_FFMPEG，默认 vendor/ffmpeg）。
 # 不碰真的网络、不花钱。
@@ -40,6 +41,8 @@ xcrun swiftc \
   Sources/SrtFlow/Quarantine.swift \
   Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
   Sources/SrtFlow/Fal/FalClient.swift \
+  Sources/SrtFlow/Fal/FalTransfer.swift \
+  Sources/SrtFlow/Fal/FalJobPhase.swift \
   Sources/SrtFlow/Fal/FalModels.swift \
   Sources/SrtFlow/Fal/FalInputs.swift \
   Sources/SrtFlow/Fal/FalOutputs.swift \

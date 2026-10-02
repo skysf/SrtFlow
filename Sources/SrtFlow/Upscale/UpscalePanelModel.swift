@@ -97,16 +97,17 @@ struct UpscalePanelModel {
         UpscaleOutputName.stem(original: originalURL, outputSize: tier.plan(source: originalInfo.displaySize, target: target).outputSize, tier: tier.id) + ".mp4"
     }
 
-    /// 每个档位一句话（本地化键）和大约几分钟（2026-10-02 实测，含排队）。
-    static func blurb(for tierID: String) -> (detail: String, minutes: String) {
+    /// 每个档位一句话（本地化键）。大约几分钟从 `FalUpscaleTier.typicalSeconds` 算（`FalJobProgress.minutes`），和进度里的
+    /// 「通常约几分钟」同一个数。
+    static func blurb(for tierID: String) -> String {
         switch tierID {
-        case "topaz-precision": return ("Faithful. Best for real faces.", "about 1 min")
-        case "topaz-generative": return ("Re-draws detail: fur, leaves, water.", "about 3 min")
-        case "flux-precise": return ("Faithful. Clips up to 20 s.", "about 2 min")
-        case "flux-creative": return ("Adds detail. Clips up to 20 s.", "about 3 min")
-        case "bytedance-standard": return ("Cheapest. Preset for AI footage.", "about 2 min")
-        case "bytedance-pro": return ("Large-model restoration, 10 times the price.", "about 5 min")
-        default: return ("", "")
+        case "topaz-precision": return "Faithful. Best for real faces."
+        case "topaz-generative": return "Re-draws detail: fur, leaves, water."
+        case "flux-precise": return "Faithful. Clips up to 20 s."
+        case "flux-creative": return "Adds detail. Clips up to 20 s."
+        case "bytedance-standard": return "Cheapest. Preset for AI footage."
+        case "bytedance-pro": return "Large-model restoration, 10 times the price."
+        default: return ""
         }
     }
 

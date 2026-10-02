@@ -131,11 +131,12 @@ struct UpscalePanel: View {
                 Image(systemName: tierID == row.id ? "largecircle.fill.circle" : "circle")
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: "\(row.tier.title) · \(row.tier.detail)").fontWeight(.medium)
-                    Text(row.unavailableReason ?? L10n(blurb.detail)).font(.caption).foregroundStyle(.secondary)
+                    Text(row.unavailableReason ?? L10n(blurb)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text(verbatim: "\(Int(row.outputSize.width))×\(Int(row.outputSize.height))").font(.caption).foregroundStyle(.secondary)
-                Text(L10n(blurb.minutes)).font(.caption).foregroundStyle(.secondary).frame(width: 84, alignment: .trailing)
+                Text(String(format: L10n("about %d min"), FalJobProgress.minutes(row.tier.typicalSeconds)))
+                    .font(.caption).foregroundStyle(.secondary).frame(width: 84, alignment: .trailing)
                 Text(FalMoney.text(row.estimate)).fontWeight(.semibold).monospacedDigit().frame(width: 60, alignment: .trailing)
             }
             .contentShape(Rectangle())
@@ -175,7 +176,7 @@ struct UpscalePanel: View {
 
     private func start(selected: UpscaleTierRow, range: UpscaleRange) {
         let request = model.request(choice: choice, target: target, tier: selected.tier)
-        let job = UpscaleJob(request: request, clipIDs: range.coveredClipIDs, projectGeneration: project.documentGeneration)
+        let job = UpscaleJob(request: request, clipIDs: range.coveredClipIDs, projectGeneration: project.documentGeneration, title: model.clipName)
         UpscaleActivity.shared.add(job)
         dismiss()
     }
