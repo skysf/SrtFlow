@@ -60,6 +60,12 @@ public enum MCPVocabulary {
     /// = `FalModel.Kind` 里 `isGenerateKind` 的那几个（generate_media 的 kind；旁白和克隆走 add_voiceover）。
     public static let generationKinds = ["image", "image_to_video", "text_to_video", "music", "sound_effect"]
 
+    /// upscale_clip 的档位（和 App 的 `FalUpscaleTiers.all` 对账，顺序就是面板的顺序）、目标（`FalUpscaleTarget`，按短边叫）、
+    /// 范围（`UpscaleRangeChoice`：这一段 / 工程里最长的那处 / 整个文件）。
+    public static let upscaleTiers = ["topaz-precision", "topaz-generative", "flux-precise", "flux-creative", "bytedance-standard", "bytedance-pro"]
+    public static let upscaleTargets = ["1080p", "1440p", "2160p"]
+    public static let upscaleRanges = ["clip", "longest", "file"]
+
     /// 生成视频的分辨率档（= `FalInputs.videoResolutions` 小写）。
     public static let videoResolutions = ["480p", "768p", "1080p"]
 

@@ -44,8 +44,21 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 | 状态行 | `Fal/FalStatusRows.swift`（`UpscaleStatusRow`） | 编辑器顶上、「AI 正在剪辑」那条横幅底下，每个任务一行（mockup「Status row while upscaling」）：「Upscaling <段> with <档位>」、四个阶段的小标（过了的打勾、当前的带百分比 / 已用时间 / 通常约几分钟）、估价、Stop；做完：「<段> upscaled to 1920×1080 · est. / charged」+ Compare… / Dismiss；失败 / 取消一句 + Dismiss。不选中那一段也看得见（检查器那一节只有选中时才有）。只订阅 `UpscaleActivity`，没任务不画 |
 | 切工程 | `VideoEditProjectDocument.closeCurrentDocument` | `UpscaleActivity.cancelAll()`：在飞的作废（替 fal 也取消），做完的文件留在磁盘上 |
 
-还没做的：导出面板的「有几段低于目标分辨率」提示（mockup 第二排）；画布自定义尺寸；AI 工具（清单预算只剩 53 字）；多选；
+还没做的：导出面板的「有几段低于目标分辨率」提示（mockup 第二排）；画布自定义尺寸；多选；
 Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
+
+## 五、AI 的工具 `upscale_clip`（2026-10-02 起）
+
+> 怎么接进 MCP（只在配了 Key 时列、任务号、`get_job` 的阶段、结果字段）在 [AI 接口（MCP）](ai-control-mcp.md) 第四节第 44 条；这里记任务那一层的差别。
+
+| 决定 | 口径 |
+| --- | --- |
+| 同一份数 | 范围、估价、档位可不可用、默认目标 / 默认范围都从 `UpscalePanelModel` 算，和面板一个数；词认成类型在 `AIUpscaleNames`（纯值，和清单的词表对账） |
+| 花钱 | 面板起的：面板就是确认，直接记估算（`Approval.panel`）。AI 起的：`Approval.dailyLimit` → `FalJobGate.reserve`（和 `generate_media` 同一处）：额度内直接记账、超了在提示条上问（任务 `waiting` 给 AI 转述）、用户不要就 `State.declined`（没花钱、不跑） |
+| 做完 | **AI 起的直接换源**（用户 2026-10-02 定：不弹对比窗口）：`UpscaleActivity.add(job, opensCompare: false)`，`onFinished` 里 `applyUpscale` 包一层 `AIUndoGrouping.step`、选中换了的段、没存过的工程存一下、结局记给 AI 的任务（`onEnded` 记失败 / 取消 / 没点头），这一行从状态行上拿掉。面板起的照旧先弹对比窗口 |
+| 钥匙串授权框 | AI 起的：`waiting` 写明在等用户点「始终允许」、提示条上说一句、把 SrtFlow 摆到前面（`FalJobGate`）；面板起的只有检查器里那一句（用户就在电脑前） |
+| 看得见 | 状态行和检查器那一节对 AI 起的任务一视同仁（阶段、估价、Stop）；Stop = 取消 = AI 的任务 cancelled |
+| 工程换了 | `projectGeneration` 和做完时的 `documentGeneration` 不一样就不换源，结果里说明；切工程本来就 `cancelAll` |
 
 ## 四、回归
 
@@ -55,7 +68,9 @@ Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
   阶段按顺序、上传 / 下载的比例只升不降且报到 100%、同一阶段同一比例只报一次（2026-10-02 进度那一刀）。
   反向验证：去掉 hvc1 的点名、把 `-ss` 挪到原片的 `-i` 之后、阶段重复报、整文件判定不看时长上限，各红。
 - `scripts/check-fal.sh` 第七 / 八组（档位、估价、上传、账单）；`scripts/check-project-file.sh` 第 41 组（换源）。
-- `checks/fal-wiring.sh`：用 Key 的只有生成任务、配旁白、upscale 任务三处。
+- `checks/fal-wiring.sh`：用 Key 的只有生成任务、配旁白、upscale 任务三处；AI 起的 upscale 把关在 `FalJobGate.reserve`（在跑流水线之前）、取消时收回提示条上的问题、
+  不弹对比窗口、阶段和「在等用户」交给 AIJobs。`scripts/check-mcp.sh`：`upscale_clip` 的词表和 App 的类型对账、定义、说明里每档的分钟数、总说明带着它（`UpscaleToolChecks`）；
+  做完换源那一下包在 `AIUndoGrouping.step` 里（异步落账扫描）。
 - 界面这一层自动化够不着（真窗口、两个播放器、分割线手感），走人工回归；扫描守卫钉着：sheet 套 `.appLanguage()`、提示走 `.instantHelp`、
   每个视图 body 计数、文案三张表配齐、用 Key 的只有三处。
 - **人工回归**（发版前、拿真 Key）：
@@ -69,3 +84,6 @@ Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
      原片删了提示找不到。
   6. 账单：做完几分钟内对比窗口 / 检查器的扣费从「估」变成实收；设置 → AI 的「今天已花」跟着变。
   7. 切工程：做到一半的任务取消，不弹对比窗口。
+  8. AI：让 Claude Code 对一段 720p 的画面段调 `upscale_clip`（额度内）：立刻回任务号、状态行多一行、`get_job` 的 phase 从 uploading 走到 finishing；
+     做完片段已换成新文件、块名字旁有「1080p」、⌘Z 一步撤回、右键能 Compare / Revert；把每日上限调到比估价小再调一次：提示条上问、`get_job` 带
+     `waiting_for_user`，点「先不要」任务 cancelled、没扣钱。

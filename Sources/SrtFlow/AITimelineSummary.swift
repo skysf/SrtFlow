@@ -87,6 +87,8 @@ enum AITimelineSummary {
         } else {
             object["file"] = .string(AIFormat.path(clip.stillImageURL ?? clip.sourceURL, relativeTo: context.workspace))
         }
+        // 画面段的原片多大：AI 判断要不要 upscale_clip（比画布小的放大只是拉伸，不添细节）。
+        if !clip.isAudioOnly, let info = clip.info { object["source_size"] = .string(info.resolutionLabel) }
         if abs(clip.speed - 1) > 0.0001 { object["speed"] = .number(clip.speed) }
         if abs(clip.volume - 1) > 0.0001 {
             object["volume_db"] = .number((AudioGain.decibels(fromLinear: clip.volume) * 10).rounded() / 10)

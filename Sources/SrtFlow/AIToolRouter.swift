@@ -103,6 +103,8 @@ final class AIToolRouter {
         case .findAudio: return try await AIAudioLibraryTools.findAudio(args)
         // 不改工程：只起一个任务、回任务号（成品放上时间线是 add_clips 的事）。
         case .generateMedia: return try await FalGenerateTool.generate(args, project)
+        // 起一个任务、回任务号；做完那一下的换源在任务里自己包一层 AIUndoGrouping.step（AIUpscaleTool.land）。
+        case .upscaleClip: return try AIUpscaleTool.upscale(args, project)
         case .addVoiceover:
             // 只是下载 SrtFlow 自己的声音：回任务号，不改工程。
             if let download = try await AIVoiceoverTool.startDownloadIfAsked(args) { return download }
@@ -176,7 +178,7 @@ final class AIToolRouter {
             case .openProject, .newProject, .undo, .addClips, .addVoiceover, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
                  .duplicateItems, .freezeFrame, .cutSpeech, .cutToBeat,
                  .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
-                 .editSubtitles:
+                 .editSubtitles, .upscaleClip:
                 (serialized, presentsEditor, startsRound) = (true, true, true)
             }
         }

@@ -558,6 +558,27 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
     没有合适的用 `sound_effect`、真实声音都没有才 `generate_media` —— `find_audio` 和 `generate_media` 的说明、风格卡都这么写；总说明目录
     Sound 那一行带着它。清单预算：加它之前 71,612 / 72,000，把二十几个工具的说明各收了一截才放进去（71,813；音效库的 kind 加上后又收了
     find_audio 的说明）。音效库那一半在第 23 条。
+44. **放大片段（`upscale_clip`，fal.ai，2026-10-02）**：合同全在 [视频 upscale](video-upscale.md) 第五节和 [fal.ai 生成](fal-generation.md)
+    第十二 / 十三节，这里只记它怎么接进 MCP 这一层。
+   - **和 `generate_media` 一样只在配了 fal 的 Key 时列出来**（`MCPToolName.provider`）；总说明的 fal 那一行带着它（Claude Code 开场只看目录）。
+     清单的说明总长度上限为它从 72,000 抬到 **80,000 字符**（2026-10-02 用户定；`ProtocolChecks`）。
+   - **参数和面板同一份数**：`clip_id`，可选 `tier`（六个档位，词表 `MCPVocabulary.upscaleTiers` 和 `FalUpscaleTiers.all` 对账）、`target`（`1080p` /
+     `1440p` / `2160p`，按短边叫，4K 写成 2160p）、`range`（`clip` / `longest` / `file`）；默认和面板一样（目标按画布、范围别处用得更长就 longest）；
+     范围、估价、档位可不可用都由 `UpscalePanelModel` 算（`AIUpscaleNames` 认词）。源已经不比目标小就拒绝；音频 / 图片 / 定格段拒绝；
+     同一个原片正在做就拒绝。`get_timeline` 给每个画面段 `source_size`，AI 据此判断该不该放大。
+   - **是任务**：立刻回任务号（带估价、送去几秒、输出尺寸、会换哪些段、今天已花 / 上限、`next_step`），`get_job` 带阶段（第 7 条：
+     `phase` / `queue_position` / `transfer_percent` / `phase_seconds` / `typical_seconds`）；任务种类 `upscale`；`cancel_job` / 停止把它从
+     `UpscaleActivity` 拿掉（替 fal 也取消、不留文件）。
+   - **花钱按每日上限把关**，和 `generate_media` **同一处**（`FalJobGate.reserve`：额度内直接记账；超了 / 价格不明先在提示条上问、任务带
+     `waiting_for_user`；用户不要就 `declined`、没花钱）；钥匙串授权框的提醒也共用（`FalJobGate.showKeyPromptHint`）。面板起的 upscale
+     不经它（面板本身就是确认）。`checks/fal-wiring.sh` 第 4、5 条钉着「把关和提问只在 FalJobGate 一处」。
+   - **做完直接换源**（2026-10-02 用户定：AI 起的不弹对比窗口）：`UpscaleActivity.add(job, opensCompare: false)`，`onFinished` 里一次
+     `applyUpscale`（工程里用这个原片且范围被盖住的段一起换），**自己包一层 `AIUndoGrouping.step`**（异步落账，第 1 条；
+     `scripts/check-mcp.sh` 的扫描钉着）、算这一轮的一处改动、选中换了的段并把播放头放过去（后台模式不动）、没存过的工程存一下；
+     结局带 `replaced_ids` / `file` / 宽高 / `cost_usd`（查到实收前是估价，`cost_is_estimate`）。原片留在旁边：用户随时右键
+     「Compare with Original…」/「Revert to Original Clip」，⌘Z 一步撤回。工程中途换了（`documentGeneration` 变了）就不换、结果里说明。
+   - 失败 / 取消 / 用户没点头各自一句话（`settle`），都不扣钱（fal 只对做出来的收）；用户在状态行上按 Stop 也算取消。
+
 ## 五、这一轮、停止、撤销这一轮
 
 - **一轮按时间划分**：服务器看不到对话。AI 开始改工程时开一轮、存一份时间线快照；30 秒没有新调用算结束，
