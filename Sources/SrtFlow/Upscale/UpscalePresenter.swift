@@ -7,9 +7,12 @@ import SwiftUI
 //（checks/presented-views-app-language.sh）。
 // 不管什么：面板和窗口里面（UpscalePanel、UpscaleCompareView）。
 
-struct UpscalePresenter: View {
+struct UpscalePresenter: View, Equatable {
     let project: VideoEditProject
     @ObservedObject private var activity = UpscaleActivity.shared
+
+    /// 检查器每重算一次都会重新造它：按工程的身份比，一样就不重算 body（性能 ratchet 数着）。
+    static func == (lhs: UpscalePresenter, rhs: UpscalePresenter) -> Bool { lhs.project === rhs.project }
 
     var body: some View {
         let _ = PerfCounters.body(Self.self)

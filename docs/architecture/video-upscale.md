@@ -35,11 +35,11 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 
 | 哪里 | 文件 | 规矩 |
 | --- | --- | --- |
-| 检查器一节 | `Upscale/UpscaleInspectorSection.swift` | 画面段才有，放在头部信息下面、Speed 上面。三个状态：还没做（一句说明 + Upscale…）、做着（`UpscaleJobStatusView` **只订阅那一个任务**：阶段、估价、取消、钥匙串授权的提醒）、做完还没处理（Compare… / Discard）、已换源（档位、日期、扣费、原片在哪、Compare… / Revert to Original）。这一节只订阅 `UpscaleActivity`（任务的增删），不订阅工程 |
+| 检查器一节 | `VideoEditInspector+Upscale.swift`（检查器的一段 body）+ `Upscale/UpscaleJobStatusView.swift` | 画面段才有，放在头部信息下面、Speed 上面。三个状态：还没做（一句说明 + Upscale…）、做着（`UpscaleJobStatusView` **只订阅那一个任务**：阶段、估价、取消、钥匙串授权的提醒）、做完还没处理（Compare… / Discard）、已换源（档位、日期、扣费、原片在哪、Compare… / Revert to Original）。**不是单独的视图**：预览性能 ratchet 数的是 body 次数，选一段多一个视图就是多一次（CI 2026-10-02 逮到 +1 body、+1 update）；任务的增删由检查器上的 `upscaleActivity` 订阅（很少变）；「Upscale…」不挂提示（提示是一层 NSViewRepresentable，每选一段多一次 update） |
 | 右键菜单 | `VideoEditTimelineClipBlock.swift` | 图片段没有；普通块一项 Upscale…；换过源的块三项 Compare with Original… / Revert to Original Clip / Upscale Again…。**块不做 IO**：换回原片找不到文件时用 `project.notice` 说一句，菜单不灰 |
 | 块角标 | 同上 | 换过源的块名字旁一枚短边的标（`1080p`），和静音图标同一处，不盖缩略图 |
 | 面板 | `Upscale/UpscalePanel.swift` + `UpscalePanelModel.swift` | sheet（套 `.appLanguage()`）。范围三选一（默认：别处用得更长就选最长的那处，否则这一段；有另一处更长就提示）、目标三档（默认按画布短边能到的那档，比画布大提示画布也要改）、六个档位各一行（一句话、大约几分钟、夹过的输出尺寸、估价；超过模型的时长 / 大小上限灰掉）、文件名预览、今天已花 / 上限（超限只标红）、没有 Key 才拦。点开始：`UpscaleJob` 进 `UpscaleActivity` |
-| 摆出来 | `Upscale/UpscalePresenter.swift` | 挂在检查器底下的不画东西的小视图，只订阅 `UpscaleActivity.panel` / `.compare`；右键、检查器、做完的任务都往那两个字段里写 |
+| 摆出来 | `Upscale/UpscalePresenter.swift` | 挂在检查器底下的不画东西的小视图，只订阅 `UpscaleActivity.panel` / `.compare`；右键、检查器、做完的任务都往那两个字段里写。`Equatable`（按工程的身份）+ `.equatable()`：检查器每重算一次不重算它 |
 | 对比窗口 | `Upscale/UpscaleCompareView.swift` + `UpscaleCompareStage.swift` + `UpscaleComparePlayback.swift` | 做完先弹（已经在看别的就不抢）。两个 AVPlayer 同一个主机时间起步（`setRate(_:time:atHostTime:)`，不读 `currentTime`），原片出声、upscale 文件静音，原片加 `sourceOffset`。分割线（点哪儿到哪儿、能拖、底下有滑杆）/ 并排；缩放 适合 / 100% / 200%（按 upscale 文件的像素，默认 100%：缩到窗口大小看不出差别），滚轮平移。按钮：Replace Clip（`applyUpscale`，工程里用这个原片且范围被盖住的段一起换，一步撤销）/ Keep Original（文件留着）/ Try Another Model…（回面板）；看已换源的段时是 Revert to Original / Close。实际扣费那一行单独订阅任务（账单几分钟后才有） |
 | 切工程 | `VideoEditProjectDocument.closeCurrentDocument` | `UpscaleActivity.cancelAll()`：在飞的作废（替 fal 也取消），做完的文件留在磁盘上 |
 
