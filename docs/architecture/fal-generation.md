@@ -106,8 +106,9 @@
   Claude Code 里只读前 2,048 字（[AI 接口（MCP）](ai-control-mcp.md) 第一节第 6 条）。
 - 清单会变，所以：握手声明 `tools.listChanged = true`，小程序每 2 秒看一眼那个文件，变了就给**握过手的老一代客户端**发 `notifications/tools/list_changed`；
   新一代（2026-07-28）没有会话，靠清单的缓存时间 —— `tools/list` 的 `ttlMs` 从一小时降到一分钟（`MCPServerCore.toolListTTLms`）。
-- 说明总长度的上限（72,000 字符）量的是**每个提供方都配好**时的全清单：2026-09-29 配齐时 70,377（没配 fal 时 67,208；`generate_media` 整条 3,169、说明 1,685）。
-  余量只剩不到 2 千，以后再加工具要先把别处写短。
+- 说明总长度的上限量的是**每个提供方都配好**时的全清单：原来 72,000 字符（2026-09-29 配齐时 70,377；没配 fal 时 67,208；`generate_media` 整条 3,169、说明 1,685），
+  到 2026-10-02 只剩 53 字：`generate_media` 的说明写上 `get_job` 的进度字段就到了 72,085，用户定抬到 **80,000**（约 2.2 万 token；`ProtocolChecks`），
+  也给下一个 PR 的 `upscale_clip` 腾地方。以后再加工具还是先把别处写短。
 
 ## 八、generate_media（`FalGenerateTool` / `FalGenerationRun`）
 
