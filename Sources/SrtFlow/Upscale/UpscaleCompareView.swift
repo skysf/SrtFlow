@@ -110,7 +110,7 @@ struct UpscaleCompareView: View {
             Toggle(isOn: $playback.loops) { Image(systemName: "repeat") }
                 .toggleStyle(.button)
                 .instantHelp("Loop")
-            Text(verbatim: "\(MediaFormatting.duration(playback.time)) / \(MediaFormatting.duration(playback.duration))")
+            Text(verbatim: "\(Self.clock(playback.time)) / \(Self.clock(playback.duration))")
                 .font(.caption).monospacedDigit().foregroundStyle(.secondary).frame(width: 110, alignment: .leading)
             Slider(value: Binding(get: { playback.time }, set: { playback.seek(to: $0) }), in: 0...max(0.01, playback.duration))
             if mode == .wipe {
@@ -154,6 +154,12 @@ struct UpscaleCompareView: View {
             }
         }
         .padding(16)
+    }
+
+    /// 对比窗口的钟：`0:04.8`（0 秒也是 `0:00.0`，不像素材时长那样写成「—」）。
+    static func clock(_ seconds: Double) -> String {
+        let whole = max(0, seconds)
+        return String(format: "%d:%04.1f", Int(whole) / 60, whole - Double(Int(whole) / 60 * 60))
     }
 
     /// 替换：工程里用这个原片、范围被盖住的段一起换源（一步撤销）；结果从活动里拿掉（文件留着）。
