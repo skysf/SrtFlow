@@ -56,7 +56,7 @@ struct AppConnection {
         let request = MCPBridge.Request(tool: tool, arguments: arguments, client: client)
         do {
             let payload = try JSONEncoder().encode(request)
-            let fd = try connectOrLaunch()
+            let (fd, launched) = try connectOrLaunch()
             defer { close(fd) }
             MCPUnixSocket.setTimeouts(fd, seconds: 120)
             try MCPUnixSocket.writeLine(fd, payload)
@@ -65,7 +65,10 @@ struct AppConnection {
                     "SrtFlow closed the connection without answering (it may have quit). Try again.", isError: true
                 )
             }
-            return try JSONDecoder().decode(MCPBridge.Response.self, from: line).result
+            let result = try JSONDecoder().decode(MCPBridge.Response.self, from: line).result
+            // 刚把 App 拉起来：AI 之前打开的工程、文件夹都不在了，先说一句，不然它只看到「文件不存在」「没有这个 id」
+            //（2026-10-02 南极工程：用户关了窗口 = App 退出，下一次调用拉起来的是空的 Untitled）。
+            return launched ? MCPBridge.addingNote(MCPBridge.relaunchNote, to: result) : result
         } catch let failure as ConnectionFailure {
             return MCPBridge.textResult(failure.message, isError: true)
         } catch {
@@ -77,9 +80,9 @@ struct AppConnection {
         let message: String
     }
 
-    /// 连上正在跑的 SrtFlow；没开就拉起来再连。
-    private func connectOrLaunch() throws -> Int32 {
-        if let fd = try? MCPUnixSocket.connect(path: socketPath) { return fd }
+    /// 连上正在跑的 SrtFlow；没开就拉起来再连。`launched`：这次是不是拉起来的。
+    private func connectOrLaunch() throws -> (fd: Int32, launched: Bool) {
+        if let fd = try? MCPUnixSocket.connect(path: socketPath) { return (fd, false) }
         guard mayLaunch else {
             throw ConnectionFailure(message: "SrtFlow is not running. Ask the user to open SrtFlow.")
         }
@@ -88,7 +91,7 @@ struct AppConnection {
         let deadline = Date().addingTimeInterval(45)
         while Date() < deadline {
             Thread.sleep(forTimeInterval: 0.3)
-            if let fd = try? MCPUnixSocket.connect(path: socketPath) { return fd }
+            if let fd = try? MCPUnixSocket.connect(path: socketPath) { return (fd, true) }
         }
         throw ConnectionFailure(message: """
             SrtFlow did not start answering within 45 seconds. If an older SrtFlow without AI support is open, \
