@@ -613,6 +613,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-01 把插画面的代码搬出 builder 之后，一条转场守卫还在旧文件里找](docs/bugfixes/2026-10-01-pr132-first-ci-run-guard-in-moved-insert.md) — 优化媒体 V2 把 builder 的插画面搬进 `CompositionClipInsert.swift`，`transition-handles-wiring` 还钉着旧文件，本机挑着跑的 17 条守卫没它、CI 第 1 组才红 —— 和 PR #71、#84 是同一个坑的第三次。守卫改指新文件；**机制**：`scripts/check-guards.sh` 一条命令跑全部守卫，写进验证纪律。**同一个教训撞第三次就别再补清单，改成机制。**
 - [2026-10-02 AI 起的 upscale 换源之后，检查器里的扣费一直是「—」](docs/bugfixes/2026-10-02-upscale-cost-lookup-killed-by-remove.md) — 换源把当时（钱还是 nil）的记录写进工程，之后查到的实收没人回写；收尾的 `remove` 还顺手 `cancel()` 掉了做完之后还在跑的账单查询。`cancel()` 只对 running 生效，查到实收 `onCostResolved` → 两边都按文件把钱补进记录（`applyDocumentRepair(annotation:)`：标脏、不进撤销、不重建）。**异步补账要追着已经落地的数据写；remove ≠ cancel。**
 - [2026-10-02 状态行上「Downloading」小标折成两行](docs/bugfixes/2026-10-02-fal-status-pill-wraps.md) — 窗口 1424 宽、五个小标都在时 SwiftUI 把小标压折了而左边那句话没截；小标 `lineLimit(1)` + `fixedSize`。**一行里谁让步要明说。**
+- [2026-10-02 「撤销这一轮」退不回 V1](docs/bugfixes/2026-10-02-undo-round-repacks-v1.md) — `undoRound` 用 `perform { $0 = snapshot }` 换回快照，磁吸开着时收尾的 `packMain` 又把快照里 V1 的缝合上、联动按「V1 没挪」什么都不跟：音频字幕回了原位、V1 没回，比不撤还糟；单步 ⌘Z 走 `applySnapshot` 所以没事。改成 `restoreTimeline`（和 ⌘Z 同一条收尾 `adopt`，不过磁吸、联动）。**「换回某一刻」不是一次编辑，别走编辑的收尾。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

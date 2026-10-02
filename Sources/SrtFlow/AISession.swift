@@ -162,11 +162,12 @@ final class AISession: ObservableObject {
         while !pendingQuestions.isEmpty { resolveFirst(false) }
     }
 
-    /// 把工程退回这一轮开始之前（一步，可以再 ⌘Z 回来）。
+    /// 把工程退回这一轮开始之前（一步，可以再 ⌘Z 回来）。**原样**换回快照：不走 `perform`，那里收尾的磁吸 / 联动会把
+    /// 快照再改一遍（docs/bugfixes/2026-10-02-undo-round-repacks-v1.md）。
     @discardableResult
     func undoRound(project: VideoEditProject) -> Bool {
         guard canUndoRound, let snapshot else { return false }
-        project.perform { $0 = snapshot }
+        project.restoreTimeline(snapshot)
         changeCount = 0
         if phase == .finished { phase = .idle }
         return true
