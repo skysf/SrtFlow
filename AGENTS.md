@@ -611,6 +611,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-01 播放中按空格图标慢半拍：电平条每秒 300 次问播放器要时间，被播放器的锁堵住主线程](docs/bugfixes/2026-10-01-meter-current-time-blocks-main-thread.md) — 心跳看门狗第一次跑就抓到 2.4 秒的栈：`player.currentTime()` 要同步拿播放器内部的锁，多轨合成播放中它一忙主线程就排在后面；AVKit 的 Now Playing 走同一把锁。改成读时钟外推的 `estimatedTime`，守卫钉着 App 代码里不许出现 `currentTime()`；第二轮：`AVPlayerView` 自带的控制器也在暂停那一拍问时间（578 ms）且关不掉，预览画面换成裸 `AVPlayerLayer`（`PlayerLayerView`），App 不再 import AVKit。**播放器的 getter 不是免费的；平均值看不见的卡顿要逐次抓；带控制器的便利视图会替你在主线程上做事。**
 - [2026-10-01 从 40 秒起一直有沙沙声：不是 48 kHz 的素材每 4096 帧重采样器重新起步一次](docs/bugfixes/2026-10-01-resampler-reset-every-chunk.md) — 音频引擎的读取器推式喂 `AVAudioConverter`、多吐的帧扔掉、位置按输入帧算，每块都判成跳读而 reset，44.1 kHz 的配乐块头误差只比信号低 9 dB；自检比 10 ms 窗口的 RMS 看不见周期性毛刺。改成拉式喂、位置按输出帧判；第 0 组钉着「按块读 = 一口气读，逐采样相同」。**流式转换器不能推式喂；周期性小毛刺要按块头 / 块中间分开量。**
 - [2026-10-01 把插画面的代码搬出 builder 之后，一条转场守卫还在旧文件里找](docs/bugfixes/2026-10-01-pr132-first-ci-run-guard-in-moved-insert.md) — 优化媒体 V2 把 builder 的插画面搬进 `CompositionClipInsert.swift`，`transition-handles-wiring` 还钉着旧文件，本机挑着跑的 17 条守卫没它、CI 第 1 组才红 —— 和 PR #71、#84 是同一个坑的第三次。守卫改指新文件；**机制**：`scripts/check-guards.sh` 一条命令跑全部守卫，写进验证纪律。**同一个教训撞第三次就别再补清单，改成机制。**
+- [2026-10-02 AI 起的 upscale 换源之后，检查器里的扣费一直是「—」](docs/bugfixes/2026-10-02-upscale-cost-lookup-killed-by-remove.md) — 换源把当时（钱还是 nil）的记录写进工程，之后查到的实收没人回写；收尾的 `remove` 还顺手 `cancel()` 掉了做完之后还在跑的账单查询。`cancel()` 只对 running 生效，查到实收 `onCostResolved` → 两边都按文件把钱补进记录（`applyDocumentRepair(annotation:)`：标脏、不进撤销、不重建）。**异步补账要追着已经落地的数据写；remove ≠ cancel。**
+- [2026-10-02 状态行上「Downloading」小标折成两行](docs/bugfixes/2026-10-02-fal-status-pill-wraps.md) — 窗口 1424 宽、五个小标都在时 SwiftUI 把小标压折了而左边那句话没截；小标 `lineLimit(1)` + `fixedSize`。**一行里谁让步要明说。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档

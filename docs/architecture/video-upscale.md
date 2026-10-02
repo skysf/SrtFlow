@@ -18,7 +18,7 @@ App 把原片的那一段裁出来送 fal，做完**先弹对比窗口**，用�
 | 声音 | `UpscaleAudioMux` | **fal 给的声音一律不要**（实测只有 FLUX 原样复制，Topaz 裁到画面长度、字节重采样、Bria 重编码且短 0.1 秒）：用 App 自带的 ffmpeg 把原片 `[sourceOffset, +时长)` 的声音封回去 —— 画面流原样复制（**HEVC 要点名 `hvc1`**，不然 AVFoundation 不认）、声音从原片解码后精确裁、重编 AAC 256k（流复制只能在 AAC 帧边界上切，差 ±20 ms）、`-shortest` 按画面收尾。原片没声音就不封。ffmpeg 不在时文件照落、`audioRestored` 为假 |
 | 落盘 | `UpscaleOutputName` | `<原名>_<宽x高>_<档位>.mp4`，宽高是**探测出来的输出尺寸**（FLUX 最小 1.5 倍、Topaz 最多 4 倍，和目标不一定一样）；放原片的文件夹，写不进去退到工程的家、再退到下载；撞名加编号（`ExportFileName.unoccupied`，全 App 一个规矩，不覆盖） |
 | 结果 | `UpscaleOutcome` | 文件、探测信息、`ClipUpscaleRecord`（原片、偏移、档位、原片的探测信息）、fal 的请求号、耗时。换源时拼成 `ClipSourceSwap.Replacement` 交给 `VideoEditProject.applyUpscale` |
-| 账 | `UpscaleJob` | 面板上的估价就是用户的确认（方案第 10 条）：开跑先把估算记进 fal 的账本，不再问；没做出来（失败 / 取消）退回，拿到结果就不退。做完每 30 秒问一次账单明细、最多六次，查到实际扣费就把账本里的估算换成实收、记进结果（要 ADMIN 权限的 Key；查不到只有估价） |
+| 账 | `UpscaleJob` | 面板上的估价就是用户的确认（方案第 10 条）：开跑先把估算记进 fal 的账本，不再问；没做出来（失败 / 取消）退回，拿到结果就不退。做完每 30 秒问一次账单明细、最多六次，查到实际扣费就把账本里的估算换成实收、记进结果（要 ADMIN 权限的 Key；查不到只有估价）。**查到时还要回写工程**：换源多半早就做完了（AI 起的做完就换、面板起的点 Replace 常在查到之前），`onCostResolved` → 两边都 `VideoEditProject.recordUpscaleCost(file:costUSD:)` 按文件把钱补进此刻用着它的段的记录（`applyDocumentRepair(annotation: true)`：标脏存盘、不进撤销栈、不重建预览）；`cancel()` 只对 running 生效，收尾的 `remove` 不许杀掉这个查询（[案例](../bugfixes/2026-10-02-upscale-cost-lookup-killed-by-remove.md)） |
 | Key | `UpscaleJob` | `FalKeyCache.shared.key(willAsk:)`：新版本第一次读会弹 macOS 的授权框，`keyPrompt` 让界面提醒用户点「始终允许」 |
 | 进度 | `UpscaleJob.state` / `UpscaleActivity.shared` | 阶段（`FalJobPhase`，[fal.ai 生成](fal-generation.md) 第十三节）：裁 → 上传（字节比例，1% 一格）→ 排队（带位置）→ 处理（这一阶段过了多久 + 这一档通常几分钟 `FalUpscaleTier.typicalSeconds`）→ 下载（字节比例）→ 封声落盘。同一阶段同一比例只报一次；换阶段才重记开始时刻（`FalJobProgress`）。界面从 `UpscaleActivity` 读：检查器那一节和编辑器顶上的状态行（`FalStatusRows`）同一份文字；切工程 `cancelAll` |
 
@@ -82,7 +82,8 @@ Topaz 的 unit 台阶（要摸准再跑 10 / 12 / 15 秒各一条）。
      Try Another Model… 回面板；Replace Clip 之后片段指向新文件、关键帧 / 标记 / 音量曲线位置不变、块名字旁有「1080p」、⌘Z 一步撤回。
   5. 换过源的片段：检查器显示档位 / 日期 / 扣费 / 原片，Compare… 看原片 vs 现在，Revert to Original 换回；把原片挪到别的文件夹再换回也行；
      原片删了提示找不到。
-  6. 账单：做完几分钟内对比窗口 / 检查器的扣费从「估」变成实收；设置 → AI 的「今天已花」跟着变。
+  6. 账单：做完几分钟内对比窗口 / 检查器的扣费从「估」变成实收（点了 Replace 之后、AI 起的换源之后也要变，不是只在对比窗口里）；设置 → AI 的「今天已花」跟着变。
+  6b. 把窗口缩到最小宽度再起一个 upscale：状态行上的小标（Preparing / Uploading / In queue / Processing / Downloading）都在一行上、不折行，左边那句话截掉中间。
   7. 切工程：做到一半的任务取消，不弹对比窗口。
   8. AI：让 Claude Code 对一段 720p 的画面段调 `upscale_clip`（额度内）：立刻回任务号、状态行多一行、`get_job` 的 phase 从 uploading 走到 finishing；
      做完片段已换成新文件、块名字旁有「1080p」、⌘Z 一步撤回、右键能 Compare / Revert；把每日上限调到比估价小再调一次：提示条上问、`get_job` 带

@@ -149,6 +149,9 @@ struct FalPhasePills: View {
             }
             Text(verbatim: text)
         }
+        // 小标不折行、不被挤扁（2026-10-02 冒烟：窗口窄时「Downloading」折成两行）；地方不够让左边那句话去截。
+        .lineLimit(1)
+        .fixedSize()
         .font(.caption)
         .foregroundStyle(state == .upcoming ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary))
         .padding(.horizontal, 7)
