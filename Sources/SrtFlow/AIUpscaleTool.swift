@@ -103,6 +103,11 @@ enum AIUpscaleTool {
             return
         }
         let replacement = ClipSourceSwap.Replacement(url: outcome.file, info: outcome.info, record: outcome.record)
+        // 账单几分钟后才有：查到实收再补进工程里的记录（不进撤销栈）；工程中途换了就不补。
+        finished.onCostResolved = { [weak project] job in
+            guard let project, let cost = job.actualCost, project.documentGeneration == job.projectGeneration else { return }
+            project.recordUpscaleCost(file: outcome.file, costUSD: cost)
+        }
         let done = AIUndoGrouping.step(project.effectiveUndoManager) {
             project.applyUpscale(replacement, to: project.clipIDs(usingPicture: finished.request.originalURL))
         }

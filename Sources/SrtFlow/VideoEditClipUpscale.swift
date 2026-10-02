@@ -94,6 +94,17 @@ extension TimelineState {
         return done
     }
 
+    /// 账单查到 fal 实际扣费之后补进记录：此刻用着这个 upscale 文件的段，记录里都写上。返回改了的（已经是这个数的不算）。
+    @discardableResult
+    mutating func recordUpscaleCost(file: URL, costUSD: Double) -> [UUID] {
+        var done: [UUID] = []
+        for clip in allClips where clip.sourceURL == file && clip.upscale != nil && clip.upscale?.costUSD != costUSD {
+            update(clip.id) { $0.upscale?.costUSD = costUSD }
+            done.append(clip.id)
+        }
+        return done
+    }
+
     /// 这些段换回原片。返回换了的。
     @discardableResult
     mutating func revertUpscale(_ ids: [UUID]) -> [UUID] {

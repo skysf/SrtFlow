@@ -21,7 +21,9 @@
 #      scripts/check-mcp.sh 的异步落账扫描钉着）；任务有 waitingForUser 和取消；
 #   9. **进度看得见**（docs/architecture/fal-generation.md 第十三节）：生成任务把阶段交给 AIJobs 的 liveDetail（get_job 的 phase /
 #      queue_position / transfer_percent）、get_job 真的并进去；任务起手登记进 FalGenerationActivity、结束拿掉；
-#      编辑器顶上的状态行（FalStatusRows）挂在 AI 那条横幅底下。
+#      编辑器顶上的状态行（FalStatusRows）挂在 AI 那条横幅底下；
+#  10. **账单查到实收回写工程里的记录**：cancel 只对 running 生效（remove 不杀查询）、查到叫 onCostResolved、AI 和对比窗口两边都接它经
+#      recordUpscaleCost 回写。
 #
 # 用法：checks/fal-wiring.sh
 set -euo pipefail
@@ -161,6 +163,21 @@ if grep -q 'AIUndoGrouping' <<<"$(grep -n 'upscaleClip' "${ROUTER}" || true)"; t
   fail "${ROUTER}：upscale_clip 只起任务，起步不该包进 AIUndoGrouping（换源那一下在 AIUpscaleTool.land 里自己包）"
 fi
 grep -q 'UpscaleActivity.shared.add(job, opensCompare: false)' "${UPSCALE_TOOL}" || fail "${UPSCALE_TOOL}：AI 起的 upscale 不该弹对比窗口（做完直接换源，2026-10-02 用户定）"
+
+# 10. 账单查到实收要回写到工程里的记录（docs/bugfixes/2026-10-02-upscale-cost-lookup-killed-by-remove.md）：
+#     remove 不许杀掉做完任务的账单查询（cancel 只对 running 生效）；查到了叫 onCostResolved；换源的两边（AI、对比窗口）都接它回写。
+COMPARE="Sources/SrtFlow/Upscale/UpscaleCompareView.swift"
+[ -f "${COMPARE}" ] || fail "找不到 ${COMPARE}（改名了就同步改这里）"
+CANCEL_LINE="$(line_of '    func cancel() {' "${UPSCALE}")"
+GUARD_LINE="$(line_of '        guard case .running = state else { return }' "${UPSCALE}")"
+if [ -z "${CANCEL_LINE}" ] || [ -z "${GUARD_LINE}" ] || [ "${GUARD_LINE}" -le "${CANCEL_LINE}" ] || [ $((GUARD_LINE - CANCEL_LINE)) -gt 4 ]; then
+  fail "${UPSCALE}：cancel() 开头必须 guard case .running（做完之后 remove 会经过它，不许把账单查询一起取消）"
+fi
+grep -q 'onCostResolved?(self)' "${UPSCALE}" || fail "${UPSCALE}：查到实收没叫 onCostResolved（工程里的记录永远是「—」）"
+for file in "${UPSCALE_TOOL}" "${COMPARE}"; do
+  grep -q 'onCostResolved = { \[weak project\] job in' "${file}" || fail "${file}：换源那一边没接 onCostResolved 回写工程里的记录"
+  grep -q 'project.recordUpscaleCost(file: outcome.file, costUSD: cost)' "${file}" || fail "${file}：查到实收要经 recordUpscaleCost 回写（不进撤销栈、标脏）"
+done
 grep -q 'waitingForUser: { \[weak job\] in job?.waiting }' "${UPSCALE_TOOL}" || fail "${UPSCALE_TOOL}：任务没把「在等用户」交给 AIJobs"
 grep -q 'if case .running(let progress)? = job?.state { return progress.json() }' "${UPSCALE_TOOL}" || fail "${UPSCALE_TOOL}：任务没把阶段交给 AIJobs 的 liveDetail"
 grep -q 'waitingForUser: { \[weak self\] in self?.waiting }' "${RUN}" || fail "${RUN}：任务没把「在等用户」交给 AIJobs（AI 会对着 running 干等）"

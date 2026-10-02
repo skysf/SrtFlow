@@ -166,6 +166,11 @@ struct UpscaleCompareView: View {
     private func replace(_ job: UpscaleJob) {
         guard let outcome = job.outcome else { return }
         let replacement = ClipSourceSwap.Replacement(url: outcome.file, info: outcome.info, record: outcome.record)
+        // 账单还没查到就点了替换：查到实收再补进工程里的记录（不进撤销栈）；工程中途换了就不补。
+        job.onCostResolved = { [weak project] job in
+            guard let project, let cost = job.actualCost, project.documentGeneration == job.projectGeneration else { return }
+            project.recordUpscaleCost(file: outcome.file, costUSD: cost)
+        }
         let done = project.applyUpscale(replacement, to: project.clipIDs(usingPicture: job.request.originalURL))
         if done.isEmpty { project.notice = L10n("No clip in this project could be replaced; the upscaled file was kept.") }
         UpscaleActivity.shared.remove(job)

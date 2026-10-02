@@ -3,7 +3,7 @@ import Foundation
 // 第 41 组：片段换成 upscale 文件、换回原片（VideoEditClipUpscale.swift）。
 // 换源时入点、关键帧、标记、音量曲线一起平移；新文件盖不住的不换；差一帧以内算盖住；再次 upscale 仍按原片算；
 // 换回去逐字段还原；分割把记录抄给右半；工程里用同一个原片的段一起换、分离出来的音频不算；存盘往返、v29 按需登记、
-// 原片进素材表配书签但不进 mediaURLs；重链接把原片的记录一起改。合同：docs/architecture/video-edit-project-file.md「四之五」。
+// 原片进素材表配书签但不进 mediaURLs；重链接把原片的记录一起改；账单查到实收按文件补进记录。合同：docs/architecture/video-edit-project-file.md「四之五」。
 
 /// 浮点差一点点不算（这一组自己的小件，别的组用 checkEqual 比整数）。
 private func checkClose(_ actual: Double?, _ expected: Double, _ message: String, line: Int = #line) {
@@ -133,6 +133,15 @@ func checkUpscaleSwap(root: URL) throws {
     checkEqual(partial.applyUpscale(replacement, to: [a.id, far.id]), [a.id], "只做了原片 2.0–7.0 的版本：用到 8–10 的那段盖不住，不换")
     checkEqual(partial.revertUpscale([a.id, far.id]), [a.id], "换回去：只有换过的那段")
     check(partial.mainClips.allSatisfy { $0.upscale == nil && $0.sourceURL == original }, "都回到原片上")
+
+    // ---- 账单几分钟后才查到实收：按文件补进此刻用着它的段的记录（换源早就做完了也补得上）----
+    check(project.allClips.filter { $0.sourceURL == second.url }.allSatisfy { $0.upscale?.costUSD == nil }, "刚换源时记录里没有钱（账单还没出）")
+    let billed = project.recordUpscaleCost(file: second.url, costUSD: 0.0432)
+    checkEqual(Set(billed), Set([a.id, b.id, far.id, swapped.id]), "用着这个 upscale 文件的四段都补上了钱")
+    check(project.allClips.filter { $0.sourceURL == second.url }.allSatisfy { $0.upscale?.costUSD == 0.0432 }, "记录里是账单的数")
+    check(project.allClips.first { $0.id == other.id }?.upscale == nil, "别的素材不动")
+    checkEqual(project.recordUpscaleCost(file: second.url, costUSD: 0.0432), [], "同一个数再记一次什么都不改（applyDocumentRepair 据此不标脏）")
+    checkEqual(project.recordUpscaleCost(file: root.appendingPathComponent("没人用.mp4"), costUSD: 1), [], "没人用的文件改不到任何段")
 
     // ---- 存盘往返、v29 按需登记、原片进素材表 ----
     let file = root.appendingPathComponent("upscale.srtflowproj")

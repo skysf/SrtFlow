@@ -50,6 +50,8 @@ final class UpscaleJob: ObservableObject, Identifiable {
     var onFinished: ((UpscaleJob) -> Void)?
     /// 怎么结束都叫一声（done 在 onFinished 之后；failed / cancelled / declined）：upscale_clip 用它把结局记给 AI 的任务。
     var onEnded: ((UpscaleJob) -> Void)?
+    /// 账单查到实际扣费时叫一声（做完几分钟后；要 ADMIN 权限的 Key）：换过源的那一边把钱补进工程里的记录。
+    var onCostResolved: ((UpscaleJob) -> Void)?
 
     private var task: Task<Void, Never>?
     private var reserved: (amount: Double, day: Date)?
@@ -72,6 +74,9 @@ final class UpscaleJob: ObservableObject, Identifiable {
     }
 
     func cancel() {
+        // 只取消还在跑的：做完之后 `UpscaleActivity.remove`（换源、丢弃、AI 收尾）也会经过这里，不许把账单的查询一起杀掉
+        //（2026-10-02 冒烟：AI 起的换源做完检查器里的扣费一直是「—」，就是查询被这一下取消了）。
+        guard case .running = state else { return }
         task?.cancel()
         // AI 起的：挂在提示条上的问题一起收回。
         if case .dailyLimit = approval { AISession.shared.withdrawQuestions(owner: id.uuidString) }
@@ -183,6 +188,7 @@ final class UpscaleJob: ObservableObject, Identifiable {
                     FalSettingsStore.shared.recordSpend(cost)
                     self.reserved = nil
                 }
+                onCostResolved?(self)
                 return
             }
         }
