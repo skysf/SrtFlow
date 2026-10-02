@@ -116,6 +116,7 @@ enum AIClipTools {
             summary["keyframes_note"] = .string(note)
         }
         if let followed = AILinkageReport.json(linkage) { summary["linkage"] = followed }
+        if let packed = AILinkageReport.magnet(linkage) { summary["magnet"] = packed }
         if !changed { summary["unchanged"] = true }
         return .ok(.object(summary), changed: changed)
     }

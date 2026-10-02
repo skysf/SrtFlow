@@ -64,8 +64,8 @@ extension VideoEditProject {
             )
             clip.linkGroup = linkGroup
             state.mainClips.append(clip)
-            // 磁吸开着就走既有 pack 规则。
-            if self.magnetEnabled { state.packMain() }
+            // 磁吸开着就走既有 pack 规则（磁吸跟着工程走，看这个工程的）。
+            if state.mainMagnet { state.packMain() }
 
             // **pack 之后重新读实际起点** —— 不能沿用 pack 前的估算值（计划 §10.2-3）。
             let actualStart = state.mainClips.last(where: { $0.linkGroup == linkGroup })?
@@ -148,7 +148,7 @@ extension VideoEditProject {
             )
             clip.linkGroup = linkGroup
             state.mainClips.append(clip)
-            if self.magnetEnabled { state.packMain() }
+            if state.mainMagnet { state.packMain() }
 
             let actualStart = state.mainClips.last(where: { $0.linkGroup == linkGroup })?
                 .timelineStart ?? 0

@@ -356,7 +356,9 @@ SwiftUI 里子视图的手势优先，所以块本体的移动、标尺的 scrub
 | 联动 `linkageEnabled` | **开**（2026-10-02 起；之前叫「链接」、默认关） | 压在主轨块上的东西跟着它挪、跟着它删，分离出来的音频照旧跟着视频（[联动](timeline-linkage.md)）。同剪映；关着剪掉一段之后后面的字幕、音效全错位。「分离音频是为了单独动它」照样成立：拖音频本身永远只动音频。 |
 | 播放跟随 `timelineFollowsPlayhead` | **关** | 播放时轨道区域停在哪就停在哪（2026-10-01）；开着才翻页式跟随。 |
 
-四个都**不进工程文件**。2026-10-01 起**记在 UserDefaults**（之前每次启动回到字面量）：键、默认值、读写只有
+吸附、联动、播放跟随**不进工程文件**；**磁吸 2026-10-02 起跟着工程走**（`state.mainMagnet`，同剪映每个草稿各记各的；
+记住的那个只当新建工程的默认，[案例](../bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md)），而且只在改到 V1 的排布时排紧 V1（`MainMagnet`）。
+2026-10-01 起**记在 UserDefaults**（之前每次启动回到字面量）：键、默认值、读写只有
 `EditorToggles` 一份，字面量就是产品口径本身，顺手「改回 true」会静默改掉整个剪辑手感；冒烟 / 性能场景起手
 永远是默认值。全部规矩见 [剪辑页上记住的开关](editor-remembered-toggles.md)，守卫在
 `checks/timeline-drag-wiring/toggles.sh`（第 11 节）和 `scripts/check-timeline-zoom.sh` 第 4 节。

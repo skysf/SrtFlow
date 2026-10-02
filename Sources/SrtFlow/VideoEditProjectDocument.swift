@@ -28,7 +28,7 @@ extension VideoEditProject {
     func newProject() {
         guard prepareToCloseDocument() else { return }
         closeCurrentDocument()
-        replaceStateForDocument(TimelineState())
+        replaceStateForDocument(MainMagnet.newTimeline(remembered: EditorToggles.read(.magnet)))
         // 和打开工程一样重排预览：上一个工程还在路上的那次重建就此作废，不然它落地时把旧工程的画面挂进新工程。
         scheduleRebuild()
     }

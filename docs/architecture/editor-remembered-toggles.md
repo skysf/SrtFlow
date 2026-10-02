@@ -13,9 +13,11 @@
 | 3 | 剪辑页的字幕列表「播放时滚到正在说的那句」：**默认关**、按钮留着、记住。烧录页的字幕表**不动**（默认跟、不记） | 烧录页上跟着看字幕是核对的主要用法 |
 | 4 | Return / Home 回到开头照旧滚回最左，播放中按也滚 | 那是用户自己按的，开关不管它 |
 | 5 | 磁吸、吸附、链接（2026-10-02 起叫联动）、播放跟随**四个工具栏开关一起记住**（UserDefaults，全 App 一份，不进工程文件）；字幕列表那个也记 | 用户：「这四个最好一起都是被记住的」。此前三个每次启动回到默认（[拖动手势 §4.5](timeline-drag-gestures.md) 2026-09-18 口径里「不写 UserDefaults」那一句作废，默认值不变） |
+| 6 | **2026-10-02 改：磁吸跟着工程走**（同剪映，每个草稿各记各的）。开没开是 `state.mainMagnet`：进撤销栈、存进工程文件，老工程缺键 = 关；记住的那个只当**新建工程**的默认。另外**改别的永远不动 V1**：只有改到了 V1 的排布、或者磁吸这次才拨开，才排紧 | 南极工程（[案例](../bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md)）：磁吸被记住为开，打开一个 V1 有缝的工程，改一条音量曲线整条 V1 就被合拢、联动把 97 样东西跟着挪。剪映草稿里存着 `maintrack_adsorb`（这台机器上 37 个草稿 15 关 22 开）。第 5 条对吸附、联动、播放跟随照旧 |
 
-磁吸记住为开的一个后果：启动后打开一个主轨有缝的工程，缝会在**第一次改动**时被合上（`perform` 之后的
-`packMain`）—— 和现在同一次运行里换工程是一样的行为，不另加「打开就合」（那会在打开时改工程、标脏、进撤销栈）。
+**会改工程内容的开关是工程的属性**：吸附、联动、播放跟随只影响「之后怎么拖、怎么播」，记在全 App 一份没问题；磁吸决定 V1 上的东西在哪，
+全局记住它就等于让上一个工程的设置去改下一个工程。以前这里写着「磁吸记住为开时，打开有缝的工程，第一次改动合拢」并当成预期行为 —— 那是错的，
+2026-10-02 起：打开工程不改工程，磁吸照文件里的（老文件 = 关）；磁吸开着也只在改到 V1 的排布时排（`MainMagnet`）。
 
 ## 二、默认值和记忆只有一份：`EditorToggles`
 
@@ -23,7 +25,7 @@
 
 | `Key` | UserDefaults 键 | 默认 | 谁读初值、谁回写 |
 | --- | --- | --- | --- |
-| `.magnet` | `magnetEnabled` | 关 | `VideoEditProject.magnetEnabled`（`didSet` 回写，顺带 `packMain`） |
+| `.magnet` | `magnetEnabled` | 关 | **只当新建工程的默认**：`VideoEditProject.newTimeline()` 读；拨工具栏开关走 `setMagnet` 回写。工程自己的磁吸是 `state.mainMagnet`（存进工程文件、进撤销栈），`VideoEditProject.magnetEnabled` 是给界面读的只读镜子 |
 | `.snapping` | `snappingEnabled` | **开** | `VideoEditProject.snappingEnabled` |
 | `.linkage` | `linkageEnabled` | **开**（2026-10-02 起） | `VideoEditProject.linkageEnabled`（联动，[timeline-linkage.md](timeline-linkage.md)） |
 | `.followPlayhead` | `timelineFollowsPlayhead` | 关 | `VideoEditProject.timelineFollowsPlayhead` → 时间线按值传给 `TimelinePlayheadLines(follows:)` |
@@ -76,7 +78,10 @@ CI 跑出两样。写不落盘，是免得冒烟里拨过的开关留在 SrtFlow
 
 - **纯值**：`scripts/check-timeline-zoom.sh` 第 4 节 —— `PlayheadFollow`（关着到哪都不推；开着只在边上推、推到 15%、边线跟着滚动量走、
   视口 ≤ 80 不推）和 `EditorToggles`（五个默认值、没记过 / 记了 / 记坏了各读到什么、脚本驱动时 store 为 nil 且写了也读不到）。
-- **接线**：`checks/timeline-drag-wiring/toggles.sh` —— 默认值的字面量、工程四个属性从 `EditorToggles` 读初值并回写、键不在别处出现、
+- **磁吸跟着工程走**：`scripts/check-timeline-snap.sh` 第 1g 组（只在改到 V1 的排布 / 刚拨开时排、南极工程那一步 V1 和压在上面的都不动）、
+  `scripts/check-project-file.sh` 第 42 组（按需写键、缺键读作关、往返）、`toggles.sh` 第 11f 节（镜子只读、只经 `setMagnet` 和 `MainMagnet.settle`、新建工程走
+  `newTimeline`、AI 看得见）。
+- **接线**：`checks/timeline-drag-wiring/toggles.sh` —— 默认值的字面量、工程三个属性从 `EditorToggles` 读初值并回写（磁吸见上一条）、键不在别处出现、
   `store` 按 `PerfCounters.isEnabled` 分、冒烟清单登记、工具栏四个开关在小视图里、时间线把开关传给播放头竖线、
   `followPlayhead` 只问 `PlayheadFollow` 且只碰横向、播放头竖线里推横向滚动正好两处（跟随 + 回到开头）、字幕列表的按钮读写记忆。
 - **反向验证（2026-10-02）**：见本文件末尾的记录。
@@ -87,7 +92,11 @@ CI 跑出两样。写不落盘，是免得冒烟里拨过的开关留在 SrtFlow
   再按空格从那儿接着播。**拨开跟随**再播：播放头到右边 80pt 以内翻一页、落在视口左侧 15% 处；拨开时播放头已经在视口外，下一跳就翻过去。
 - 跟随开着、滚到下面几条轨再播：横向翻页，**纵向不动**。
 - 播放中按 Return：滚回最左、从头接着播（开关关着也滚 —— 这是回到开头，不是跟随）。
-- 拨四个开关、字幕列表的跟随按钮，退出 App 再开：都是上次的状态。磁吸记住为开时打开有缝的工程，第一次改动合拢。
+- 拨四个开关、字幕列表的跟随按钮，退出 App 再开：吸附、联动、播放跟随、字幕列表跟随都是上次的状态；**磁吸是这个工程自己的**：
+  工程 A 拨开磁吸、工程 B 关着，来回切换各是各的；退出再开、打开 A 仍是开的；⌘N 新建的工程是最后拨的那个值。
+- 磁吸开着的工程里打开一个**磁吸关着时留了缝**的老工程：磁吸显示为关，缝都在；改字幕、改音量、往 V2 放东西，缝都在。
+  拨开磁吸：缝合上（一步，⌘Z 连开关一起退回去）。
+- 磁吸开着、V1 却有缝（手改过的工程文件）：改配乐音量、改一句字幕 —— V1 一段都不动；裁 V1 上的一段 —— 整条排紧。
 - 剪辑页字幕列表默认不跟着滚；拨开后播放滚到正在说的那句。烧录页的字幕表照旧默认跟。
 - 跑一遍进程内冒烟（`scripts/gui-smoke/in-process/run.sh`）：本机存着「磁吸开」也不影响落点；日志里 `toggles` 一步写出四个值。
 

@@ -29,6 +29,15 @@ enum TrackRowKind: Hashable, Sendable {
         }
     }
 
+    /// 没单独调过的这一类轨用哪个默认高度。不可调的行（标尺 / 滤镜 / 文字 / 形状 / 字幕）自己写死高度，
+    /// 永远走不到这里；给个音频轨的值只是为了函数是全的。
+    func defaultHeight(video: Double, audio: Double) -> Double {
+        switch self {
+        case .video: return video
+        case .audio, .other: return audio
+        }
+    }
+
     /// 可拖区间。`nil` = 这一类根本不给拖。
     ///
     /// 只放开视频轨和音频轨（2026-09-22 用户拍板）。上限 2026-09-23 从 120 / 100 抬到

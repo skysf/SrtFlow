@@ -27,6 +27,8 @@ enum TimelineLinkage {
     struct Report: Equatable {
         var moved = 0
         var deleted = 0
+        /// 磁吸这次把 V1 的几段挪了位置 —— 不是联动，`perform` 收尾时 `MainMagnet.settle` 数的；`isEmpty` 只问联动。
+        var magnetPacked = 0
         var isEmpty: Bool { moved == 0 && deleted == 0 }
     }
 

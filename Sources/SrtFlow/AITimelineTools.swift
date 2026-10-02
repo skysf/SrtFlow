@@ -26,6 +26,8 @@ enum AITimelineTools {
         if case .object(var object) = summary {
             // 联动开关（docs/architecture/timeline-linkage.md）：开着时删 / 挪 V1 片段，压在上面的东西跟着；AI 要知道它在不在。
             object["linkage"] = .bool(project.linkageEnabled)
+            // 这个工程的磁吸（跟着工程走）：开着时 V1 一改就合拢空隙，AI 放到 V1 的起点会被排紧。
+            object["magnet"] = .bool(project.magnetEnabled)
             if !credits.isEmpty { object["music_credits"] = .array(credits.map { .string($0) }) }
             summary = .object(object)
         }
@@ -150,14 +152,14 @@ enum AITimelineTools {
         // 挂字幕和放素材是同一步（一次调用 = 一步撤销）。挂字幕要是落在这一步外面，App 在后台收不到事件，它按事件
         // 自动开的那一组一直关不上，之后 AI 的每一步都嵌进去，撤一步全空
         // （docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md）。
-        try AIUndoGrouping.step(project.effectiveUndoManager) {
+        let report = try AIUndoGrouping.step(project.effectiveUndoManager) {
             if let subtitle = subtitles.first {
                 project.attachSubtitle(subtitle)
                 guard project.state.subtitleURL == subtitle else {
                     throw AIToolError(project.notice ?? "SrtFlow could not read \(subtitle.lastPathComponent).")
                 }
             }
-            project.perform { AITimelineEdits.place(plans, insert: insert, linkage: linkage, in: &$0) }
+            return project.perform { AITimelineEdits.place(plans, insert: insert, linkage: linkage, in: &$0) }
         }
         // 图片和拖进来一样：先上轨，静帧视频在后台转，转完无感替换。
         for image in images {
@@ -189,6 +191,7 @@ enum AITimelineTools {
         let firstStart = plans.compactMap { state.clip(with: $0.clip.id)?.timelineStart }.min()
         AIEditorPresenter.reveal(.init(clips: Set(plans.map(\.clip.id)), time: firstStart), project: project)
         var result: [String: JSONValue] = ["added": .array(added), "timeline_duration": AIFormat.seconds(state.duration)]
+        if let packed = AILinkageReport.magnet(report) { result["magnet"] = packed }
         if let subtitle = subtitles.first {
             result["subtitles"] = .string("\(subtitle.lastPathComponent) is now the subtitle track (\(state.subtitleCues(of: .original).count) lines).")
         }
@@ -348,6 +351,7 @@ enum AITimelineTools {
         project.clearSelection()
         var result: [String: JSONValue] = ["deleted": .number(Double(raw.count)), "timeline_duration": AIFormat.seconds(project.state.duration)]
         if let followed = AILinkageReport.json(linkage) { result["linkage"] = followed }
+        if let packed = AILinkageReport.magnet(linkage) { result["magnet"] = packed }
         return .ok(.object(result), changed: true)
     }
 
