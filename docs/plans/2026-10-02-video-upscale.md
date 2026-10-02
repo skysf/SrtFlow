@@ -51,7 +51,8 @@ Compare with Original… / Revert to Original Clip / Upscale Again…。
 | 3 任务 | 算范围（这一处 / 最长的那处 / 整个文件 + 余料）、裁出 H.264 中间件（AVAssetWriter，`MediaReadQueue`）、上传、排队、下载、封回原声（App 自带 ffmpeg：画面复制、声音精确裁后重编 AAC）、命名落盘、对账实际扣费、进度与取消 | 已合并（PR #139） |
 | 4 界面 | 检查器一节、右键菜单、Upscale 面板、对比窗口、块角标、三张语言表、人工回归清单、架构文档（导出提示和状态行留到下一刀） | 本 PR |
 
-每刀一个 PR，CI 绿了就合。AI 工具第一版不开（清单只剩 53 字预算）。
+每刀一个 PR，CI 绿了就合。AI 工具第一版没开（清单只剩 53 字预算）；2026-10-02 用户定把清单上限抬到 80,000、做完直接换源，`upscale_clip` 作为第五刀合进
+（[视频 upscale](../architecture/video-upscale.md) 第五节、[AI 接口（MCP）](../architecture/ai-control-mcp.md) 第四节第 44 条）；进度（上传 / 排队 / 处理 / 下载可见，第 13 条）同一天先合。
 
 ## 四、还没定的
 

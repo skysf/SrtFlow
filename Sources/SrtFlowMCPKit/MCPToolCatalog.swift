@@ -31,6 +31,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case findAudio = "find_audio"
     case addVoiceover = "add_voiceover"
     case generateMedia = "generate_media"
+    case upscaleClip = "upscale_clip"
     case addClips = "add_clips"
     case editClip = "edit_clip"
     case setKeyframes = "set_keyframes"
@@ -72,7 +73,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
             return MCPSenseTools.definition(for: self)
         case .findAudio, .addVoiceover:
             return MCPMediaTools.definition(for: self)
-        case .generateMedia:
+        case .generateMedia, .upscaleClip:
             return MCPGenerationTools.definition(for: self)
         case .recipes, .saveRecipe:
             return MCPRecipeTools.definition(for: self)
@@ -91,7 +92,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     /// 这个工具要哪个提供方配好了才列出来（nil = 一直列）。方案第 36 条：谁都没配就不列出来。
     public var provider: MCPProvider? {
         switch self {
-        case .generateMedia: return .fal
+        case .generateMedia, .upscaleClip: return .fal
         default: return nil
         }
     }

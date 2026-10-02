@@ -65,7 +65,7 @@
 - 下载：先下到临时文件再挪过去，下到一半断了不留半个文件；空文件、HTTP 错误都报错；**不把 Key 发给文件那台主机**。
 - 自检 / 冒烟用 `SRTFLOW_FAL_QUEUE_BASE` 把队列地址指到本机的假 fal，**只认回环地址**（Key 不会因此发到别处）。
 
-## 五、花钱（`FalSpendPolicy` / `FalSpendLedger` / `FalGenerationRun`）
+## 五、花钱（`FalSpendPolicy` / `FalSpendLedger` / `FalJobGate` / `FalGenerationRun`）
 
 1. **估算** = 登记的单价 × 用量（`FalModel.estimate`：图按张、视频按秒（分辨率分档）、旁白按千字符、音乐按成品分钟向上取整、音效按秒）。
    没登记单价（用户填了自己的端点又没填价、或 AI 点名的端点）估不出来 = nil。
@@ -81,6 +81,10 @@
 6. **配旁白不问**：同步工具，客户端一分钟左右就超时。`FalSpendPolicy.allowsWithoutAsking`：额度不够 / 价格不明 / Key 读不出来 → 退到下一档声音，
    结果里 `voice.note` 写「fal.ai 的声音没用：会让今天超过 $X 的上限」并说去设置里改。
 7. 每日上限、今天花了多少、每种事的模型都在设置 → AI 的 fal 一节（`FalSettingsRow`），`get_status` 的 `generation` 也报给 AI。
+
+- **AI 起的任务（`generate_media`、`upscale_clip`）的把关只有一处**：`FalJobGate.reserve`（额度内直接记账；超了 / 价格不明先在提示条上问，
+  问之前把剪辑页摆出来、SrtFlow 摆到前面，问的时候任务的 `waiting_for_user` 说明在等什么；决定和记账同一步）。钥匙串授权框的提醒
+  （给 AI 的话 + 提示条上的一句）也在它里面。面板起的 upscale 不经它（面板就是确认）。`checks/fal-wiring.sh` 第 4、5 条钉着。
 
 ## 六、Key 与钥匙串（`FalKeyStore` / `FalKeyCache`）
 
@@ -98,6 +102,7 @@
 
 ## 七、清单跟着 Key 走（`MCPProviders`）
 
+- 2026-10-02 起 fal 的工具有两个：`generate_media` 和 `upscale_clip`，都属于 fal 提供方（`MCPToolName.provider`）、都在总说明的 fal 那一行里；下面说的「列不列」对两个一样。
 - 工具清单由小程序（`srtflow-mcp`）当场回（Claude 一启动就要，不能为此拉起 App），而 Key 在 App 的钥匙串里，所以 App 在 Key 添加 / 删除时、以及每次启动时，
   写一个**只有提供方名字**的小文件 `mcp-providers.json`（`{"providers":["fal"]}`，和 socket 同目录、按 bundle id 分开），小程序每回一次清单 / 握手都重读它。
   文件里没有 Key、没有别的机密；读得宽（不在 / 坏了 / 有不认识的名字都当没有）。
@@ -186,7 +191,8 @@
 | 等多久 | 视频一律 25 分钟（`FalUpscaleTier.maxSeconds`） |
 | 维护 | `scripts/fal-models/refresh.sh` 也扫 `FalUpscaleModels.swift` 里的端点、目录按 video-to-video 列；改档位 / 改价同步这一节和自检 |
 
-换源在 [工程文件与素材重链接](video-edit-project-file.md)「四之五」，任务那一层（范围、裁一段、封回原声、落盘、进度、账）在 [视频 upscale](video-upscale.md)；界面是第四刀。
+换源在 [工程文件与素材重链接](video-edit-project-file.md)「四之五」，任务那一层（范围、裁一段、封回原声、落盘、进度、账）在 [视频 upscale](video-upscale.md)；界面是第四刀；
+AI 的工具 `upscale_clip`（2026-10-02，做完直接换源、花钱经 `FalJobGate`）在 [视频 upscale](video-upscale.md) 第五节和 [AI 接口（MCP）](ai-control-mcp.md) 第四节第 44 条。
 
 ## 十三、进度：AI 从 `get_job` 看、用户从编辑器顶上的状态行看（2026-10-02 起）
 

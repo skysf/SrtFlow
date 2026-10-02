@@ -2,7 +2,7 @@ import Foundation
 import SrtFlowMCPKit
 
 // 生成类工具的「提供方」（方案第 36 条）：**谁都没配就不列出来**。
-// - 目录这一层：generate_media 只属于 fal、说明和参数对、只有它上外面的网（openWorld）、词表和 App 的类型对账；
+// - 目录这一层：generate_media 和 upscale_clip 只属于 fal、说明和参数对、只有它们上外面的网（openWorld）、词表和 App 的类型对账；
 // - 那个小文件（MCPProviderMarker）：路径和 socket 同目录、读得宽（不在 / 坏了 / 有不认识的名字都当没有）、只写提供方的名字、不动没变的；
 // - 协议这一层：真起小程序 —— 没配 / 配了各列什么、总说明配了才提 fal、握手声明清单会变、新一代的清单缓存时间短；
 //   用户中途添加 / 删掉 Key（小文件变了）时，握过手的老一代客户端收到 `notifications/tools/list_changed`，新一代不收。
@@ -19,17 +19,20 @@ func runProviderChecks() {
 // MARK: 目录
 
 private func checkCatalog() {
+    // fal 的两个工具：generate_media（第 6 块）、upscale_clip（2026-10-02）。
+    let falTools: Set<MCPToolName> = [.generateMedia, .upscaleClip]
     checkEqual(MCPToolName.generateMedia.provider, .fal, "generate_media belongs to fal")
-    check(MCPToolName.allCases.filter { $0 != .generateMedia }.allSatisfy { $0.provider == nil }, "every other tool is always listed")
-    checkEqual(MCPToolName.listed(providers: []), MCPToolName.allCases.filter { $0 != .generateMedia }, "nothing configured: generate_media is left out, order kept")
+    checkEqual(MCPToolName.upscaleClip.provider, .fal, "upscale_clip belongs to fal")
+    check(MCPToolName.allCases.filter { !falTools.contains($0) }.allSatisfy { $0.provider == nil }, "every other tool is always listed")
+    checkEqual(MCPToolName.listed(providers: []), MCPToolName.allCases.filter { !falTools.contains($0) }, "nothing configured: the fal tools are left out, order kept")
     checkEqual(MCPToolName.listed(providers: [.fal]), MCPToolName.allCases, "fal configured: every tool, in the catalog order")
     checkEqual(MCPToolName.listJSON.arrayValue?.count, MCPToolName.allCases.count, "the full catalog lists every tool")
-    checkEqual(MCPToolName.listJSON(providers: []).arrayValue?.count, MCPToolName.allCases.count - 1, "the plain list has one tool fewer")
+    checkEqual(MCPToolName.listJSON(providers: []).arrayValue?.count, MCPToolName.allCases.count - falTools.count, "the plain list has the fal tools fewer")
 
     let definition = MCPToolName.generateMedia.definition
     check(!definition.readOnly && !definition.destructive, "generate_media writes a new file but deletes nothing")
     check(definition.openWorld, "generate_media reaches out to fal.ai")
-    check(MCPToolName.allCases.filter { $0 != .generateMedia }.allSatisfy { !$0.definition.openWorld }, "every other tool stays on this Mac")
+    check(MCPToolName.allCases.filter { !falTools.contains($0) }.allSatisfy { !$0.definition.openWorld }, "every other tool stays on this Mac")
     let json = definition.json
     checkEqual(json["annotations"]?["openWorldHint"]?.boolValue, true, "openWorldHint is written from the definition")
     checkEqual(MCPToolName.setShape.definition.json["annotations"]?["openWorldHint"]?.boolValue, false, "the others say false")

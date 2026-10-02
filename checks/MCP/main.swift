@@ -42,6 +42,7 @@ runSpeechCutChecks()
 runBeatCutChecks()
 runFalVoiceChecks()
 runProviderChecks()
+runUpscaleToolChecks()
 runSoundEffectChecks()
 
 if failures > 0 {

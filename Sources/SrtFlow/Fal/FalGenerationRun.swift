@@ -5,10 +5,9 @@ import SrtFlowMCPKit
 // MARK: - 一次生成怎么跑：把关花钱 → 取 Key → 提交、等、下载 → 结局
 //
 // 管什么：`generate_media` 起的那个任务从头到尾的过程（`AIJobs` 里的一条，`get_job` 看得到）。
-// 1. **花钱的把关**（方案第 18 条）：额度内直接做；这一次会让今天超过每日上限、或者模型没登记单价，先在**顶上的提示条**上问用户
-//    （`AISession.ask`：两个按钮，不弹模态框），问的时候任务是 running、带 `waiting_for_user`（AI 去转述）；用户按了「不要」或停止就结束，
-//    没花钱。决定和记账在同一步里做完（中间没有 await），同时起的几个任务不会各自以为还在额度内。
-// 2. 取 Key（钥匙串；ad-hoc 签名每出新版本第一次读会弹 macOS 的授权框：先在条上说一句这是什么）。
+// 1. **花钱的把关**（方案第 18 条，`FalJobGate.reserve`，和 upscale_clip 同一处）：额度内直接做；这一次会让今天超过每日上限、或者模型
+//    没登记单价，先在**顶上的提示条**上问用户，问的时候任务是 running、带 `waiting_for_user`（AI 去转述）；用户按了「不要」或停止就结束，没花钱。
+// 2. 取 Key（钥匙串；ad-hoc 签名每出新版本第一次读会弹 macOS 的授权框：先在条上说一句这是什么，`FalJobGate.showKeyPromptHint`）。
 // 3. 提交 → 轮询 → 取结果 → 下载到 `SrtFlow/生成`（FalClient）；停止 / cancel_job 时替 fal 也取消。阶段（排队带位置、处理、下载带
 //    字节比例）记在 `progress` 里：编辑器顶上的状态行订阅它，`get_job` 跑着时并进 phase / queue_position / transfer_percent 那几个字段。
 // 4. 账：提交前先记上估算；没做出来（失败 / 取消 / 超时）就退回，已经做出来了（下载失败）不退 —— fal 已经收了钱。
@@ -81,40 +80,31 @@ final class FalGenerationRun: ObservableObject, Identifiable {
         advance(to: .preparing)
         let store = FalSettingsStore.shared
 
-        // 1. 花钱的把关。
-        switch store.decide(estimate: estimate) {
-        case .allow:
-            reserve(store)
-        case .ask(let reason):
-            let texts = questionTexts(reason, store)
-            waiting = "SrtFlow is asking the user to approve this cost on the bar at the top of its window (it is in front now): "
-                + texts.english + " Tell the user to answer there, then keep waiting with get_job."
-            // 提示条只挂在剪辑页里（VideoEditView）：用户此刻在别的栏目时问题就看不见，任务会一直等。问之前先把剪辑页摆出来
-            //（后台模式也一样：要用户点头的事不能悄悄等）。
-            try? await AIEditorPresenter.prepareEditor(project: project, bringForward: true)
-            AITranslationReadiness.bringSrtFlowForward()
-            let allowed = await AISession.shared.ask(texts.localized, allow: L10n("Allow"), decline: L10n("Not Now"), owner: job.id)
-            waiting = nil
-            guard allowed, !Task.isCancelled else {
-                finish(.cancelled, "The user did not approve the cost, so nothing was made and nothing was charged.")
-                return
-            }
-            reserve(store)
+        // 1. 花钱的把关（FalJobGate：额度内直接记账；超了 / 价格不明先在提示条上问，问的时候 waiting_for_user 说明在等什么）。
+        switch await FalJobGate.reserve(
+            estimate: estimate, summary: summaryText(), owner: job.id, project: project, waiting: { [weak self] in self?.waiting = $0 }
+        ) {
+        case .reserved(let reservation):
+            reserved = (reservation.amount, reservation.day)
+        case .declined:
+            finish(.cancelled, "The user did not approve the cost, so nothing was made and nothing was charged.")
+            return
+        }
+        guard !Task.isCancelled else {
+            refund(store)
+            finish(.cancelled, "The generation was stopped before it started; nothing was charged.")
+            return
         }
 
         // 2. Key。
         let hinted = FalPromptFlag()
         let keyResult = await FalKeyCache.shared.key(willAsk: { [weak self] in
             hinted.value = true
-            // AI 看 get_job 只见 running：得让它知道是 macOS 的授权框在等用户（不然它会对着一个「没动静」的任务干等）。
-            self?.waiting = "macOS is asking the user, in a system dialog, whether SrtFlow may use the fal.ai key. Tell the user to click "
-                + "Always Allow (a Mac login password may be needed; a new version of SrtFlow is asked once), then keep waiting with get_job."
-            AISession.shared.setHint(L10n("macOS is about to ask whether SrtFlow may use your fal.ai key. Click Always Allow."))
-            if MainWindowState.shared.section != .videoEdit { MainWindowState.shared.section = .videoEdit }   // 提示条在剪辑页里
-            AITranslationReadiness.bringSrtFlowForward()
+            self?.waiting = FalJobGate.keyPromptWaiting
+            FalJobGate.showKeyPromptHint()
         })
         waiting = nil
-        if hinted.value { AISession.shared.setHint(nil) }
+        if hinted.value { FalJobGate.clearKeyPromptHint() }
         guard case .key(let key) = keyResult else {
             refund(store)
             finish(.failed, keyMessage(keyResult))
@@ -158,12 +148,6 @@ final class FalGenerationRun: ObservableObject, Identifiable {
     }
 
     // MARK: 账
-
-    private func reserve(_ store: FalSettingsStore) {
-        let amount = estimate ?? 0
-        store.recordSpend(amount)
-        reserved = (amount, Date())
-    }
 
     /// 没做出来才退：fal 只对做出来的收钱。已经拿到结果（后面下载 / 保存出了问题）就不退。
     private func refund(_ store: FalSettingsStore) {
@@ -239,26 +223,6 @@ final class FalGenerationRun: ObservableObject, Identifiable {
             return "SrtFlow could not read the fal.ai key from the macOS keychain. If macOS asked for permission, the user has to click "
                 + "Always Allow (a new version of SrtFlow is asked again once). Ask the user to try again."
         case .key: return ""
-        }
-    }
-
-    /// 提示条上问的话（跟着界面语言）和给 AI 的英文原话。
-    private func questionTexts(_ reason: FalSpendPolicy.Reason, _ store: FalSettingsStore) -> (localized: String, english: String) {
-        let summary = summaryText()
-        switch reason {
-        case .unknownPrice:
-            return (
-                String(format: L10n("fal.ai · %@ — SrtFlow does not know this model's price, so it asks each time. Allow?"), summary),
-                "fal.ai · \(summary) — SrtFlow does not know this model's price, so it asks each time."
-            )
-        case .overLimit(let spent, let estimate, let limit):
-            let total = FalMoney.text(spent + estimate)
-            return (
-                String(format: L10n("fal.ai · %@ — estimated cost %@. Today's spending would reach %@, over your %@ daily limit. Allow?"),
-                       summary, FalMoney.text(estimate), total, FalMoney.text(limit)),
-                "fal.ai · \(summary) — estimated cost \(FalMoney.text(estimate)); today's spending would reach \(total), over the user's "
-                    + "\(FalMoney.text(limit)) daily limit."
-            )
         }
     }
 

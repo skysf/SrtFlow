@@ -45,6 +45,9 @@
 #      fal 报的词时间换成字幕认的词、克隆参考音频的 WAV（真去调 fal 在 scripts/check-fal.sh）。
 #  23. 字幕长什么样（edit_subtitles / burn_subtitles 的 style）：参数全验过、只改工程自己的样式、给了位置收掉拖框的布局、
 #      只给字号把倍率归一、逐词高亮的开关和倍数、烧录一批时描边 / 底条互换、位置词表对账。
+#  27. upscale_clip（2026-10-02）：词表（档位 / 目标 / 范围）和 App 的类型对账、定义（参数、必填、枚举、只在配了 fal 时列、上网）、
+#      说明里每个档位都点了名且「about N min」和典型时长一致、总说明的 fal 那一行带着它（UpscaleToolChecks）；
+#      做完换源的那一下包在 AIUndoGrouping.step 里（异步落账，扫描）。
 #  26. 给 AI 的文字按客户端怎么读来守：总说明和每个工具说明都在 Claude Code 的 2,048 字以内（它多了就静默截掉）、
 #      总说明前 512 字自成一体（Codex）、目录里有清单的每个工具名、全部只用英文
 #      （2026-09-30，docs/bugfixes/2026-09-30-mcp-text-truncated-at-2048.md）。
@@ -128,7 +131,8 @@ if [ "$(grep -c 'project.attachSubtitle(' <<<"${ADD_STEP}" || true)" -ne 1 ] \
 fi
 # 不是用户事件引起的异步落账（AI 起的生成字幕 / 翻译结束时、静帧转换失败删占位块）也各包一层：落账那一行的上一行是 step。
 for pair in "Sources/SrtFlow/SubtitleGen/TranscriptionTask.swift|project.replaceSubtitleForGeneration(" \
-            "Sources/SrtFlow/SubtitleGen/SubtitleTranslationService.swift|project.applyTranslations("; do
+            "Sources/SrtFlow/SubtitleGen/SubtitleTranslationService.swift|project.applyTranslations(" \
+            "Sources/SrtFlow/AIUpscaleTool.swift|project.applyUpscale("; do
   file="${pair%%|*}"
   call="${pair#*|}"
   if [ "$(grep -cF "${call}" "${file}" || true)" -ne 1 ] \
@@ -392,6 +396,10 @@ xcrun swiftc \
   Sources/SrtFlow/AIFalVoices.swift \
   Sources/SrtFlow/Fal/FalOutputs.swift \
   Sources/SrtFlow/Fal/FalModels.swift \
+  Sources/SrtFlow/Fal/FalUpscaleModels.swift \
+  Sources/SrtFlow/Fal/FalJobPhase.swift \
+  Sources/SrtFlow/Upscale/UpscaleRange.swift \
+  Sources/SrtFlow/AIUpscaleNames.swift \
   Sources/SrtFlow/KokoroVoicePieces.swift \
   Sources/SrtFlow/KokoroVoicePadding.swift \
   Sources/SrtFlow/KokoroVoiceAssembly.swift \
@@ -503,6 +511,7 @@ xcrun swiftc \
   checks/MCP/SpeechCutChecks.swift \
   checks/MCP/BeatCutChecks.swift \
   checks/MCP/ProviderChecks.swift \
+  checks/MCP/UpscaleToolChecks.swift \
   checks/MCP/FalVoiceChecks.swift \
   checks/MCP/SoundEffectChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \

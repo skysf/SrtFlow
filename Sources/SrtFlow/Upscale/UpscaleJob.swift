@@ -2,7 +2,8 @@ import Foundation
 
 // MARK: - 用户点了「开始」之后的那个任务：记账 → 取 Key → 跑流水线 → 对账实际扣费
 //
-// 管什么：面板上的估价已经是用户的确认（方案第 10 条：记进 fal 的账本、超限只标红不拦），所以这里不再问；取 Key（钥匙串，
+// 管什么：面板起的，面板上的估价已经是用户的确认（方案第 10 条：记进 fal 的账本、超限只标红不拦），不再问；AI 起的（upscale_clip）
+// 按每日上限把关、超了在提示条上问（FalJobGate，`Approval.dailyLimit`）；取 Key（钥匙串，
 // 新版本第一次读会弹授权框，`keyPrompt` 让界面说一句）；跑 `UpscalePipeline`，阶段（含上传 / 下载的字节比例、这一阶段过了多久）发给界面；做完几分钟内去账单明细里
 // 把实际扣费查回来（要 ADMIN 权限的 Key，查不到就只有估价）。没做出来的钱退回（照 FalGenerationRun 的规矩：拿到结果就不退）。
 // 做完**不替换**：对比窗口里用户点了 Replace 才换（方案第 15 条）。
@@ -16,6 +17,15 @@ final class UpscaleJob: ObservableObject, Identifiable {
         case done
         case failed(String)
         case cancelled
+        /// AI 起的：用户在提示条上没点头（没花钱）。
+        case declined
+    }
+
+    /// 花钱怎么把关：面板上的估价就是用户的确认（方案第 10 条，直接记账）；AI 起的（upscale_clip）按每日上限 —— 额度内直接做、
+    /// 超了在提示条上问（FalJobGate，和 generate_media 同一处）。
+    enum Approval {
+        case panel
+        case dailyLimit(project: VideoEditProject)
     }
 
     let id = UUID()
@@ -26,6 +36,7 @@ final class UpscaleJob: ObservableObject, Identifiable {
     let clipIDs: [UUID]
     /// 这段所在的工程（做完换源时核对还是不是它）。
     let projectGeneration: Int
+    let approval: Approval
 
     @Published private(set) var state: State
     @Published private(set) var outcome: UpscaleOutcome?
@@ -33,18 +44,23 @@ final class UpscaleJob: ObservableObject, Identifiable {
     @Published private(set) var actualCost: Double?
     /// macOS 正在问要不要让 SrtFlow 用钥匙串里的 Key（界面提醒用户点「始终允许」）。
     @Published private(set) var keyPrompt = false
-    /// 做完（拿到文件）时叫一声：UpscaleActivity 用它弹对比窗口。
+    /// AI 起的任务在等用户动手（提示条上点头、钥匙串授权框）时给 AI 看的话（任务的 `waiting_for_user`）；没在等就是 nil。
+    @Published private(set) var waiting: String?
+    /// 做完（拿到文件）时叫一声：UpscaleActivity 用它弹对比窗口，upscale_clip 用它直接换源。
     var onFinished: ((UpscaleJob) -> Void)?
+    /// 怎么结束都叫一声（done 在 onFinished 之后；failed / cancelled / declined）：upscale_clip 用它把结局记给 AI 的任务。
+    var onEnded: ((UpscaleJob) -> Void)?
 
     private var task: Task<Void, Never>?
     private var reserved: (amount: Double, day: Date)?
     private var resultReceived = false
 
-    init(request: UpscaleRequest, clipIDs: [UUID], projectGeneration: Int, title: String) {
+    init(request: UpscaleRequest, clipIDs: [UUID], projectGeneration: Int, title: String, approval: Approval = .panel) {
         self.request = request
         self.clipIDs = clipIDs
         self.projectGeneration = projectGeneration
         self.title = title
+        self.approval = approval
         state = .running(FalJobProgress(phase: .preparing, typicalSeconds: request.tier.typicalSeconds))
     }
 
@@ -57,20 +73,57 @@ final class UpscaleJob: ObservableObject, Identifiable {
 
     func cancel() {
         task?.cancel()
+        // AI 起的：挂在提示条上的问题一起收回。
+        if case .dailyLimit = approval { AISession.shared.withdrawQuestions(owner: id.uuidString) }
     }
 
     private func execute() async {
         let store = FalSettingsStore.shared
-        // 1. 账：面板上已经确认过，直接记上估算。
-        store.recordSpend(request.estimate)
-        reserved = (request.estimate, Date())
+        // 1. 账。
+        switch approval {
+        case .panel:
+            // 面板上已经确认过，直接记上估算。
+            store.recordSpend(request.estimate)
+            reserved = (request.estimate, Date())
+        case .dailyLimit(let project):
+            // AI 起的：按每日上限把关，超了在提示条上问（FalJobGate）。
+            let summary = "\(request.tier.title) · \(request.tier.detail) · \(Int(request.range.duration.rounded())) s · \(request.target.label)"
+            switch await FalJobGate.reserve(
+                estimate: request.estimate, summary: summary, owner: id.uuidString, project: project, waiting: { [weak self] in self?.waiting = $0 }
+            ) {
+            case .reserved(let reservation):
+                reserved = (reservation.amount, reservation.day)
+            case .declined:
+                state = .declined
+                onEnded?(self)
+                return
+            }
+            guard !Task.isCancelled else {
+                refund(store)
+                state = .cancelled
+                onEnded?(self)
+                return
+            }
+        }
 
         // 2. Key。
-        let keyResult = await FalKeyCache.shared.key(willAsk: { [weak self] in self?.keyPrompt = true })
+        let aiDriven: Bool
+        if case .dailyLimit = approval { aiDriven = true } else { aiDriven = false }
+        let hinted = FalPromptFlag()
+        let keyResult = await FalKeyCache.shared.key(willAsk: { [weak self] in
+            self?.keyPrompt = true
+            guard aiDriven else { return }
+            hinted.value = true
+            self?.waiting = FalJobGate.keyPromptWaiting
+            FalJobGate.showKeyPromptHint()
+        })
         keyPrompt = false
+        waiting = nil
+        if hinted.value { FalJobGate.clearKeyPromptHint() }
         guard case .key(let key) = keyResult else {
             refund(store)
             state = .failed(keyResult == .missing ? FalError.noKey.message : "SrtFlow could not read the fal.ai key from the macOS keychain.")
+            onEnded?(self)
             return
         }
 
@@ -89,19 +142,24 @@ final class UpscaleJob: ObservableObject, Identifiable {
             outcome = result
             state = .done
             onFinished?(self)
+            onEnded?(self)
             await lookUpCost(client: client, requestID: result.requestID, since: Date().addingTimeInterval(-result.elapsed - 600))
         } catch is CancellationError {
             refund(store)
             state = .cancelled
+            onEnded?(self)
         } catch let error as FalError {
             refund(store)
             state = .failed(error.message)
+            onEnded?(self)
         } catch let error as UpscalePipelineError {
             refund(store)
             state = .failed(error.message)
+            onEnded?(self)
         } catch {
             refund(store)
             state = .failed(error.localizedDescription)
+            onEnded?(self)
         }
     }
 
@@ -159,12 +217,15 @@ final class UpscaleActivity: ObservableObject {
     @Published var panel: UpscalePanelTarget?
     @Published var compare: UpscaleCompareTarget?
 
-    func add(_ job: UpscaleJob) {
+    /// `opensCompare`：面板起的做完先弹对比窗口（方案第 15 条）；AI 起的（upscale_clip）自己接 `onFinished` 直接换源，不弹。
+    func add(_ job: UpscaleJob, opensCompare: Bool = true) {
         jobs.append(job)
-        job.onFinished = { [weak self] finished in
-            // 做完先弹对比窗口（方案第 15 条）；已经在看别的就不抢。
-            guard let self, self.jobs.contains(where: { $0.id == finished.id }), self.compare == nil else { return }
-            self.compare = .job(finished)
+        if opensCompare {
+            job.onFinished = { [weak self] finished in
+                // 已经在看别的就不抢。
+                guard let self, self.jobs.contains(where: { $0.id == finished.id }), self.compare == nil else { return }
+                self.compare = .job(finished)
+            }
         }
         job.start()
     }

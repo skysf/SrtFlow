@@ -49,7 +49,7 @@ struct UpscaleJobStatusView: View {
                 Text(String(format: L10n("Upscale failed: %@"), message)).font(.caption).foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
                 Button("Dismiss") { activity.remove(job) }.controlSize(.small)
-            case .cancelled:
+            case .cancelled, .declined:
                 Text("Upscale cancelled.").font(.caption).foregroundStyle(.secondary)
                 Button("Dismiss") { activity.remove(job) }.controlSize(.small)
             }

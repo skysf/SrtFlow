@@ -13,8 +13,8 @@ import Foundation
 
 public enum MCPInstructions {
     /// 配好了 fal 才有的那一行，接在目录最后（没配就不提它：客户端清单里也没有 generate_media）。
-    /// 花钱怎么问、每日上限写在 generate_media 自己的说明里：AI 调它之前一定会读到。
-    static let falLine = "\n- New media: generate_media (images, video, music, sound effects; paid, with the user's fal.ai account)"
+    /// 花钱怎么问、每日上限写在 generate_media / upscale_clip 自己的说明里：AI 调它之前一定会读到。
+    static let falLine = "\n- fal.ai (paid, the user's account): generate_media (image, video, music, sound effect), upscale_clip (sharper, larger clip)"
 
     public static func text(providers: Set<MCPProvider>) -> String {
         providers.contains(.fal) ? text + falLine : text
