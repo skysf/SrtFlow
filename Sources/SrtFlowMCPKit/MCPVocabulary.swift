@@ -108,6 +108,14 @@ public enum MCPVocabulary {
     /// convert_subtitles 能转成的格式（`SubtitleFormat` 的扩展名）。
     public static let subtitleFormats = ["srt", "vtt", "ass", "ssa", "txt"]
 
+    /// record_screen（docs/plans/2026-10-03-screen-recording-mcp.md）：做什么、录哪里、区域框的比例
+    /// （= App 的 `RegionAspectRatio`，free 以外照界面上的写法）、指针、怎么处置上次没收完的录制（= 恢复框的三个按钮）。
+    public static let recordingActions = ["start", "stop", "resolve"]
+    public static let recordingSources = ["display", "window", "region", "drag"]
+    public static let recordingRatios = ["free", "16:9", "9:16", "4:3", "3:4", "1:1"]
+    public static let recordingPointers = ["shown", "hidden", "clicks"]
+    public static let recordingDecisions = ["add", "keep", "discard"]
+
     /// edit_clip 改素材窗口时关键帧怎么办（`AIKeyframePolicy`）。
     public static let keyframePolicies = ["keep_frames", "stretch", "clear"]
 

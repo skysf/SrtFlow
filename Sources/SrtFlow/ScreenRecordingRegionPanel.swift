@@ -30,7 +30,11 @@ final class ScreenRecordingRegionPanel {
     }
 
     /// 铺满所有屏幕等用户拖一个区域。返回 nil = 用户取消。
-    func present() async -> Result? {
+    ///
+    /// - Parameter activatingApp: 手动录时激活 SrtFlow，好让 overlay 收键盘（Escape / Return）。AI 叫用户拖
+    ///   （record_screen source=drag）时不激活：激活会把 SrtFlow 的窗口拎到最前面、盖住要录的地方；overlay 上有
+    ///   Record / Cancel 两个按钮，只用鼠标也走得完。
+    func present(activatingApp: Bool = true) async -> Result? {
         await withCheckedContinuation { continuation in
             self.continuation = continuation
             for screen in NSScreen.screens {
@@ -41,7 +45,7 @@ final class ScreenRecordingRegionPanel {
                 panels.append(panel)
             }
             // overlay 要能收键盘（Escape / Return）
-            NSApp.activate(ignoringOtherApps: true)
+            if activatingApp { NSApp.activate(ignoringOtherApps: true) }
             panels.first?.makeKey()
         }
     }

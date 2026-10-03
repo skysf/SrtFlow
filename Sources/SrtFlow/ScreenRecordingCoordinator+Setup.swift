@@ -4,32 +4,7 @@ import Foundation
 import ScreenCaptureKit
 import SrtFlowCore
 
-/// 录制设置项（设置页 → coordinator 的输入）。
-struct ScreenRecordingOptions {
-    enum SourceKind: String, CaseIterable, Identifiable {
-        case display, window, region
-        var id: String { rawValue }
-        var title: String {
-            switch self {
-            case .display: return "Entire display"
-            case .window: return "A window"
-            case .region: return "Custom region"
-            }
-        }
-    }
-
-    var sourceKind: SourceKind = .display
-    var regionRatio: RegionAspectRatio = .free
-    var capturesSystemAudio = true
-    var microphone: MicrophoneConfiguration = .disabled
-    var cursor: CursorConfiguration = .default
-    /// 用户在设置页里选好的保存位置。
-    ///
-    /// 保存位置**在设置页里就定下来**，不放到系统 picker 之后再问：
-    /// 那个顺序是「先被系统 picker 的 Cancel / Share Entire Screen 问一次，
-    /// 再被保存面板问一次」，用户不知道自己走到哪一步了（真机首测反馈）。
-    var outputURL: URL?
-}
+// 录制设置项 `ScreenRecordingOptions` 在 ScreenRecordingOptions.swift。
 
 @available(macOS 15.0, *)
 extension ScreenRecordingCoordinator {
@@ -39,6 +14,8 @@ extension ScreenRecordingCoordinator {
     func chooseSource(
         options: ScreenRecordingOptions
     ) async throws -> (source: ScreenRecordingSource, filter: SCContentFilter?) {
+        // AI 已经挑好了（record_screen）：不开系统的选择窗口、不弹区域框（docs/plans/2026-10-03-screen-recording-mcp.md 第 1 条）。
+        if let preset = options.preset { return (preset.source, preset.filter) }
         switch options.sourceKind {
         case .region:
             // 区域必须自己取 SCDisplay，所以**先**要广域屏幕权限（计划 §11.2-3）。
@@ -49,7 +26,8 @@ extension ScreenRecordingCoordinator {
             let panel = ScreenRecordingRegionPanel(ratio: options.regionRatio)
             regionPanel = panel
             defer { regionPanel = nil }
-            guard let result = await panel.present() else {
+            // AI 叫用户拖（source=drag）时不激活 App：激活会把 SrtFlow 的窗口拎到最前面、盖住要录的地方。
+            guard let result = await panel.present(activatingApp: session.asksTheUser) else {
                 throw ScreenRecordingSourcePicker.PickerError.cancelled
             }
             return (.region(displayID: result.displayID, rectInPoints: result.rectInPoints), nil)
@@ -59,6 +37,8 @@ extension ScreenRecordingCoordinator {
             // 前者会让「用户取消 picker」也收到权限提示（计划 §11.2-3/4），后者在
             // clean TCC 下必然失败并留下空缓存，导致首跑反推不出来源（复审 P1-5）。
             // 来源解析改在 picker 回调之后进行。
+            // **AI 起的录制从不打开系统的选择窗口**：它总是带着挑好的来源（preset）来，走不到这里。
+            guard session.asksTheUser else { throw ScreenRecordingError.sourceUnavailable }
             let picker = ScreenRecordingSourcePicker()
             self.picker = picker
             let selection = try await picker.present(
@@ -432,13 +412,17 @@ extension ScreenRecordingCoordinator {
         )
     }
 
-    /// 用户处理完恢复提示后调用。
+    /// 用户处理完恢复提示后调用（AI 的 record_screen action=resolve 也走这里，`landing` 换成包一步撤销的那种）。
     ///
     /// **「保留文件」就是保留。** 早先这个分支实际执行的是删除 —— 按钮写着
     /// Keep file only 却把文件删了，是直接的数据丢失（复审 P1-3）。删除只在
     /// 用户明确选 Discard 时发生。
-    func resolveRecovery(_ decision: RecoveryDecision) async {
-        guard let pending = pendingRecovery else { return }
+    /// - Returns: 保留 / 入轨成功时文件最后的样子（路径可能避让过）；丢弃或没做成是 nil。
+    @discardableResult
+    func resolveRecovery(
+        _ decision: RecoveryDecision, landing: ScreenRecordingLanding = .manual
+    ) async -> ScreenRecordingResult? {
+        guard let pending = pendingRecovery else { return nil }
         // 状态在 `present()` 时就已经是 `.partialRecovery`（锁着工程切换）。
         pendingRecovery = nil
         defer {
@@ -461,9 +445,10 @@ extension ScreenRecordingCoordinator {
                 // 删除没成功就**不能标 settled** —— 那些文件还在，账本一清
                 // 就再也没人认领了（复审三 P1-5）。
                 reportUndeleted(undeleted)
-                return
+                return nil
             }
             clearManifest(pending.plan, disposition: .settled)
+            return nil
 
         case .keepFile, .addToTimeline:
             // 先把还在临时路径的文件提交到用户当初选的位置 —— 隐藏的 .partial
@@ -477,27 +462,27 @@ extension ScreenRecordingCoordinator {
                         format: L10n("That recovered recording couldn’t be saved: %@"),
                         error.localizedDescription
                     )
-                    return   // manifest 保留，下次启动再问
+                    return nil   // manifest 保留，下次启动再问
                 }
             }
             if decision == .addToTimeline, pending.kind == .recording {
-                guard transition(to: .importing) else { return }
+                guard transition(to: .importing) else { return nil }
                 let imported = await VideoEditProject.shared.importRecoveredRecording(
                     result, documentGeneration: pending.documentGeneration,
-                    sessionID: pending.manifest.sessionID
+                    sessionID: pending.manifest.sessionID, landing: landing
                 )
-                guard imported else {
+                guard imported != nil else {
                     // 入轨没成 → 事务未提交 → **不许清账**，下次还要能提示。
                     clearManifest(pending.plan, disposition: .importPending)
                     transition(to: .failed(.writerFailed(message: L10n("The recovered recording wasn’t added to the timeline."))))
-                    return
+                    return nil
                 }
                 // **先清账再进解锁态。** `.finished` 是非忙状态，会立刻触发
                 // 退出答复；正在 Quit 时进程可能在清账之前就退出了，下次启动
                 // 会再提示一次并重复入轨（复审四 P1-4）。
                 clearManifest(pending.plan, disposition: .settled)
                 transition(to: .finished(result))
-                return
+                return result
             } else {
                 VideoEditProject.shared.notice = String(
                     format: L10n("The recovered recording was saved as %@."),
@@ -505,6 +490,7 @@ extension ScreenRecordingCoordinator {
                 )
             }
             clearManifest(pending.plan, disposition: .settled)
+            return result
         }
     }
 

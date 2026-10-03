@@ -12,9 +12,12 @@ public enum MCPProjectTools {
                 .getStatus, title: "SrtFlow status",
                 description: """
                 What SrtFlow is doing now: the open project (name, path, length, unsaved changes), the folders you may use, \
-                running jobs, whether the user pressed Stop, and the view mode (set_view). Cheap; call it first in a new \
-                conversation.
+                running jobs, whether the user pressed Stop, the view mode (set_view) and screen recording (state, permission, \
+                a leftover recording). Cheap; call it first in a new conversation.
                 """,
+                input: MCPSchema.object([
+                    "screen": MCPSchema.boolean("Also list the displays, windows and microphones record_screen can use.")
+                ]),
                 readOnly: true
             )
         case .setView:

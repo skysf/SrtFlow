@@ -48,6 +48,9 @@
 #  27. upscale_clip（2026-10-02）：词表（档位 / 目标 / 范围）和 App 的类型对账、定义（参数、必填、枚举、只在配了 fal 时列、上网）、
 #      说明里每个档位都点了名且「about N min」和典型时长一致、总说明的 fal 那一行带着它（UpscaleToolChecks）；
 #      做完换源的那一下包在 AIUndoGrouping.step 里（异步落账，扫描）。
+#  28. record_screen（2026-10-03）：参数怎么读、窗口 / 屏幕 / 麦克风怎么挑、区域的比例换成点、词表和 App 的类型对账、工具的定义
+#      （ScreenRecordingToolChecks）；接线（AI 起的录制不开系统选择窗口、不覆盖、入轨包 step、录制中不摆窗口……）在
+#      checks/screen-recording-ai-wiring.sh。
 #  26. 给 AI 的文字按客户端怎么读来守：总说明和每个工具说明都在 Claude Code 的 2,048 字以内（它多了就静默截掉）、
 #      总说明前 512 字自成一体（Codex）、目录里有清单的每个工具名、全部只用英文
 #      （2026-09-30，docs/bugfixes/2026-09-30-mcp-text-truncated-at-2048.md）。
@@ -161,7 +164,7 @@ echo "==> 看得见：窗口只在一轮开始时摆到前面"
 #（docs/plans/2026-09-27-mcp.md 第 32 条）。
 PRESENTER="Sources/SrtFlow/AIEditorPresenter.swift"
 if [ "$(grep -c 'let startsNewRound = AISession.shared.phase != .working' "${ROUTER}" || true)" -ne 1 ] \
-   || [ "$(grep -c 'prepareEditor(project: project, bringForward: startsNewRound && visible)' "${ROUTER}" || true)" -ne 1 ]; then
+   || [ "$(grep -c 'prepareEditor(project: project, bringForward: startsNewRound && visible && !recordingScreen)' "${ROUTER}" || true)" -ne 1 ]; then
   echo "✗ ${ROUTER} 没按「这一轮是不是刚开始」决定要不要把窗口摆到前面" >&2
   exit 1
 fi
@@ -495,6 +498,8 @@ xcrun swiftc \
   Sources/SrtFlow/AIReadGrants.swift \
   Sources/SrtFlow/AIUndoGrouping.swift \
   Sources/SrtFlow/AITextLanguage.swift \
+  Sources/SrtFlow/AIScreenRecordingRequest.swift \
+  Sources/SrtFlow/AIScreenSourceMatch.swift \
   Sources/SrtFlow/DefaultFolder.swift \
   checks/MCP/main.swift \
   checks/MCP/Harness.swift \
@@ -540,6 +545,7 @@ xcrun swiftc \
   checks/MCP/UpscaleToolChecks.swift \
   checks/MCP/FalVoiceChecks.swift \
   checks/MCP/SoundEffectChecks.swift \
+  checks/MCP/ScreenRecordingToolChecks.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o \
   "$BUILD_DIR"/SrtFlowMCPKit.build/*.o \
   "$BUILD_DIR"/SrtFlowKokoro.build/*.o

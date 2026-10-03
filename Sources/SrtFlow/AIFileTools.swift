@@ -52,6 +52,22 @@ enum AIFileTools {
         return .ok(.object(result))
     }
 
+    // MARK: 删文件先问
+
+    /// 把这些文件挪进废纸篓之前先问（MCP 方案第 21、23、34 条：删文件是唯一要用户点头的改动）。令牌绑着这一批文件，
+    /// 换了文件拿它来不认；点过头返回 nil，否则回 needs_confirmation。manage_files 的删除和 record_screen 丢弃上次没收完的录制都走这里
+    /// —— 会问的地方只许这里和 AIWorkspace.confirmReading（scripts/check-mcp.sh 钉着）。
+    /// - Parameter describing: 问题里怎么称呼这批文件（nil = 「N 个文件」）。
+    static func confirmTrash(_ files: [URL], args: AIToolArguments, describing: String? = nil) throws -> AIToolResult? {
+        let key = "trash:" + files.map(\.standardizedFileURL.path).sorted().joined(separator: "|")
+        if AIConfirmations.shared.consume(try args.string("confirm_token"), action: key) { return nil }
+        let names = files.map(\.lastPathComponent)
+        let list = names.prefix(5).joined(separator: ", ") + (names.count > 5 ? " and \(names.count - 5) more" : "")
+        let question = describing.map { "SrtFlow will move \($0) (\(list)) to the Trash. Go ahead?" }
+            ?? "SrtFlow will move \(names.count) file(s) to the Trash: \(list). Go ahead?"
+        return AIConfirmations.shared.ask(question, action: key)
+    }
+
     // MARK: manage_files
 
     static func manageFiles(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
@@ -73,16 +89,7 @@ enum AIFileTools {
             throw AIToolError(refusal.message)
         }
         // 删除一律先问（方案第 21、23 条），令牌绑着这一批文件。
-        if action == .trash {
-            let key = "trash:" + steps.compactMap { $0.source?.standardizedFileURL.path }.sorted().joined(separator: "|")
-            if !AIConfirmations.shared.consume(try args.string("confirm_token"), action: key) {
-                let files = steps.compactMap { $0.source?.lastPathComponent }
-                let list = files.prefix(5).joined(separator: ", ") + (files.count > 5 ? " and \(files.count - 5) more" : "")
-                return AIConfirmations.shared.ask(
-                    "SrtFlow will move \(files.count) file(s) to the Trash: \(list). Go ahead?", action: key
-                )
-            }
-        }
+        if action == .trash, let ask = try confirmTrash(steps.compactMap(\.source), args: args) { return ask }
         let outcome = AIFileOperations.perform(steps, action: action)
         // 工程里用到的素材挪了、改了名：按书签跟过去（和用户在访达里挪了素材同一条路）。
         if action == .move || action == .rename, !outcome.done.isEmpty { project.revalidateMediaLocations() }
