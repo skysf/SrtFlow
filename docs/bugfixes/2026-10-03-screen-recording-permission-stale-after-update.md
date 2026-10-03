@@ -69,7 +69,15 @@
   ad-hoc 那几行；删掉请求授权前的 `resetRecordOncePerBuild()`；西班牙语表换回原来那句「关掉再打开」；`sign-app.sh`
   有身份那一支改成 ad-hoc。`scripts/check-mcp.sh` 的签名顺序那一节：把 `sign-app.sh` 里外层挪到小程序前面 → 红。
 - 全部扫描守卫（`scripts/check-guards.sh`）、界面文案覆盖（973 条三张表都有）、`swift build --arch arm64` 通过。
-- **实机**（TCC 自动化够不着）：按[签名与系统权限](../architecture/code-signing-and-permissions.md)第五节的人工回归走。
+- **实机**（TCC 自动化够不着，2026-10-03 用户本机，main `60c4632` 打的 0.18.22 装进「应用程序」）：
+  - 装之前那条记录还是老的：`2|4|10:46:33|cdhash H"2e971222…"`，新包 `codesign --verify -R` 照样对不上。
+  - 用户录自定义区域：系统重新问 → 打开开关 → 退出并重新打开 → 录得了（用户：「可以没有问题了」）。之后的记录：
+    `auth_value=2`、`last_modified=11:48:46`、`csreq` 解出来是
+    `identifier "com.srtflow.SrtFlow" and certificate leaf = H"76d275650223bc09efe7708900458dbdb0ab90ef"` —— 不再是 cdhash。
+  - App 自己删旧记录这一步真的跑了：`defaults read com.srtflow.SrtFlow screenRecording.permissionResetForBuild` =
+    `13960eb0…`，正是装着的 0.18.22 的 cdhash（App 里起的 `tccutil reset` 不用管理员权限也成）。
+  - 下一个版本不用再授权：把装着的包拷一份、版本号改成 0.18.99、照 `sign-app.sh` 重签（cdhash 变成 `c983a7be…`），
+    `codesign --verify -R <这条记录>` 通过；ad-hoc 签的测试版 0.18.21 不通过（对照）。
 
 ## 教训 / 防回归
 
