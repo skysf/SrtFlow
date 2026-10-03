@@ -13,9 +13,18 @@ import SwiftUI
 /// - 可移动、跨 Space、可在全屏之上（`.canJoinAllSpaces` +
 ///   `.fullScreenAuxiliary`），否则用户切到全屏应用就按不到 Stop。
 /// - **倒计时窗不在排除集里**：它在 capture 开始前就销毁了（计划 §11.2-9）。
+/// - **AI 起的录制放主屏左下角**（`Placement.bottomLeft`）：浮窗在截屏里看不见，AI 一边截屏一边操作电脑时，
+///   顶部正中正好压在浏览器的地址栏上，点地址栏就点到了浮窗（docs/plans/2026-10-03-screen-recording-mcp.md 第 5 条）。
 @available(macOS 15.0, *)
 @MainActor
 final class ScreenRecordingControlPanel {
+
+    enum Placement {
+        /// 手动录：当前屏幕的顶部正中。
+        case topCenter
+        /// AI 起的录：主屏（有菜单栏的那块）的左下角。工具说明里告诉 AI 录的时候别点那儿。
+        case bottomLeft
+    }
 
     private let panel: NSPanel
     private let model: Model
@@ -35,7 +44,7 @@ final class ScreenRecordingControlPanel {
     /// 供 `excludingWindows` 使用的窗口号。
     var windowID: CGWindowID { CGWindowID(panel.windowNumber) }
 
-    init(onStop: @escaping () -> Void) {
+    init(placement: Placement = .topCenter, onStop: @escaping () -> Void) {
         model = Model()
         model.onStop = onStop
 
@@ -65,17 +74,19 @@ final class ScreenRecordingControlPanel {
         panel.sharingType = .none
         panel.isReleasedWhenClosed = false
         panel.contentView = NSHostingView(rootView: ControlPanelView(model: model).appLanguage())
-        positionAtTopCenter()
+        position(placement)
     }
 
-    private func positionAtTopCenter() {
-        guard let screen = NSScreen.main else { return }
+    private func position(_ placement: Placement) {
         let frame = panel.frame
-        let visible = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(
-            x: visible.midX - frame.width / 2,
-            y: visible.maxY - frame.height - 12
-        ))
+        switch placement {
+        case .topCenter:
+            guard let visible = NSScreen.main?.visibleFrame else { return }
+            panel.setFrameOrigin(NSPoint(x: visible.midX - frame.width / 2, y: visible.maxY - frame.height - 12))
+        case .bottomLeft:
+            guard let visible = (NSScreen.screens.first ?? NSScreen.main)?.visibleFrame else { return }
+            panel.setFrameOrigin(NSPoint(x: visible.minX + 12, y: visible.minY + 12))
+        }
     }
 
     /// 显示并**确保已经有 windowID** —— 调用方拿到后才能构造排除 filter。
@@ -102,11 +113,14 @@ private struct ControlPanelView: View {
         HStack(spacing: 10) {
             if let remaining = model.countdown {
                 // 代码确实等了三秒，界面上却什么都不显示、只有一个 00:00 的
-                // 红点，用户会以为已经在录了（复审二 P2）。显式画出 3/2/1。
-                Text("\(remaining)")
-                    .font(.system(.title2, design: .rounded).bold())
-                    .monospacedDigit()
-                    .foregroundStyle(.red)
+                // 红点，用户会以为已经在录了（复审二 P2）。显式画出 3/2/1；
+                // 不倒数（AI 给 countdown=0）时只写「Starting…」，不画一个 0。
+                if remaining > 0 {
+                    Text("\(remaining)")
+                        .font(.system(.title2, design: .rounded).bold())
+                        .monospacedDigit()
+                        .foregroundStyle(.red)
+                }
                 Text("Starting…").font(.caption)
             } else if model.isFinalizing {
                 ProgressView().controlSize(.small)

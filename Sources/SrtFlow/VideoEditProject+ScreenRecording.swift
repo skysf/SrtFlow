@@ -19,17 +19,18 @@ extension VideoEditProject {
     /// 计划 §10.2 的八条全部在这一个 `perform` 里完成：
     /// 主视频进主轨末尾 → 磁吸后**重读实际起点** → 麦克风单独新轨且起点对齐
     /// → 同一 linkGroup → 画布四条件都成立才自动设 → 选中并把播放头移到起点。
-    /// - Returns: 入轨事务是否**成功提交**。false 时调用方必须保留 manifest ——
+    /// - Parameter landing: 那一次 `perform` 怎么提交（AI 起的包一步撤销）、要不要选中（AI 的后台模式不选）。
+    /// - Returns: 入轨的片段 id（主视频在前、麦克风在后）；nil = 入轨事务**没有提交**，调用方必须保留 manifest ——
     ///   文件已经是用户的了，但还没进时间线，下次启动要能补问（复审 P1-8）。
     @discardableResult
     func importScreenRecording(
-        _ result: ScreenRecordingResult, request: ScreenRecordingRequest
-    ) async -> Bool {
+        _ result: ScreenRecordingResult, request: ScreenRecordingRequest, landing: ScreenRecordingLanding = .manual
+    ) async -> [UUID]? {
         // 导入前先 probe，拿真实 duration / dimensions；probe 与 identity 都过了
         // 才允许改 timeline / canvas / selection / dirty（计划 §10.1-3）。
         guard let videoInfo = await ScreenRecordingProbe.info(result.mainURL) else {
             notice = L10n("The recording couldn’t be read, so it wasn’t added to the timeline.")
-            return false
+            return nil
         }
         var micDuration: Double?
         var microphoneUnreadable = false
@@ -42,7 +43,7 @@ extension VideoEditProject {
             microphoneUnreadable = micDuration == nil
         }
         // 跨 await 回来再查一次工程身份。
-        guard isCurrentGeneration(request.documentGeneration) else { return false }
+        guard isCurrentGeneration(request.documentGeneration) else { return nil }
 
         // 画布自动套用的四个条件（计划 §6.3 + §20）：
         // 开始时空、结束时仍空、比例值未变、canvasEditGeneration 未变。
@@ -55,7 +56,7 @@ extension VideoEditProject {
         let linkGroup = UUID()
         let recordedRatio = CanvasRatio.closest(to: videoInfo.displaySize)
 
-        perform { state in
+        landing.commit { perform { state in
             var clip = EditClip(
                 sourceURL: result.mainURL,
                 sourceDuration: videoInfo.duration,
@@ -91,12 +92,13 @@ extension VideoEditProject {
             if shouldSetCanvas, let recordedRatio {
                 state.canvasRatio = recordedRatio
             }
-        }
+        } }
 
         // 选中新片段并把播放头移到起点，方便立刻检查（计划 §10.2-7）。
-        if let imported = state.allClips.first(where: { $0.linkGroup == linkGroup }) {
-            selectedClipIDs = [imported.id]
-            clock.seek(to: imported.timelineStart, precise: true)
+        let imported = importedClipIDs(linkGroup: linkGroup)
+        if landing.reveals, let first = imported.first, let clip = state.clip(with: first) {
+            selectedClipIDs = [first]
+            clock.seek(to: clip.timelineStart, precise: true)
         }
         if microphoneUnreadable {
             notice = L10n("The screen recording was added, but the microphone track couldn’t be read and was left out.")
@@ -105,7 +107,14 @@ extension VideoEditProject {
         } else {
             notice = nil
         }
-        return true
+        return imported
+    }
+
+    /// 一次录制入轨的片段：主视频（主轨上）在前，麦克风（音频轨上）在后。
+    private func importedClipIDs(linkGroup: UUID) -> [UUID] {
+        let main = state.mainClips.filter { $0.linkGroup == linkGroup }.map(\.id)
+        let audio = state.audioTracks.flatMap(\.clips).filter { $0.linkGroup == linkGroup }.map(\.id)
+        return main + audio
     }
 
     /// 崩溃恢复的录制：主轨 + 麦克风轨。没有 request 快照可比对，所以不动画布。
@@ -113,21 +122,23 @@ extension VideoEditProject {
     /// - Parameter documentGeneration: 呈现恢复提示那一刻的工程身份。
     ///   跨 `await` 回来必须比对 —— 用户可能在弹窗开着的时候切了工程，
     ///   素材进错工程就是脏数据（复审二 P1-6）。
-    /// - Returns: 是否成功入轨（同上，false 时不许清账）。
+    /// - Parameter landing: 同 `importScreenRecording`（AI 的 record_screen action=resolve 包一步撤销）。
+    /// - Returns: 入轨的片段 id；nil = 没入轨（同上，nil 时不许清账）。
     @discardableResult
     func importRecoveredRecording(
-        _ result: ScreenRecordingResult, documentGeneration: Int, sessionID: UUID
-    ) async -> Bool {
+        _ result: ScreenRecordingResult, documentGeneration: Int, sessionID: UUID,
+        landing: ScreenRecordingLanding = .manual
+    ) async -> [UUID]? {
         // **幂等**：用 manifest 的 sessionID 当 linkGroup，重复恢复能认出来。
         // 崩溃窗口（入轨已提交、账本还没清）下次启动会再提示一次，
         // 这道检查保证不会重复入轨（复审四 P1-4）。
         if state.allClips.contains(where: { $0.linkGroup == sessionID }) {
             notice = L10n("That recording is already in the timeline.")
-            return true
+            return importedClipIDs(linkGroup: sessionID)
         }
         guard let info = await ScreenRecordingProbe.info(result.mainURL) else {
             notice = L10n("That recovered recording couldn’t be read.")
-            return false
+            return nil
         }
         // 恢复出来的麦克风 sidecar 同样要进轨 —— 早先这里完全忽略了它，
         // 崩溃恢复必定丢掉旁白（复审二 P1-1）。
@@ -136,10 +147,10 @@ extension VideoEditProject {
            FileManager.default.fileExists(atPath: micURL.path) {
             micDuration = await ScreenRecordingProbe.audioDuration(micURL)
         }
-        guard isCurrentGeneration(documentGeneration) else { return false }
+        guard isCurrentGeneration(documentGeneration) else { return nil }
 
         let linkGroup = sessionID
-        perform { state in
+        landing.commit { perform { state in
             var clip = EditClip(
                 sourceURL: result.mainURL,
                 sourceDuration: info.duration,
@@ -163,15 +174,16 @@ extension VideoEditProject {
                 micClip.linkGroup = linkGroup
                 state.audioTracks.append(EditLane(clips: [micClip]))
             }
-        }
-        if let imported = state.allClips.first(where: { $0.linkGroup == linkGroup }) {
-            selectedClipIDs = [imported.id]
-            clock.seek(to: imported.timelineStart, precise: true)
+        } }
+        let imported = importedClipIDs(linkGroup: linkGroup)
+        if landing.reveals, let first = imported.first, let clip = state.clip(with: first) {
+            selectedClipIDs = [first]
+            clock.seek(to: clip.timelineStart, precise: true)
         }
         if result.microphoneURL != nil, micDuration == nil {
             notice = L10n("The recovered recording was added, but its microphone track couldn’t be read.")
         }
-        return true
+        return imported
     }
 }
 

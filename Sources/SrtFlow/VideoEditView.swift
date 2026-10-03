@@ -110,10 +110,10 @@ struct VideoEditView: View {
         .sheet(isPresented: $showsSubtitlePanel) {
             SubtitleGenPanel(project: project).appLanguage()
         }
-        // 录制设置页 = `state == .configuring` 的投影。会话一旦被撤销
+        // 录制设置页 = 手动会话 `.configuring` 的投影（AI 起的会话不弹，showsSetupSheet）。会话一旦被撤销
         // （Quit、失败、取消），页自己就关了。
         .sheet(isPresented: Binding(
-            get: { recordingCoordinator.state == .configuring },
+            get: { recordingCoordinator.showsSetupSheet },
             set: { if !$0 { recordingCoordinator.cancelConfiguring() } }
         )) {
             ScreenRecordingSetupView(project: project).appLanguage()
