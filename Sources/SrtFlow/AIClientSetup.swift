@@ -141,9 +141,9 @@ final class AIClientSetup: ObservableObject {
                     return
                 }
                 // 已经有一条的话 `add` 会失败：先删再加（删不掉 = 本来就没有，不算错）。
-                _ = await Self.run(cli, ["mcp", "remove", "--scope", "user", AIClientConfigFiles.serverName])
+                _ = await ChildProcess.exitStatus(cli, ["mcp", "remove", "--scope", "user", AIClientConfigFiles.serverName])
                 if connecting {
-                    let status = await Self.run(cli, ["mcp", "add", "--scope", "user", AIClientConfigFiles.serverName, "--", helper])
+                    let status = await ChildProcess.exitStatus(cli, ["mcp", "add", "--scope", "user", AIClientConfigFiles.serverName, "--", helper])
                     guard status == 0 else { throw AIClientConfigFiles.FormatError(message: "claude mcp add exited with \(status).") }
                 }
                 // 只在真要加 / 要删时才动 settings.json（已经是这样就不重写；断开时没有这条就不去碰、更不新建文件）。
@@ -198,23 +198,6 @@ final class AIClientSetup: ObservableObject {
          "/usr/local/bin/claude", home + "/.npm-global/bin/claude", home + "/.bun/bin/claude"]
             .first { FileManager.default.isExecutableFile(atPath: $0) }
             .map { URL(fileURLWithPath: $0) }
-    }
-
-    /// 跑一条命令，等它结束（用结束回调，不占着线程等）。
-    private static func run(_ executable: URL, _ arguments: [String]) async -> Int32 {
-        await withCheckedContinuation { continuation in
-            let process = Process()
-            process.executableURL = executable
-            process.arguments = arguments
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
-            process.terminationHandler = { continuation.resume(returning: $0.terminationStatus) }
-            do {
-                try process.run()
-            } catch {
-                continuation.resume(returning: -1)
-            }
-        }
     }
 
     // MARK: 复制

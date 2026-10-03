@@ -96,13 +96,10 @@ swift scripts/make-icon.swift "$ICONSET" >/dev/null
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/SrtFlow.icns"
 rm -rf "$(dirname "$ICONSET")"
 
-# ad-hoc 签名（Apple Silicon 上必须有签名才能运行；分发给别人建议换 Developer ID）
-# 嵌套的可执行文件要先签，再签外层 bundle，否则外层签名会立即失效。
-echo "==> codesign (ad-hoc)"
-codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/ffmpeg"
-codesign --force --sign - --timestamp=none "$APP/Contents/Helpers/srtflow-mcp"
-codesign --force --sign - "$APP"
-codesign --verify --deep --strict "$APP" && echo "   签名校验通过"
+# 签名只经 sign-app.sh 一处（嵌套的先签、外层最后签）：有发布用的签名身份就用它，系统里给过的录屏、麦克风、
+# 下载文件夹、钥匙串权限跨版本有效；没有就退回 ad-hoc 并警告（docs/architecture/code-signing-and-permissions.md）。
+echo "==> codesign"
+scripts/signing/sign-app.sh "$APP"
 
 # DMG：App + /Applications 快捷方式 + 首次打开说明
 echo "==> 生成 DMG"
@@ -112,7 +109,7 @@ mkdir -p "$DMG_ROOT"
 cp -R "$APP" "$DMG_ROOT/"
 ln -s /Applications "$DMG_ROOT/Applications"
 
-# 这个 App 只做 ad-hoc 签名、没有 Apple 公证。DMG 一经网络或 AirDrop 传输，
+# 这个 App 只用自己的自签名证书签（没有的话是 ad-hoc），没有 Apple 公证。DMG 一经网络或 AirDrop 传输，
 # 整个 .app 会被打上下载隔离标记，App 第一次打开会被 macOS 拦下。
 # 走「系统设置 → 隐私与安全性 → 仍要打开」放行即可，不用碰终端：放行之后 App
 # 启动时会自己清掉包上的隔离标记（Quarantine.repairOwnBundleIfNeeded），

@@ -574,7 +574,7 @@
 "Not enough free space: %@ needed, %@ available." = "空间不够：需要 %@，可用 %@。";
 "The disk ran out of space while recording." = "录制过程中磁盘空间用尽。";
 "The disk ran out of space, so the recording is incomplete." = "磁盘空间用尽，这段录制不完整。";
-"SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again." = "SrtFlow 还没有录屏权限。到「系统设置 ▸ 隐私与安全性 ▸ 屏幕与系统音频录制」里打开它。如果开关本来就是开的，关掉再打开一次。";
+"SrtFlow doesn’t have permission to record the screen yet. Turn SrtFlow on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, then quit and reopen SrtFlow." = "SrtFlow 还没有录屏权限。到「系统设置 ▸ 隐私与安全性 ▸ 屏幕与系统音频录制」里打开 SrtFlow，再退出并重新打开 SrtFlow。";
 "SrtFlow doesn’t have microphone permission, so narration wasn’t recorded. The screen recording itself is fine." = "SrtFlow 没有麦克风权限，旁白没录上。录屏画面本身没问题。";
 "SrtFlow couldn’t hide its own recording controls from the capture, so it didn’t start. Try again." = "SrtFlow 没能把自己的录制控制条从画面里藏掉，所以没有开始录。请再试一次。";
 "SrtFlow couldn’t tell which display you picked (two look identical). Record a window or a custom region instead, or update to macOS 15.2 or later." = "SrtFlow 分不清你选的是哪块屏幕（有两块完全一样）。改成录窗口或自定义区域，或者升级到 macOS 15.2 及以上。";

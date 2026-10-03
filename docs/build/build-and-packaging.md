@@ -30,8 +30,9 @@ swift run --arch arm64 SrtFlowCoreChecks      # 核心自检（184 项断言，C
 
 Release 构建 → 手写 Info.plist 组装 `dist/SrtFlow.app` → 拷入 SwiftPM 资源包、
 vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Contents/Helpers/`，
-见 [AI 接口（MCP）](../architecture/ai-control-mcp.md)）→ 生成图标 → **先签嵌套二进制再签外层**
-（顺序反了外层签名立即失效；`scripts/check-mcp.sh` 钉着 srtflow-mcp 这一条）→ `hdiutil` 生成 DMG。
+见 [AI 接口（MCP）](../architecture/ai-control-mcp.md)）→ 生成图标 → 签名（只经 `scripts/signing/sign-app.sh`：
+**先签嵌套二进制再签外层**，顺序反了外层签名立即失效，`scripts/check-mcp.sh` 钉着 srtflow-mcp 这一条；
+用固定的签名身份签，见下一节）→ `hdiutil` 生成 DMG。
 
 产物：`dist/SrtFlow.app`（约 52 MB）、`dist/SrtFlow-<版本>-arm64.dmg`。
 
@@ -39,6 +40,20 @@ vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Co
 脚本兜底取最近的 git tag，并在 HEAD 领先该 tag 时警告「这是开发版产物」——
 以前这里是写死的默认值，发到 0.4.1 了还停在 0.3.0，打出过贴错版本号的包，
 见 [bugfixes/2026-08-06-build-version-and-shell-traps.md](../bugfixes/2026-08-06-build-version-and-shell-traps.md)。
+
+## 签名：一把固定的自签名证书（2026-10-03 起）
+
+macOS 的录屏、麦克风、下载文件夹、钥匙串权限按签名认。ad-hoc 签名每出一个新版本就是「另一个 App」，用户给过的
+权限全部作废，录屏那条在系统设置里拨开关都救不回来。所以发布版和测试版都用同一把自签名证书「SrtFlow Signing」签，
+designated requirement 是「bundle id + 这把证书」，换版本不变。来龙去脉和规矩见
+[签名与系统权限](../architecture/code-signing-and-permissions.md)。
+
+- **私钥在仓库外** `~/.config/srtflow/signing/`（专用钥匙串 + 密码文件）；仓库里只钉证书的 SHA-1
+  （`packaging/signing-identity.sha1`）。**备份这个目录；换机器把它整个拷过去，别重新建**：换证书 = 每个用户
+  再授权一次，`sign-app.sh` 发现证书和钉着的不是一把会拒签。
+- 第一次（以后不用再跑）：`scripts/signing/create-identity.sh`，已经有了就拒绝。
+- 没有签名身份的机器（CI、自己编着用的人）退回 ad-hoc 并打一段 ⚠️ 警告：**这样的包别拿去发版**。
+- 签名那几秒 `sign-app.sh` 会把专用钥匙串挂上钥匙串搜索列表、签完原样放回（codesign 只在列表里找身份）。
 
 ## 测试版（SrtFlow Beta）
 
@@ -51,6 +66,8 @@ vendor/ffmpeg 和 AI 客户端启动的 MCP 小程序 `srtflow-mcp`（都在 `Co
   stdout 回一行带 `"serverInfo":{"name":"srtflow"` 的 JSON
 - `strings ... | grep <新增字符串>` → 命中
 - 脚本自带 `codesign --verify --deep --strict` → "签名校验通过"
+- `codesign -d -r- dist/SrtFlow.app` → `certificate leaf = H"<packaging/signing-identity.sha1 里那一行>"`，
+  不是 `cdhash H"…"`（是的话就是退回了 ad-hoc，别发）
 - `swift run --arch arm64 SrtFlowCoreChecks` → "All 184 checks passed."
   （断言数会随功能增长，以当次输出为准）
 - 涉及 UI 改动时按 `docs/testing/gui-smoke-testing.md` 做真实窗口验证

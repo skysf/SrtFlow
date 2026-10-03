@@ -43,7 +43,7 @@ extension ScreenRecordingCoordinator {
         case .region:
             // 区域必须自己取 SCDisplay，所以**先**要广域屏幕权限（计划 §11.2-3）。
             guard ScreenRecordingPermissions.screen == .authorized else {
-                _ = ScreenRecordingPermissions.requestScreenAccess()
+                _ = await ScreenRecordingPermissions.requestScreenAccess()
                 throw ScreenRecordingError.screenCaptureNotAuthorized
             }
             let panel = ScreenRecordingRegionPanel(ratio: options.regionRatio)
@@ -603,8 +603,8 @@ extension ScreenRecordingError {
     var localizedText: String {
         switch self {
         case .screenCaptureNotAuthorized:
-            // **不能写「你拒绝过」** —— -3801 同样覆盖「从未授权」（门槛 1）。
-            return L10n("SrtFlow doesn’t have permission to record the screen yet. Turn it on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording. If the switch is already on, turn it off and on again.")
+            // **不能写「你拒绝过」**（-3801 同样覆盖「从未授权」，门槛 1）；也不写「关掉再打开」（钉着旧签名时没用，见 ScreenCapturePermissionRepair）。
+            return L10n("SrtFlow doesn’t have permission to record the screen yet. Turn SrtFlow on in System Settings ▸ Privacy & Security ▸ Screen & System Audio Recording, then quit and reopen SrtFlow.")
         case .pickerCancelled:
             return L10n("Source selection was cancelled.")
         case .sourceUnavailable:

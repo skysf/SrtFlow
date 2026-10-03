@@ -1,0 +1,5 @@
+# 发布用的签名证书（自签名「SrtFlow Signing」）的 SHA-1。scripts/signing/sign-app.sh 只肯用这一把签：
+# 换证书 = 签出来的 SrtFlow 在每个用户的系统里都算「另一个 App」，录屏、麦克风、下载文件夹、钥匙串里给过的
+# 权限全部作废一次（docs/architecture/code-signing-and-permissions.md）。私钥在仓库外的 ~/.config/srtflow/signing/。
+# 真要换：改这一行，并在发版说明里告诉用户要重新授权一次。
+76d275650223bc09efe7708900458dbdb0ab90ef

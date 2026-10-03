@@ -40,12 +40,9 @@ for ((i = 0; i < COUNT; i++)); do
 done
 echo "   ${COUNT} 种文档类型改成备选"
 
-# 改了 Info.plist，外层签名就失效了：嵌套的先签、再签外层（同 build-app.sh）。
-echo "==> codesign (ad-hoc)"
-codesign --force --sign - --timestamp=none "${BETA}/Contents/Helpers/ffmpeg"
-codesign --force --sign - --timestamp=none "${BETA}/Contents/Helpers/srtflow-mcp"
-codesign --force --sign - "${BETA}"
-codesign --verify --deep --strict "${BETA}" && echo "   签名校验通过"
+# 改了 Info.plist，外层签名就失效了：重签，和 build-app.sh 同一处（同一把签名身份，测试版的系统权限也跨版本有效）。
+echo "==> codesign"
+scripts/signing/sign-app.sh "${BETA}"
 
 echo
 echo "完成：${BETA}"
