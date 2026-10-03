@@ -15,9 +15,10 @@ import SrtFlowCore
 /// 3. **`CGRequestScreenCaptureAccess()` 的同步返回值不可信**（弹窗是异步的，
 ///    授权在下次启动才生效）；`CGPreflightScreenCaptureAccess()` 只查状态、
 ///    不弹窗，可以安全地用于 UI 判定。
-/// 4. ad-hoc 签名的 App 反复重签会让 TCC 记录失配，出现「设置里开关是开的但
-///    仍被拒」的死状态 —— SrtFlow 正式包正是 ad-hoc 签名，所以引导文案里
-///    必须给出「关掉再打开」这条恢复路径（实测这才是生效的那条）。
+/// 4. TCC 记录钉着签名：签名一换（ad-hoc 签名的每个新构建都算换了）就是「设置里开关是开的但仍被拒」，
+///    而且**关掉再打开救不回来**（2026-10-03 实测：开关改了，钉着的签名没换）。发布版改用固定的证书签
+///    （docs/architecture/code-signing-and-permissions.md），改签之前留下的旧记录由
+///    `ScreenCapturePermissionRepair` 删掉、让系统重新问一次。
 @available(macOS 15.0, *)
 enum ScreenRecordingPermissions {
 
@@ -34,12 +35,17 @@ enum ScreenRecordingPermissions {
 
     /// 请求屏幕录制授权。
     ///
+    /// 没授权时先删掉可能钉着旧签名的那条记录（`ScreenCapturePermissionRepair`，每个构建最多一次）再请求：
+    /// 这样系统才会重新问，新记录才钉在现在这个签名上（类型注释第 4 条）。
+    ///
     /// 返回值**只表示「此刻是否已授权」**，不表示用户刚才怎么选 ——
     /// 弹窗是异步的，用户点了允许也要下次启动才生效（Phase 0 实测）。
     /// 调用方据此提示「授权后请重新打开 SrtFlow」，不要假装已经生效。
+    @MainActor
     @discardableResult
-    static func requestScreenAccess() -> Bool {
+    static func requestScreenAccess() async -> Bool {
         if CGPreflightScreenCaptureAccess() { return true }
+        await ScreenCapturePermissionRepair.resetRecordOncePerBuild()
         _ = CGRequestScreenCaptureAccess()
         return CGPreflightScreenCaptureAccess()
     }
