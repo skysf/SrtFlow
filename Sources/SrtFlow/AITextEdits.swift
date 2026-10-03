@@ -89,6 +89,8 @@ struct AITextChange {
     var animationIntensity: Double?
     var emphasis: TextEmphasisKind?
     var letterSpacing: Double?
+    /// 顺时针转几度（界面上旋转把手转的那个，2026-10-03 给 AI 开的）。
+    var rotation: Double?
     /// 数字滚动（AITextNumberChange）；没给是 nil。
     var number: AINumberRollChange?
     var hidden: Bool?
@@ -129,6 +131,7 @@ struct AITextChange {
         animationIntensity = try args.double("animation_intensity")
         emphasis = try args.choice("emphasis", from: MCPVocabulary.textEmphasis).flatMap(TextEmphasisKind.init(rawValue:))
         letterSpacing = try args.double("letter_spacing")
+        rotation = try args.double("rotation")
         number = try AINumberRollChange(args)
         hidden = try args.bool("hidden")
     }
@@ -179,6 +182,7 @@ struct AITextChange {
         if let animationIntensity { overlay.animation.intensity = animationIntensity }
         if let emphasis { overlay.animation.emphasis = emphasis }
         if let letterSpacing { overlay.style.letterSpacing = letterSpacing }
+        if let rotation { overlay.rotationDegrees = rotation }
         number?.apply(to: &overlay)
         if let hidden { overlay.isHidden = hidden }
     }
