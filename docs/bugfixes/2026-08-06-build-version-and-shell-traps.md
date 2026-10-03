@@ -197,3 +197,23 @@ shell 展开，文件名用 perl 自己的 `$ARGV`，不要往单引号里拼。
 跑，本机和 CI 用同一个解析器 —— 不再有「本机绿、CI 红」的这一类。反向验证：把
 `blocking-media-reads.sh` 换回上面那种写法，本机 `check-all.sh` 里这一项就红，报错与 CI 逐字相同。
 写新的 shell 脚本时，单独调试也请用 `/bin/bash 脚本` 跑，别用 `./脚本`（走 PATH 上的 bash 5）。
+
+## 陷阱 6（2026-10-03）：bash 3.2 把命令替换里的 `"…{a, b}…"` 花括号展开，守卫一声不吭地永远不红
+
+`scripts/check-mcp.sh` 里有一条「cut_speech / cut_to_beat / add_voiceover 的提交包在撤销分组里」的扫描，写法是：
+
+```bash
+for tool in AISpeechCutTool AIBeatCutTool AIVoiceoverTool; do
+  if [ "$(grep -cE "return try … \\{ try ${tool}\\.apply\\(plan, project\\) \\}" "${ROUTER}" || true)" -ne 1 ]; then
+```
+
+**`/bin/bash` 3.2 会对 `"$( … )"` 里那段双引号字符串做花括号展开**：`{ try X.apply(plan, project) }` 按逗号拆成两段，grep 跑了两遍，
+`[` 收到 `0 ''` 两个词，报「too many arguments」、返回 2 —— `if` 只看「是不是 0」，于是走 else，**这条检查从加上那天起在 CI 上一次都没生效过**。
+bash 5 不展开，本机跑是对的；和陷阱 5 不同，3.2 这回**不报错退出**（`set -e` 不管 `if` 的条件），只在 stderr 打一行，所以陷阱 5 的防线
+（`run_check` 统一用 `/bin/bash` 跑）也挡不住。案例：[check-mcp 的撤销分组扫描被花括号展开拆开](2026-10-03-check-mcp-undo-scan-split-by-brace-expansion.md)。
+
+**改法**：先赋给变量（赋值的右边不做花括号展开）再比较：`wrapped="$(grep -cE "…" "${ROUTER}" || true)"`，`[ "${wrapped}" -ne 1 ]`；
+或者把带花括号的那段写进单引号。
+
+**防回归**：`checks/shell-brace-in-nested-quotes.sh`（进了 `scripts/check-all.sh` 第 1 组）扫全部 `.sh`：不是注释、不是「变量=」开头的行里，
+`"$(` 后面出现带 `{…,…}` 的双引号字符串就红。

@@ -333,6 +333,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 开着 pipefail 的 shell 脚本里，管道末端不许用 `grep -q`（命中就退出，上游吃 SIGPIPE，
   整条管道判失败 → 时灵时不灵的假红；查变量用 `<<<`，查管道用 `grep -c … >/dev/null`）：
   `checks/shell-pipe-grep-q.sh`。
+- `"$(…)"` 里不许再套带 `{…,…}` 的双引号字符串（CI 的 /bin/bash 3.2 会把它花括号展开、拆成几个词；放在 `[ ]` 里就是 too many arguments、
+  `if` 走 else，守卫永远不红 —— 先赋给变量再比较）：`checks/shell-brace-in-nested-quotes.sh`。
 - 每个 sheet / popover 的内容、每个自建的 `NSHostingView` 都必须套 `.appLanguage()`（SwiftUI
   不把应用内语言带进 sheet / popover）：`checks/presented-views-app-language.sh`。
 - 代码里每个 `UTType(exportedAs:)` 都必须在 `packaging/Info.plist` 里声明（没声明的
@@ -653,6 +655,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-03 录屏中 AI 改帧率：静默不改，还回成功](docs/bugfixes/2026-10-03-set-canvas-fps-ignored-while-recording.md) — 录屏期间帧率冻结，`setFrameRate` 那道闸只亮一句给人看的提示，
   `set_canvas` 照样回成功；做 `record_screen` 时逐个查「录制中被锁住的操作」才发现。改成先挡、一样都不改；换工程同样换成「用 record_screen action=stop」。
   **执行入口的二道闸只亮提示时，AI 那一路要自己先挡：给人看的 notice 不会出现在工具结果里。**
+- [2026-10-03 check-mcp 的撤销分组扫描被 bash 3.2 花括号展开拆开](docs/bugfixes/2026-10-03-check-mcp-undo-scan-split-by-brace-expansion.md) — 「cut_speech / cut_to_beat / add_voiceover
+  的提交包在撤销分组里」那条扫描写成 `[ "$(grep … "…{ … , … }…")" -ne 1 ]`，CI 的 /bin/bash 3.2 把 `{…,…}` 花括号展开、grep 跑两遍，`[` 报
+  too many arguments、`if` 走 else：**从加上那天起在 CI 上一次都没生效过**，拆掉包装照样绿。先赋给变量再比较，新守卫钉着；陷阱文档补第 6 条。
+  **`[` 自己报错时 `if` 只当「不成立」：守卫里先把命令替换赋给变量；反向验证用 /bin/bash 跑、看一眼 stderr。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
