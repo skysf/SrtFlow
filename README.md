@@ -111,9 +111,16 @@ scripts/build-app.sh
 Build products are written to `dist/` and are intentionally excluded from
 version control.
 
+Official builds are signed with SrtFlow's own self-signed certificate, so the
+permissions macOS grants (screen recording, microphone, the Downloads folder,
+the keychain) carry over to the next version. Without that certificate the script
+falls back to ad-hoc signing and warns: each such build looks like a different app
+to macOS, so those permissions have to be granted again
+(`docs/architecture/code-signing-and-permissions.md`).
+
 ### Sharing the app with someone else
 
-The build is ad-hoc signed, not notarised by Apple, so macOS blocks the first
+The build is not notarised by Apple, so macOS blocks the first
 launch after the DMG travels over the network or AirDrop. The block is not
 cosmetic: while the bundle carries the download-quarantine flag, the ffmpeg
 inside it cannot run either, so compression and burn-in would fail instantly with
@@ -252,9 +259,13 @@ scripts/build-app.sh
 
 构建产物位于 `dist/`，不会提交到版本库。
 
+正式的构建用 SrtFlow 自己的自签名证书签，macOS 给过的权限（录屏、麦克风、下载文件夹、钥匙串）升级之后
+还在。没有这把证书时脚本退回 ad-hoc 签名并提醒：这样的每个构建在 macOS 眼里都是另一个 App，这些权限要重新给
+（`docs/architecture/code-signing-and-permissions.md`）。
+
 ### 分享给别人时
 
-构建只做了 ad-hoc 签名、没有 Apple 公证，所以 DMG 一经网络或 AirDrop 传输，
+构建没有 Apple 公证，所以 DMG 一经网络或 AirDrop 传输，
 macOS 第一次打开时就会拦。这个拦截不只是弹窗那么简单：只要包上还带着下载隔离
 标记，**包内的 ffmpeg 也跑不起来**，压缩和烧字幕会立刻失败，错误输出里什么都没有。
 
