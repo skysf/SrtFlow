@@ -53,6 +53,19 @@ public enum MCPBridge {
         ]
     }
 
+    /// 在结果最前面加一句（小程序自己的话，比如「SrtFlow 刚被重新启动」）：别的内容（文字、图）和 `isError` 原样留着。
+    public static func addingNote(_ note: String, to result: JSONValue) -> JSONValue {
+        guard case .object(var object) = result else { return result }
+        var content: [JSONValue] = [["type": "text", "text": .string(note)]]
+        if case .array(let existing)? = object["content"] { content += existing }
+        object["content"] = .array(content)
+        return .object(object)
+    }
+
+    /// 小程序得先把 App 拉起来才连得上时，结果前面那一句：之前打开的工程、文件夹都不在了（多半是 App 被退出过）。
+    public static let relaunchNote = "Note: SrtFlow was not running, so it was just started. Nothing from before is open: "
+        + "call open_folder and open_project again before using earlier paths or ids."
+
     // MARK: 在哪说
 
     /// App 监听的那个 socket。
