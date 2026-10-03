@@ -82,6 +82,12 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
   [阻塞的媒体读取](blocking-media-reads.md)）。那条线程用信号量等主线程做完，它本来就是专门等这件事的。
 - **小程序找 App**：从自己的路径往上找 `.app`，读它的 bundle id 算 socket；连不上就 `open -g -a <那个 App>`
   （不抢前台），最多等 45 秒。测试用的环境变量：`SRTFLOW_MCP_SOCKET`、`SRTFLOW_MCP_NO_LAUNCH`、`SRTFLOW_MCP_APP`。
+- **拉起来的那一次，结果最前面加一句**（`MCPBridge.relaunchNote`，2026-10-03）：之前打开的工程、文件夹都不在了，叫 AI 重新
+  `open_folder` / `open_project`。不加的话它只看到「文件不存在」「没有这个 id」，要自己去猜（南极工程那一次就是这样）。
+- **关掉主窗口不退出 App**（`applicationShouldTerminateAfterLastWindowClosed` 返回 false，2026-10-03 用户定）：SwiftUI 只有一个
+  `Window` 场景时默认关窗就退出 —— 工程、AI 打开的文件夹全没了，下一次调用拉起来的是空的 Untitled
+  （[案例](../bugfixes/2026-10-03-closing-window-quits-app.md)）。关了窗口 App 留在 Dock 里、工程还开着；点 Dock 图标 SwiftUI 把窗口开回来，
+  AI 的一轮开始时 `AIEditorPresenter` 也会开回来。
 
 ## 四、工具在 App 里怎么做（每一条都是约束）
 
@@ -684,7 +690,10 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
       「truncated」（截了会写「Server instructions truncated from … to 2048 chars」「Tool "…" description truncated from …」）。
       再让模型照抄总说明的最后两行、用 ToolSearch 加载 edit_clip 照抄说明结尾，都不是「… [truncated]」。配了 fal 的机器上多看一眼 generate_media。
       Claude Code 改了这个上限（它的 MCP 客户端里写死的 2048）就要跟着改 `CatalogTextChecks` 的 `claudeCodeTextLimit`。
-- [ ] SrtFlow 没开时让 AI 调一个工具：SrtFlow 在后台启动，对话窗口不被挤下去，调用成功。
+- [ ] SrtFlow 没开时让 AI 调一个工具：SrtFlow 在后台启动，对话窗口不被挤下去，调用成功；结果最前面一句「SrtFlow was not running,
+      so it was just started…」（AI 会重新打开文件夹 / 工程）。
+- [ ] 开着一个工程时关掉 SrtFlow 的主窗口（红点 / ⌘W）：App 留在 Dock 里没退出；点 Dock 图标窗口回来、还是那个工程；
+      这时让 AI 改一处：窗口被摆回来、改动照样进 ⌘Z；⌘Q 才是真退出（没存过的工程照旧问存不存）。
 - [ ] 让 AI 打开一个文件夹、放几段素材：剪辑页被摆到最前面但键盘还在对话框里；每一步时间线滚过去、选中、
       预览跳到那一刻；顶上横幅「Claude 正在剪辑这个工程」。
 - [ ] 跟 AI 说「后台做就行」：它调 `set_view background`；之后 SrtFlow 不跳到前面、时间线上的选中和播放头不跟着动，
