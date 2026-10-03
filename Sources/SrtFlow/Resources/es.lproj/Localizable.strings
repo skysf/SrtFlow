@@ -736,6 +736,7 @@
 "Runs the whole time the text is on screen" = "Se repite todo el tiempo que el texto está en pantalla";
 "Draw on needs an outline — turn on Outline above." = "Trazado necesita un contorno: activa Contorno arriba.";
 "In and out are longer than this text lasts, so both were shortened to fit." = "La entrada y la salida duran más que este texto, así que se acortaron las dos para que quepan.";
+"In and out are longer than this shape lasts, so both were shortened to fit." = "La entrada y la salida duran más que esta forma, así que se acortaron las dos para que quepan.";
 "A looping animation on a long text makes exporting slower." = "Una animación en bucle sobre un texto largo hace más lenta la exportación.";
 "A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "Una transición ya funde el sonido en esa unión, así que el fundido de ese lado se omite.";
 

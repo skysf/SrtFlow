@@ -221,7 +221,7 @@ require "预览上的文字读 renderedTextOverlays" \
 require "预览的调色读不含隐藏的 activeFilters" \
   Sources/SrtFlow/VideoEditFilterModels.swift 'renderedFilters\.filter \{ \$0\.contains\(time: time\) \}'
 require "导出的形状读 renderedShapes" \
-  Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedShapes\.enumerated\(\)'
+  Sources/SrtFlow/VideoEditExportGraph.swift '^ *state\.renderedShapes, canvas: renderSize'
 require "导出的文字读 renderedTextOverlays" \
   Sources/SrtFlow/VideoEditExportGraph.swift 'state\.renderedTextOverlays, canvas:'
 require "导出的调色读 renderedFilters" \
@@ -309,12 +309,28 @@ require "transcribe 读缓存挑语言要走 SubtitleLanguageDetection.pick" \
 forbid "transcribe 读缓存不许再按平均可信度另挑一份语言" \
   Sources/SrtFlow/AITranscribeTool.swift 'confidence > best'
 
-# 圆和圆弧的轮廓只有 ShapeOutline 一份（2026-10-03，docs/architecture/shapes.md）：预览和导出（AI 的「看」也用导出那张 PNG）
-# 拿同一条路径，圆弧从哪儿起、往哪边扫只算一次。
-require "预览画圆 / 圆弧走 ShapeOutline" \
-  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'ShapeOutline\.path\(for: shape'
-require "导出画圆 / 圆弧走 ShapeOutline" \
-  Sources/SrtFlow/VideoEditShapePNGRenderer.swift 'ShapeOutline\.path\(for: shape'
+# 形状画什么只有 ShapeOutline 一份（2026-10-03，docs/architecture/shapes.md）：预览和导出（AI 的「看」也用导出那张图）
+# 拿同一条路径，圆弧从哪儿起、往哪边扫、线头圆不圆、动画截到哪只算一次。
+require "预览画形状走 ShapePreviewDrawing" \
+  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'ShapePreviewDrawing\.view\('
+require "预览的形状画面走 ShapeOutline.drawing" \
+  Sources/SrtFlow/VideoEditShapePreviewDrawing.swift 'ShapeOutline\.drawing\(for: shape'
+require "导出画形状走 ShapeOutline.drawing" \
+  Sources/SrtFlow/VideoEditShapePNGRenderer.swift 'ShapeOutline\.drawing\(for: shape'
+# 形状的入场 / 出场动画（2026-10-03）：预览、导出、AI 的「看」都按钉到工程帧上的时刻问 ShapeAnimator；导出按段逐帧渲、
+# 和文字同一份接法（OverlayExportFile）。
+require "预览的形状按播放头那一帧求动画" \
+  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'ShapeAnimator\.state\('
+require "预览求形状动画的时刻先钉到工程帧上" \
+  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'TextAnimator\.quantize\(clock\.displayTime'
+require "导出的形状逐帧按 ShapeAnimator 渲" \
+  Sources/SrtFlow/VideoEditShapeOverlayExport.swift 'state: ShapeAnimator\.state\(for: shape, at: time\)'
+require "AI 的「看」画形状带上那一刻的动画" \
+  Sources/SrtFlow/AIFrameComposer.swift 'ShapeAnimator\.state\(for: shape, at: quantized\)'
+require "导出图里的形状走 ShapeOverlayExport" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'ShapeOverlayExport\.renderFiles\('
+require "形状和文字叠进导出图只有 OverlayExportFile 一份接法" \
+  Sources/SrtFlow/VideoEditExportGraph.swift 'OverlayExportFile\.append\('
 
 # 带透明的静帧（2026-10-03，docs/bugfixes/2026-10-03-png-transparency-lost.md）：认它只问 isAlphaStill；预览垫黑底（取帧器看不见
 # 暗绿，自检够不着，只能在这里钉）、「盖满画布不透明」把它排除、导出叠之前反预乘、带关键帧的段用它自己的遮罩当 matte。

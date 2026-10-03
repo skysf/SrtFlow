@@ -165,7 +165,8 @@ public enum MCPTimelineTools {
                 line_width is \
                 pixels on a 1080-high frame. Shapes are drawn under texts. kind=blur or mosaic draws nothing: it blurs or \
                 pixelates the picture under it (hide a watermark or burned-in subtitles; look text_scan gives the values); \
-                strength is the blur radius or mosaic cell in pixels on a 1080-high frame. Delete with delete_items.
+                strength is the blur radius or mosaic cell in pixels on a 1080-high frame. animation_in / animation_out \
+                make a shape fade, pop, wipe or draw itself in and out. Delete with delete_items.
                 """,
                 input: MCPSchema.object([
                     "shape_id": MCPSchema.string("Change this shape instead of adding one."),
@@ -182,6 +183,10 @@ public enum MCPTimelineTools {
                     "line_width": MCPSchema.number("Pixels on a 1080-high frame (default 6).", minimum: 1, maximum: 24),
                     "strength": MCPSchema.number("blur/mosaic only, pixels on a 1080-high frame (blur 28, mosaic 22).", minimum: 2, maximum: 80),
                     "filled": MCPSchema.boolean("Rectangles, squares and circles: solid instead of an outline."),
+                    "animation_in": MCPSchema.string("Entrance; draw traces the outline from its start (a solid shape fills in that way).", oneOf: MCPVocabulary.shapeAnimations),
+                    "animation_out": MCPSchema.string("Exit: the entrance played backwards.", oneOf: MCPVocabulary.shapeAnimations),
+                    "animation_in_duration": MCPSchema.number("Entrance seconds (default 0.6).", minimum: 0.1, maximum: 5),
+                    "animation_out_duration": MCPSchema.number("Exit seconds (default 0.6).", minimum: 0.1, maximum: 5),
                     "hidden": MCPSchema.boolean("Hide it without deleting it.")
                 ])
             )

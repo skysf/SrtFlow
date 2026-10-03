@@ -24,6 +24,7 @@ func runSplitOutGroups(root: URL) {
         ("片段换成 upscale 文件 / 换回原片", checkUpscaleSwap),  // 41：Upscale.swift
         ("圆和圆弧", checkCircleArcShapes),             // 43：CircleArcShapes.swift
         ("磁吸跟着工程走", checkMainMagnet),             // 42：MainMagnet.swift
+        ("形状的入场 / 出场动画", checkShapeAnimations),  // 44：ShapeAnimations.swift
     ]
     for group in groups {
         do {

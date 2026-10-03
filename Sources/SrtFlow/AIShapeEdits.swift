@@ -9,6 +9,7 @@ import SrtFlowMCPKit
 // 圆弧（2026-10-03）：`rotation` 是从 12 点钟方向顺时针转过多少开始（收进 (-180, 180]）、`sweep` 扫过多少度（1…359）。
 // 盖一块（blur / mosaic，2026-09-29）不画东西，颜色 / 线宽 / 实心 / 旋转都没有意义；`strength` 是模糊的半径 / 马赛克每格的边长（2…80）。
 // 正方形的高永远等于宽（`TimelineState.updateShape` 那条规矩）；实心只对长方形 / 正方形（线条永远是线）。以及写回给 AI 看。
+// 入场 / 出场动画（2026-10-03）：参数名和 set_text 一样（animation_in / animation_out / 时长），时长夹在 0.1…5 秒；盖一块没有动画。
 // 不管什么：提交和撤销（AIOverlayTools / 路由）、删除（delete_items 本来就认形状）。
 // 模型见 VideoEditShapeModels.swift：形状按数组顺序画（后加的在上面），文字压在形状之上。
 
@@ -27,6 +28,10 @@ struct AIShapeChange {
     var sweep: Double?
     var filled: Bool?
     var hidden: Bool?
+    var animationIn: ShapeAnimationKind?
+    var animationOut: ShapeAnimationKind?
+    var animationInDuration: Double?
+    var animationOutDuration: Double?
 
     static let kindNames = ShapeKind.allCases.map(\.rawValue)
 
@@ -49,6 +54,14 @@ struct AIShapeChange {
         strength = try args.double("strength").map { min(max($0, ShapeKind.coverAmountRange.lowerBound), ShapeKind.coverAmountRange.upperBound) }
         filled = try args.bool("filled")
         hidden = try args.bool("hidden")
+        animationIn = try args.choice("animation_in", from: MCPVocabulary.shapeAnimations).flatMap(ShapeAnimationKind.init(rawValue:))
+        animationOut = try args.choice("animation_out", from: MCPVocabulary.shapeAnimations).flatMap(ShapeAnimationKind.init(rawValue:))
+        animationInDuration = try args.double("animation_in_duration").map(Self.clampedDuration)
+        animationOutDuration = try args.double("animation_out_duration").map(Self.clampedDuration)
+    }
+
+    private static func clampedDuration(_ seconds: Double) -> Double {
+        min(max(seconds, ShapeAnimation.durationRange.lowerBound), ShapeAnimation.durationRange.upperBound)
     }
 
     /// 新形状：没给的用检查器「加形状」的默认大小（`ShapeKind.defaultSize`，同一份）。
@@ -77,6 +90,11 @@ struct AIShapeChange {
         if let sweep { shape.arcSweep = sweep }
         if let filled { shape.isFilled = filled }
         if let hidden { shape.isHidden = hidden }
+        if let animationIn { shape.animation.entrance = animationIn }
+        if let animationOut { shape.animation.exit = animationOut }
+        if let animationInDuration { shape.animation.entranceDuration = animationInDuration }
+        if let animationOutDuration { shape.animation.exitDuration = animationOutDuration }
+        if shape.kind.isCover { shape.animation = ShapeAnimation() }  // 盖一块不画东西，没有动画
         if shape.kind.keepsSquare { shape.height = shape.width }
         switch shape.kind {
         case .line: shape.rotationDegrees = min(max(shape.rotationDegrees, -90), 90)
@@ -118,6 +136,8 @@ struct AIShapeChange {
             object["sweep"] = AIFormat.seconds(shape.arcSweep)
             object["rotation"] = AIFormat.seconds(shape.rotationDegrees)
         }
+        if shape.animation.entrance != .none { object["animation_in"] = .string(shape.animation.entrance.rawValue) }
+        if shape.animation.exit != .none { object["animation_out"] = .string(shape.animation.exit.rawValue) }
         if shape.isHidden { object["hidden"] = true }
         return .object(object)
     }

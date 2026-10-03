@@ -133,14 +133,11 @@ enum VideoEditExportGraph {
             .appendingPathComponent("export-output")
             .appendingPathExtension(output.pathExtension)
 
-        // 形状 → 整幅透明 PNG。
-        var shapeFiles: [(shape: ShapeAnnotation, filename: String)] = []
-        for (index, shape) in state.renderedShapes.enumerated() {  // 藏起来的（V）不进成片
-            let filename = "shape\(index).png"
-            guard let png = ShapePNGRenderer.render(shape, canvas: renderSize) else { continue }
-            try png.write(to: workspace.appendingPathComponent(filename))
-            shapeFiles.append((shape, filename))
-        }
+        // 形状 → 整幅透明 PNG（有入场 / 出场动画的，那两截逐帧渲；画面由 `ShapePNGRenderer` 出，和预览同一条路径）。
+        let shapeFiles = try ShapeOverlayExport.renderFiles(
+            state.renderedShapes, canvas: renderSize,  // 藏起来的（V）不进成片
+            frameRate: state.frameRate, into: workspace
+        )
 
         // 文字 → 包络大小的透明 PNG（**不是**整幅画布，理由见 TextOverlayExport）。
         // 画面由 `TextRenderer.render` 出，和预览是同一个函数。
@@ -474,73 +471,15 @@ enum VideoEditExportGraph {
             state.renderedCovers, canvas: renderSize, total: total, video: &video, filters: &filters, nextLabel: nextLabel
         )
 
-        // MARK: 形状
-
-        for (shape, filename) in shapeFiles {
-            // -loop 1 让单帧 PNG 变成持续的流，enable 控制何时可见。
-            inputArguments += ["-loop", "1", "-t", fmt(total), "-i", filename]
-            let shapeInput = inputs.count
-            inputs.append(filename)
-
-            let outV = nextLabel("v")
-            filters.append(
-                "[\(video)][\(shapeInput):v]overlay=x=0:y=0:eof_action=pass:" +
-                "enable='between(t,\(fmt(shape.timelineStart)),\(fmt(shape.timelineEnd)))'[\(outV)]"
-            )
-            video = outV
-        }
-
-        // MARK: 文字（压在形状之上、字幕之下）
+        // MARK: 形状，然后文字（文字压在形状之上、字幕之下）
         //
-        // 次序是产品口径，不是实现顺手：文字要能放在"半透明色块当底板"的形状
-        // 上面，所以文字必须后贴。见 docs/architecture/text-overlays.md。
-
-        // 一段文字可能切成三段（入场序列 / 中间静止图 / 出场序列），各有各的
-        // 接法。切法和理由见 TextOverlayExport；三种接法的实测依据：
-        //   · 静止段：`-loop 1` 拉成持续流，与形状同款。
-        //   · 一次性序列：`-itsoffset` 把序列推到落点，帧与时间线精确对齐。
-        //   · 循环段：只有一个周期的帧，`loop` 滤镜铺满，`setpts` 补回时间轴。
-        let textFps = Double(max(1, state.frameRate.fps))
-        for file in textFiles {
-            let stream: String
-            switch file.source {
-            case .still:
-                inputArguments += ["-loop", "1", "-t", fmt(total), "-i", file.pattern]
-                let index = inputs.count
-                inputs.append(file.pattern)
-                stream = "\(index):v"
-
-            case .sequence:
-                inputArguments += [
-                    "-itsoffset", fmt(file.timelineStart),
-                    "-framerate", fmt(textFps), "-start_number", "0", "-i", file.pattern
-                ]
-                let index = inputs.count
-                inputs.append(file.pattern)
-                stream = "\(index):v"
-
-            case .looping(let frames):
-                inputArguments += [
-                    "-framerate", fmt(textFps), "-start_number", "0", "-i", file.pattern
-                ]
-                let index = inputs.count
-                inputs.append(file.pattern)
-                let looped = nextLabel("tl")
-                // `loop` 之后 PTS 要自己重建（N 是帧序号），再整体推到落点。
-                filters.append(
-                    "[\(index):v]loop=loop=-1:size=\(frames):start=0," +
-                    "setpts=N/\(fmt(textFps))/TB+\(fmt(file.timelineStart))/TB[\(looped)]"
-                )
-                stream = looped
-            }
-
-            let outV = nextLabel("v")
-            filters.append(
-                "[\(video)][\(stream)]overlay=x=\(fmt(file.origin.x)):y=\(fmt(file.origin.y))" +
-                ":eof_action=pass:enable='between(t,\(fmt(file.timelineStart)),\(fmt(file.timelineEnd)))'[\(outV)]"
-            )
-            video = outV
-        }
+        // 次序是产品口径，不是实现顺手：文字要能放在"半透明色块当底板"的形状上面，所以文字必须后贴。
+        // 见 docs/architecture/text-overlays.md。一段形状 / 文字可能切成三段（入场序列 / 中间静止图 / 出场序列），
+        // 切法见 ShapeOverlayExport / TextOverlayExport，每段怎么进滤镜图只有 OverlayExportFile 一份。
+        OverlayExportFile.append(
+            shapeFiles + textFiles, fps: Double(max(1, state.frameRate.fps)), total: total,
+            inputArguments: &inputArguments, inputs: &inputs, video: &video, filters: &filters, nextLabel: nextLabel
+        )
 
         // MARK: 字幕（最后烧，压在所有画面之上）
 

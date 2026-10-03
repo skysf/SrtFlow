@@ -416,6 +416,16 @@ extension TimelineState {
         shapes.contains { $0.kind == .circle || $0.kind == .arc }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v31-only 持久数据。
+    ///
+    /// **登记清单（新增 v31-only 字段必须同步补进来）：**
+    /// 1. `ShapeAnnotation.animation` —— 形状的入场 / 出场动画（2026-10-03；**按需写入**：没设动画的形状不落键）。
+    ///
+    /// 为什么要抬：只认 v30 的旧版不认识这个键，读进来就当没有，随手编辑触发自动保存就把动画抹掉 —— 成片里的圆环又变回突然出现。
+    var requiresFormatVersion31: Bool {
+        shapes.contains { !$0.animation.isEmpty }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

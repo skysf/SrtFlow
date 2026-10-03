@@ -76,14 +76,15 @@ enum AIFrameComposer {
             let covered = CoverCompositing.apply(state.renderedCovers.filter { $0.contains(time: time) }, to: graded(video, stack: FilterStack(in: state, at: time)))
             context.draw(covered, in: whole)
         }
-        // 形状：导出那份整幅透明 PNG（位置和预览一致）。
+        // 时刻先钉到工程帧的网格上（预览和导出的唯一入口），形状和文字的动画都按它求。
+        let quantized = TextAnimator.quantize(time, frameRate: state.frameRate)
+        // 形状：导出那张整幅透明图（位置、这一刻的入场 / 出场动画都和预览一致）。
         for shape in state.renderedShapes where shape.contains(time: time) {
-            if let data = ShapePNGRenderer.render(shape, canvas: canvas), let image = decode(data) {
+            if let image = ShapePNGRenderer.image(shape, canvas: canvas, state: ShapeAnimator.state(for: shape, at: quantized)) {
                 context.draw(image, in: whole)
             }
         }
-        // 文字：压在形状之上、字幕之下；时刻先钉到工程帧的网格上（预览和导出的唯一入口）。
-        let quantized = TextAnimator.quantize(time, frameRate: state.frameRate)
+        // 文字：压在形状之上、字幕之下。
         for overlay in state.renderedTextOverlays where overlay.contains(time: time) {
             let animation = TextAnimator.state(for: overlay, at: quantized, canvas: canvas, frameRate: state.frameRate)
             guard let text = TextRenderer.render(overlay, canvas: canvas, state: animation) else { continue }
@@ -117,11 +118,6 @@ enum AIFrameComposer {
     private static let gradingContext = CIContext(options: [
         .workingColorSpace: FilterLUT.workingColorSpace, .outputColorSpace: FilterLUT.workingColorSpace
     ])
-
-    private static func decode(_ png: Data) -> CGImage? {
-        guard let source = CGImageSourceCreateWithData(png as CFData, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
-    }
 
     /// 此刻的字幕：预览上画字幕的那个视图（`BurnInSubtitleOverlay`），按画布像素离屏渲一张透明图。
     @MainActor

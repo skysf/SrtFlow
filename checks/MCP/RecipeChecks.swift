@@ -145,7 +145,7 @@ private func knownNames() -> Set<String> {
     names.formUnion(MCPVocabulary.transitions + MCPVocabulary.filterPresetIDs + MCPVocabulary.textAnimations
         + MCPVocabulary.clipAnimations + MCPVocabulary.soundScenes + MCPVocabulary.textEmphasis
         + MCPVocabulary.numberStyles + MCPVocabulary.voiceRoles + MCPVocabulary.textPositions + MCPVocabulary.subtitlePositions
-        + MCPVocabulary.keyframeEasings)
+        + MCPVocabulary.keyframeEasings + MCPVocabulary.shapeAnimations)
     names.insert("music_credits")  // get_timeline 的结果里的字段
     names.insert("lines_with_word_times")  // get_subtitles 的结果里的字段
     // generate_media（只有填了 fal Key 才在清单里，但 listJSON 是配好时的全份）的词表和结果字段：卡里提到它们时要对得上。

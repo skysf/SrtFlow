@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# **音频引擎的等价自检**：同一条时间线，纯 Swift 的 oracle 混音器（checks/AudioEngine/Oracle.swift）和引擎离线渲染出来的声音
-# 逐 10 ms 窗口比 RMS（差 ≤ 0.15 dB；重采样的素材 0.3 dB），一边有声一边静音算错，引擎不许欠载。
-# 素材是现造的恒定振幅正弦（和 check-audio-fade 同一套，需要 ffmpeg）。
+# **形状的真实回归**：预览画的和成片一样，入场 / 出场动画落在对的帧上（2026-10-03，docs/architecture/shapes.md）。
+#
+# 守两条契约（改 ShapeOutline / ShapePreviewDrawing / ShapePNGRenderer / ShapeOverlayExport 之前必读）：
+#   1. 预览那个画法（ShapePreviewDrawing，离屏渲一张）和导出那张（ShapePNGRenderer）逐像素重合：
+#      五种形状 × 描边 / 实心 × 不动 / 画到一半 / 擦除 / 缩放 / 半透明（checks/ShapeRender/Parity.swift）；
+#   2. 真跑导出抽帧：入场画到一半、中间整个、出场淡到一半、段外没有；只逐帧渲动画那两截（checks/ShapeRender/Export.swift）。
+# 纯值的那一半（求值、笔顺、存盘、v31）在 scripts/check-project-file.sh 第 44 组。
 #
 # 用法：
-#   scripts/check-audio-engine.sh
+#   scripts/check-shape-render.sh
 #
-# 与 check-audio-fade.sh 同一套编法（源文件清单从它复制，再加 AudioEngine/ 下的文件）：被测代码在 SrtFlow
-# app target 里，SwiftPM 不允许两个 target 共用源文件，所以单独编成自检二进制来跑。
-# 方案：docs/plans/2026-10-01-audio-engine.md。
+# 需要 ffmpeg（导出那一半）；素材是 AVAssetWriter 现写的黑底视频。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -17,12 +19,11 @@ ARCH_FLAG="--arch arm64"
 TRIPLE="arm64-apple-macosx15.0"
 
 echo "==> swift build ${ARCH_FLAG} --target SrtFlowCore"
-# SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出
-#（>/dev/null 会把编译错误吞成无字天书，见 docs/bugfixes/ 2026-08-08 CI 首跑案例）。
+# SwiftPM 的编译诊断走 stdout：静默成功可以，失败必须倾倒完整输出。
 BUILD_OUT="$(swift build ${ARCH_FLAG} --target SrtFlowCore 2>&1)" || { printf '%s\n' "${BUILD_OUT}"; exit 1; }
 BUILD_DIR="$(swift build ${ARCH_FLAG} --show-bin-path)"
 
-OUT="$(mktemp -d)/audioengine"
+OUT="$(mktemp -d)/shaperender"
 trap 'rm -rf "$(dirname "$OUT")"' EXIT
 
 echo "==> 编译自检二进制"
@@ -68,6 +69,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextLayout.swift \
   Sources/SrtFlow/VideoEditTextLayoutFonts.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
+  Sources/SrtFlow/VideoEditTextHitGeometry.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
   Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditOverlayExportFile.swift \
@@ -88,6 +90,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditCoverExport.swift \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
   Sources/SrtFlow/VideoEditShapeOutline.swift \
+  Sources/SrtFlow/VideoEditShapePreviewDrawing.swift \
   Sources/SrtFlow/VideoEditExportFilterScript.swift \
   Sources/SrtFlow/VideoEditExportMixdown.swift \
   Sources/SrtFlow/ExportPeakLimiter.swift \
@@ -106,6 +109,16 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditBlackBaseVideo.swift \
   Sources/SrtFlow/VideoEditAudioMeter.swift \
   Sources/SrtFlow/AudioEngine/AudioGainTable.swift \
+  Sources/SrtFlow/AudioEngine/MeterSlot.swift \
+  Sources/SrtFlow/AudioEngine/AudioEngineConfig.swift \
+  Sources/SrtFlow/AudioEngine/AudioRing.swift \
+  Sources/SrtFlow/AudioEngine/AudioPublished.swift \
+  Sources/SrtFlow/AudioEngine/AudioSegmentReader.swift \
+  Sources/SrtFlow/AudioEngine/AudioTimeStretchReader.swift \
+  Sources/SrtFlow/AudioEngine/AudioTrackFeeder.swift \
+  Sources/SrtFlow/AudioEngine/AudioTrackRenderer.swift \
+  Sources/SrtFlow/AudioEngine/TimelineAudioEngine.swift \
+  Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
   Sources/SrtFlow/VideoEditTimelineRowHeights.swift \
   Sources/SrtFlow/VideoEditPrerender.swift \
   Sources/SrtFlow/BurnInWorkspace.swift \
@@ -114,21 +127,9 @@ xcrun swiftc \
   Sources/SrtFlow/MediaProbe.swift \
   Sources/SrtFlow/OptimizedMedia/MediaKeyframeProbe.swift \
   Sources/SrtFlow/AppLanguage.swift \
-  Sources/SrtFlow/AudioEngine/AudioEngineConfig.swift \
-  Sources/SrtFlow/AudioEngine/AudioRing.swift \
-  Sources/SrtFlow/AudioEngine/AudioPublished.swift \
-  Sources/SrtFlow/AudioEngine/MeterSlot.swift \
-  Sources/SrtFlow/AudioEngine/AudioSegmentReader.swift \
-  Sources/SrtFlow/AudioEngine/AudioTimeStretchReader.swift \
-  Sources/SrtFlow/AudioEngine/AudioTrackFeeder.swift \
-  Sources/SrtFlow/AudioEngine/AudioTrackRenderer.swift \
-  Sources/SrtFlow/AudioEngine/TimelineAudioEngine.swift \
-  Sources/SrtFlow/AudioEngine/PlaybackAudioSource.swift \
-  checks/AudioEngine/main.swift \
-  checks/AudioEngine/Compare.swift \
-  checks/AudioEngine/ReaderChunks.swift \
-  checks/AudioEngine/Timelines.swift \
-  checks/AudioEngine/Oracle.swift \
+  checks/ShapeRender/main.swift \
+  checks/ShapeRender/Parity.swift \
+  checks/ShapeRender/Export.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

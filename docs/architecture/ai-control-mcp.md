@@ -264,6 +264,8 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    的那一套（线宽 1…24、尺寸 0.02…1、线的角度 ±90°、至少 0.2 秒、中心 0…1），正方形、圆、圆弧高等于宽、只有线和圆弧能转
    （圆弧的 `rotation` 是从 12 点钟顺时针的起点、`sweep` 扫过多少度，2026-10-03，见 [画面上的形状](shapes.md)）；新加的默认大小
    同检查器「加形状」（`ShapeKind.defaultSize` 同一份）。形状不进合成，提交不重建预览（同检查器）。`get_timeline` 列出形状（以前不列），删除走 `delete_items`。
+   入场 / 出场（2026-10-03）：`animation_in` / `animation_out`（fade / pop / wipe / draw）和两个时长，参数名照抄 `set_text`、时长夹在 0.1…5、
+   盖一块不收；工具说明只加了一句和四个参数（约 620 字，全清单约 75.7k / 80k）。
 
 21. **复制一份（duplicate_items）**：**不另写落点**，直接用 ⌘C / ⌘V 那两个纯函数（`TimelineClipboardPayload(copying:)` →
    `TimelinePaste.apply`），不经过系统剪贴板 —— 撞上往上抬一轨、几组保住上下关系、链接组换新号、换新身份全和手动粘贴一样

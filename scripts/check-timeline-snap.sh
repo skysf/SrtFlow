@@ -42,6 +42,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
+  Sources/SrtFlow/VideoEditShapeAnimation.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
@@ -67,7 +68,6 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextLayoutFonts.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
-  Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditKeyframeEasing.swift \
