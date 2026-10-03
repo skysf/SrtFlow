@@ -133,6 +133,26 @@ A 在 10s 结束、与 B 有 1s 转场，在 A 的 8.5s 定格 → 画面位移 
 改这条命令前读 [案例](../bugfixes/2026-08-08-still-clip-decode-per-frame.md)：
 它同时记了「性能断言为什么用边际成本而不是绝对秒数/比值」。
 
+### 4a3. 真用到了透明的图：预乘的 ProRes 4444 + 一份灰度遮罩（2026-10-03）
+
+透明 PNG 的台标、圆环、字幕条以前和别的图一样转成 H.264 yuv420p —— 没有 alpha，透明的地方成了黑方块
+（[案例](../bugfixes/2026-10-03-png-transparency-lost.md)）。现在：
+
+- **哪张图算用到了透明**：文件头带 alpha 通道（`hasAlphaChannel`，只读文件头）**并且**缩到长边 1024 之后有像素不是全不透明
+  （`usesTransparency`，要解码，在转码那一刻、别的线程上做）。截图、导出的 PNG 常带 alpha 通道却全不透明，照旧 H.264 ——
+  透明静帧一张 1080×1080 约 30 MB，不值得给每张图都转。定格帧的 PNG 本来就没有 alpha 通道（RGB），不受影响。
+- **透明的**：`alphaConversionArguments` —— 先 `format=rgba`、补边透明（`color=black@0`）、`premultiply=inplace=1`，
+  ProRes 4444 `yuva444p10le`，帧数帧率同不透明那条。**必须预乘**：预览的默认合成器把源当预乘的用（直通的半透明处会过亮）。
+  外加 `matteConversionArguments` —— 同一套几何 `alphaextract` 成灰度 H.264（白 = 不透明），给带关键帧的上层轨段当 matte。
+- **起名只有 `StillAlphaNaming` 一份**：`<指纹>-alpha-v1.mov` / `-alpha-native-v1.mov`，遮罩同名接 `-matte.mp4`；
+  带 alpha 通道其实全不透明的叫 `-opaque-v1.mp4` / `-opaque-native-v1.mp4`（编码同老的）。**带 alpha 通道的图不再认老名字**
+  （`-v3.mp4` 里混着透明图转成的黑方块）：打开老工程时重转一次。透明静帧要连遮罩一起在才算命中。
+- **认它只问 `EditClip.isAlphaStill`**：预览垫黑底（`needsOpaqueBase`）、「盖满画布且不透明」把它排除、导出叠之前
+  `setparams=alpha_mode=premultiplied` + 缩放完 `unpremultiply=inplace=1`（`ExportTransformChain`；ffmpeg 8 起 unpremultiply
+  看帧上的 alpha_mode，不标就原样放过去）、带关键帧的段 matte 用这份遮罩（[关键帧动画](keyframe-animation.md)「导出」）。
+  主轨上的透明静帧不用另做：主轨那条路收尾 `format=yuv420p` 丢掉 alpha，预乘过的颜色就是「压在黑底上」。
+- 改编码参数（codec、像素格式、帧率、几何）要给 `StillAlphaNaming` 的名字 +1 版本。
+
 ## 4b. 分辨率政策只有一个判据
 
 `StillImageClipFactory.needsNativeResolution(for:)` 是**两条政策之间唯一的判据**，

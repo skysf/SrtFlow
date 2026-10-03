@@ -1,11 +1,16 @@
 import CoreGraphics
 import CryptoKit
 import Foundation
+import ImageIO
 
 /// 把静态图片变成一段静帧循环视频，好让它走和视频完全一样的剪辑管线。
 ///
 /// 生成的片段 60 秒（图片段够用了），放进缓存目录按内容指纹复用 ——
 /// 同一张图第二次拖进来不再转。
+///
+/// **真用到了透明的图**（2026-10-03，透明 PNG 的台标、圆环以前成了黑方块）：转成**预乘过**的 ProRes 4444
+///（预览的默认合成器把源当预乘的用），外加一份灰度遮罩给带关键帧的上层轨段当 matte；起名见 `StillAlphaNaming`。
+/// 不透明的图照旧 H.264 —— 透明静帧一张 1080×1080 约 30 MB，不值得给每张图都转。
 enum StillImageClipFactory {
 
     struct ConversionError: LocalizedError {
@@ -49,17 +54,31 @@ enum StillImageClipFactory {
         return size.width > photoMaxWidth + 1 || size.height > photoMaxHeight + 1
     }
 
-    /// 已经转过就直接给（同步、零开销）。撤销后修补占位块时用。
+    /// 已经转过就直接给（同步、只读文件头）。撤销后修补占位块、打开工程时用。
     ///
     /// **必须显式说明是哪条政策**。以前这里「两条都查、原生优先」，同一张 PNG
     /// 既被当定格素材又被用户当普通图片拖进来时会串线：两个缓存都在就都拿原生，
     /// 只剩照片缓存就把定格段悄悄降成 1080p。
+    ///
+    /// 带 alpha 通道的图只认新名字（透明的 `-alpha-…mov` 连遮罩一起在才算、不透明的 `-opaque-…mp4`）：
+    /// 2026-10-03 之前它们和别的图一样转成了 H.264（透明的地方变黑），那份老缓存不能再用 —— 打开老工程时重转一次。
     static func cachedStillVideo(for image: URL, nativeResolution: Bool) -> URL? {
-        guard let output = cacheFileURL(for: image, nativeResolution: nativeResolution) else { return nil }
-        return FileManager.default.fileExists(atPath: output.path) ? output : nil
+        guard let directory = try? cacheDirectory() else { return nil }
+        let key = cacheKey(for: image)
+        let names = hasAlphaChannel(image)
+            ? [StillAlphaNaming.stillName(key: key, nativeResolution: nativeResolution), opaqueName(key: key, nativeResolution: nativeResolution)]
+            : [fileName(key: key, nativeResolution: nativeResolution)]
+        for name in names {
+            let url = directory.appendingPathComponent(name)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            if StillAlphaNaming.isAlphaStill(url),
+               !FileManager.default.fileExists(atPath: StillAlphaNaming.matteURL(forStill: url).path) { continue }
+            return url
+        }
+        return nil
     }
 
-    /// 这张图这条政策的缓存**应该**在哪（不管在不在）。
+    /// 不带 alpha 通道的图（照片、截图、定格帧），这条政策的缓存**应该**在哪（不管在不在）。
     ///
     /// 单独开一个口子是给自检用的：命中路由要真造两份缓存文件才测得出来，
     /// 而指纹公式不该在测试里抄一遍（抄了就会在公式改动时静默假绿）。
@@ -76,12 +95,7 @@ enum StillImageClipFactory {
     /// 抄第二份，抄了就会在参数改动时静默假绿 —— 上一次「输入帧率」的性能 bug
     /// 就是因为没人对着真实参数量过时间。
     static func conversionArguments(image: URL, output: URL, nativeResolution: Bool) -> [String] {
-        // 宽高都得是偶数，yuv420p 的要求。
-        let evenSize = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
-        let filter = nativeResolution
-            ? evenSize
-            : "scale=trunc(min(iw\\,\(Int(photoMaxWidth)))/2)*2:trunc(min(ih\\,\(Int(photoMaxHeight)))/2)*2:force_original_aspect_ratio=decrease,\(evenSize)"
-
+        let filter = geometryFilter(nativeResolution: nativeResolution, transparent: false)
         return [
             "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
             // 输入侧的帧率，必须和输出侧的 `-r` 写同一个值：不一致的话输出端要么
@@ -109,26 +123,115 @@ enum StillImageClipFactory {
         ]
     }
 
+    /// 缩放 + 补成偶数宽高（yuv420p 的要求）：两条政策、透明与否只差在这里。透明的图要先转成带 alpha 的格式、补的边也透明。
+    private static func geometryFilter(nativeResolution: Bool, transparent: Bool) -> String {
+        let evenSize = transparent ? "pad=ceil(iw/2)*2:ceil(ih/2)*2:color=black@0" : "pad=ceil(iw/2)*2:ceil(ih/2)*2"
+        let geometry = nativeResolution
+            ? evenSize
+            : "scale=trunc(min(iw\\,\(Int(photoMaxWidth)))/2)*2:trunc(min(ih\\,\(Int(photoMaxHeight)))/2)*2:force_original_aspect_ratio=decrease,\(evenSize)"
+        return transparent ? "format=rgba,\(geometry)" : geometry
+    }
+
+    /// 透明的图：预乘过的 ProRes 4444（帧数、帧率、几何和不透明的那条一样）。**预乘**是预览那边定的：默认合成器把源的
+    /// 颜色当预乘的用（直通的 alpha 在透明处会透出存着的颜色）；导出那边叠之前先 `unpremultiply`（`VideoEditExportGraph`）。
+    static func alphaConversionArguments(image: URL, output: URL, nativeResolution: Bool) -> [String] {
+        let filter = geometryFilter(nativeResolution: nativeResolution, transparent: true)
+        return [
+            "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+            "-r", String(Int(stillFrameRate)), "-i", image.path,
+            "-vf", "\(filter),premultiply=inplace=1,loop=loop=\(stillFrameCount - 1):size=1:start=0",
+            "-frames:v", String(stillFrameCount), "-r", String(Int(stillFrameRate)),
+            "-c:v", "prores_ks", "-profile:v", "4444", "-pix_fmt", "yuva444p10le",
+            "-an", output.path
+        ]
+    }
+
+    /// 透明的图的遮罩：它的 alpha 转成灰度（白 = 不透明）。带关键帧的上层轨段导出时拿它当 matte —— 以前那块纯白的 matte
+    /// 只管摆放框，透明的地方照样不透明（`AnimatedClipPrerenderer.renderOverlay`）。
+    static func matteConversionArguments(image: URL, output: URL, nativeResolution: Bool) -> [String] {
+        let filter = geometryFilter(nativeResolution: nativeResolution, transparent: true)
+        return [
+            "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
+            "-r", String(Int(stillFrameRate)), "-i", image.path,
+            "-vf", "\(filter),format=yuva444p,alphaextract,format=yuv420p,loop=loop=\(stillFrameCount - 1):size=1:start=0",
+            "-frames:v", String(stillFrameCount), "-r", String(Int(stillFrameRate)),
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "stillimage", "-crf", "4", "-pix_fmt", "yuv420p",
+            "-an", output.path
+        ]
+    }
+
+    // MARK: 透明
+
+    /// 文件头说这张图带 alpha 通道（PNG 的 RGBA / tRNS、HEIC、GIF 的透明色）。只读文件头，主线程上也能问。
+    static func hasAlphaChannel(_ image: URL) -> Bool {
+        guard let source = CGImageSourceCreateWithURL(image as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return false }
+        return properties[kCGImagePropertyHasAlpha] as? Bool ?? false
+    }
+
+    /// 这张图真用到了透明吗：带 alpha 通道，而且缩到长边 1024 之后至少有一个像素不是全不透明（一个透明像素也会把
+    /// 它那一块的平均 alpha 拉到 255 以下，缩小漏不掉）。截图、导出的 PNG 常带 alpha 通道却全不透明 —— 只看文件头会给
+    /// 它们白转一份大十倍的 ProRes 4444。要解码，**别在主线程上调**。读不出来的按透明算（透明那条路对不透明的图也对，只是大）。
+    static func usesTransparency(_ image: URL) -> Bool {
+        guard hasAlphaChannel(image), let source = CGImageSourceCreateWithURL(image as CFURL, nil) else { return false }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 1024,
+        ] as CFDictionary
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options) else { return true }
+        let width = thumbnail.width
+        let height = thumbnail.height
+        var pixels = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn: Bool = pixels.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            ) else { return false }
+            context.draw(thumbnail, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard drawn else { return true }
+        return stride(from: 3, to: pixels.count, by: 4).contains { pixels[$0] < 255 }
+    }
+
     static func stillVideo(for image: URL, ffmpeg: URL, nativeResolution: Bool = false) async throws -> URL {
+        if let cached = cachedStillVideo(for: image, nativeResolution: nativeResolution) { return cached }
         let directory = try cacheDirectory()
-        let output = directory.appendingPathComponent(
-            fileName(key: cacheKey(for: image), nativeResolution: nativeResolution)
+        let key = cacheKey(for: image)
+        let alphaChannel = hasAlphaChannel(image)
+        // 要解码整张图：放到别的线程上（调用方多半在主线程上）。
+        var transparent = false
+        if alphaChannel { transparent = await offMain { usesTransparency(image) } }
+        if transparent {
+            // 先遮罩后静帧：静帧在、遮罩不在不算命中（`cachedStillVideo`），中途断了下次两样一起重转。
+            let still = directory.appendingPathComponent(StillAlphaNaming.stillName(key: key, nativeResolution: nativeResolution))
+            try await encode(
+                { matteConversionArguments(image: image, output: $0, nativeResolution: nativeResolution) },
+                into: StillAlphaNaming.matteURL(forStill: still), in: directory, image: image, ffmpeg: ffmpeg
+            )
+            return try await encode(
+                { alphaConversionArguments(image: image, output: $0, nativeResolution: nativeResolution) },
+                into: still, in: directory, image: image, ffmpeg: ffmpeg
+            )
+        }
+        let name = alphaChannel ? opaqueName(key: key, nativeResolution: nativeResolution) : fileName(key: key, nativeResolution: nativeResolution)
+        return try await encode(
+            { conversionArguments(image: image, output: $0, nativeResolution: nativeResolution) },
+            into: directory.appendingPathComponent(name), in: directory, image: image, ffmpeg: ffmpeg
         )
-        if FileManager.default.fileExists(atPath: output.path) { return output }
+    }
 
-        // 先写临时文件、成功后原子改名。直接写最终路径的话，转码被中断（切工程、
-        // 退出 App、磁盘满）会留下一个**永远命中**的半成品 mp4 —— 之后这张图
-        // 每次都解析到那段坏视频，还没有任何线索。
-        let temporary = directory.appendingPathComponent("partial-\(UUID().uuidString).mp4")
-
-        let arguments = conversionArguments(
-            image: image,
-            output: temporary,
-            nativeResolution: nativeResolution
-        )
-
+    /// 按给定参数（只差输出路径）转一份，落到 `output`。
+    ///
+    /// 先写临时文件、成功后原子改名。直接写最终路径的话，转码被中断（切工程、
+    /// 退出 App、磁盘满）会留下一个**永远命中**的半成品 —— 之后这张图
+    /// 每次都解析到那段坏视频，还没有任何线索。
+    @discardableResult
+    private static func encode(
+        _ arguments: (URL) -> [String], into output: URL, in directory: URL, image: URL, ffmpeg: URL
+    ) async throws -> URL {
+        let temporary = directory.appendingPathComponent("partial-\(UUID().uuidString).\(output.pathExtension)")
         do {
-            try await run(ffmpeg: ffmpeg, arguments: arguments, imageName: image.lastPathComponent)
+            try await run(ffmpeg: ffmpeg, arguments: arguments(temporary), imageName: image.lastPathComponent)
         } catch {
             try? FileManager.default.removeItem(at: temporary)
             throw error
@@ -146,6 +249,12 @@ enum StillImageClipFactory {
         return output
     }
 
+    private static func offMain<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async { continuation.resume(returning: work()) }
+        }
+    }
+
     /// 缓存文件名。带参数版本号：编码参数变了旧缓存就作废。
     /// 两种分辨率政策分开存，互不覆盖。
     ///
@@ -158,6 +267,11 @@ enum StillImageClipFactory {
     /// （尺寸、码率、帧率、codec）时才必须升。
     private static func fileName(key: String, nativeResolution: Bool) -> String {
         nativeResolution ? "\(key)-native-v1.mp4" : "\(key)-v3.mp4"
+    }
+
+    /// 带 alpha 通道、其实全不透明的图（编码同 `fileName`，名字单开：同名的老缓存里混着透明图转成的黑方块）。
+    private static func opaqueName(key: String, nativeResolution: Bool) -> String {
+        nativeResolution ? "\(key)-opaque-native-v1.mp4" : "\(key)-opaque-v1.mp4"
     }
 
     private static func cacheDirectory() throws -> URL {

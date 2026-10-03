@@ -1,7 +1,8 @@
 import Foundation
+import SrtFlowCore
 
-// 成品探针：从真导出的成片里抽一帧量亮度 / 某个像素，读成片时长。
-// 管什么：只读成品、只回答数；不管场景怎么搭、断言怎么写（在 main.swift 和各个用例文件里）。
+// 成品探针：从真导出的成片里抽一帧量亮度 / 某个像素，读成片时长，取生产滤镜图（字符串断言用）。
+// 管什么：只读成品 / 计划、只回答数和字符串；不管场景怎么搭、断言怎么写（在 main.swift 和各个用例文件里）。
 // 从 main.swift 拆出来（那个文件在行数基线里只许降，见 docs/architecture/coding-standards.md）。
 
 /// 成品在某一时刻那一帧的整幅平均亮度（0…1）。
@@ -48,4 +49,28 @@ func mediaDuration(_ url: URL) -> Double? {
     guard parts.count == 3, let h = Double(parts[0]), let m = Double(parts[1]),
           let sec = Double(parts[2]) else { return nil }
     return h * 3600 + m * 60 + sec
+}
+
+/// 这份时间线的生产滤镜图（字符串断言用）。
+func filterGraph(_ state: TimelineState, name: String) async -> String? {
+    let output = root.appendingPathComponent("\(name).mp4")
+    do {
+        let plan = try await VideoEditExportGraph.plan(
+            state: state,
+            settings: VideoEncodeSettings(),
+            subtitleStyle: BurnInStyle(name: "check"),
+            subtitleFontURL: nil,
+            output: output
+        )
+        defer { try? FileManager.default.removeItem(at: plan.workspace) }
+        guard let index = plan.arguments.firstIndex(of: "-filter_complex"),
+              index + 1 < plan.arguments.count else {
+            check(false, "\(name) 的参数里没有 -filter_complex")
+            return nil
+        }
+        return plan.arguments[index + 1]
+    } catch {
+        check(false, "\(name) 的 plan() 失败：\(error)")
+        return nil
+    }
 }

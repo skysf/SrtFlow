@@ -307,7 +307,7 @@ enum VideoEditExportGraph {
                     // 变换链处理后叠到黑底画布上。用 overlay 而不是 pad ——
                     // 框可以比画布大、可以探出边界，旋转还会撑大输出框。
                     // 画面渐变与声音同一套仲裁：接缝上有转场就让位给 xfade。
-                    let transformed = transformSteps(
+                    let transformed = ExportTransformChain.steps(
                         clip: clip, renderSize: renderSize,
                         fades: VideoFade.effective(
                             clip: clip,
@@ -440,7 +440,7 @@ enum VideoEditExportGraph {
                 // 累积好的画面上，补黑就把主轨遮死了。
                 let end = clip.sourceStart + clip.sourceDuration
                 // 上层轨还没有轨内转场，两条边都归用户设的渐变管。
-                let transformed = transformSteps(
+                let transformed = ExportTransformChain.steps(
                     clip: clip, renderSize: renderSize,
                     fades: VideoFade.effective(
                         clip: clip, hasTransitionBefore: false, hasTransitionAfter: false
@@ -600,54 +600,6 @@ enum VideoEditExportGraph {
     }
 
     // MARK: 小工具
-
-    /// 摆放框的像素尺寸收成正偶数：yuv420 要偶数，scale 不吃 0。
-    private static func evenPixel(_ value: Double) -> Int {
-        max(2, Int((value / 2).rounded()) * 2)
-    }
-
-    /// Transform 面板的完整滤镜链（接在 fps=<工程帧率> 之后）：
-    /// 裁切 → 翻转 → 缩放进摆放框 → 旋转（rgba 透明角）→ 不透明度 → 画面渐变。
-    /// 定位用中心表达式 —— 旋转会把输出框撑大（rotw/roth），
-    /// 只有中心是不变量。时间账与预览的 fittingTransform 完全同构。
-    ///
-    /// - Parameter fades: **已经过转场仲裁**的画面渐变窗口（`VideoFade.effective`）。
-    ///   渐变挂在链的最末尾，`st` 才对得上时间线秒（见 VideoEditVideoFade.swift）。
-    private static func transformSteps(
-        clip: EditClip,
-        renderSize: CGSize,
-        fades: FadeWindow
-    ) -> (chain: String, overlayX: String, overlayY: String) {
-        let target = clip.resolvedPlacement(canvas: renderSize)
-            .frame(in: renderSize)
-        var steps: [String] = []
-        if let crop = clip.crop, !crop.isEmpty, let display = clip.info?.displaySize {
-            let rect = crop.rect(in: display)
-            steps.append(
-                "crop=\(Int(rect.width.rounded())):\(Int(rect.height.rounded())):" +
-                "\(Int(rect.minX.rounded())):\(Int(rect.minY.rounded()))"
-            )
-        }
-        if clip.flippedHorizontally { steps.append("hflip") }
-        if clip.flippedVertically { steps.append("vflip") }
-        steps.append("scale=\(evenPixel(target.width)):\(evenPixel(target.height))")
-        steps.append("setsar=1")
-        let rotated = abs(clip.rotationDegrees) > 0.01
-        let translucent = clip.opacity < 0.999
-        // 渐变是在 alpha 上做的，没有 alpha 通道 `fade=…:alpha=1` 就是空转。
-        if rotated || translucent || !fades.isEmpty { steps.append("format=rgba") }
-        if rotated {
-            let radians = fmt(clip.rotationDegrees * .pi / 180)
-            steps.append("rotate=\(radians):ow=rotw(\(radians)):oh=roth(\(radians)):c=black@0")
-        }
-        if translucent { steps.append("colorchannelmixer=aa=\(fmt(clip.opacity))") }
-        return (
-            steps.joined(separator: ",")
-                + VideoFade.filterSteps(fades, timelineDuration: clip.timelineDuration),
-            "\(Int(target.midX.rounded()))-w/2",
-            "\(Int(target.midY.rounded()))-h/2"
-        )
-    }
 
     /// `30.0` → `"30"`，`1.2345` → `"1.234"`。滤镜参数里别出现一长串小数。
     static func fmt(_ value: Double) -> String {

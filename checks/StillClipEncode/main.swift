@@ -288,6 +288,10 @@ if let first = convert(bigImage, nativeResolution: false, name: "stable-1.mp4"),
     print("FAIL 稳定性对比跑不起来")
 }
 
+// MARK: - 带透明的图（Alpha.swift）
+
+checkAlphaStills()
+
 print("\(checks - failures)/\(checks) 通过")
 if failures > 0 {
     print("❌ \(failures) 项失败")
