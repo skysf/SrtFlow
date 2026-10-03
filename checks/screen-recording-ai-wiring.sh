@@ -23,7 +23,10 @@
 #   8. **授权一次运行只请求一次**：requestScreenAccess 在 AI 的文件里只出现一次，前面是 `guard !requestedPermission` 和置位。
 #   9. AI 起的浮窗放主屏左下角（顶部正中压在浏览器的地址栏上，AI 截屏又看不见浮窗）。
 #  10. 录屏中的锁换成 AI 能照做的话：set_canvas 改帧率先挡、一样都不改（以前静默不改还回成功，
-#      docs/bugfixes/2026-10-03-set-canvas-fps-ignored-while-recording.md）；换工程（open_project / new_project）先挡、说用 record_screen action=stop。
+#      docs/bugfixes/2026-10-03-set-canvas-fps-ignored-while-recording.md）；换工程（open_project / new_project）先挡；
+#      **按状态说**：在等决定时说 resolve、不说 stop（那时没在录，2026-10-03 真机首测撞上的）。
+#  11–13. 真机首测修的另外三处（docs/bugfixes/2026-10-03-record-screen-first-device-test.md）：按时长停要扣掉切到「录制中」之前已经录下的那一截；
+#      没授权时不列窗口（系统只把自己的窗口算作能录，列出来会误导）；残留报保存之后的文件名，不报隐藏的 .partial 临时文件。
 #
 # 用法：checks/screen-recording-ai-wiring.sh
 set -euo pipefail
@@ -155,10 +158,30 @@ if ! before "${LOCK_AT}" "$(line_of 'project.setCanvasRatio(ratio)' "${OVERLAY}"
    || ! before "${LOCK_AT}" "$(line_of 'project.setFrameRate(rate)' "${OVERLAY}")"; then
   fail "${OVERLAY}：录屏中 set_canvas 改帧率要先报错、一样都不改（setFrameRate 那道闸只亮提示，AI 会以为改了）"
 fi
-SWITCH_AT="$(line_of 'if ScreenRecordingCoordinator.shared.locksProjectSwitching { throw AIToolError(AIScreenRecordingTool.lockMessage) }' "${PROJECT_TOOLS}")"
+SWITCH_AT="$(line_of 'throw AIToolError(AIScreenRecordingTool.lockMessage("the project cannot be switched now"))' "${PROJECT_TOOLS}")"
 if ! before "${SWITCH_AT}" "$(line_of 'guard project.isUntitled, !project.state.isEmpty else { return nil }' "${PROJECT_TOOLS}")"; then
   fail "${PROJECT_TOOLS}：录屏中换工程要先挡、告诉 AI 用 record_screen action=stop（界面那句「先停止录屏」AI 照做不了）"
 fi
+
+grep -q 'throw AIToolError(AIScreenRecordingTool.lockMessage("the frame rate cannot be changed now"))' "${OVERLAY}" \
+  || fail "${OVERLAY}：录屏中改帧率的报错要经 AIScreenRecordingTool.lockMessage（按状态说 stop 还是 resolve）"
+LOCK_BODY="$(awk '/static func lockMessage\(/,/^    \}/' "${TOOL}")"
+grep -q 'if case .partialRecovery = coordinator.state {' <<<"${LOCK_BODY}" && grep -q 'AIScreenRecordingLeftovers.waiting(coordinator)' <<<"${LOCK_BODY}" \
+  || fail "${TOOL}：lockMessage 在等决定时要说 resolve（AIScreenRecordingLeftovers.waiting），不是叫 AI 去 stop —— 那时根本没在录"
+
+# 11. 按时长停要扣掉已经录下的那一截。
+grep -q 'recordingStarted(session: request.sessionID, alreadyRecorded: writer?.elapsed ?? 0)' "${COORDINATOR}" \
+  || fail "${COORDINATOR}：告诉观察者「开录了」时要带上文件里已经有几秒（画面在 startCapture 返回前就开始写了）"
+grep -q 'let remaining = max(0, duration - alreadyRecorded)' "${JOB}" && grep -q 'Task.sleep(nanoseconds: UInt64(remaining \* 1_000_000_000))' "${JOB}" \
+  || fail "${JOB}：duration 要只等剩下的那一截（扣掉 alreadyRecorded），不然成片长出半秒到一秒多"
+
+# 12. 没授权时不列窗口。
+before "$(line_of 'if ScreenRecordingPermissions.screen == .authorized {' "${SOURCES}")" "$(line_of 'AIScreenSourceMatch.recordable(windows())' "${SOURCES}")" \
+  || fail "${SOURCES}：没授权时系统只给 SrtFlow 自己的窗口，不许列出来（会让 AI 以为只有它）"
+
+# 13. 残留报保存之后的文件名。
+grep -q 'file = plannedFile(pending)' "${LEFTOVERS}" && grep -q 'object\["file"\] = .string(AIWorkspace.shared.display(file))' "${LEFTOVERS}" \
+  || fail "${LEFTOVERS}：残留要报保存之后叫什么（plannedFile），不报隐藏的 .partial 临时文件名"
 
 if [ "${FAILED}" -ne 0 ]; then
   echo "AI 录屏接线守卫失败" >&2

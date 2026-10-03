@@ -20,7 +20,7 @@ public enum MCPScreenTools {
                 windows and microphones). A countdown runs in a small Stop panel at the bottom left of the main display, then \
                 the call returns while it records, so you can operate other apps meanwhile; the panel is hidden from \
                 screenshots, so do not click there. It records until action=stop, duration, or the user's Stop; get_job shows \
-                it, and the finished job has the file and clip ids. A cut-short recording still lands and says why. Frame rate \
+                it, and the finished job has the file and clip ids. An incomplete recording still lands and says why. Frame rate \
                 follows the project (set_canvas fps). SrtFlow needs the Screen & System Audio Recording permission: without \
                 it macOS asks the user once and the result says what to tell them; macOS may also remind the user about every \
                 30 days. action=resolve settles a recording left unfinished earlier (get_status shows it).

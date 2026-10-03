@@ -271,7 +271,9 @@ enum AIProjectTools {
     /// 原来那条路也就不会弹模态框。存不下就报错、不换。返回存到了哪（没有要存的就 nil）。
     /// 录屏进行中不许换工程（录屏生命周期：素材会进错工程）：界面那句「先停止录屏」AI 照做不了，换成它能照做的话。
     private static func keepUnsavedEdits(_ project: VideoEditProject) throws -> URL? {
-        if ScreenRecordingCoordinator.shared.locksProjectSwitching { throw AIToolError(AIScreenRecordingTool.lockMessage) }
+        if ScreenRecordingCoordinator.shared.locksProjectSwitching {
+            throw AIToolError(AIScreenRecordingTool.lockMessage("the project cannot be switched now"))
+        }
         guard project.isUntitled, !project.state.isEmpty else { return nil }
         guard let url = saveUntitled(project) else {
             throw AIToolError(
