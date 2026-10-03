@@ -736,6 +736,7 @@
 "Runs the whole time the text is on screen" = "Runs the whole time the text is on screen";
 "Draw on needs an outline — turn on Outline above." = "Draw on needs an outline — turn on Outline above.";
 "In and out are longer than this text lasts, so both were shortened to fit." = "In and out are longer than this text lasts, so both were shortened to fit.";
+"In and out are longer than this shape lasts, so both were shortened to fit." = "In and out are longer than this shape lasts, so both were shortened to fit.";
 "A looping animation on a long text makes exporting slower." = "A looping animation on a long text makes exporting slower.";
 "A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "A transition already cross-fades the sound at that seam, so the fade on that side is skipped.";
 

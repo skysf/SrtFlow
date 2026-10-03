@@ -115,45 +115,26 @@ struct ShapeOverlayCanvas: View {
     @ViewBuilder
     private func shapeView(_ shape: ShapeAnnotation) -> some View {
         let frame = shape.frame(in: boxSize)
-        let strokeWidth = max(0.5, shape.lineWidth * boxSize.height / 1080)
+        let strokeWidth = shape.strokeWidth(in: boxSize)
 
         Group {
-            switch shape.kind {
-            case .line:
-                RoundedRectangle(cornerRadius: strokeWidth / 2)
-                    .fill(shape.color.swiftUIColor)
-                    .frame(width: max(2, frame.width), height: strokeWidth)
-                    .rotationEffect(.degrees(shape.rotationDegrees))
-                    .frame(width: max(2, frame.width), height: max(strokeWidth, frame.width))
-            case .blur, .mosaic:
+            if shape.kind.isCover {
                 // 只有选中的盖一块才会走到这儿：一圈虚线框标出它盖哪儿（编辑用的提示，不进成片、不进 AI 的「看」）。
                 Rectangle()
                     .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
                     .foregroundStyle(.white.opacity(0.9))
                     .background(Color.white.opacity(0.06))
                     .frame(width: max(2, frame.width), height: max(2, frame.height))
-            case .circle, .arc:
-                // 轮廓只有 ShapeOutline 一份（导出 ShapePNGRenderer 同一条路径）。
-                let size = CGSize(width: max(2, frame.width), height: max(2, frame.height))
-                let outline = Path(ShapeOutline.path(for: shape, size: size, strokeWidth: strokeWidth))
-                Group {
-                    if shape.drawsFilled {
-                        outline.fill(shape.color.swiftUIColor)
-                    } else {
-                        outline.stroke(shape.color.swiftUIColor, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
-                    }
-                }
-                .frame(width: size.width, height: size.height)
-            case .rectangle, .square:
-                // 实心的整块涂满（导出 ShapePNGRenderer 同一个判据 `drawsFilled`）。
-                Rectangle()
-                    .fill(shape.drawsFilled ? shape.color.swiftUIColor : .clear)
-                    .overlay {
-                        if !shape.drawsFilled {
-                            Rectangle().strokeBorder(shape.color.swiftUIColor, lineWidth: strokeWidth)
-                        }
-                    }
-                    .frame(width: max(2, frame.width), height: max(2, frame.height))
+            } else {
+                // 画什么只有 ShapeOutline 一份（导出 ShapePNGRenderer 同一条路径）；入场 / 出场动画按播放头那一帧求
+                //（时刻先钉到工程帧的网格上，和导出同一把尺子）。
+                ShapePreviewDrawing.view(
+                    shape, size: ShapePreviewDrawing.size(of: shape, frame: frame, strokeWidth: strokeWidth),
+                    strokeWidth: strokeWidth,
+                    state: ShapeAnimator.state(
+                        for: shape, at: TextAnimator.quantize(clock.displayTime, frameRate: project.state.frameRate)
+                    )
+                )
             }
         }
         .contentShape(Rectangle().inset(by: -8))

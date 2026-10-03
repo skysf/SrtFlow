@@ -49,6 +49,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
+  Sources/SrtFlow/VideoEditShapeAnimation.swift \
   Sources/SrtFlow/VideoEditSoundSceneRecipe.swift \
   Sources/SrtFlow/VideoEditSoundSceneDSP.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
@@ -79,6 +80,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextHitGeometry.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
   Sources/SrtFlow/VideoEditTextExport.swift \
+  Sources/SrtFlow/VideoEditOverlayExportFile.swift \
   Sources/SrtFlow/VideoEditClipMarker.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditKeyframeEasing.swift \
@@ -89,6 +91,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineLinkageLanding.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
+  Sources/SrtFlow/VideoEditShapeOverlayExport.swift \
   Sources/SrtFlow/VideoEditExportTransform.swift \
   Sources/SrtFlow/VideoEditExportPlan.swift \
   Sources/SrtFlow/VideoEditGradeExport.swift \

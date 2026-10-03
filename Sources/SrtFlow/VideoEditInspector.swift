@@ -365,6 +365,8 @@ struct VideoEditInspectorView: View {
         }
 
         Divider()
+        shapeAnimationSection(shape)
+        Divider()
 
         VStack(alignment: .leading, spacing: 6) {
             HStack {

@@ -43,6 +43,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
+  Sources/SrtFlow/VideoEditShapeAnimation.swift \
+  Sources/SrtFlow/VideoEditShapeOutline.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \
@@ -67,7 +69,6 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTextLayoutFonts.swift \
   Sources/SrtFlow/VideoEditTextRenderer.swift \
   Sources/SrtFlow/VideoEditTextDrawing.swift \
-  Sources/SrtFlow/VideoEditTextExport.swift \
   Sources/SrtFlow/VideoEditSubtitleDocuments.swift \
   Sources/SrtFlow/VideoEditAnimation.swift \
   Sources/SrtFlow/VideoEditKeyframeEasing.swift \
@@ -121,6 +122,7 @@ xcrun swiftc \
   checks/ProjectFile/Upscale.swift \
   checks/ProjectFile/CircleArcShapes.swift \
   checks/ProjectFile/MainMagnet.swift \
+  checks/ProjectFile/ShapeAnimations.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 # ---- 真实媒体素材（探针「文件存在 ≠ 音轨可读」那一组要用）----

@@ -4,7 +4,7 @@ import ImageIO
 import SrtFlowMCPKit
 
 // set_shape（AIShapeChange）：新加要给种类、各种的默认大小（同检查器「加形状」）、夹紧（线宽 1…24、尺寸 0.02…1、线的角度 ±90°、
-// 至少 0.2 秒）、正方形的高永远等于宽、只有线能转、颜色不许是 none、实心只给长方形 / 正方形；写回给 AI 的样子。
+// 至少 0.2 秒）、正方形的高永远等于宽、只有线能转、颜色不许是 none、实心只给长方形 / 正方形、入场 / 出场动画；写回给 AI 的样子。
 // 编法见 scripts/check-mcp.sh。
 
 func runShapeChecks() {
@@ -46,6 +46,33 @@ func runShapeChecks() {
         check(summary["height"] == nil && summary["kind"]?.stringValue == "square", "a square is reported without a separate height")
     }
     runCircleArcChecks()
+    runShapeAnimationChecks()
+}
+
+/// 入场 / 出场动画（2026-10-03）：参数名同 set_text（animation_in / animation_out / 时长）、时长夹在 0.1…5 秒、
+/// 不认识的效果名报错、盖一块不收动画、只给一侧时另一侧不动；写回给 AI 的样子。
+private func runShapeAnimationChecks() {
+    let ring = try? AIShapeChange(args([
+        "kind": "circle", "animation_in": "draw", "animation_out": "fade",
+        "animation_in_duration": 9, "animation_out_duration": 0.01
+    ])).makeShape(at: 0)
+    checkEqual(ring?.animation.entrance, .draw, "animation_in=draw")
+    checkEqual(ring?.animation.exit, .fade, "animation_out=fade")
+    checkEqual(ring?.animation.entranceDuration, 5, "entrance seconds stop at 5")
+    checkEqual(ring?.animation.exitDuration, 0.1, "exit seconds start at 0.1")
+    checkThrows("an unknown shape animation is refused") { _ = try AIShapeChange(args(["kind": "line", "animation_in": "spin"])) }
+    let blur = try? AIShapeChange(args(["kind": "blur", "animation_in": "fade"])).makeShape(at: 0)
+    check(blur?.animation.isEmpty == true, "blur / mosaic take no animation")
+    if var ring {
+        (try? AIShapeChange(args(["animation_in": "none"])))?.apply(to: &ring)
+        checkEqual(ring.animation.entrance, ShapeAnimationKind.none, "animation_in=none removes the entrance")
+        checkEqual(ring.animation.exit, .fade, "the exit is kept when only the entrance changes")
+        var state = TimelineState()
+        state.shapes = [ring]
+        let summary = AIShapeChange.summary(ring, ids: AIShortIDs(state: state))
+        check(summary["animation_in"] == nil && summary["animation_out"]?.stringValue == "fade",
+              "the summary reports only the animations that are set")
+    }
 }
 
 /// 圆和圆弧（2026-10-03，南极工程的 HUD 圆环）：set_shape 怎么读、夹紧，画出来的真像素（导出 / AI 的「看」用的 ShapePNGRenderer，

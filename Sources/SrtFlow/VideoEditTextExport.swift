@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 // MARK: - 文字的导出落点
 //
 // 画面本身**一个像素都不在这里画** —— 全部来自 `TextRenderer.render`，与预览
-// 同一个函数。这里只管把它切成几段、渲成 PNG、告诉调用方每段怎么进滤镜图。
+// 同一个函数。这里只管把它切成几段、渲成 PNG；每段怎么进滤镜图是 `OverlayExportFile`（形状同一份）。
 //
 // ## 只逐帧渲动画进行中的那段
 //
@@ -30,41 +30,14 @@ import UniformTypeIdentifiers
 
 enum TextOverlayExport {
 
-    /// 一段文字在导出里的一个片段。
-    struct File {
-        enum Source {
-            /// 单张 PNG：`-loop 1` 拉成持续的流。
-            case still
-            /// PNG 序列播一遍：`-itsoffset` 推到落点。
-            case sequence(frames: Int)
-            /// PNG 序列无限循环：只有一个周期的帧，`loop` 滤镜铺满整段。
-            case looping(frames: Int)
-        }
-
-        /// 单张是文件名，序列是 `printf` 模式（`text0-in_%05d.png`）。
-        var pattern: String
-        var source: Source
-        /// 位图左上角在输出画面上的像素位置（可以是负的：文字探出画面）。
-        var origin: CGPoint
-        var timelineStart: Double
-        var timelineEnd: Double
-    }
-
-    /// 序列末尾多渲一帧。
-    ///
-    /// 实测：序列的最后一帧落在 `end - 1/fps`，而 `enable` 的区间一直开到
-    /// `end`；那之间的输出帧会撞上输入流的 EOF，`eof_action=pass` 当场把文字
-    /// 整个撤掉 —— 动画最后一帧闪一下没了。多渲一帧就把这个缝堵上了。
-    private static let sequenceTailFrames = 1
-
     /// 把所有文字渲成 PNG 写进工作目录。空文字和渲不出来的直接跳过。
     ///
     /// 顺序 = `overlays` 的顺序 = 叠放次序；同一段文字的几个片段按时间先后排。
     static func renderFiles(
         _ overlays: [TextOverlay], canvas: CGSize,
         frameRate: ProjectFrameRate, into workspace: URL
-    ) throws -> [File] {
-        var files: [File] = []
+    ) throws -> [OverlayExportFile] {
+        var files: [OverlayExportFile] = []
         for (index, overlay) in overlays.enumerated() {
             files += try renderOne(overlay, index: index, canvas: canvas,
                                    frameRate: frameRate, into: workspace)
@@ -75,7 +48,7 @@ enum TextOverlayExport {
     private static func renderOne(
         _ overlay: TextOverlay, index: Int, canvas: CGSize,
         frameRate: ProjectFrameRate, into workspace: URL
-    ) throws -> [File] {
+    ) throws -> [OverlayExportFile] {
         let animation = overlay.animation
         let span = overlay.duration
 
@@ -84,7 +57,7 @@ enum TextOverlayExport {
                 overlay, at: overlay.timelineStart, name: "text\(index).png",
                 canvas: canvas, frameRate: frameRate, into: workspace
             ) else { return [] }
-            return [File(
+            return [OverlayExportFile(
                 pattern: "text\(index).png", source: .still, origin: still,
                 timelineStart: overlay.timelineStart, timelineEnd: overlay.timelineEnd
             )]
@@ -100,7 +73,7 @@ enum TextOverlayExport {
         // 头和尾加起来可能超过整段（滚动比入场长时），夹一下免得两段在时间上
         // 重叠 —— 重叠的话同一刻会贴两张图，文字会明显变浓。
         let middleEnd = max(middleStart, overlay.timelineEnd - window.fadeOut)
-        var files: [File] = []
+        var files: [OverlayExportFile] = []
 
         if head > 0 {
             files += try writeSequence(
@@ -115,7 +88,7 @@ enum TextOverlayExport {
                     overlay, at: middleStart, name: "text\(index)-mid.png",
                     canvas: canvas, frameRate: frameRate, into: workspace
                 ) {
-                    files.append(File(
+                    files.append(OverlayExportFile(
                         pattern: "text\(index)-mid.png", source: .still, origin: origin,
                         timelineStart: middleStart, timelineEnd: middleEnd
                     ))
@@ -158,7 +131,7 @@ enum TextOverlayExport {
     private static func writeSequence(
         _ overlay: TextOverlay, name: String, from: Double, to: Double,
         canvas: CGSize, frameRate: ProjectFrameRate, looping: Bool, into workspace: URL
-    ) throws -> [File] {
+    ) throws -> [OverlayExportFile] {
         let fps = Double(max(1, frameRate.fps))
         let span = max(0, to - from)
         let count: Int
@@ -167,7 +140,7 @@ enum TextOverlayExport {
             let period = TextAnimation.breathePeriod(frameRate: frameRate)
             count = max(1, min(Int((period * fps).rounded()), Int(ceil(span * fps))))
         } else {
-            count = max(1, Int(ceil(span * fps)) + sequenceTailFrames)
+            count = OverlayExportFile.sequenceFrameCount(span: span, fps: fps)
         }
 
         var origin: CGPoint?
@@ -187,7 +160,7 @@ enum TextOverlayExport {
             if origin == nil { origin = rendered.origin }
         }
         guard let origin else { return [] }
-        return [File(
+        return [OverlayExportFile(
             pattern: "\(name)_%05d.png",
             source: looping ? .looping(frames: count) : .sequence(frames: count),
             origin: origin,

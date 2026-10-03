@@ -736,6 +736,7 @@
 "Runs the whole time the text is on screen" = "文字显示期间一直循环";
 "Draw on needs an outline — turn on Outline above." = "描边生长要先开描边 —— 到上面把「描边」打开。";
 "In and out are longer than this text lasts, so both were shortened to fit." = "入场加出场比这段文字还长，两边已经按比例收短了。";
+"In and out are longer than this shape lasts, so both were shortened to fit." = "入场加出场比这个形状还长，两边已经按比例收短了。";
 "A looping animation on a long text makes exporting slower." = "长文字上的循环动画会让导出变慢。";
 "A transition already cross-fades the sound at that seam, so the fade on that side is skipped." = "那个接缝上的转场已经在做声音交叉淡变，所以这一边的渐变不生效。";
 

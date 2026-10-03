@@ -35,6 +35,9 @@ public enum MCPVocabulary {
         "none", "fade", "rise", "pop", "typewriter", "cascade", "blur", "focus", "wipe", "strokeDraw"
     ]
 
+    /// = `ShapeAnimationKind.allCases` 的原始值（形状的入场 / 出场，2026-10-03）。
+    public static let shapeAnimations = ["none", "fade", "pop", "wipe", "draw"]
+
     /// = `TextEmphasisKind.allCases` 的原始值（文字在画面上期间一直循环的强调）。
     public static let textEmphasis = ["none", "breathe"]
 

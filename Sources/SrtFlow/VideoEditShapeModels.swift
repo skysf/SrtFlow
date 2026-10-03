@@ -103,6 +103,8 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     /// 用户打在这一块上的标记（离块起点多少秒；裁头时留在原来的时间线时刻）。只影响编辑期的显示，
     /// 不进合成和导出。类型与读写见 VideoEditClipMarker.swift。v28 字段，按需写键。
     var markers: [ClipMarker] = []
+    /// 入场 / 出场动画（VideoEditShapeAnimation.swift）。盖一块不用它。v31 字段，按需写键。
+    var animation = ShapeAnimation()
 
     /// 这一个真的画成实心（线条、圆弧永远是一条线）。预览和导出都问它，不各判一份。
     var drawsFilled: Bool { isFilled && kind != .line && kind != .arc }
@@ -139,6 +141,11 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     }
 
     var timelineEnd: Double { timelineStart + duration }
+
+    /// 描边在这块画布上多粗（`lineWidth` 是 1080 高画面上的像素，按画布高换算）。预览和导出都问它。
+    func strokeWidth(in canvas: CGSize) -> Double {
+        max(0.5, lineWidth * canvas.height / 1080)
+    }
 
     func contains(time: Double) -> Bool {
         time >= timelineStart && time < timelineEnd
@@ -179,6 +186,7 @@ extension ShapeAnnotation: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, timelineStart, duration, color, lineWidth
         case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount, markers, arcSweep
+        case animation
     }
 
     init(from decoder: Decoder) throws {
@@ -206,6 +214,8 @@ extension ShapeAnnotation: Codable {
         markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
         // 缺键 = 默认的 270°（只有圆弧写它）。
         arcSweep = try c.decodeIfPresent(Double.self, forKey: .arcSweep) ?? Self.defaultArcSweep
+        // 缺键 = 没有动画（v30 及更早只会突然出现、突然消失）。
+        animation = try c.decodeIfPresent(ShapeAnimation.self, forKey: .animation) ?? ShapeAnimation()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -231,5 +241,7 @@ extension ShapeAnnotation: Codable {
         if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
         // 同上：只有圆弧落它（v30）。
         if kind == .arc { try c.encode(arcSweep, forKey: .arcSweep) }
+        // 同上：设了动画的才落键，两处（这里和 requiresFormatVersion31）同源。
+        if !animation.isEmpty { try c.encode(animation, forKey: .animation) }
     }
 }

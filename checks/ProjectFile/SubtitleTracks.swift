@@ -75,7 +75,7 @@ func checkSubtitleTracks(root: URL) throws {
     try VideoEditProjectIO.save(both, to: project)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: project)) as? [String: Any]
     check((raw?["timeline"] as? [String: Any])?["translationLayout"] == nil, "叠在一起（nil）时不落 translationLayout 键")
-    checkEqual(raw?["formatVersion"] as? Int, 30, "带译文轨的工程写 v30")
+    checkEqual(raw?["formatVersion"] as? Int, 31, "带译文轨的工程写 v31")
     check(both.requiresFormatVersion23, "有译文轨：v23 判据为真")
     check(!noTranslation.requiresFormatVersion23, "没有译文轨、也没有译文布局：v23 判据为假")
 

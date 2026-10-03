@@ -203,6 +203,7 @@ private func vocabularyChecks() {
     checkEqual(MCPVocabulary.filterPresetIDs, FilterPreset.allCases.map(\.rawValue), "filter list matches FilterPreset")
     checkEqual(MCPVocabulary.textAnimations, TextAnimationKind.allCases.map(\.rawValue), "text animations match TextAnimationKind")
     checkEqual(MCPVocabulary.textEmphasis, TextEmphasisKind.allCases.map(\.rawValue), "text emphasis matches TextEmphasisKind")
+    checkEqual(MCPVocabulary.shapeAnimations, ShapeAnimationKind.allCases.map(\.rawValue), "shape animations match ShapeAnimationKind")
     checkEqual(MCPVocabulary.numberStyles, NumberRollStyle.allCases.map(\.rawValue), "number styles match NumberRollStyle")
     checkEqual(MCPVocabulary.frameRates, ProjectFrameRate.allCases.map(\.fps), "frame rates match ProjectFrameRate")
     checkEqual(MCPVocabulary.canvasRatios, CanvasRatio.allCases.map { $0 == .auto ? "auto" : $0.title },

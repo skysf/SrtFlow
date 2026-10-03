@@ -159,7 +159,7 @@ func checkUpscaleSwap(root: URL) throws {
     let records = try VideoEditProjectIO.save(save, to: file)
     check(records[original.path] != nil && records[upscaled.path] != nil, "存盘的素材表里原片和 upscale 文件都有记录")
     let json = try String(contentsOf: file, encoding: .utf8)
-    check(json.range(of: #""formatVersion"\s*:\s*30"#, options: .regularExpression) != nil, "写出去的是 latest（v30）")
+    check(json.range(of: #""formatVersion"\s*:\s*31"#, options: .regularExpression) != nil, "写出去的是 latest（v31）")
     let loaded = try VideoEditProjectIO.load(from: file).timeline
     checkEqual(loaded.mainClips.first?.upscale?.originalURL, original, "读回来：原片路径在")
     checkClose(loaded.mainClips.first?.upscale?.sourceOffset, 2, "读回来：偏移在")

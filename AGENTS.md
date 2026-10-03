@@ -124,7 +124,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 画面段的入场/出场动画、预设效果、预渲染路由 | [画面段的入场 / 出场动画](docs/architecture/clip-animation.md)、[画面渐入渐出](docs/architecture/video-fades.md)、[关键帧动画](docs/architecture/keyframe-animation.md) |
 | 画面文字、字体、Core Text 渲染、文字动画、逐帧导出、预览上文字的选中框和可点范围、**文字行（行号进模型、行序 = 叠放序、上下换行）**、数字的等待、**老虎机位数不同的两头（`NumberOdometer`）** | [画面文字](docs/architecture/text-overlays.md)（把手的可点范围写在 `.offset` 之前；没选中的字只认看得见的部分；行号进模型，预览与导出同一份叠放序；老虎机不存在的那一位滚成空白收掉，居中和右对齐右边不动）、[老虎机停在「090」](docs/bugfixes/2026-09-25-odometer-leading-zero.md)、[主字体里没有的字画成乱码](docs/bugfixes/2026-09-29-text-fallback-glyphs-drawn-with-main-font.md)（排版给了谁的字形号就用谁画）、[拖动手势 §5j](docs/architecture/timeline-drag-gestures.md)、[拖字变成旋转](docs/bugfixes/2026-09-24-text-rotate-handle-hit-area-at-center.md) |
 | 滤镜调色、LUT、预览图层滤镜、导出 `lut3d` 段、滤镜段的选中（多选） | [滤镜](docs/architecture/filters.md) |
-| 画面上的形状（线条 / 长方形 / 正方形 / **圆 / 圆弧**）：种类、几何、怎么画（`ShapeOutline`、`ShapePNGRenderer`、`ShapeOverlayCanvas`）、`set_shape` | [画面上的形状](docs/architecture/shapes.md)（圆 / 圆弧的轮廓只有 `ShapeOutline` 一份、预览和导出同一条路径；圆弧从 12 点钟顺时针、扫过 `arcSweep`；v30）、[盖一块](docs/architecture/cover-blur-mosaic.md)（模糊 / 马赛克也是形状的一种） |
+| 画面上的形状（线条 / 长方形 / 正方形 / **圆 / 圆弧**）：种类、几何、怎么画（`ShapeOutline`、`ShapePreviewDrawing`、`ShapePNGRenderer`、`ShapeOverlayCanvas`）、**形状的入场 / 出场动画**（`ShapeAnimation` / `ShapeAnimator`、导出切段 `ShapeOverlayExport`、形状和文字共用的导出接法 `OverlayExportFile`、检查器的「动画」一节）、`set_shape` | [画面上的形状](docs/architecture/shapes.md)（所有种类画什么只有 `ShapeOutline.drawing` 一份、预览和导出同一条路径，只各自上色；什么都没露出来时给空路径、不许裁到空区域；圆弧从 12 点钟顺时针、扫过 `arcSweep`；动画和文字同名同曲线、出场是入场倒放、时刻先钉到工程帧上、只逐帧渲动画那两截；v30 / v31）、[导出的线比预览长](docs/bugfixes/2026-10-03-exported-lines-longer-than-preview.md)、[画面文字](docs/architecture/text-overlays.md)「导出：只逐帧渲动画进行中的那段」、[盖一块](docs/architecture/cover-blur-mosaic.md)（模糊 / 马赛克也是形状的一种，没有动画） |
 | **盖一块（模糊 / 马赛克，`ShapeKind.blur` / `.mosaic`）**、预览的第二层播放器（`CoverPreviewLayer`）、导出里的 `gblur` / `pixelize`（`VideoEditCoverExport`）、`set_shape` 的 blur / mosaic、`look text_scan` 给的 `cover`（`AICoverBox`）、遮水印 / 遮旧字幕 | [盖一块](docs/architecture/cover-blur-mosaic.md)（形状的一种、时间线上的一段、**不跟着片段走**；落点在调色之后、形状之前；三条管线按构造一致：裁出这一块、在这块里做效果、边缘外延、贴回去；预览的蒙版和滤镜别挂同一层；`CIPixellate` 的格子要设成从左上角起算；框取偶数往外收；力度按画面高换算）、[滤镜](docs/architecture/filters.md)（预览不走自定义合成器、图层滤镜的地基）、[预览自由变换](docs/architecture/preview-free-transform.md)（源画面框换画布框的变换顺序）、[AI 接口（MCP）](docs/architecture/ai-control-mcp.md)（第 38 条）、[预览性能 ratchet](docs/architecture/preview-perf-ratchet.md)（没有盖一块时第二层不建、性能计数不变） |
 | 工程帧率、关键帧容差、**AI 读写关键帧（报出来的永远在片段范围里、`edit_clip keyframes` 策略、`relative` 时间）**、**关键帧的缓动（`Keyframe.easing`、`KeyframeEasing`、预览按帧加密 `KeyframeSliceTimes`、AI 默认 easeInOut）** | [工程帧率](docs/architecture/project-frame-rate.md)、[关键帧动画](docs/architecture/keyframe-animation.md)「AI 接口」「缓动」（linear 逐位一致、只对画面的六条轨、v27）、[限幅 + 缓动方案](docs/plans/2026-09-30-export-limiter-and-easing.md) |
 | 音量、dB、渐入渐出、增益表（`AudioGainTable.swift`）、**音频引擎（`Sources/SrtFlow/AudioEngine/`：配置、环、喂样、渲染块、离线渲染）**、**读素材 / 重采样（`AudioSegmentReader`：拉式喂转换器、延续按输出帧判）**、预览合成里没有音轨（配乐比画面长要垫黑底） | [声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[成片的声音](docs/architecture/export-audio-mixdown.md)、[音频引擎](docs/architecture/audio-engine.md)（合同：段落和增益的规则只有一份、渲染块实时安全、一段一条流；第三节：合成里只有画面、画面收得早要垫黑底铺到总长；读取器按块读 = 一口气读）、[每 4096 帧重采样器重新起步](docs/bugfixes/2026-10-01-resampler-reset-every-chunk.md)、[条目比时间线短](docs/bugfixes/2026-10-01-preview-item-shorter-than-timeline-without-audio-tracks.md)、[音频引擎方案](docs/plans/2026-10-01-audio-engine.md)（分刀和数字） |
@@ -210,6 +210,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   以及动画的「模型给多少、成片就是多少」、预览上的可点范围、老虎机首帧 / 末帧就是起止值，
   还有主字体里没有的字（✨、汉字）用回退字体画（和直接用那款字体画的墨迹重合）：
   `scripts/check-text-render.sh`。
+- 形状：预览那个画法（`ShapePreviewDrawing`，离屏渲一张）和导出那张（`ShapePNGRenderer`）逐像素重合（白色形状铺黑底：最亮的一点、墨迹外框、
+  重合度、平均差；五种形状 × 描边 / 实心 × 不动 / 画到一半 / 擦除 / 缩放 / 半透明，「画了 0」两边都空），以及入场 / 出场动画真跑导出抽帧
+  （入场画到一半、中间一整圈、出场淡到一半、段外没有、只逐帧渲动画那两截）：`scripts/check-shape-render.sh`（第 5 组）；
+  纯值的一半（求值、笔顺、存盘、v31）在 `scripts/check-project-file.sh` 第 44 组。
 - 预览上的字幕和烧出来的一样大（预览那个视图离屏渲一张、照导出那条路真烧一帧比字的外框：几种字体、字体里没有的字按回退的那一款（Helvetica 里的中文本机走苹方、CI 没下载苹方就两边换冬青黑体；韩文）、默认样式的粗体、逐词高亮放大），以及回退到系统私有字体时换内置字体的规矩，还有字幕在预览和成片里摆的**位置**（底部 / 居中 / 顶部 × 一两行 × 英文 / 混排 × 五种字体，上下沿差 ≤ 3 px：libass 的行框用 win 量度、预览用 hhea）、字幕**阴影**真画出来的像素（中灰底上白字，预览和成片各量右下多出来的暗处：偏多少、最黑的一点有多黑，透明度写反、哪一边没画都会红），以及字幕字体清单的 cmap 体检（手造的坏 format 12 子表判不安全、装了圆体的机器上它不进清单）：`scripts/check-subtitle-burn-size.sh`；ASS 里点名字体和逐词高亮一起写在 `SrtFlowCoreChecks` 的 `SubtitleWordChecks`。
 - `.contentShape` 不许写在 `.offset` / `.rotationEffect` / `.scaleEffect` 之后（几何效果只挪画面、
   不挪布局框，可点范围会留在原位）：`checks/hit-shape-before-offset.sh`。
@@ -438,7 +442,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [剪辑页上记住的开关](docs/architecture/editor-remembered-toggles.md) — 2026-10-01 用户拍板：播放跟随是开关、默认关（关着播放头走出视口、停下不滚回；开着翻页式，`PlayheadFollow` 纯值、只碰横向；Return 回到开头照旧滚回最左）；磁吸 / 吸附 / 联动（2026-10-02 起默认开）/ 播放跟随四个工具栏开关和剪辑页字幕列表的跟随按钮都记在 UserDefaults，键、默认值、读写只有 `EditorToggles` 一份（默认值的字面量就是产品口径）；冒烟 / 性能场景起手永远默认值、拨了不落盘；加一个记住的开关怎么做；人工回归。
 - [时间线缩放](docs/architecture/timeline-pinch-zoom.md) — local NSEvent monitor 与失败方案、**锚点**（捏合钉指针底下那一刻、工具栏钉播放头，滚动视图只从 `TimelineScrollGeometry` 拿、`keepAnchored` 同一拍挪 + 下一轮补挪）、**纵向缩放**（⌥ 捏合 / ⌥ + Ctrl + 滚轮 / ⌘↓ ⌘↑，视频和音频轨统一成一个高度、细行不变、按行认锚点）、人工回归清单。
 - [时间线上的复制 / 剪切 / 粘贴](docs/architecture/timeline-clipboard.md) — 能拷什么（标记、转场跟着段走）、入口（编辑菜单在响应链末端、右键菜单是函数不是视图）、系统剪贴板一套自己的类型且不写纯文本（滤镜那套并进来了）、落点鼠标优先否则播放头（右键菜单用右键按下的那一处）、换新身份走编码往返、各类落到哪（剪辑整组同轨、撞上往上抬、画面组上下关系不变；文字 / 滤镜往上找空的；字幕句按指着的轨）、粘完选中且一步撤销、剪切 = 拷贝 + ⌫、人工回归清单。
-- [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式（版本表到 v30）、定位、脏标记与自动保存、换成 upscale 文件的段（四之五：原片配书签不进 mediaURLs、换源 = 源时间整体平移、分割要抄记录）。
+- [工程文件与素材重链接](docs/architecture/video-edit-project-file.md) — 格式（版本表到 v31）、定位、脏标记与自动保存、换成 upscale 文件的段（四之五：原片配书签不进 mediaURLs、换源 = 源时间整体平移、分割要抄记录）。
 - [时间线拖动手势](docs/architecture/timeline-drag-gestures.md) — 坐标系、刷新、吸附、唯一落点算法，
   **对齐线**（§4：对齐点含字幕 cue / 标记 / 藏起来的段、多选只看整组外沿、磁吸也亮线、裁切也吸按 FCP、吸附关了线也不亮），
   **拖动 / 拉框的会话不进时间线的 `@State`**（§0b：`TimelineDragBox` 持有不订阅、块只 `onReceive`
@@ -463,7 +467,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [用户文本文件的编码](docs/architecture/text-file-encoding.md) — 字幕、讲稿这类用户给的文本文件，编码识别只有 SrtFlowCore 的 `TextDecoding` 一处：BOM → 严格 UTF-8 → 像 UTF-16 才 UTF-16 → GBK；为什么 UTF-16 不能无条件排在 GBK 前面。
 - [画面文字](docs/architecture/text-overlays.md) — 唯一的绘制入口、1080p 基准、版面框即定位框、包络位图、把手的三种数学、九种动画与「只逐帧渲动画段」、数字元件（等宽自己排，苹方没实现字体特性）、数字的等待、**老虎机位数不同的两头**（不存在的那一位滚成空白收掉、居中和右对齐右边不动、正在收的那一位原地滚走）、**时间线上的行**（行号进模型、行序 = 叠放序、新字开新行、换行往上找空行、老工程迁移）。
 - [滤镜](docs/architecture/filters.md) — 时间轴上的调色段、层号进模型（LUT 不可交换）、强度=表的线性插值、预览挂图层滤镜的实测地基（backgroundFilters 会污染整个窗口）、两条管线的四条对齐约束。
-- [画面上的形状](docs/architecture/shapes.md) — 线条 / 长方形 / 正方形 / 圆 / 圆弧（2026-10-03 加了圆和圆弧）：种类和几何（`keepsSquare`、`defaultSize`、`drawsFilled`）、圆和圆弧的轮廓只有 `ShapeOutline` 一份（预览、导出、AI 的「看」同一条路径，y 向下顺时针）、拍过的板、`set_shape`、v30、守卫与人工回归。
+- [画面上的形状](docs/architecture/shapes.md) — 线条 / 长方形 / 正方形 / 圆 / 圆弧（2026-10-03 加了圆和圆弧、入场 / 出场动画）：种类和几何（`keepsSquare`、`defaultSize`、`drawsFilled`、`strokeWidth(in:)`）、所有种类画什么只有 `ShapeOutline.drawing` 一份（预览、导出、AI 的「看」同一条路径，各自上色；y 向下顺时针；线头在长度以内；什么都没露出来时给空路径）、入场 / 出场动画（淡入淡出 / 弹性缩放 / 擦除 / 画出来，和文字同名同曲线、出场倒放、时刻钉到帧上、导出只逐帧渲那两截、和文字共用 `OverlayExportFile`）、拍过的板、`set_shape`、v30 / v31、守卫与人工回归。
 - [盖一块：模糊 / 马赛克](docs/architecture/cover-blur-mosaic.md) — 形状的一种、时间线上的一段（`ShapeKind.blur` / `.mosaic`，不画东西、不算总长、不进 `renderedShapes`、格式 v26）、**不跟着片段走**（为什么：预览没有片段级的钩子、「从旧段构造新段」漏字段的教训）；盖谁：合成 + 调色之后、形状之前；三条管线按构造一致（预览第二层播放器 + 区域容器 + 边缘外延、导出 `split → crop → gblur / pixelize → overlay`、AI 的「看」CoreImage）；八条硬约束（层序、蒙版与滤镜别同层、边缘外延、格子从左上角起算、框取偶数、高斯半径是标准差、力度按画面高、没有盖一块时不建第二层）；AI（`set_shape` 的 blur / mosaic + `strength`、`text_scan` 给的 `cover`）；实测地基、已知不足、回归与人工清单。
 - [录屏生命周期](docs/architecture/screen-recording-lifecycle.md) — 状态机、journal、恢复、退出与快照。
 - [Inspector 数值框](docs/architecture/inspector-scrub-number-field.md) — 写入、取消、焦点与光标合同。
@@ -620,6 +624,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-03 自动检测把英文旁白判成中文](docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md) — `pick` 只比把握：中文模型把英文写成「3red65 days」这种拉丁乱码、把握 0.9，停顿多的英文旁白英文模型只有 0.873（合成语音标定的 0.91 下限在真素材上不成立）。中日韩的候选先过「写成了这种语言的文字」（全角字 ≥ 25%）；`transcribe` 读缓存挑语言也走同一个 `pick`。**分不开两边时，找一个真能分开的特征，别调门槛。**
 - [2026-10-03 透明 PNG 放到上层轨成了黑方块](docs/bugfixes/2026-10-03-png-transparency-lost.md) — 静帧一律转 H.264 yuv420p（没有 alpha）；预览的合成器把源当预乘、ffmpeg 的 overlay 当直通；带关键帧的段 matte 是纯白、不管图自己的 alpha。真用到了透明的图转预乘 ProRes 4444 + 灰度遮罩（`StillAlphaNaming`），预览垫黑底、导出先反预乘、预渲染用它自己的遮罩。**每一级都保着 alpha 不等于产物有 alpha；预乘还是直通是数据的一部分。**
 - [2026-10-03 剪到一半变回空的 Untitled：关掉主窗口就退出了 App](docs/bugfixes/2026-10-03-closing-window-quits-app.md) — SwiftUI 只有一个 `Window` 场景时关窗即退出，AI 下一次调用 `open -g` 拉起来的是空工程、文件夹授权也没了，只看到一串「不存在」。`applicationShouldTerminateAfterLastWindowClosed` 返回 false（点 Dock 开回来）；小程序拉起 App 的那一次结果最前面加 `relaunchNote`。**框架的默认生命周期要先确认；替别人兜底时把兜底这件事告诉对方。**
+- [2026-10-03 导出的线条两头各比预览长半个线宽](docs/bugfixes/2026-10-03-exported-lines-longer-than-preview.md) — 预览画的是长度以内带圆头的圆角矩形、导出是从 −w/2 描到 +w/2 的圆线头（头在长度以外），从有形状起就各画一份、只有导出那张被量过。做形状动画时把所有种类收进 `ShapeOutline.drawing` 一份，新加预览 vs 导出的像素对账（`scripts/check-shape-render.sh`）。**对账要比外框，不能只比重合度（多出的两个半圆头只占 3%）；`ImageRenderer` 渲透明底时什么都没画会把上一张图还回来，对账铺不透明的黑底。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
