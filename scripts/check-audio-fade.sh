@@ -35,6 +35,7 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditCanvasRatio.swift \
+  Sources/SrtFlow/StillAlphaNaming.swift \
   Sources/SrtFlow/VideoEditMediaReferences.swift \
   Sources/SrtFlow/VideoEditClipUpscale.swift \
   Sources/SrtFlow/VideoEditClipUpscaleRecord.swift \
@@ -80,6 +81,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTimelineLinkageLanding.swift \
   Sources/SrtFlow/VideoEditTimelineSnap.swift \
   Sources/SrtFlow/VideoEditExportGraph.swift \
+  Sources/SrtFlow/VideoEditExportTransform.swift \
   Sources/SrtFlow/VideoEditExportPlan.swift \
   Sources/SrtFlow/VideoEditGradeExport.swift \
   Sources/SrtFlow/VideoEditCoverExport.swift \

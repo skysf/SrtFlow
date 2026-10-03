@@ -77,3 +77,12 @@ extension ClipCrop: Codable {
         try c.encode(trailing, forKey: .trailing)
     }
 }
+
+extension EditClip {
+    /// 裁切后的源画面尺寸（显示方向）。默认摆放框按它算宽高比。
+    var croppedDisplaySize: CGSize? {
+        guard let display = info?.displaySize, display.width > 0, display.height > 0 else { return nil }
+        guard let crop, !crop.isEmpty else { return display }
+        return crop.rect(in: display).size
+    }
+}

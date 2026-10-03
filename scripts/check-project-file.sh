@@ -38,6 +38,7 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/VideoEditModels.swift \
   Sources/SrtFlow/VideoEditCanvasRatio.swift \
+  Sources/SrtFlow/StillAlphaNaming.swift \
   Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditExportSelection.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \

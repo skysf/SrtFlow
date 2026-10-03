@@ -327,8 +327,8 @@ enum VideoEditCompositionBuilder {
             $0.clip.minimumOpacity < 0.999 || $0.fadeIn != nil || $0.fadeOut != nil
                 || $0.pushIn != nil || $0.pushOut != nil || $0.wipeOut != nil
                 // 预设入/出场：头尾要么半透明、要么带裁切，两样都会把默认合成器
-                // 切到混合路径（未覆盖区变暗绿色），必须垫黑底。
-                || !$0.preset.isEmpty
+                // 切到混合路径（未覆盖区变暗绿色），必须垫黑底；带透明的静帧（透明处同样走混合路径）同理。
+                || !$0.preset.isEmpty || $0.clip.isAlphaStill
         }
         // 画面收得比时间线早（配乐比画面长、纯音频时间线）：合成里没有音轨撑长度（声音在引擎里），播放器的条目
         // 就会比时间线短 —— 播到画面结尾停在最后一帧上，而引擎的播放头还在走、时钟每拍都去对表。所以从画面结尾

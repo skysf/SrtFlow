@@ -385,18 +385,14 @@ struct EditClip: Identifiable, Hashable, Sendable {
     /// 动画的段同样保守走近似路径（逐时刻判定不值得）。
     func coversCanvasOpaquely(canvas: CGSize) -> Bool {
         guard opacity >= 0.999, abs(rotationDegrees) <= 0.01, !isAnimated,
-              !hasVideoFade, !needsPerFrameAnimation else { return false }
+              !hasVideoFade, !needsPerFrameAnimation, !isAlphaStill else { return false }
         let frame = resolvedPlacement(canvas: canvas).frame(in: canvas)
         return frame.minX <= 0.5 && frame.minY <= 0.5
             && frame.maxX >= canvas.width - 0.5 && frame.maxY >= canvas.height - 0.5
     }
 
-    /// 裁切后的源画面尺寸（显示方向）。默认摆放框按它算宽高比。
-    var croppedDisplaySize: CGSize? {
-        guard let display = info?.displaySize, display.width > 0, display.height > 0 else { return nil }
-        guard let crop, !crop.isEmpty else { return display }
-        return crop.rect(in: display).size
-    }
+    /// 素材是带透明的静帧（透明 PNG 转出来的预乘 ProRes 4444，`StillAlphaNaming`）：预览要垫黑底、盖不满画布、导出先反预乘。
+    var isAlphaStill: Bool { stillImageURL != nil && StillAlphaNaming.isAlphaStill(sourceURL) }
 
     /// 此刻实际生效的画面摆放：用户摆过的优先；没摆过按默认布局换算。
     /// 预览里的选中框和拖动起点都从这里取，跟合成/导出的默认摆法一致。

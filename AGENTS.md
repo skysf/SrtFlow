@@ -136,7 +136,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 | 音量曲线（段上的音量自动化）、轨道推子 / 总推子、电平表（引擎的槽 `MeterSlot`） | [音量曲线](docs/architecture/audio-volume-curve.md)、[推子与电平表](docs/architecture/audio-mixer.md)（第三节：峰值从渲染块来、总表从混音器出口来、槽按键登记、界面每拍取走）、[播放中按 Return 崩溃](docs/bugfixes/2026-09-26-meter-crash-on-go-to-start.md)、[声音：音量与渐入渐出](docs/architecture/audio-fades.md)、[声音编辑方案](docs/plans/2026-09-23-audio-mixing.md)、[一条轨上换了音频格式](docs/bugfixes/2026-09-23-meter-tap-dies-on-audio-format-change.md) |
 | Inspector 数值框、拖调、Transform 写入、检查器里的滑杆行（`labelledSlider` / `InspectorSliderRow`，右边的数值框能打字）、「Shows for」、**Transform 区的关键帧 ‹ ◇ › 和「曲线」菜单** | [Inspector 数值框合同](docs/architecture/inspector-scrub-number-field.md)（滑杆行的数值框：打字提交要立刻 `endLiveEdit`）、[关键帧动画](docs/architecture/keyframe-animation.md)「交互约定」（曲线菜单按播放头所在那一段） |
 | 往检查器里加任何一行（标题 + 控件、下拉、滑杆行） | [检查器的排版](docs/architecture/inspector-layout.md)（固定窄栏，一行不许比它宽；菜单 Picker 不许 `.fixedSize()`）、[声音场景那一行把检查器撑宽](docs/bugfixes/2026-09-24-sound-scene-row-widens-inspector.md) |
-| 定格、静帧、图片转视频、**在最后一帧里定格（不到一帧的右半）** | [定格长期约束](docs/architecture/freeze-frame.md)（第 4 节：不到一帧的右半拿掉）、[静帧后面剩一截](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
+| 定格、静帧、图片转视频、**在最后一帧里定格（不到一帧的右半）**、**透明 PNG（`StillAlphaNaming`、`isAlphaStill`、预乘的 ProRes 4444 + 遮罩）** | [定格长期约束](docs/architecture/freeze-frame.md)（第 4 节：不到一帧的右半拿掉；第 4a3 节：真用到了透明的图转预乘 ProRes 4444 + 灰度遮罩，预览垫黑底、导出先反预乘、带关键帧的 matte 用它自己的遮罩）、[透明 PNG 成了黑方块](docs/bugfixes/2026-10-03-png-transparency-lost.md)、[静帧后面剩一截](docs/bugfixes/2026-09-29-freeze-leaves-sliver-after-still.md)、[定格方案](docs/plans/2026-08-08-freeze-frame.md)、[静帧逐帧解码事故](docs/bugfixes/2026-08-08-still-clip-decode-per-frame.md) |
 | 原生录屏、恢复、退出、导入 | [录屏生命周期](docs/architecture/screen-recording-lifecycle.md)（含产物合同）、[实施报告](docs/reports/2026-08-06-native-screen-recording-implementation-report.md)、[Phase 2–4 复审](docs/bugfixes/2026-08-07-screen-recording-phase2-4-review.md)、[静止期尾部黑屏](docs/bugfixes/2026-08-11-screen-recording-idle-tail-black.md)；方案中的旧结论不得覆盖实施报告 |
 | 字幕生成、语言检测、翻译、任务取消、**转写哪些声音（可听快照）**、**生成 / 翻译结束时回写工程** | [字幕语言流](docs/architecture/subtitle-language-flow.md)（第 7 条：可听快照与预览同一份隐藏过滤）、[回写要自己成一步撤销](docs/bugfixes/2026-09-27-ai-undo-swallowed-by-subtitle-attach.md)（包在 `AIUndoGrouping.step` 里）、[原生字幕生成方案](docs/plans/2026-08-06-native-subtitle-generation.md)、[字幕生成复审](docs/bugfixes/2026-08-06-subtitle-generation-review.md)、[PR #22 后续复审](docs/bugfixes/2026-08-09-pr22-review-followups.md)、[藏起来的片段照样被转写](docs/bugfixes/2026-09-26-subtitle-generation-transcribes-hidden-clips.md)、[自动检测拿音效当探针](docs/bugfixes/2026-09-26-auto-detect-probes-sound-effects.md)（探针长的先、先听有没有人声） |
 | 生成出来的字幕长什么样：**去标点**、**断句**（逗号拆小句、太短的并、并不进去整句一起挑、放不下的怎么切、中文按词边界）、**一行多长**（字数 + 画面宽度）、**显示时间**（最短、2 帧间隔、接上、说完多停）、**几段素材同时有字只留一条**、面板上「只用选中的片段」、机器翻译落字去标点 | [生成的字幕长什么样](docs/architecture/subtitle-generation-style.md)（先断句后去标点、时间在整条轨上排；**停顿被识别器并进相邻的词，先估开口**；切法是动态规划不是贪心；中文按整句判语言；去重叠只比不同素材）、[停顿被算进相邻的词](docs/bugfixes/2026-09-26-pause-stretches-next-word.md)、[切出 0.1 秒的一条](docs/bugfixes/2026-09-30-subtitle-piece-on-screen-0.1s.md)（太短按能留多久罚、并不进去整句一起挑）、[方案与调研](docs/plans/2026-09-26-subtitle-generation-style.md)（别的剪辑软件怎么做、Netflix / BBC 的数字、用户逐条拍的板） |
@@ -202,8 +202,8 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 录屏产物画面轨盖到 T1（尾部不黑）：`scripts/check-screen-recording-writer.sh`。
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
 - 入场/出场动画的两条管线对账（预览取帧 vs 真导出抽帧）：`scripts/check-clip-animation.sh`。
-- 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧），以及上层轨藏起来的段不进成片：
-  `scripts/check-video-fade.sh`。
+- 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧），以及上层轨藏起来的段不进成片、透明 PNG 的透明处露出下面那一层
+  （预览、静态的成片、带关键帧的成片）：`scripts/check-video-fade.sh`。
 - 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
   下一次改动抹掉）：`checks/inspector-live-binding-wiring.sh`。
 - 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
@@ -298,7 +298,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
   声音各找一条、链接组换新号、文字 / 滤镜 / 字幕句各自的行规矩），外加分割不丢字段、分割后链接组一对还是一对：
   `scripts/check-timeline-clipboard.sh`；接线（编辑菜单三项、右键菜单、落点鼠标优先含 Finder 文件、标尺不算轨道、
   剪贴板只有一套且不写纯文本）：`checks/timeline-clipboard-wiring.sh`。
-- 静帧真实编码与边际性能：`scripts/check-still-clip-encode.sh`。
+- 静帧真实编码与边际性能，以及透明的图（哪张算用到了透明、预乘的 ProRes 4444 + 灰度遮罩的真产物、按图挑缓存名、老缓存不再认）：`scripts/check-still-clip-encode.sh`。
 - 翻译配对预检与接线：`scripts/check-translation-preflight.sh`。
 - 音频库清单：解析的宽容边界（不认识的字段忍、单条坏数据跳过、**版本号更高整份
   拒绝**）与双语搜索（中英都能命中同一个 tag、多词是「与」），以及音效清单的 `title_zh` / `hit` / `owned` 不署名 / 按中文标题搜：
@@ -618,6 +618,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-02 「撤销这一轮」退不回 V1](docs/bugfixes/2026-10-02-undo-round-repacks-v1.md) — `undoRound` 用 `perform { $0 = snapshot }` 换回快照，磁吸开着时收尾的 `packMain` 又把快照里 V1 的缝合上、联动按「V1 没挪」什么都不跟：音频字幕回了原位、V1 没回，比不撤还糟；单步 ⌘Z 走 `applySnapshot` 所以没事。改成 `restoreTimeline`（和 ⌘Z 同一条收尾 `adopt`，不过磁吸、联动）。**「换回某一刻」不是一次编辑，别走编辑的收尾。**
 - [2026-10-02 磁吸开着时改一条音量曲线就把整条 V1 的缝合上](docs/bugfixes/2026-10-02-magnet-closes-v1-gaps-on-any-edit.md) — 磁吸是全 App 一份、记住为开，`perform` 每次收尾都 `packMain`：打开一个磁吸关着时留了缝的工程，改字幕 / 音量 / 别的轨都把 V1 合拢，联动再挪 97 样；文档还把它写成了预期行为。改成**磁吸跟着工程走**（`state.mainMagnet`，同剪映 `maintrack_adsorb`，老工程缺键 = 关）+ 只在改到 V1 的排布时排（`MainMagnet.settle`）+ AI 看得见。**会改工程内容的开关是工程的属性；一次编辑只许改它碰到的东西。**
 - [2026-10-03 自动检测把英文旁白判成中文](docs/bugfixes/2026-10-03-auto-detect-picks-chinese-for-english.md) — `pick` 只比把握：中文模型把英文写成「3red65 days」这种拉丁乱码、把握 0.9，停顿多的英文旁白英文模型只有 0.873（合成语音标定的 0.91 下限在真素材上不成立）。中日韩的候选先过「写成了这种语言的文字」（全角字 ≥ 25%）；`transcribe` 读缓存挑语言也走同一个 `pick`。**分不开两边时，找一个真能分开的特征，别调门槛。**
+- [2026-10-03 透明 PNG 放到上层轨成了黑方块](docs/bugfixes/2026-10-03-png-transparency-lost.md) — 静帧一律转 H.264 yuv420p（没有 alpha）；预览的合成器把源当预乘、ffmpeg 的 overlay 当直通；带关键帧的段 matte 是纯白、不管图自己的 alpha。真用到了透明的图转预乘 ProRes 4444 + 灰度遮罩（`StillAlphaNaming`），预览垫黑底、导出先反预乘、预渲染用它自己的遮罩。**每一级都保着 alpha 不等于产物有 alpha；预乘还是直通是数据的一部分。**
 - [2026-10-03 剪到一半变回空的 Untitled：关掉主窗口就退出了 App](docs/bugfixes/2026-10-03-closing-window-quits-app.md) — SwiftUI 只有一个 `Window` 场景时关窗即退出，AI 下一次调用 `open -g` 拉起来的是空工程、文件夹授权也没了，只看到一串「不存在」。`applicationShouldTerminateAfterLastWindowClosed` 返回 false（点 Dock 开回来）；小程序拉起 App 的那一次结果最前面加 `relaunchNote`。**框架的默认生命周期要先确认；替别人兜底时把兜底这件事告诉对方。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 

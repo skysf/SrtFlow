@@ -153,30 +153,6 @@ func export(_ state: TimelineState, name: String) async -> URL? {
     return kept
 }
 
-/// 这份时间线的生产滤镜图（字符串断言用）。
-func filterGraph(_ state: TimelineState, name: String) async -> String? {
-    let output = root.appendingPathComponent("\(name).mp4")
-    do {
-        let plan = try await VideoEditExportGraph.plan(
-            state: state,
-            settings: VideoEncodeSettings(),
-            subtitleStyle: BurnInStyle(name: "check"),
-            subtitleFontURL: nil,
-            output: output
-        )
-        defer { try? FileManager.default.removeItem(at: plan.workspace) }
-        guard let index = plan.arguments.firstIndex(of: "-filter_complex"),
-              index + 1 < plan.arguments.count else {
-            check(false, "\(name) 的参数里没有 -filter_complex")
-            return nil
-        }
-        return plan.arguments[index + 1]
-    } catch {
-        check(false, "\(name) 的 plan() 失败：\(error)")
-        return nil
-    }
-}
-
 /// 容量是不是「能放、最长约 `expected` 秒」。容量是乘出来的（长度 × 0.4），
 /// 1.5 × 0.4 在 Double 里是 0.6000000000000001 —— 枚举的 `==` 是精确比较，
 /// 拿它断言浮点结果会假红。
@@ -652,6 +628,8 @@ func main() async {
 
     // MARK: 藏起来的上层段不进成片（2026-09-26，用例在 HiddenClips.swift）
     await checkHiddenClips(white: white, black: black, info: landscape)
+    // MARK: 带透明的静帧：透明处露出下面那一层，预览和成片（静态 / 带关键帧）都是（2026-10-03，用例在 AlphaStill.swift）
+    await checkAlphaStill(white: white, info: landscape)
 
     if failures == 0 {
         print("\(checks) checks, 0 failures")

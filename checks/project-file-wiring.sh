@@ -316,6 +316,19 @@ require "预览画圆 / 圆弧走 ShapeOutline" \
 require "导出画圆 / 圆弧走 ShapeOutline" \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift 'ShapeOutline\.path\(for: shape'
 
+# 带透明的静帧（2026-10-03，docs/bugfixes/2026-10-03-png-transparency-lost.md）：认它只问 isAlphaStill；预览垫黑底（取帧器看不见
+# 暗绿，自检够不着，只能在这里钉）、「盖满画布不透明」把它排除、导出叠之前反预乘、带关键帧的段用它自己的遮罩当 matte。
+require "预览给带透明的静帧垫黑底（不垫的话播放器里透明处是暗绿）" \
+  Sources/SrtFlow/VideoEditCompositionBuilder.swift '\|\| \$0\.clip\.isAlphaStill'
+require "盖满画布且不透明的判据把带透明的静帧排除（叠化 / 擦除走近似路径）" \
+  Sources/SrtFlow/VideoEditModels.swift '!needsPerFrameAnimation, !isAlphaStill'
+require "导出叠带透明的静帧之前先标明预乘、缩放完反预乘" \
+  Sources/SrtFlow/VideoEditExportTransform.swift 'unpremultiply=inplace=1'
+require "带关键帧的透明静帧用它自己的遮罩当 matte" \
+  Sources/SrtFlow/VideoEditPrerender.swift 'StillAlphaNaming\.matteURL\(forStill:'
+require "带透明的静帧只按 StillAlphaNaming 认" \
+  Sources/SrtFlow/VideoEditModels.swift 'StillAlphaNaming\.isAlphaStill\(sourceURL\)'
+
 # 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
 require "可听快照必须用 clip.hasAudio" \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'guard clip\.hasAudio else'
