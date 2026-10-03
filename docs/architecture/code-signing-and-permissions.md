@@ -44,8 +44,9 @@ ad-hoc 签名（`codesign --sign -`）的 designated requirement 就是 `cdhash 
 ## 三、规矩
 
 1. **打包脚本不许自己调 `codesign`**，只经 `scripts/signing/sign-app.sh`。
-2. **永远不重建证书。** 换机器就把整个 `~/.config/srtflow/signing/` 拷过去。`create-identity.sh` 发现已经有了
-   就拒绝；`sign-app.sh` 发现这台机器上的证书和仓库钉着的不是一把就不签。真要换：改
+2. **永远不重建证书，这个目录要有备份。** 换机器就把整个 `~/.config/srtflow/signing/` 拷过去；这台机器上没有它时，停下来
+   告诉用户，别去跑 `create-identity.sh`（本机 2026-10-03 的情况：Time Machine 包含这个目录，备份盘是一块外接 USB 盘，
+   插上跑过一次才算有了备份）。`create-identity.sh` 发现已经有了就拒绝；`sign-app.sh` 发现这台机器上的证书和仓库钉着的不是一把就不签。真要换：改
    `packaging/signing-identity.sha1`，并在发版说明里告诉用户要把录屏等权限重新给一次。
 3. **退回 ad-hoc 的包不许发版**（`sign-app.sh` 会打一段 ⚠️ 警告）。
 4. **App 这边**：录自定义区域发现没授权时，先 `ScreenCapturePermissionRepair.resetRecordOncePerBuild()` 再

@@ -53,6 +53,15 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 合掉一个之后别的 PR 变 DIRTY（常见于本文件的索引行相邻）：把新 main 合进那条分支、两边都留、推上去等 CI 绿再合。
 - 合进 main 不等于发给用户：发版（打 tag、`gh release create`、DMG）仍然另外拍板。
 
+### 打包与签名（2026-10-03 起）
+
+- 装给用户的包（正式版、测试版）和发版的包，只用固定的签名身份签：`scripts/build-app.sh`、`build-beta-app.sh` 自动经
+  `scripts/signing/sign-app.sh` 签。它打出「⚠️ 没有发布用的签名身份，退回 ad-hoc」的包**不许装给用户、不许发版**：ad-hoc 的
+  每个版本在 macOS 眼里都是另一个 App，录屏、麦克风、下载文件夹、钥匙串的授权全部作废，录屏那条拨开关都救不回来。
+- 签名身份（私钥）在仓库外的 `~/.config/srtflow/signing/`，**永不重建**：换一把证书 = 所有用户再授权一次（`sign-app.sh` 认
+  `packaging/signing-identity.sha1` 钉着的那把，对不上就拒签）。换机器把整个目录拷过去；**这个目录必须有备份**（用户的事，
+  见到它不在就停下来告诉用户，别去跑 `create-identity.sh`）。细节见 [签名与系统权限](docs/architecture/code-signing-and-permissions.md)。
+
 ### 语言
 
 - GitHub 对外可见文字一律使用英文：commit message、分支名、PR、issue、release，
