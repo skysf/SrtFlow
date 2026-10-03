@@ -358,6 +358,8 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditTrackSlot.swift \
   Sources/SrtFlow/VideoEditClipCrop.swift \
   Sources/SrtFlow/VideoEditShapeModels.swift \
+  Sources/SrtFlow/VideoEditShapeOutline.swift \
+  Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
   Sources/SrtFlow/VideoEditSoundScene.swift \
   Sources/SrtFlow/PerfCounters.swift \
   Sources/SrtFlow/VideoEditVolumeCurve.swift \

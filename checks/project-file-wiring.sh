@@ -309,6 +309,13 @@ require "transcribe 读缓存挑语言要走 SubtitleLanguageDetection.pick" \
 forbid "transcribe 读缓存不许再按平均可信度另挑一份语言" \
   Sources/SrtFlow/AITranscribeTool.swift 'confidence > best'
 
+# 圆和圆弧的轮廓只有 ShapeOutline 一份（2026-10-03，docs/architecture/shapes.md）：预览和导出（AI 的「看」也用导出那张 PNG）
+# 拿同一条路径，圆弧从哪儿起、往哪边扫只算一次。
+require "预览画圆 / 圆弧走 ShapeOutline" \
+  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'ShapeOutline\.path\(for: shape'
+require "导出画圆 / 圆弧走 ShapeOutline" \
+  Sources/SrtFlow/VideoEditShapePNGRenderer.swift 'ShapeOutline\.path\(for: shape'
+
 # 带透明的静帧（2026-10-03，docs/bugfixes/2026-10-03-png-transparency-lost.md）：认它只问 isAlphaStill；预览垫黑底（取帧器看不见
 # 暗绿，自检够不着，只能在这里钉）、「盖满画布不透明」把它排除、导出叠之前反预乘、带关键帧的段用它自己的遮罩当 matte。
 require "预览给带透明的静帧垫黑底（不垫的话播放器里透明处是暗绿）" \

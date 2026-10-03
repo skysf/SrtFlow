@@ -92,6 +92,7 @@ xcrun swiftc \
   Sources/SrtFlow/VideoEditGradeExport.swift \
   Sources/SrtFlow/VideoEditCoverExport.swift \
   Sources/SrtFlow/VideoEditShapePNGRenderer.swift \
+  Sources/SrtFlow/VideoEditShapeOutline.swift \
   Sources/SrtFlow/VideoEditExportFilterScript.swift \
   Sources/SrtFlow/VideoEditExportMixdown.swift \
   Sources/SrtFlow/ExportPeakLimiter.swift \

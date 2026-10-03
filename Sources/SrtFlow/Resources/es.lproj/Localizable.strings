@@ -293,6 +293,11 @@
 "File" = "Archivo";
 "Angle" = "Ángulo";
 "Side length" = "Longitud del lado";
+"Circle" = "Círculo";
+"Arc" = "Arco";
+"Diameter" = "Diámetro";
+"Sweep" = "Apertura";
+"Start angle" = "Ángulo inicial";
 "Width" = "Ancho";
 "Height" = "Alto";
 "Shows for" = "Se muestra durante";

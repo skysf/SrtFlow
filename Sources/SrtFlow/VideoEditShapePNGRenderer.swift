@@ -66,6 +66,21 @@ enum ShapePNGRenderer {
             context.restoreGState()
         case .blur, .mosaic:
             break   // 盖一块不画东西：它的效果是导出图里的滤镜（VideoEditCoverExport），不在这张 PNG 上
+        case .circle, .arc:
+            // 轮廓只有 ShapeOutline 一份（预览同一条路径）：描边在框内、圆弧从 12 点钟方向顺时针。
+            context.saveGState()
+            context.translateBy(x: frame.minX, y: frame.minY)
+            context.addPath(ShapeOutline.path(for: shape, size: frame.size, strokeWidth: strokeWidth))
+            if shape.drawsFilled {
+                context.setFillColor(color)
+                context.fillPath()
+            } else {
+                context.setStrokeColor(color)
+                context.setLineWidth(strokeWidth)
+                context.setLineCap(.round)
+                context.strokePath()
+            }
+            context.restoreGState()
         case .rectangle, .square:
             if shape.drawsFilled {
                 // 实心：整块涂满、不画描边（预览是同一个框的 fill）。

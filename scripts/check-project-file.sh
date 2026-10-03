@@ -119,6 +119,7 @@ xcrun swiftc \
   checks/ProjectFile/SubtitleLook.swift \
   checks/ProjectFile/Markers.swift \
   checks/ProjectFile/Upscale.swift \
+  checks/ProjectFile/CircleArcShapes.swift \
   checks/ProjectFile/MainMagnet.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

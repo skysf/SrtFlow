@@ -90,7 +90,7 @@ struct ShapeOverlayCanvas: View {
             // 长度在检查器里调。没转的照旧左右改长度。
             let rotated = abs(shape.rotationDegrees.truncatingRemainder(dividingBy: 360)) > 0.5
             return rotated ? [] : FrameHandle.horizontal
-        case .square: return FrameHandle.corners
+        case .square, .circle, .arc: return FrameHandle.corners
         case .rectangle, .blur, .mosaic: return FrameHandle.all
         }
     }
@@ -132,6 +132,18 @@ struct ShapeOverlayCanvas: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .background(Color.white.opacity(0.06))
                     .frame(width: max(2, frame.width), height: max(2, frame.height))
+            case .circle, .arc:
+                // 轮廓只有 ShapeOutline 一份（导出 ShapePNGRenderer 同一条路径）。
+                let size = CGSize(width: max(2, frame.width), height: max(2, frame.height))
+                let outline = Path(ShapeOutline.path(for: shape, size: size, strokeWidth: strokeWidth))
+                Group {
+                    if shape.drawsFilled {
+                        outline.fill(shape.color.swiftUIColor)
+                    } else {
+                        outline.stroke(shape.color.swiftUIColor, style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
+                    }
+                }
+                .frame(width: size.width, height: size.height)
             case .rectangle, .square:
                 // 实心的整块涂满（导出 ShapePNGRenderer 同一个判据 `drawsFilled`）。
                 Rectangle()

@@ -543,7 +543,7 @@ struct TimelineState: Hashable, Sendable {
         guard let index = shapes.firstIndex(where: { $0.id == id }) else { return }
         change(&shapes[index])
         // 正方形永远保持正方形。
-        if shapes[index].kind == .square { shapes[index].height = shapes[index].width }
+        if shapes[index].kind.keepsSquare { shapes[index].height = shapes[index].width }
     }
 
     mutating func updateTextOverlay(_ id: UUID, _ change: (inout TextOverlay) -> Void) {

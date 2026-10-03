@@ -156,11 +156,12 @@ public enum MCPTimelineTools {
             return MCPToolDefinition(
                 .setShape, title: "Shape",
                 description: """
-                Draw a line, rectangle or square over the video for a while (an outline to point at or frame something; \
+                Draw a line, rectangle, square, circle or arc over the video for a while (an outline to point at or frame something; \
                 filled=true paints a solid block, e.g. letterbox bars or a colour panel behind a text), or change one when \
                 shape_id is given; only the fields you pass change. x/y is the centre as fractions of the frame; \
                 width (a line's \
-                length) and height are fractions of the frame (a square uses width). rotation turns lines only. \
+                length) and height are fractions of the frame (a square, circle or arc uses width as its size). rotation turns \
+                lines; on an arc it is where the arc starts, clockwise from 12 o'clock, and sweep is how far it goes. \
                 line_width is \
                 pixels on a 1080-high frame. Shapes are drawn under texts. kind=blur or mosaic draws nothing: it blurs or \
                 pixelates the picture under it (hide a watermark or burned-in subtitles; look text_scan gives the values); \
@@ -168,18 +169,19 @@ public enum MCPTimelineTools {
                 """,
                 input: MCPSchema.object([
                     "shape_id": MCPSchema.string("Change this shape instead of adding one."),
-                    "kind": MCPSchema.string("Shape (required when adding).", oneOf: ["line", "rectangle", "square", "blur", "mosaic"]),
+                    "kind": MCPSchema.string("Shape (required when adding).", oneOf: ["line", "rectangle", "square", "circle", "arc", "blur", "mosaic"]),
                     "start": MCPSchema.number("Timeline start in seconds (default: the playhead).", minimum: 0),
                     "duration": MCPSchema.number("Seconds on screen (default 3).", minimum: 0.2),
                     "x": MCPSchema.number("Horizontal centre, 0–1.", minimum: 0, maximum: 1),
                     "y": MCPSchema.number("Vertical centre, 0–1.", minimum: 0, maximum: 1),
                     "width": MCPSchema.number("Width (or a line's length) as a fraction of the frame.", minimum: 0.02, maximum: 1),
                     "height": MCPSchema.number("Rectangle height as a fraction of the frame.", minimum: 0.02, maximum: 1),
-                    "rotation": MCPSchema.number("Lines only: clockwise degrees.", minimum: -90, maximum: 90),
+                    "rotation": MCPSchema.number("Clockwise degrees: a line's angle (±90), or where an arc starts from 12 o'clock.", minimum: -360, maximum: 360),
+                    "sweep": MCPSchema.number("Arcs only: degrees the arc covers, clockwise (default 270).", minimum: 1, maximum: 359),
                     "color": MCPSchema.string("#RRGGBB or #RRGGBBAA."),
                     "line_width": MCPSchema.number("Pixels on a 1080-high frame (default 6).", minimum: 1, maximum: 24),
                     "strength": MCPSchema.number("blur/mosaic only, pixels on a 1080-high frame (blur 28, mosaic 22).", minimum: 2, maximum: 80),
-                    "filled": MCPSchema.boolean("Rectangles and squares: solid instead of an outline."),
+                    "filled": MCPSchema.boolean("Rectangles, squares and circles: solid instead of an outline."),
                     "hidden": MCPSchema.boolean("Hide it without deleting it.")
                 ])
             )

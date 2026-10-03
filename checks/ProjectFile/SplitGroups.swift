@@ -22,6 +22,7 @@ func runSplitOutGroups(root: URL) {
         ("关键帧的缓动", checkKeyframeEasing),          // 39：KeyframeEasing.swift
         ("标记：所有块 + 标尺", checkMarkersEverywhere),  // 40：Markers.swift
         ("片段换成 upscale 文件 / 换回原片", checkUpscaleSwap),  // 41：Upscale.swift
+        ("圆和圆弧", checkCircleArcShapes),             // 43：CircleArcShapes.swift
         ("磁吸跟着工程走", checkMainMagnet),             // 42：MainMagnet.swift
     ]
     for group in groups {
