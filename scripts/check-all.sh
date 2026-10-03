@@ -101,6 +101,7 @@ run_check "no-swallowed-build-output（扫描守卫）" checks/no-swallowed-buil
 run_check "release-signing（扫描守卫：发布版用固定签名身份签、录屏的旧授权记录 App 自己删）" checks/release-signing.sh
 run_check "shell-var-boundary（扫描守卫）" checks/shell-var-boundary.sh
 run_check "shell-pipe-grep-q（扫描守卫）" checks/shell-pipe-grep-q.sh
+run_check "shell-brace-in-nested-quotes（扫描守卫：命令替换里带花括号和逗号的双引号串会被 bash 3.2 拆开）" checks/shell-brace-in-nested-quotes.sh
 run_check "exported-types-declared（扫描守卫）" checks/exported-types-declared.sh
 run_check "hover-pointer-style（扫描守卫）" checks/hover-pointer-style.sh
 run_check "hit-shape-before-offset（扫描守卫：可点范围写在 .offset 之前）" checks/hit-shape-before-offset.sh
