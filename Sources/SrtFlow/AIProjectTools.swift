@@ -14,7 +14,7 @@ import SrtFlowMCPKit
 
 @MainActor
 enum AIProjectTools {
-    static func status(_ project: VideoEditProject) -> AIToolResult {
+    static func status(_ args: AIToolArguments, _ project: VideoEditProject) throws -> AIToolResult {
         let workspace = AIWorkspace.shared
         let session = AISession.shared
         var projectInfo: [String: JSONValue] = [
@@ -51,6 +51,8 @@ enum AIProjectTools {
         }
         // 配了 fal（generate_media 在清单里）：告诉 AI 今天还剩多少额度、每种事默认用哪个模型。
         if let generation = FalGenerateTool.statusJSON() { result["generation"] = generation }
+        // 录屏：状态、授权、上次没收完的；screen=true 再列能录的屏幕 / 窗口 / 麦克风（record_screen 用）。
+        result["screen_recording"] = AIScreenSources.statusJSON(listSources: try args.bool("screen") ?? false)
         return .ok(.object(result))
     }
 
@@ -267,7 +269,9 @@ enum AIProjectTools {
 
     /// 当前工程没存过、又剪了东西（手动剪的；AI 改过的早就自动存了）：换工程之前先存下来，不问也不丢，
     /// 原来那条路也就不会弹模态框。存不下就报错、不换。返回存到了哪（没有要存的就 nil）。
+    /// 录屏进行中不许换工程（录屏生命周期：素材会进错工程）：界面那句「先停止录屏」AI 照做不了，换成它能照做的话。
     private static func keepUnsavedEdits(_ project: VideoEditProject) throws -> URL? {
+        if ScreenRecordingCoordinator.shared.locksProjectSwitching { throw AIToolError(AIScreenRecordingTool.lockMessage) }
         guard project.isUntitled, !project.state.isEmpty else { return nil }
         guard let url = saveUntitled(project) else {
             throw AIToolError(

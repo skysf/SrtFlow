@@ -82,7 +82,7 @@ final class AIWorkspace {
         )
     }
 
-    /// AI 做出来的文件放哪：`<起点>/SrtFlow/<导出|工程|配音|音效|生成>`。文件夹名跟着 App 的语言。
+    /// AI 做出来的文件放哪：`<起点>/SrtFlow/<导出|工程|配音|音效|生成|录屏>`。文件夹名跟着 App 的语言。
     func outputFolder(_ kind: Output, project: VideoEditProject) -> URL {
         startFolder(project: project)
             .appendingPathComponent(DefaultFolder.aiFolderName, isDirectory: true)
@@ -99,7 +99,7 @@ final class AIWorkspace {
     )
 
     enum Output {
-        case exports, projects, voiceovers, soundEffects, generated
+        case exports, projects, voiceovers, soundEffects, generated, recordings
 
         var folderName: String {
             switch self {
@@ -108,6 +108,7 @@ final class AIWorkspace {
             case .voiceovers: return L10n("Voiceovers")
             case .soundEffects: return L10n("Sound Effects")
             case .generated: return L10n("Generated")
+            case .recordings: return L10n("Screen Recordings")
             }
         }
     }

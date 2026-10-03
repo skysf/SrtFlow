@@ -1172,3 +1172,6 @@
 "processing" = "处理中";
 "uploading" = "上传中";
 "usually about %d min" = "通常约 %d 分钟";
+
+// 录屏进 MCP（AI 录的文件放在 <起点>/SrtFlow/录屏）
+"Screen Recordings" = "录屏";

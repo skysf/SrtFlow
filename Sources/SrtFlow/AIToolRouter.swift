@@ -60,7 +60,9 @@ final class AIToolRouter {
             if policy.presentsEditor {
                 let startsNewRound = AISession.shared.phase != .working
                 let visible = AISession.shared.viewMode == .visible
-                try await AIEditorPresenter.prepareEditor(project: project, bringForward: startsNewRound && visible)
+                // 正在录屏时不摆：摆到前面就盖住正在录的画面、被录进去（docs/plans/2026-10-03-screen-recording-mcp.md 第 6 条）。
+                let recordingScreen = ScreenRecordingCoordinator.shared.isBusy
+                try await AIEditorPresenter.prepareEditor(project: project, bringForward: startsNewRound && visible && !recordingScreen)
             }
             if policy.startsRound { AISession.shared.beginRoundIfNeeded(project: project) }
             let result = try await run(tool, arguments, project)
@@ -82,7 +84,7 @@ final class AIToolRouter {
     private func run(_ tool: MCPToolName, _ args: AIToolArguments, _ project: VideoEditProject) async throws -> AIToolResult {
         let undo = project.effectiveUndoManager
         switch tool {
-        case .getStatus: return AIProjectTools.status(project)
+        case .getStatus: return try AIProjectTools.status(args, project)
         case .setView: return try AIProjectTools.setView(args)
         case .openFolder: return try await AIProjectTools.openFolder(args, project)
         case .readDocument: return try await AIFileTools.readDocument(args, project)
@@ -105,6 +107,8 @@ final class AIToolRouter {
         case .generateMedia: return try await FalGenerateTool.generate(args, project)
         // 起一个任务、回任务号；做完那一下的换源在任务里自己包一层 AIUndoGrouping.step（AIUpscaleTool.land）。
         case .upscaleClip: return try AIUpscaleTool.upscale(args, project)
+        // 起一个录屏会话就回来（AI 好接着操作电脑）；入轨那一下是异步落账，会话的 landing 包一层 AIUndoGrouping.step。
+        case .recordScreen: return try await AIScreenRecordingTool.run(args, project)
         case .addVoiceover:
             // 只是下载 SrtFlow 自己的声音：回任务号，不改工程。
             if let download = try await AIVoiceoverTool.startDownloadIfAsked(args) { return download }
@@ -175,6 +179,9 @@ final class AIToolRouter {
                 (serialized, presentsEditor, startsRound) = (true, false, false)
             case .seek:
                 (serialized, presentsEditor, startsRound) = (true, true, false)
+            // 录屏不摆剪辑页（会盖住要录的画面、被录进去）；录完入轨算这一轮的改动。
+            case .recordScreen:
+                (serialized, presentsEditor, startsRound) = (true, false, true)
             case .openProject, .newProject, .undo, .addClips, .addVoiceover, .editClip, .setKeyframes, .setTrack, .splitClip, .deleteItems,
                  .duplicateItems, .freezeFrame, .cutSpeech, .cutToBeat,
                  .setTransition, .setText, .setShape, .setFilter, .setCanvas, .generateSubtitles, .translateSubtitles,
