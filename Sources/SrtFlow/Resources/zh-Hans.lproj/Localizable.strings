@@ -293,6 +293,11 @@
 "File" = "文件";
 "Angle" = "角度";
 "Side length" = "边长";
+"Circle" = "圆形";
+"Arc" = "圆弧";
+"Diameter" = "直径";
+"Sweep" = "张角";
+"Start angle" = "起始角";
 "Width" = "宽度";
 "Height" = "高度";
 "Shows for" = "显示时长";

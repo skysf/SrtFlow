@@ -309,6 +309,13 @@ require "transcribe 读缓存挑语言要走 SubtitleLanguageDetection.pick" \
 forbid "transcribe 读缓存不许再按平均可信度另挑一份语言" \
   Sources/SrtFlow/AITranscribeTool.swift 'confidence > best'
 
+# 圆和圆弧的轮廓只有 ShapeOutline 一份（2026-10-03，docs/architecture/shapes.md）：预览和导出（AI 的「看」也用导出那张 PNG）
+# 拿同一条路径，圆弧从哪儿起、往哪边扫只算一次。
+require "预览画圆 / 圆弧走 ShapeOutline" \
+  Sources/SrtFlow/VideoEditShapeOverlayCanvas.swift 'ShapeOutline\.path\(for: shape'
+require "导出画圆 / 圆弧走 ShapeOutline" \
+  Sources/SrtFlow/VideoEditShapePNGRenderer.swift 'ShapeOutline\.path\(for: shape'
+
 # 可听性只有一份合同：快照判「有没有声音」只能用 EditClip.hasAudio。
 require "可听快照必须用 clip.hasAudio" \
   Sources/SrtFlow/SubtitleGen/SubtitleAudibleClips.swift 'guard clip\.hasAudio else'

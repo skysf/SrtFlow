@@ -293,6 +293,11 @@
 "File" = "File";
 "Angle" = "Angle";
 "Side length" = "Side length";
+"Circle" = "Circle";
+"Arc" = "Arc";
+"Diameter" = "Diameter";
+"Sweep" = "Sweep";
+"Start angle" = "Start angle";
 "Width" = "Width";
 "Height" = "Height";
 "Shows for" = "Shows for";

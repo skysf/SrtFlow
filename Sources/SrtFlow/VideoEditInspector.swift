@@ -317,7 +317,7 @@ struct VideoEditInspectorView: View {
         Divider()
 
         VStack(alignment: .leading, spacing: 8) {
-            if shape.kind != .line {
+            if shape.kind != .line, shape.kind != .arc {
                 Toggle("Filled", isOn: shapeFilledBinding(shape))
                     .instantHelp("Fill the whole shape with its colour instead of drawing an outline")
             }
@@ -343,7 +343,7 @@ struct VideoEditInspectorView: View {
                 )
             } else {
                 labelledSlider(
-                    shape.kind == .square ? "Side length" : "Width",
+                    shape.kind == .square ? "Side length" : shape.kind.keepsSquare ? "Diameter" : "Width",
                     value: liveShapeBinding(shape, \.width),
                     range: 0.02...1,
                     scale: 100, unit: "%"
@@ -355,6 +355,11 @@ struct VideoEditInspectorView: View {
                         range: 0.02...1,
                         scale: 100, unit: "%"
                     )
+                }
+                if shape.kind == .arc {
+                    // 圆弧：扫过多少度、从 12 点钟方向顺时针转过多少开始（ShapeOutline）。
+                    labelledSlider("Sweep", value: liveShapeBinding(shape, \.arcSweep), range: ShapeAnnotation.arcSweepRange, unit: "°")
+                    labelledSlider("Start angle", value: liveShapeBinding(shape, \.rotationDegrees), range: -180...180, unit: "°")
                 }
             }
         }

@@ -8,11 +8,15 @@ import SrtFlowCore
 // 导出 `VideoEditCoverExport`）、时间线上的形状块。
 // 从 VideoEditModels.swift 拆出来（那个文件在行数基线里只许降，见 docs/architecture/coding-standards.md）。
 
-/// 画在画面上的形状：线条、长方形、正方形；以及盖一块（模糊、马赛克）。
+/// 画在画面上的形状：线条、长方形、正方形、圆、圆弧；以及盖一块（模糊、马赛克）。
 enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
     case line
     case rectangle
     case square
+    /// 圆和圆弧（2026-10-03，南极工程的 HUD 圆环）：和正方形一样按宽取直径、永远是圆的；圆弧是圆的一段描边，从 12 点钟方向
+    /// 顺时针转过 `rotationDegrees` 开始、扫过 `arcSweep` 度。怎么画只有 `ShapeOutline` 一份（预览、导出、AI 的「看」都用它）。
+    case circle
+    case arc
     /// 盖一块（2026-09-29，MCP 方案第 56 条）：**不画东西**，把它下面的画面（主轨 + 上层轨合成之后、调色之后）模糊或打马赛克，
     /// 遮水印、遮烧进去的旧字幕。长方形的几何，和形状共用时间线上的块、选中框、拖动、V 隐藏、复制粘贴；
     /// 但**不算总长**（同滤镜段：一块盖在空白上没有意义）、不进 `renderedShapes`（那是「画出来的」）。
@@ -29,20 +33,25 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
 
     var id: String { rawValue }
 
-    /// 在播放头处新放一个时的大小（相对画面的 0…1）：线条只有长度，长方形和盖一块一样大，正方形两边相等。
+    /// 在播放头处新放一个时的大小（相对画面的 0…1）：线条只有长度，长方形和盖一块一样大，正方形、圆、圆弧两边相等。
     var defaultSize: (width: Double, height: Double) {
         switch self {
         case .line: return (0.3, 0)
         case .rectangle, .blur, .mosaic: return (0.3, 0.22)
-        case .square: return (0.2, 0.2)
+        case .square, .circle, .arc: return (0.2, 0.2)
         }
     }
+
+    /// 按宽取边长 / 直径、永远是正的（高恒等于宽）：正方形、圆、圆弧。
+    var keepsSquare: Bool { self == .square || self == .circle || self == .arc }
 
     var title: String {
         switch self {
         case .line: return "Line"
         case .rectangle: return "Rectangle"
         case .square: return "Square"
+        case .circle: return "Circle"
+        case .arc: return "Arc"
         case .blur: return "Blur"
         case .mosaic: return "Mosaic"
         }
@@ -53,6 +62,8 @@ enum ShapeKind: String, CaseIterable, Identifiable, Hashable, Sendable {
         case .line: return "line.diagonal"
         case .rectangle: return "rectangle"
         case .square: return "square"
+        case .circle: return "circle"
+        case .arc: return "rainbow"
         case .blur: return "drop"
         case .mosaic: return "square.grid.3x3"
         }
@@ -77,8 +88,10 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     /// 线条：width 是长度，height 无用；正方形：两者取 width。
     var width: Double
     var height: Double
-    /// 只对线条有意义：顺时针角度（度）。
+    /// 线条：顺时针角度（度）。圆弧：从 12 点钟方向顺时针转过这么多开始。别的种类恒为 0。
     var rotationDegrees: Double
+    /// 圆弧扫过多少度（顺时针，1…359）。只对圆弧有意义，别的种类不写。v30 字段。
+    var arcSweep = ShapeAnnotation.defaultArcSweep
     /// 单个藏起来（选中按 V，2026-09-26 用户拍板）：时间线上灰显、仍可编辑，预览和成片里都没有。
     /// 和剪辑的 `EditClip.isHidden` 同一条语义（docs/architecture/clip-visibility.md）。v22 字段，按需写键。
     var isHidden = false
@@ -91,8 +104,11 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
     /// 不进合成和导出。类型与读写见 VideoEditClipMarker.swift。v28 字段，按需写键。
     var markers: [ClipMarker] = []
 
-    /// 这一个真的画成实心（线条永远是线）。预览和导出都问它，不各判一份。
-    var drawsFilled: Bool { isFilled && kind != .line }
+    /// 这一个真的画成实心（线条、圆弧永远是一条线）。预览和导出都问它，不各判一份。
+    var drawsFilled: Bool { isFilled && kind != .line && kind != .arc }
+
+    static let defaultArcSweep = 270.0
+    static let arcSweepRange = 1.0...359.0
 
     init(
         id: UUID = UUID(),
@@ -117,7 +133,7 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
         self.centerX = centerX
         self.centerY = centerY
         self.width = width
-        self.height = kind == .square ? width : height
+        self.height = kind.keepsSquare ? width : height
         self.rotationDegrees = rotationDegrees
         self.coverAmount = coverAmount ?? kind.defaultCoverAmount
     }
@@ -134,7 +150,7 @@ struct ShapeAnnotation: Identifiable, Hashable, Sendable {
         let w: Double
         let h: Double
         switch kind {
-        case .square:
+        case .square, .circle, .arc:
             w = width * canvas.width
             h = w
         case .rectangle, .blur, .mosaic:
@@ -162,7 +178,7 @@ extension ShapeKind: LenientCodableEnum {
 extension ShapeAnnotation: Codable {
     private enum CodingKeys: String, CodingKey {
         case id, kind, timelineStart, duration, color, lineWidth
-        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount, markers
+        case centerX, centerY, width, height, rotationDegrees, isHidden, isFilled, coverAmount, markers, arcSweep
     }
 
     init(from decoder: Decoder) throws {
@@ -188,6 +204,8 @@ extension ShapeAnnotation: Codable {
         coverAmount = try c.decodeIfPresent(Double.self, forKey: .coverAmount) ?? kind.defaultCoverAmount
         // 缺键 = 没打过标记（v27 及更早形状上打不了）。
         markers = try c.decodeIfPresent([ClipMarker].self, forKey: .markers) ?? []
+        // 缺键 = 默认的 270°（只有圆弧写它）。
+        arcSweep = try c.decodeIfPresent(Double.self, forKey: .arcSweep) ?? Self.defaultArcSweep
     }
 
     func encode(to encoder: Encoder) throws {
@@ -211,5 +229,7 @@ extension ShapeAnnotation: Codable {
         if kind.isCover { try c.encode(coverAmount, forKey: .coverAmount) }
         // 同上：一枚标记都没有的不落键，免得被抬进 v28。
         if !markers.isEmpty { try c.encode(markers, forKey: .markers) }
+        // 同上：只有圆弧落它（v30）。
+        if kind == .arc { try c.encode(arcSweep, forKey: .arcSweep) }
     }
 }

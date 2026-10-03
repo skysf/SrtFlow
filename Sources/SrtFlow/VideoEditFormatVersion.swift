@@ -405,6 +405,17 @@ extension TimelineState {
         allClips.contains { $0.upscale != nil }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v30-only 持久数据。
+    ///
+    /// **登记清单（新增 v30-only 字段必须同步补进来）：**
+    /// 1. 形状的 `circle` / `arc` 两个种类，和圆弧的 `arcSweep`（2026-10-03；**按需写入**：只有圆弧写扫过的度数）。
+    ///
+    /// 为什么要抬：只认 v29 的旧版读到不认识的种类按宽容解码退成长方形，随手编辑触发自动保存就把圆和圆弧存成了长方形 ——
+    /// 成片里的那一圈变成方框，扫过多少度也没了。
+    var requiresFormatVersion30: Bool {
+        shapes.contains { $0.kind == .circle || $0.kind == .arc }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨

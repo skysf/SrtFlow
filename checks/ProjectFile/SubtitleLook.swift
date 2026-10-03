@@ -35,7 +35,7 @@ func checkSubtitleLook(root: URL) throws {
     state.subtitle?.cues[0].words = [SubtitleCueWord(location: 4, length: 4, start: 0.5, end: 1.0)]
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 29, "带工程样式、高亮、词时间的工程写 latest（v29）")
+    checkEqual(raw?["formatVersion"] as? Int, 30, "带工程样式、高亮、词时间的工程写 latest（v30）")
     let back = try VideoEditProjectIO.load(from: path).timeline
     checkEqual(back.projectSubtitleStyle, own, "往返不丢工程自己的样式")
     checkEqual(back.subtitleHighlight, state.subtitleHighlight, "往返不丢高亮的颜色和倍数")
