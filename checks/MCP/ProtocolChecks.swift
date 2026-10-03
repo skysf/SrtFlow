@@ -92,6 +92,7 @@ func reply(_ messages: [JSONValue], id: JSONValue) -> JSONValue? {
 }
 
 func runProtocolChecks() {
+    runRelaunchNoteChecks()
     let app: FakeApp
     do { app = try FakeApp() } catch {
         check(false, "fake app could not listen: \(error)")
@@ -217,3 +218,29 @@ private func runAppMissingCheck() {
     check((result?["content"]?.arrayValue?.first?["text"]?.stringValue ?? "").contains("not running"),
           "no app: the message says SrtFlow is not running")
 }
+
+/// 小程序得先把 App 拉起来时，结果最前面加一句（2026-10-03：用户关了窗口 = App 退出，AI 下一次调用拉起来的是空的 Untitled，
+/// 它只看到「文件不存在」）。别的内容原样留着、出错的照样是出错。
+private func runRelaunchNoteChecks() {
+    let plain = MCPBridge.addingNote("note", to: MCPBridge.textResult("result"))
+    guard case .object(let object) = plain, case .array(let content)? = object["content"] else {
+        check(false, "addingNote 弄坏了结果的结构")
+        return
+    }
+    checkEqual(content.count, 2, "加了一句：两段文字")
+    checkEqual(content.first, ["type": "text", "text": "note"], "那一句在最前面")
+    checkEqual(content.last, ["type": "text", "text": "result"], "原来的结果原样跟在后面")
+    checkEqual(object["isError"], .bool(false), "不是出错的照样不是")
+    let failed = MCPBridge.addingNote("note", to: MCPBridge.textResult("boom", isError: true))
+    if case .object(let failedObject) = failed { checkEqual(failedObject["isError"], .bool(true), "出错的照样是出错") }
+    let image: JSONValue = ["content": [["type": "image", "data": "abc", "mimeType": "image/jpeg"]], "isError": false]
+    if case .object(let withImage) = MCPBridge.addingNote("note", to: image), case .array(let items)? = withImage["content"] {
+        checkEqual(items.count, 2, "带图的结果：文字一句 + 原来的图")
+        checkEqual(items.last, ["type": "image", "data": "abc", "mimeType": "image/jpeg"], "图原样留着")
+    } else {
+        check(false, "带图的结果加不上那一句")
+    }
+    check(MCPBridge.relaunchNote.contains("open_folder") && MCPBridge.relaunchNote.contains("open_project"),
+          "那一句告诉 AI 要重新 open_folder / open_project")
+}
+

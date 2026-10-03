@@ -10,6 +10,11 @@ enum WindowID {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
+    /// 关掉主窗口**不退出**（2026-10-03 用户定）：SwiftUI 只有一个 `Window` 场景时默认关窗就退出 —— 工程、AI 打开的文件夹
+    /// 全没了，AI 下一次调用又把 App 拉起来，变成空的 Untitled（docs/bugfixes/2026-10-03-closing-window-quits-app.md）。
+    /// 关了窗口 App 留在 Dock 里、工程还开着；点 Dock 图标 SwiftUI 把窗口开回来，AI 的一轮开始时也会开回来（`AIEditorPresenter`）。
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
     /// 开始听 AI 小程序的调用（docs/architecture/ai-control-mcp.md）。一启动就听：
     /// 小程序可能正是为了一次调用才把 App 拉起来的，它在等着连。
     func applicationDidFinishLaunching(_ notification: Notification) {

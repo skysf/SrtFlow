@@ -126,7 +126,8 @@ struct TextStyle: Hashable, Sendable {
     /// 渲染时的换算基准：所有像素量都按这个高度定义。与 `BurnInStyle` 同一个数。
     static let referenceHeight = 1080.0
 
-    static let fontSizeRange = 12.0...400.0
+    /// 上限 1000（2026-10-03 从 400 抬上来：拿字符拼大图形 —— 一个「○」当圆环 —— 400 不够大；1000 差不多是 1080 高的一整屏）。
+    static let fontSizeRange = 12.0...1000.0
     static let lineSpacingRange = 0.6...3.0
     static let letterSpacingRange = -20.0...80.0
 

@@ -56,4 +56,15 @@ func runTextPartChecks() {
     checkEqual(current().text, "一桌好酒席\n见证好姻缘", "a literal backslash-n becomes a line break")
     apply(["text": "line one\nline two"])
     checkEqual(current().text, "line one\nline two", "a real newline is kept as it is")
+
+    // 旋转（界面上的旋转把手转的那个）和更大的字号（拿字符拼大图形，2026-10-03 南极工程：AI 想让「○」当圆环转起来、要比 400 大）。
+    apply(["rotation": 30, "font_size": 900])
+    checkEqual(current().rotationDegrees, 30, "rotation lands")
+    checkEqual(current().style.fontSize, 900, "font_size above the old 400 cap lands")
+    apply(["rotation": -450, "font_size": 5000])
+    checkEqual(current().rotationDegrees, -90, "rotation is normalised the way the rotate handle normalises it")
+    checkEqual(current().style.fontSize, TextStyle.fontSizeRange.upperBound, "font_size is clamped where the inspector clamps it")
+    checkEqual(TextStyle.fontSizeRange.upperBound, 1000, "the font size cap is 1000")
+    let rotated = AITimelineSummary.make(state, context)["texts"]?.arrayValue?.first ?? .null
+    checkEqual(rotated["rotation"]?.doubleValue, -90, "get_timeline shows the rotation")
 }
