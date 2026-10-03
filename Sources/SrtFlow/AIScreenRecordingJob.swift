@@ -89,11 +89,13 @@ final class AIScreenRecordingJob: ScreenRecordingObserver {
 
     // MARK: ScreenRecordingObserver
 
-    func recordingStarted(session: UUID) {
+    func recordingStarted(session: UUID, alreadyRecorded: TimeInterval) {
         startedAt = Date()
         guard let duration else { return }
+        // 文件在这一刻之前就开始写了：只等剩下的那一截（见协议的说明）。
+        let remaining = max(0, duration - alreadyRecorded)
         Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
             let coordinator = ScreenRecordingCoordinator.shared
             guard let self, self.job.status == .running, self.isCurrentSession, case .recording = coordinator.state else { return }
             await coordinator.stop()
@@ -109,8 +111,10 @@ final class AIScreenRecordingJob: ScreenRecordingObserver {
             var detail = describe(result)
             detail["added_to_timeline"] = true
             detail["clip_ids"] = .array(clipIDs.map { .string(ids.short($0)) })
+            let where_ = clipIDs.count > 1
+                ? "the video at the end of V1, then the microphone on its own track" : "the video at the end of V1"
             detail["next_step"] = .string(
-                "It is on the timeline (clip_ids: the video at the end of V1, then the microphone on its own track; one undo step). "
+                "It is on the timeline (clip_ids: \(where_); one undo step). "
                     + "Check it with look; tidy it with transcribe + cut_speech, or edit_clip to trim where you switched windows."
             )
             // 没存过的工程：AI 的改动之后马上存（同路由那一处，这一下不在 AI 的调用里）。
@@ -145,7 +149,8 @@ final class AIScreenRecordingJob: ScreenRecordingObserver {
             detail["height"] = .number(Double(Int(result.pixelSize.height)))
         }
         if let microphone = result.microphoneURL { detail["microphone_file"] = .string(AIWorkspace.shared.display(microphone)) }
-        if result.isPartial { detail["cut_short"] = .string(result.partialReason ?? "The recording is incomplete.") }
+        // 「不完整」不一定是被截短：声音晚到一秒、麦克风中途断了都算（和手动的「Recording is incomplete」同一个口径）。
+        if result.isPartial { detail["incomplete"] = .string(result.partialReason ?? "The recording is incomplete.") }
         if !notes.isEmpty { detail["note"] = .string(notes.joined(separator: " ")) }
         return detail
     }

@@ -169,7 +169,7 @@ enum AIOverlayTools {
         }
         // 录屏中帧率冻结（setFrameRate 那一道闸只亮一句提示、不改）：以前这里照样回成功，AI 以为改了。先挡、一样都不改。
         if let fps, fps != project.state.frameRate.fps, ScreenRecordingCoordinator.shared.isBusy {
-            throw AIToolError("The frame rate is locked while the screen is being recorded. \(AIScreenRecordingTool.lockAdvice)")
+            throw AIToolError(AIScreenRecordingTool.lockMessage("the frame rate cannot be changed now"))
         }
         if let ratioText {
             let ratio = CanvasRatio.allCases.first { ($0 == .auto ? "auto" : $0.title) == ratioText } ?? .auto

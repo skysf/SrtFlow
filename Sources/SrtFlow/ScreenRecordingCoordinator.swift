@@ -326,7 +326,7 @@ final class ScreenRecordingCoordinator: ObservableObject {
         // 否则会被录进成片。
         showRegionIndicator(for: request)
         startTicking()
-        session.observer?.recordingStarted(session: request.sessionID)
+        session.observer?.recordingStarted(session: request.sessionID, alreadyRecorded: writer?.elapsed ?? 0)
     }
 
     /// 只有区域来源需要遮罩：整屏全都进画面，窗口会移动（这一版不跟踪）。

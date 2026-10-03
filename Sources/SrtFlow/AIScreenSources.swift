@@ -79,14 +79,19 @@ enum AIScreenSources {
                 "pixels": .string("\(Int(display.pixelSize.width))×\(Int(display.pixelSize.height))")
             ]
         })
-        object["windows"] = .array(AIScreenSourceMatch.recordable(windows()).prefix(40).map { window in
-            var entry: [String: JSONValue] = [
-                "window": .string(String(window.id)), "app": .string(window.app),
-                "size": .string("\(Int(window.frame.width))×\(Int(window.frame.height))")
-            ]
-            if !window.title.isEmpty { entry["title"] = .string(window.title) }
-            return .object(entry)
-        })
+        // 没授权时系统只把 SrtFlow 自己的窗口算作「能录」（2026-10-03 真机：授权前列出 1 个，授权后 8 个），列出来会让 AI 以为只有它。
+        if ScreenRecordingPermissions.screen == .authorized {
+            object["windows"] = .array(AIScreenSourceMatch.recordable(windows()).prefix(40).map { window in
+                var entry: [String: JSONValue] = [
+                    "window": .string(String(window.id)), "app": .string(window.app),
+                    "size": .string("\(Int(window.frame.width))×\(Int(window.frame.height))")
+                ]
+                if !window.title.isEmpty { entry["title"] = .string(window.title) }
+                return .object(entry)
+            })
+        } else {
+            object["windows"] = "Listed once SrtFlow has the Screen & System Audio Recording permission (record_screen asks for it)."
+        }
         let defaultID = ScreenRecordingPermissions.defaultMicrophoneID
         object["microphones"] = .array(microphones().map { ["name": .string($0.name), "default": .bool($0.id == defaultID)] })
         object["microphone_permission"] = .string(microphonePermissionWord())

@@ -46,33 +46,56 @@ enum AIScreenRecordingLeftovers {
         }
     }
 
-    /// 「有一段在等决定」：AI 要先问用户、再 resolve。
+    /// 「有一段在等决定」：AI 要先问用户、再 resolve。开录 / 停止被挡时说整句。
     static func waitingMessage(_ coordinator: ScreenRecordingCoordinator) -> String {
-        let file = (coordinator.pendingRecovery?.result.mainURL ?? coordinator.pendingPartial?.mainURL)
+        let waiting = waiting(coordinator)
+        return "\(waiting.subject). \(waiting.advice) A new recording can start after that."
+    }
+
+    /// 那句话的两半：是什么（主语）、AI 该怎么做。换工程 / 改帧率被挡时拼成「…, so the project cannot be switched now. …」
+    /// （AIScreenRecordingTool.lockMessage）。
+    static func waiting(_ coordinator: ScreenRecordingCoordinator) -> (subject: String, advice: String) {
+        let file = (coordinator.pendingRecovery.map(plannedFile) ?? coordinator.pendingPartial?.mainURL)
             .map { AIWorkspace.shared.display($0) } ?? "a recording"
         let discard = coordinator.pendingRecovery?.allowsDiscard == true ? ", or discard it" : ""
-        return "A screen recording is waiting for a decision (\(file)). Ask the user whether to add it to the timeline or keep only "
-            + "the file\(discard); then call record_screen action=resolve with that decision. A new recording can start after that."
+        return (
+            "A screen recording is waiting for a decision (\(file))",
+            "Ask the user whether to add it to the timeline or keep only the file\(discard); then call record_screen action=resolve "
+                + "with that decision."
+        )
+    }
+
+    /// 给 AI / 用户看的那个文件：还在隐藏的 `.partial` 临时文件里的，说保存之后叫什么（临时文件名对人没意义，真机实测时 AI 原样念给了用户）；
+    /// 已经提交了的就是它自己。
+    private static func plannedFile(_ pending: PendingRecovery) -> URL {
+        guard pending.needsCommit else { return pending.result.mainURL }
+        let path = pending.kind == .recording
+            ? pending.manifest.mainFinalPath : (pending.manifest.micFinalPath ?? pending.manifest.mainFinalPath)
+        return URL(fileURLWithPath: path)
     }
 
     /// get_status 里的 leftover：是什么、文件、多长、为什么、能怎么处置。
     static func json(_ coordinator: ScreenRecordingCoordinator) -> JSONValue? {
         let result: ScreenRecordingResult
         var object: [String: JSONValue] = [:]
+        let file: URL
         if let pending = coordinator.pendingRecovery {
             result = pending.result
+            file = plannedFile(pending)
             var decisions: [JSONValue] = pending.kind == .recording ? ["add", "keep"] : ["keep"]
             if pending.allowsDiscard { decisions.append("discard") }
             object["kind"] = .string(pending.kind == .recording ? "unfinished_recording" : "microphone_only")
             object["decisions"] = .array(decisions)
+            if pending.needsCommit { object["saved"] = false }
         } else if let partial = coordinator.pendingPartial {
             result = partial
-            object["kind"] = "cut_short"
+            file = partial.mainURL
+            object["kind"] = "incomplete"
             object["decisions"] = ["add", "keep"]
         } else {
             return nil
         }
-        object["file"] = .string(AIWorkspace.shared.display(result.mainURL))
+        object["file"] = .string(AIWorkspace.shared.display(file))
         if result.duration > 0 { object["duration"] = AIFormat.seconds(result.duration) }
         if let reason = result.partialReason { object["reason"] = .string(reason) }
         object["next_step"] = "Ask the user, then record_screen action=resolve decision=one of decisions."
@@ -132,7 +155,8 @@ enum AIScreenRecordingLeftovers {
             )
         }
         let files = pending.discardablePaths.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
-        if let ask = try AIFileTools.confirmTrash(files, args: args, describing: "the unfinished screen recording") { return ask }
+        let name = plannedFile(pending).lastPathComponent
+        if let ask = try AIFileTools.confirmTrash(files, args: args, describing: "the unfinished screen recording \(name)") { return ask }
         var trashed: [JSONValue] = []
         for file in files {
             var resulting: NSURL?

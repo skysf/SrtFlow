@@ -71,7 +71,8 @@ enum ScreenRecordingOutcome {
 @available(macOS 15.0, *)
 @MainActor
 protocol ScreenRecordingObserver: AnyObject {
-    /// 倒数完、capture 起来之后。
-    func recordingStarted(session: UUID)
+    /// 倒数完、capture 起来之后。`alreadyRecorded`：这时文件里已经有多少秒了 —— 画面在 `startCapture()` 返回之前就开始流进写入器，
+    /// 按「录多少秒」停的要扣掉它，不然成片长出半秒到一秒多（2026-10-03 真机：要 3 秒录成 3.4–3.7 秒，第一次要 4 秒录成 5.25 秒）。
+    func recordingStarted(session: UUID, alreadyRecorded: TimeInterval)
     func recordingEnded(_ outcome: ScreenRecordingOutcome)
 }

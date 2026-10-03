@@ -41,9 +41,18 @@ enum AIScreenRecordingTool {
     /// 挂一个新任务当「最近的那个」（AI 去停 / 处置手动的录制时也用）。
     static func adopt(_ job: AIScreenRecordingJob) { current = job }
 
-    /// 录屏进行中别的工具做不了的事（换工程、改帧率）回这句：界面上那句「先停止录屏」AI 照做不了（MCP 第四节第 25 条的口径）。
-    static let lockAdvice = "Stop it first with record_screen action=stop, or wait until it finishes (get_status shows it)."
-    static var lockMessage: String { "A screen recording is running in SrtFlow, so the project cannot be switched now. \(lockAdvice)" }
+    /// 录屏的流程没走完时别的工具做不了的事（换工程、改帧率）回这句：界面上那句「先停止录屏」AI 照做不了（MCP 第四节第 25 条的口径）。
+    /// **按状态说**：在录 / 在收尾 → stop 或等它完；在等决定（上次没收完的、残缺的结果）→ 先问用户、resolve —— 那时根本没在录，
+    /// 叫它 stop 只会再碰一次壁（2026-10-03 真机实测撞上的）。`what`：做不了的那件事（「the project cannot be switched now」）。
+    static func lockMessage(_ what: String) -> String {
+        let coordinator = ScreenRecordingCoordinator.shared
+        if case .partialRecovery = coordinator.state {
+            let waiting = AIScreenRecordingLeftovers.waiting(coordinator)
+            return "\(waiting.subject), so \(what). \(waiting.advice)"
+        }
+        return "A screen recording is running in SrtFlow, so \(what). Stop it first with record_screen action=stop, or wait until it "
+            + "finishes (get_status shows it)."
+    }
 
     // MARK: 开始
 
