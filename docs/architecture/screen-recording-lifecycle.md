@@ -129,6 +129,29 @@ reportMissing / discardTemporaries`。只按主文件裁决分支会把「主文
    并且**让第二条轨（电脑声音）持续在写** —— fragment 没被冲出去时，收尾还能
    把最后一帧延长，问题不出现。
 
+## AI 起的会话（2026-10-03，record_screen）
+
+AI 用 `record_screen` 起的录制和手动录的**是同一条流程**，差别只在 `ScreenRecordingSession`（`ScreenRecordingSession.swift`）：
+谁起的（driver）、倒数几秒、录完入不入轨、撞上已有文件能不能替换、浮窗放哪、入轨那一下怎么提交（landing）、结局告诉谁（observer）。
+产品口径见 [录屏进 MCP](../plans/2026-10-03-screen-recording-mcp.md)，AI 那一侧的规矩见 [AI 接口（MCP）](ai-control-mcp.md) 第四节第 45 条。
+
+1. **协调者不按「是不是 AI」写第二套流程**，只问会话：设置页、残缺结果的处置框、系统的选择窗口、为拖区域激活 App —— 只给手动的会话
+   （`asksTheUser`）。设置页是 `showsSetupSheet`（`.configuring` **且**手动）的投影：AI 的会话也路过 `.configuring`。
+2. **AI 的会话带着挑好的来源**（`ScreenRecordingOptions.preset`：整屏 / 窗口是现取的 `SCShareableContent` filter，区域只有显示器几何）；
+   `chooseSource` 头一行就认它，建系统选择窗口之前先挡住 AI 的会话（用户：「授权了以后，日后就不要再自己弹了」）。
+3. **状态机一条边都没加**：AI 的会话照样 idle → configuring → choosingSource → … → finishing → importing → finished → idle；「只留文件」也经
+   `.importing` 收尾（那时文件早已提交，处置算了结）。工程锁、journal、清账合同、退出协调全都照旧。
+4. **AI 起的从不覆盖**：手动的那次「替换」是用户在保存面板里点过的，AI 没有这一步。`ScreenRecordingFileCommit` 在不许替换时先避让到「名字 2」、
+   **先把新目标写进 manifest、持久化，再挪文件**（同麦克风 sidecar 那一路的 journal 身份，复审二 P1-3）。
+5. **残缺的结果 AI 起的不弹框**：照样入轨（或只留文件），原因写进结局 —— 弹框 AI 点不着，`.partialRecovery` 会一直锁着工程。
+6. **入轨的提交跟着会话走**：`importScreenRecording` / `importRecoveredRecording` 的那一次 perform 都经 `landing.commit`
+   （AI 的包 `AIUndoGrouping.step` —— 落地时不在用户事件里，不包就撤一步全退），返回入轨的片段 id；后台模式不选中、不挪播放头。
+7. **结局交给观察者**：每条收尾路径（入轨、只留文件、残缺待决、没录成、失败）各告诉一次，**在状态回到空闲之后**（它可能马上开下一段）。
+   AI 去停一段手动起的录制、去处置手动的残缺结果时用 `handOver` 接过来（结局 + 它的 landing）。
+8. AI 的会话不写回手动记住的偏好（目录、麦克风），浮窗放主屏左下角（AI 截屏看不见浮窗，顶部正中压着浏览器的地址栏）。
+
+守卫：`checks/screen-recording-ai-wiring.sh`（扫描）+ `scripts/check-mcp.sh` 的 `ScreenRecordingToolChecks`（纯值）。
+
 ## 自检纪律
 
 - 每个守卫/断言组都要**反向验证**（注入该抓的错误，确认变红）。

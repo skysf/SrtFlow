@@ -591,6 +591,35 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
      结局带 `replaced_ids` / `file` / 宽高 / `cost_usd`（查到实收前是估价，`cost_is_estimate`）。原片留在旁边：用户随时右键
      「Compare with Original…」/「Revert to Original Clip」，⌘Z 一步撤回。工程中途换了（`documentGeneration` 变了）就不换、结果里说明。
    - 失败 / 取消 / 用户没点头各自一句话（`settle`），都不扣钱（fal 只对做出来的收）；用户在状态行上按 Stop 也算取消。
+45. **录屏（`record_screen`，2026-10-03，[方案](../plans/2026-10-03-screen-recording-mcp.md)）**：手动录屏那一整套（`ScreenRecordingCoordinator`、journal 提交、
+    崩溃恢复、入轨）不另写一份，AI 起的录制只是一个 driver 为 AI 的 `ScreenRecordingSession`（[录屏生命周期](screen-recording-lifecycle.md)「AI 起的会话」）：
+   - **AI 自己挑来源、从不开系统的选择窗口**（用户：「授权了以后，日后就不要再自己弹了」）：整屏按编号（`get_status screen=true` 列出来，主屏 1、其余从左到右）、
+     窗口按编号 / App 名 / 标题里的字（编号 > App 名一样 > App 名里有 > 标题里有，同一档挑最前面的）、区域按显示器的比例（取整、夹进屏内、太小报错），规则在
+     `AIScreenSourceMatch`（纯值）；整屏 / 窗口的 filter 现取 `SCShareableContent`、当 preset 交给协调者，`chooseSource` 头一行就认它；只有 `source=drag` 才弹区域框
+     让用户拖（不激活 App：激活会把 SrtFlow 的窗口拎到最前面、盖住要录的地方）。列窗口用 `CGWindowListCopyWindowInfo`（只读一张表、不碰捕获）。
+   - **授权**：要广域的「屏幕与系统音频录制」。没有时**一次运行只请求一次**（`requestScreenAccess`：先删一次钉着旧签名的记录、再让系统弹），之后只在结果里说
+     去哪开、退出重开 SrtFlow（授权下次启动才生效）。授权之后 SrtFlow 自己不再弹任何窗口；**macOS 自己约 30 天提醒一次**（`ScreenCaptureApprovals.plist` 的
+     `kScreenCapturePrivacyHintPolicy` = 2592000，2026-10-03 本机实测），只有 MDM 关得掉，工具说明里照实写着。
+   - **开录不问**（同第 6 条）；start **等到真开录才回来**（倒数 `countdown` 默认 3、AI 自己操作电脑时给 0），AI 好接着操作；`duration` 到点自己停，
+     不给就录到 `action=stop` 或用户按浮窗的停止。**AI 起的浮窗在主屏左下角**：浮窗 `sharingType = .none`，AI 的截屏里看不见它，顶部正中又正好压着浏览器的
+     地址栏；工具说明叫 AI 录的时候别点那儿。
+   - **录制中不摆窗口**：路由在 `ScreenRecordingCoordinator.shared.isBusy` 时不把 SrtFlow 摆到前面（第 4 条的「一轮开始时摆一次」暂停：摆了就盖住正在录的画面、
+     被录进去）；record_screen 自己不摆剪辑页。
+   - **落地**：默认和手动一样入轨（V1 末尾、麦克风新开一条轨、同一链接组、一步撤销），`add_to_timeline=false` 只留文件。入轨那一下是**异步落账**（用户按停止、
+     duration 到点都不在 AI 的调用里）：会话的 `landing` 把那一次 perform 包进 `AIUndoGrouping.step`、后台模式不选中不挪播放头；AI 去停一段手动的录制、处置残留时
+     也换上它（`handOver`）。结局记在 `AIJobs`（种类 `screen_recording`）：文件、时长、尺寸、片段 id、残缺的原因（`cut_short`）；落地时算这一轮的一处改动、
+     没存过的工程存一下（`AIScreenRecordingJob`）。
+   - **残缺的不弹框**：AI 起的照样落地、原因写进结果（弹框 AI 点不着，工程会一直锁着）；手动的照旧弹框问。
+   - **文件**：`<起点>/SrtFlow/录屏/`（第 10 条），默认名同手动「Screen Recording <日期 时间>」，`title` 能改，撞名加编号；**从不覆盖**：录完提交时又撞上了，
+     `ScreenRecordingFileCommit` 也先避让、写进 manifest 再挪；不写回手动记住的目录和麦克风选择（AI 给的设置只用于这一次）。
+   - **停止 = 留着**：`action=stop` 等收尾和入轨做完直接回结局；`cancel_job`、用户在横幅上按停止也是停下来留着（录下来的东西从不扔）；倒数、拖区域、
+     等麦克风授权时停是干净取消。
+   - **上次没收完的**（崩溃恢复的 `pendingRecovery`、手动录制的残缺结果）：`get_status` 的 `screen_recording.leftover` 报出来、挡住新开录（manifest 只有一份）；
+     `action=resolve decision=add|keep|discard` 走恢复框 / 残缺框那同一份处置（`resolveRecovery` / `resolvePartial`）；discard 是删文件：**先问**
+     （`AIFileTools.confirmTrash`，和 manage_files 同一处 —— 会问的地方照旧只有第 6 条那两处）、**进废纸篓**，已经提交成用户文件的不给丢（同恢复框）。
+   - **录制中的锁换成 AI 能照做的话**：换工程（`open_project` / `new_project`）、`set_canvas` 改帧率先挡、说用 `record_screen action=stop`
+     （以前 `set_canvas` 静默不改还回成功，[案例](../bugfixes/2026-10-03-set-canvas-fps-ignored-while-recording.md)）。
+   - 预算：加它之后全清单 79,483 / 80,000；总说明配了 fal 2,044 / 2,048（目录里加了 Record 一行，别的几行收了措辞）。往后再加东西先腾地方。
 
 ## 五、这一轮、停止、撤销这一轮
 
@@ -685,6 +714,11 @@ edit_clip 2,074 字超长、清单里有汉字）。
 `FalVoiceChecks`（清单按 Key 列不列、老一代收 list_changed 新一代不收、小文件读写、挑音色、词时间、WAV）、`checks/fal-wiring.sh`（先问后花、不弹模态框、
 Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`（本机手动）、`scripts/fal-models/refresh.sh`（联网手动）。细节见
 [fal.ai 生成](fal-generation.md) 第十一节。
+
+**录屏（第 45 条）**：`scripts/check-mcp.sh` 的 `ScreenRecordingToolChecks`（参数怎么读、只属于某种来源的参数给错地方报错、窗口 / 屏幕 / 麦克风怎么挑、
+区域比例换成点、词表和 `RegionAspectRatio` 对账、状态的说法、工具定义）；`checks/screen-recording-ai-wiring.sh`（扫描，第 1 组：不开系统选择窗口、设置页 / 残缺框只给手动的会话、
+不覆盖、不写手动偏好、入轨包 step、录制中不摆窗口、丢弃先问进废纸篓、授权一次运行只请求一次、浮窗左下角、录制中的锁）。2026-10-03 反向验证：参数 / 挑法改坏四处、
+接线改坏九处，各自当场红。真录要真屏幕和授权，靠第八节。
 
 合成音效（第 43 条，`SoundEffectChecks`）：16 个预设渲得出、峰值 −1 dBFS / 响度 −9 LUFS 封顶、落点在声音里且实测峰值离它不远、末尾淡完、同参数逐采样一致、换 variation 就不同、同参数同文件名、频谱走向（whoosh 先升后降、riser / suction 升、downlifter 降）、参数范围、`sound_effect` 条目怎么读、落点怎么算开头、词表对账、总说明提到它；扫描：合成器和工具不碰 `AVAudioFile`、渲染在 `MediaReadQueue.analysis` 上。
 ## 八、人工回归清单（发版前在真机上走一遍）
@@ -786,6 +820,20 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
       再配几句只有一两个字的（「Go!」「好。」「我们开始吧。」），听着是正常的字、没有杂音。
 
 - [ ] fal.ai 生成、fal 的声音、克隆：整套人工回归清单在 [fal.ai 生成](fal-generation.md) 第十一节（要真 Key）。
+- [ ] 录屏（第 45 条）在一台没给过 SrtFlow「屏幕与系统音频录制」的机器上让 AI「录 10 秒屏幕」：macOS 弹一次授权框，AI 说去系统设置哪儿开、退出重开；
+      再让它录一次不再弹授权框。照做之后让 AI 录：**不弹任何窗口**，主屏左下角的浮窗倒数 3、2、1 后红点计时，10 秒后自己停；V1 末尾多一段，⌘Z 一步退掉；
+      AI 报出文件在 `<点名文件夹>/SrtFlow/录屏/`（中文界面）。
+- [ ] 让 AI 录 Safari 的窗口、开麦克风（这台 Mac 第一次让 SrtFlow 用麦克风）：macOS 问麦克风，AI 转告；点允许后开录；成片里只有那个窗口，
+      麦克风在自己的一条音频轨上、和视频对齐。让它录屏幕左上四分之一（rect）：录到的正是那一块；让它叫你拖一块（source=drag）：区域框出来、
+      SrtFlow 的窗口**没有**跳到前面，拖好按 Record 才倒数。
+- [ ] AI 录屏期间让它顺手改时间线（加一句字幕）：SrtFlow 不跳到前面，录出来的画面里没有 SrtFlow 的窗口闪出来。录屏期间让它 open_project：它说先停录屏；
+      让它 set_canvas fps=60：报错，帧率没变。
+- [ ] countdown=0、让 Claude 一边操作电脑一边录：浮窗只写「Starting…」、不画 0；Claude 的截屏里看不到浮窗，它也没去点左下角。
+- [ ] 录屏期间按浮窗的停止：AI 用 get_job 拿到结局（文件、片段 id）。录到一半关掉被录的窗口：结局里有 `cut_short` 和原因，片段照样在时间线上，SrtFlow 没弹框。
+- [ ] 录屏中强退 SrtFlow（kill -9）再让 AI 开录：AI 说有上次没收完的录制、问你怎么处置；说「丢掉」时它先在对话里问，同意后那两个隐藏的 .partial 文件在废纸篓里，
+      之后能正常开录。
+- [ ] 一个多月没让 SrtFlow 直接录过屏：macOS 弹它自己的录屏提醒，AI 说请你点允许（结果里带着 macOS 的错误）。
+- [ ] 手动开录（Record Screen 按钮）：设置页照旧、浮窗在顶部正中、残缺照旧弹框、记住的目录照旧更新 —— AI 的改动没影响手动录屏。
 - [ ] 让 AI 「在 12.0 秒的切点上放一个 whoosh」：时间线上块的最响处压在 12.0 秒、块开头在它前面约 0.55 秒，结果里 `hit_at` = 12.0；同参数再放一次，`SrtFlow/音效` 里不多出文件（第 43 条）。
 
 ## 九、已知不足（第一期）
@@ -801,6 +849,8 @@ Key 只经一处读、清单跟着 Key 走）、`scripts/check-fal-keychain.sh`�
   从关键帧解起。扫描本身 M1 上 1440p 约 17 倍速。
 - 跟拍只跟人（动物、车走动时是固定的窗）、只平移不缩放。
 - ChatGPT 聊天框连不上（只认网上的地址），用 Codex 代替；DeepSeek / Qwen 放第二期。
+- 录屏（第 45 条）：macOS 约 30 天一次的录屏提醒关不掉（只有 MDM 能关）；AI 的截屏看不见控制浮窗（放在左下角、说明里提醒，还是有被点到的可能）；
+  按比例给区域时 AI 没看见屏幕（要框住某个界面就录那个窗口，或者叫用户拖）；整屏录到的就是屏幕上的样子（SrtFlow 的窗口在前面就会录进去，和手动一样）。
 - 配方卡进 App 的只有英文；中文稿在 docs 里，两份要手动保持一致（改剪辑风格先改中文稿）。
 - 音乐库 79 首几乎都是氛围、古典、钢琴，带货和 vlog 要的轻快配乐很少；卡里写了找不到就不放、请用户给一首自己的。
 - macOS 自带的默认质量声音比较机械（2026-09-28 本机中文只有默认的婷婷）；好的声音要用户自己在系统设置里下载。语速表是在 macOS 26 上量的，
