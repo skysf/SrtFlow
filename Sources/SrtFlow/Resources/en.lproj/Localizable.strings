@@ -1061,6 +1061,9 @@
 "Ease in" = "Ease in";
 "Ease out" = "Ease out";
 "Ease in and out" = "Ease in and out";
+"Snap" = "Snap";
+"Overshoot" = "Overshoot";
+"Spring" = "Spring";
 "How the values move from the keyframe before the playhead to the next one" = "How the values move from the keyframe before the playhead to the next one";
 
 // 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）

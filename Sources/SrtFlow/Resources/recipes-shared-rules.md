@@ -79,14 +79,16 @@ Motion
    (position x or y moving 0.02–0.04 over the shot) and the footage's own movement. Never the same move on two shots in a
    row and never a move on every shot: a still shot after moving ones is a breath.
 10. Easing carries the feeling: easeInOut for camera-like moves (a push, a drift), easeOut for things that arrive and
-    settle, easeIn for things that leave, linear only for a very slow drift through a whole shot.
+    settle, easeIn for things that leave, linear only for a very slow drift through a whole shot; snap for a fast push-in or
+    a crash zoom (0.2–0.3 s), overshoot for a picture that pops into place (a picture-in-picture arriving), spring for
+    something playful. Never overshoot or spring on a slow camera move, and at most one of them in any 10 s.
 11. Asymmetry and offsets: entrances take longer than exits (text animation_in_duration 0.5–0.8 s, animation_out_duration
     0.3–0.4 s). A text starts 0.2–0.3 s after the cut under it, not on the cut. Texts of one group arrive one after another,
     0.1–0.2 s apart and the whole group within 0.5 s, the most important one first.
 12. Punch in on emphasis in talking-head footage: split_clip where the key line starts and make the second piece 1.12–1.2×
     bigger, framing the face (edit_clip scale; or set_keyframes scale with the same value at the start and the end when the
     clip has keyframes); go back to the wider framing at the next idea. One camera then feels like two. At most one punch-in
-    every 8–10 s.
+    every 8–10 s. A move instead of a cut: set_keyframes scale 1 → 1.15 over 0.2–0.3 s with easing snap.
 
 Text
 13. One accent colour for the whole video, taken from the footage or the brand; all other text white or near-black.

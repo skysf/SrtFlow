@@ -71,6 +71,13 @@ private func checkKeyframes() {
     checkEqual(AIKeyframes.summary(linear, canvas: canvas, frameRate: .fps30)?["scale"]?.arrayValue?.first?.arrayValue?.last?.stringValue, "linear",
                "and reads back per point")
     checkThrows("an unknown easing is refused") { _ = try AIKeyframes.parse(args(["easing": "bouncy", "scale": [["time": 10, "value": 1]]])) }
+    // 2026-10-05 的三条（急停 / 回弹 / 弹簧，工程 v32）：照名字存、照名字读回。
+    var punch = clip
+    try? AIKeyframes.apply(try! AIKeyframes.parse(args(["easing": "snap", "scale": [["time": 10, "value": 1], ["time": 10.3, "value": 1.2]]])),
+                           to: &punch, canvas: canvas, frameRate: .fps30)
+    checkEqual(punch.animation?.width.keys.first?.easing, .snap, "easing=snap is stored (a punch-in)")
+    checkEqual(AIKeyframes.summary(punch, canvas: canvas, frameRate: .fps30)?["scale"]?.arrayValue?.first?.arrayValue?.last?.stringValue, "snap",
+               "and reads back as snap")
 
     var cleared = animated
     try? AIKeyframes.apply(AIKeyframes.Request(scale: [], opacity: []), to: &cleared, canvas: canvas, frameRate: .fps30)

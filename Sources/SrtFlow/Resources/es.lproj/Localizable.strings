@@ -1061,6 +1061,9 @@
 "Ease in" = "Entrada suave";
 "Ease out" = "Salida suave";
 "Ease in and out" = "Entrada y salida suaves";
+"Snap" = "Frenado";
+"Overshoot" = "Rebote";
+"Spring" = "Resorte";
 "How the values move from the keyframe before the playhead to the next one" = "Cómo pasan los valores del fotograma clave anterior al cabezal al siguiente";
 
 // 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）

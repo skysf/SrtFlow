@@ -25,7 +25,7 @@ func checkCircleArcShapes(root: URL) throws {
     let path = root.appendingPathComponent("circle-arc.srtflowproj")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 31, "带圆 / 圆弧的工程写 latest（v31）")
+    checkEqual(raw?["formatVersion"] as? Int, 32, "带圆 / 圆弧的工程写 latest（v32）")
     let rawShapes = ((raw?["timeline"] as? [String: Any])?["shapes"] as? [[String: Any]]) ?? []
     check(rawShapes.count == 3 && rawShapes[0]["arcSweep"] == nil && rawShapes[1]["arcSweep"] == nil, "只有圆弧写 arcSweep（按需）")
     checkEqual(rawShapes.count == 3 ? rawShapes[2]["arcSweep"] as? Double : nil, 120, "圆弧写了扫过的度数")

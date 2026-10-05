@@ -40,7 +40,7 @@ private func checkShapeAnimationFile(root: URL) throws {
     let path = root.appendingPathComponent("shape-animation.srtflowproj")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 31, "带形状动画的工程写 latest（v31）")
+    checkEqual(raw?["formatVersion"] as? Int, 32, "带形状动画的工程写 latest（v32）")
     let rawShapes = ((raw?["timeline"] as? [String: Any])?["shapes"] as? [[String: Any]]) ?? []
     check(rawShapes.count == 2 && rawShapes[0]["animation"] == nil, "没设动画的形状不写 animation 键（按需）")
     let rawAnimation = rawShapes.count == 2 ? rawShapes[1]["animation"] as? [String: Any] : nil

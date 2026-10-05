@@ -257,7 +257,7 @@ AI 客户端 ──(MCP：stdio，一行一条 JSON)──▶ srtflow-mcp ──
    （和检查器打关键帧同一把尺）；位置 = 画面中心（0…1），大小相对默认布局（1 = 完整放进画布，存成宽、高两行，
    和 `edit_clip` 的 scale 同一把尺）。空列表去掉那一行、**静态值原样留着**（检查器「清除」会复位静态值，AI 不替它复位）；
    一行都不剩时 `animation` 回到 nil。位置 / 大小做了关键帧的段，`edit_clip` 的画面放法照旧拒绝（第 11 条）。
-   **缓动**（2026-09-30）：`easing` 管这一次给的每一段（linear / easeIn / easeOut / easeInOut，词表和 `KeyframeEasing` 对账），
+   **缓动**（2026-09-30）：`easing` 管这一次给的每一段（linear / easeIn / easeOut / easeInOut，2026-10-05 加了 snap / overshoot / spring，词表和 `KeyframeEasing` 对账），
    没给一律 easeInOut（检查器手打的默认线性）；`get_timeline` 报的每个点末尾带那一段的曲线名。
 
 20. **形状（set_shape）**：规则在 `AIShapeChange`（纯值），加新的或改已有的（只改给了的字段），夹紧照检查器 / 预览里拖

@@ -50,7 +50,10 @@ SrtFlow 自己的路子补（方案第 37 条「不装，学它的长处」不�
   （[配方卡](2026-09-28-mcp-recipes.md) 二之一到二之五、每张卡的标杆 / 品味 / 别这样）、`checks/MCP/RecipeChecks.swift`
   钉几节都在（另把 track 的 `new_video` / `new_audio` 算作认得的名字）。不改工具、不改 App 代码。
 - **第二刀起（零件，一个 PR 一件事，顺序按收益）**：
-  1. 缓动加回弹（overshoot）、急停（expo）、弹簧：关键帧和文字 / 形状的动画都能选。
+  1. 缓动加回弹（overshoot）、急停（expo）、弹簧：关键帧和文字 / 形状的动画都能选。**关键帧的三条 2026-10-05 做了**
+     （`snap` / `overshoot` / `spring`，工程 v32，检查器的曲线菜单、AI 的 `set_keyframes easing`，共用规矩第 10、12 条教 AI 什么时候用）；
+     文字 / 形状的动画曲线另做一刀。做这一刀时读代码撞见上层轨导出的 matte 丢了曲线，先单独修了
+     （[案例](../bugfixes/2026-10-05-overlay-matte-drops-keyframe-easing.md)）。
   2. 文字动画：逐字 / 逐词错峰（间隔可调）、字距收拢、从遮罩后升起、发光 —— 都在 SrtFlow 自己画的那一层。
   3. 设计好的图形模板：片名卡、姓名条、章节卡、数字强调、金句卡、片尾卡，每种几套外观，AI 只填内容、按节拍编排
      （HyperFrames registry 的思路，用文字 + 形状 + 动画拼）。

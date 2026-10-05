@@ -4,7 +4,8 @@ import Foundation
 //
 // 插值：每种曲线在 t = 0 / 0.25 / 0.5 / 0.75 / 1 的值、两端夹紧、linear 和以前那条式子逐位一致；
 // set 的规矩（已有的帧只改值曲线留着、给了才换；新帧默认线性）；clipped / stretched 带着曲线走；
-// 存盘：linear 不落键、往返不变、老文件读出来是 linear、不认识的值回落 linear、只有真有曲线才抬 v27；
+// 存盘：linear 不落键、往返不变、老文件读出来是 linear、不认识的值回落 linear、只有真有曲线才抬 v27、用了急停 / 回弹 / 弹簧才是 v32；
+// 冲过头（回弹、弹簧）：摆放的宽高留下限、最低不透明度算上冲过头的那一下；
 // 切片：带缓动的段按帧加密、线性段一片不多、旋转照旧 ≤ 6°/片（KeyframeSliceTimes）。
 // 方案：docs/plans/2026-09-30-export-limiter-and-easing.md；长期约束：docs/architecture/keyframe-animation.md「缓动」。
 
@@ -12,19 +13,34 @@ func checkKeyframeEasing(root: URL) throws {
     let tol = KeyframeTrack.sourceTolerance(frameRate: .fps30, speed: 1)
 
     // ---- 曲线本身 ----
-    checkEqual(KeyframeEasing.allCases.map(\.rawValue), ["linear", "easeIn", "easeOut", "easeInOut"], "四种曲线的名字（AI 词表对账用）")
+    checkEqual(KeyframeEasing.allCases.map(\.rawValue), ["linear", "easeIn", "easeOut", "easeInOut", "snap", "overshoot", "spring"],
+               "七种曲线的名字（AI 词表对账用）")
     let samples: [(KeyframeEasing, [Double])] = [
         (.linear, [0, 0.25, 0.5, 0.75, 1]),
         (.easeIn, [0, 0.015625, 0.125, 0.421875, 1]),
         (.easeOut, [0, 0.578125, 0.875, 0.984375, 1]),
         (.easeInOut, [0, 0.0625, 0.5, 0.9375, 1]),
+        (.snap, [0, 0.824028019566, 0.969696969697, 0.995447845308, 1]),
+        (.overshoot, [0, 0.8174096875, 1.0876975, 1.0641365625, 1]),
+        (.spring, [0, 1.206145388047, 0.964795226342, 1.004251228925, 1]),
     ]
     for (easing, expected) in samples {
         let got = [0, 0.25, 0.5, 0.75, 1].map { easing.apply($0) }
-        check(zip(got, expected).allSatisfy { abs($0 - $1) < 1e-12 }, "\(easing.rawValue) 在 0 / ¼ / ½ / ¾ / 1 的值：\(got)")
+        check(zip(got, expected).allSatisfy { abs($0 - $1) < 1e-9 }, "\(easing.rawValue) 在 0 / ¼ / ½ / ¾ / 1 的值：\(got)")
     }
     check(KeyframeEasing.easeInOut.apply(0.5) == 0.5 && KeyframeEasing.easeIn.apply(0.999) < 1 && KeyframeEasing.easeOut.apply(0.001) > 0,
           "缓入缓出正中间正好一半、缓入到最后才追上、缓出一起步就领先")
+    // 2026-10-05 的三条（v32）：急停一出手就过半；回弹、弹簧冲过头再回来；三条在 t = 1 都正好是 1（到下一帧不跳）。
+    let fine = (0...10_000).map { Double($0) / 10_000 }
+    check(KeyframeEasing.snap.apply(0.1) > 0.5, "急停：走了一成时间已经过半")
+    let backPeak = fine.map { KeyframeEasing.overshoot.apply($0) }.max() ?? 0
+    let springPeak = fine.map { KeyframeEasing.spring.apply($0) }.max() ?? 0
+    check(backPeak > 1.09 && backPeak <= 1 + KeyframeEasing.maximumOvershoot, "回弹冲过头约 10%（不超 maximumOvershoot）：\(backPeak)")
+    check(springPeak > 1.2 && springPeak <= 1 + KeyframeEasing.maximumOvershoot, "弹簧冲过头约 21%（不超 maximumOvershoot）：\(springPeak)")
+    check([KeyframeEasing.snap, .overshoot, .spring].allSatisfy { $0.apply(1) == 1 && abs($0.apply(0.9999) - 1) < 1e-3 },
+          "三条新曲线在终点正好是 1、贴近终点时也不跳")
+    checkEqual(KeyframeEasing.allCases.filter(\.overshoots), [.overshoot, .spring], "只有回弹、弹簧会冲过头")
+    checkEqual(KeyframeEasing.allCases.filter(\.isVersion32), [.snap, .overshoot, .spring], "v32 才认识的是新加的三条")
 
     // ---- 插值 ----
     var linear = KeyframeTrack()
@@ -123,7 +139,41 @@ func checkKeyframeEasing(root: URL) throws {
     var plain = state
     plain.mainClips[0].animation?.width = linear
     check(!plain.requiresFormatVersion27, "都是线性：不是 v27 数据（按需）")
-    checkEqual(VideoEditProjectFile.latestFormatVersion, 31, "reader 认到 v31")
+    checkEqual(VideoEditProjectFile.latestFormatVersion, 32, "reader 认到 v32")
+    check(!state.requiresFormatVersion32, "只用了缓入缓出这些（v27 的）：不是 v32 数据")
+    var bouncy = state
+    bouncy.mainClips[0].animation?.width.setEasing(.spring, atSourceTime: 4, tolerance: tol)
+    check(bouncy.requiresFormatVersion32 && bouncy.requiresFormatVersion27, "用了弹簧 → v32 判据为真（v27 的也真）")
+    let springJSON = String(decoding: try encoder.encode(Keyframe(time: 1, value: 2, easing: .spring)), as: UTF8.self)
+    check(springJSON.contains("\"easing\":\"spring\""), "新曲线照样按名字写：\(springJSON)")
+    checkEqual(try decoder.decode(Keyframe.self, from: Data(#"{"time":1,"value":2,"easing":"snap"}"#.utf8)).easing, .snap, "急停读得回来")
+
+    // ---- 冲过头：宽高留下限、最低不透明度放宽 ----
+    var shrink = KeyframeTrack()
+    shrink.set(1.0, atSourceTime: 0, tolerance: tol, easing: .spring)
+    shrink.set(0.01, atSourceTime: 1, tolerance: tol)
+    let rawLowest = fine.compactMap { shrink.value(atSourceTime: $0) }.min() ?? 1
+    check(rawLowest < 0, "弹簧从 1 缩到 0.01 不夹的话会冲成负的（这才需要下限）：\(rawLowest)")
+    var shrinking = EditClip(sourceURL: URL(fileURLWithPath: "/m/shrink.mp4"), sourceDuration: 1, timelineStart: 0)
+    var shrinkAnimation = ClipAnimation()
+    shrinkAnimation.width = shrink
+    shrinkAnimation.height = shrink
+    shrinking.animation = shrinkAnimation
+    let canvas = CGSize(width: 1920, height: 1080)
+    let placedSizes = fine.map { shrinking.animatedPlacement(atTimeline: $0, canvas: canvas) }
+    check(placedSizes.allSatisfy { $0.width >= ClipAnimation.minimumAnimatedSize && $0.height >= ClipAnimation.minimumAnimatedSize },
+          "摆放的宽高夹在下限以上（不会整个消失或翻过来）")
+    checkEqual(shrinking.animatedPlacement(atTimeline: 1, canvas: canvas).width, 0.01, "到了下一帧还是原值（下限只管冲过头的那一下）")
+    var fading = shrinking
+    var fade = ClipAnimation()
+    fade.opacity.set(1, atSourceTime: 0, tolerance: tol, easing: .spring)
+    fade.opacity.set(0.5, atSourceTime: 1, tolerance: tol)
+    fading.animation = fade
+    let realLowest = fine.compactMap { fade.opacity.value(atSourceTime: $0) }.min() ?? 1
+    check(fading.minimumOpacity <= realLowest && realLowest < 0.5, "最低不透明度算上冲过头的那一下（实际 \(realLowest)、算的 \(fading.minimumOpacity)）")
+    fade.opacity.setEasing(.easeInOut, atSourceTime: 0, tolerance: tol)
+    fading.animation = fade
+    checkEqual(fading.minimumOpacity, 0.5, "不冲过头的曲线：还是最小的那一帧，和以前一样")
 
     let file = root.appendingPathComponent("eased.srtflowproj")
     try VideoEditProjectIO.save(state, to: file)
@@ -156,6 +206,12 @@ func checkKeyframeEasing(root: URL) throws {
     checkEqual(KeyframeSliceTimes.times(animation: spin, clip: slow, frameRate: .fps30, fadeWindows: []).count, 2 + 14, "旋转 90° 照旧 ≤ 6°/片：15 片")
     spin.rotation.set(0, atSourceTime: 0, tolerance: tol, easing: .easeOut)
     checkEqual(KeyframeSliceTimes.times(animation: spin, clip: slow, frameRate: .fps30, fadeWindows: []).count, 2 + 119, "旋转带缓动：按帧（比 6°/片 更密）")
+    var springPush = push
+    springPush.width.setEasing(.spring, atSourceTime: 0, tolerance: tol)
+    slow.animation = springPush
+    checkEqual(KeyframeSliceTimes.times(animation: springPush, clip: slow, frameRate: .fps30, fadeWindows: []).count, 2 + 119,
+               "弹簧也按帧加密（每片两端落在曲线上，冲过头的那一下逐帧都在）")
+    slow.animation = linearPush
     var fast = slow
     fast.speed = 2   // 源 4 秒在时间线上只有 2 秒 → 60 帧
     checkEqual(KeyframeSliceTimes.times(animation: push, clip: fast, frameRate: .fps30, fadeWindows: []).count, 2 + 59, "变速：按时间线上的帧数加密")

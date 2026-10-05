@@ -426,6 +426,16 @@ extension TimelineState {
         shapes.contains { !$0.animation.isEmpty }
     }
 
+    /// 是否存在「旧版打开会被静默丢掉」的 v32-only 持久数据。
+    ///
+    /// **登记清单（新增 v32-only 字段必须同步补进来）：**
+    /// 1. `Keyframe.easing` 的 `snap` / `overshoot` / `spring` 三个值（2026-10-05，急停 / 回弹 / 弹簧）。
+    ///
+    /// 为什么要抬：只认 v31 的旧版按宽容解码把这三个值退成 linear，推近和弹进来变成直线；随手编辑触发自动保存即永久丢失。
+    var requiresFormatVersion32: Bool {
+        allClips.contains { $0.animation?.usesVersion32Easing ?? false }
+    }
+
     /// 读盘后的规范化。
     ///
     /// - v22 及更早（`splitsMirroredTranslation`）：译文与原文同 ID 的镜像对，先拆成两条独立轨
