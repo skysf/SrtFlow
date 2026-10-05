@@ -602,29 +602,10 @@ func main() async {
         }
     }
 
-    // MARK: 6. 预设入场动画：逐帧效果真的进了成片
-    //
-    // 擦除是几何量，成片上一量就知道对不对：2s 的窗口走到半程时，
-    // 左半边该是这一段的画面、右半边还是垫在下面的黑底。
-    do {
-        var clip = EditClip(sourceURL: white, sourceDuration: 4, timelineStart: 0, info: landscape)
-        clip.presetAnimation.entrance = .wipe
-        clip.videoFadeInDuration = 2
-        var state = TimelineState()
-        state.mainClips = [clip]
-        check(clip.needsPerFrameRender, "擦除入场必须走逐帧路径（否则 ffmpeg 的 fade 顶不了这活）")
-        if let product = await export(state, name: "preset-wipe.mp4") {
-            if let level = pixel(product, x: 8, y: 18, at: 1.0, name: "preset-wipe-left") {
-                check(level > 0.7, "擦除半程时左侧应当已经揭开（白），实测 \(level)")
-            }
-            if let level = pixel(product, x: 56, y: 18, at: 1.0, name: "preset-wipe-right") {
-                check(level < 0.3, "擦除半程时右侧还没揭开，应当是垫底的黑，实测 \(level)")
-            }
-            if let level = brightness(product, at: 3.0, name: "preset-wipe-end") {
-                check(level > 0.9, "动画结束后应当是完整画面（白），实测 \(level)")
-            }
-        }
-    }
+    // MARK: 6. 预设入场动画：逐帧效果真的进了成片（用例在 PresetWipe.swift）
+    await checkPresetWipe(white: white, info: landscape)
+    // MARK: 上层轨带缓动的关键帧：matte 和画面按同一条曲线走（2026-10-05，用例在 EasedOverlay.swift）
+    await checkEasedOverlay(white: white, black: black, info: landscape)
 
     // MARK: 藏起来的上层段不进成片（2026-09-26，用例在 HiddenClips.swift）
     await checkHiddenClips(white: white, black: black, info: landscape)

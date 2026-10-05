@@ -88,6 +88,17 @@ func checkKeyframeEasing(root: URL) throws {
     checkEqual(stretched.keys.map(\.easing), [.easeInOut, .easeIn, .linear], "stretched 保曲线")
     checkEqual(stretched.keys.map(\.time), [10, 12, 14], "stretched 等比挪时刻")
     checkEqual(shape.stretched(from: 3...3, to: 5...6).keys.map(\.easing), [.easeInOut, .easeIn, .linear], "旧范围为零那条路也保曲线")
+    // 预渲染的 matte 换到白块素材的源轴上（2026-10-05：重建时漏了曲线，matte 按直线走、画面按曲线走，成片边缘错开）。
+    var moving = ClipAnimation()
+    moving.centerX = shape
+    moving.opacity = shape
+    let remapped = moving.remapped { $0 / 8 }
+    checkEqual(remapped.centerX.keys.map(\.easing), [.easeInOut, .easeIn, .linear], "remapped 换轴保曲线（matte 和画面同一条曲线）")
+    checkEqual(remapped.opacity.keys.map(\.easing), [.easeInOut, .easeIn, .linear], "remapped 每条轨都保曲线")
+    checkEqual(remapped.centerX.keys.map(\.time), [0, 0.5, 1], "remapped 按给的换算挪时刻")
+    checkEqual(remapped.centerX.keys.map(\.value), [0, 100, 50], "remapped 值原样")
+    check(abs((remapped.centerX.value(atSourceTime: 0.25) ?? -1) - (shape.value(atSourceTime: 2) ?? -2)) < 1e-12,
+          "remapped 之后同一个时间线时刻取到同一个值（线性换轴下曲线的形状不变）")
 
     // ---- 存盘 ----
     let encoder = JSONEncoder()

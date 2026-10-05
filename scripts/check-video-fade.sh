@@ -135,6 +135,8 @@ xcrun swiftc \
   checks/VideoFade/Probes.swift \
   checks/VideoFade/HiddenClips.swift \
   checks/VideoFade/AlphaStill.swift \
+  checks/VideoFade/PresetWipe.swift \
+  checks/VideoFade/EasedOverlay.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 
 echo "==> 运行"

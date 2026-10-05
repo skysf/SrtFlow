@@ -27,28 +27,6 @@ private func drawHalfTransparentPNG(size: CGSize) -> URL {
     return url
 }
 
-/// 预览那一帧某个像素的 RGB（0…1，读 AVFoundation 的输出）。
-private func previewRGB(_ state: TimelineState, x: Int, y: Int, at seconds: Double) async -> [Double]? {
-    guard let built = await VideoEditCompositionBuilder.build(from: state) else { return nil }
-    let generator = AVAssetImageGenerator(asset: built.composition)
-    generator.videoComposition = built.videoComposition
-    generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 15)
-    generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 15)
-    guard let image = try? await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image else { return nil }
-    var pixel = [UInt8](repeating: 0, count: 4)
-    guard let context = CGContext(
-        data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return nil }
-    // 把要量的那一点挪到 (0,0)：CG 的原点在左下。
-    context.draw(image, in: CGRect(x: -x, y: y - image.height + 1, width: image.width, height: image.height))
-    return pixel.prefix(3).map { Double($0) / 255 }
-}
-
-private func previewPixel(_ state: TimelineState, x: Int, y: Int, at seconds: Double) async -> Double? {
-    await previewRGB(state, x: x, y: y, at: seconds).map { $0.reduce(0, +) / 3 }
-}
-
 func checkAlphaStill(white: URL, info: MediaInfo) async {
     let size = info.displaySize
     let png = drawHalfTransparentPNG(size: size)

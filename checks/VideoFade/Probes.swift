@@ -1,7 +1,10 @@
+import AVFoundation
+import CoreGraphics
 import Foundation
 import SrtFlowCore
 
-// 成品探针：从真导出的成片里抽一帧量亮度 / 某个像素，读成片时长，取生产滤镜图（字符串断言用）。
+// 成品探针：从真导出的成片里抽一帧量亮度 / 某个像素，读成片时长，取生产滤镜图（字符串断言用）；
+// 预览那一帧的某个像素（和预览同一个函数 `VideoEditCompositionBuilder`）。
 // 管什么：只读成品 / 计划、只回答数和字符串；不管场景怎么搭、断言怎么写（在 main.swift 和各个用例文件里）。
 // 从 main.swift 拆出来（那个文件在行数基线里只许降，见 docs/architecture/coding-standards.md）。
 
@@ -73,4 +76,26 @@ func filterGraph(_ state: TimelineState, name: String) async -> String? {
         check(false, "\(name) 的 plan() 失败：\(error)")
         return nil
     }
+}
+
+/// 预览那一帧某个像素的 RGB（0…1，读 AVFoundation 的输出）。
+func previewRGB(_ state: TimelineState, x: Int, y: Int, at seconds: Double) async -> [Double]? {
+    guard let built = await VideoEditCompositionBuilder.build(from: state) else { return nil }
+    let generator = AVAssetImageGenerator(asset: built.composition)
+    generator.videoComposition = built.videoComposition
+    generator.requestedTimeToleranceBefore = CMTime(value: 1, timescale: 15)
+    generator.requestedTimeToleranceAfter = CMTime(value: 1, timescale: 15)
+    guard let image = try? await generator.image(at: CMTime(seconds: seconds, preferredTimescale: 600)).image else { return nil }
+    var pixel = [UInt8](repeating: 0, count: 4)
+    guard let context = CGContext(
+        data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+    // 把要量的那一点挪到 (0,0)：CG 的原点在左下。
+    context.draw(image, in: CGRect(x: -x, y: y - image.height + 1, width: image.width, height: image.height))
+    return pixel.prefix(3).map { Double($0) / 255 }
+}
+
+func previewPixel(_ state: TimelineState, x: Int, y: Int, at seconds: Double) async -> Double? {
+    await previewRGB(state, x: x, y: y, at: seconds).map { $0.reduce(0, +) / 3 }
 }
