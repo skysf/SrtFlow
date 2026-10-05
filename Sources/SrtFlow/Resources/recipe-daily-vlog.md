@@ -8,6 +8,10 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and caf�
 - Shape: 9:16 (TikTok, Douyin, Xiaohongshu).
 - Length: 30–60 s, at most 90 s.
 
+## The bar
+
+A top lifestyle creator on Xiaohongshu or YouTube: personal and warm, quick where life is busy, still where it is beautiful.
+
 ## Structure
 
 1. 0–2 s, the hook: the day's best-looking or funniest moment first (a flash-forward), with one line of big text
@@ -17,10 +21,11 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and caf�
 
 ## Pace and pictures
 
-- Shots 1–2.5 s. With music that has a clear beat, cut_to_beat. Talking parts: cut_speech to remove pauses (jump cuts are fine).
+- Shots 1–2.5 s, with a held real moment of 3–5 s in each scene. With music that has a clear beat, cut_to_beat the busy
+  parts. Talking parts: cut_speech to remove pauses (jump cuts are fine).
 - Transitions: mostly hard cuts; now and then pushLeft or pushUp when the scene changes.
 - Picture animation: pop or zoom entrances as an accent, not on every shot.
-- Filter: warm warmSun, film look fadedFilm; strength 0.4–0.6.
+- Filter: warm warmSun, film look fadedFilm; strength 0.4–0.6, one for the whole video.
 
 ## Text
 
@@ -39,15 +44,33 @@ use_for: Everyday life, travel vlogs, a day in the life, visiting shops and caf�
 
 ## Sound effects
 
-- A pop when text appears and a whoosh on a push: add_clips sound_effect with hit_at on that moment, made on this Mac;
-  nothing to download or pay for.
+- A pop when the hook text appears and a whoosh on a push: add_clips sound_effect with hit_at on that moment, made on this
+  Mac; nothing to download or pay for. Not on every text.
 
 ## Generated media (only if generate_media is among your tools)
 
 - Only music when find_audio has nothing light (kind music). Never generated pictures.
+
+## Taste
+
+- Rhythm by moment: a quick montage for getting ready or travelling (shots of 0.5–1.2 s on the beat), then a real moment held
+  3–5 s with its own sound and the music dipped 6–10 dB (volume_curve). The contrast is the charm.
+- Real sound is gold: a laugh, a sizzle, a door, a "wow" — let it through.
+- Text like notes in a diary: short and personal ("finally!", "a 30-minute queue"), next to the thing it is about, tilted a
+  little (rotation −4 to 4), not centred; one accent colour.
+- Jump cuts in talking are fine; punch in (shared taste rule 12) on the funny line.
+- End calm: a quiet shot (a sunset, a coffee, walking away) under the question text, and the music ends with it.
+
+## Avoid
+
+- A pop entrance or a sound effect on every shot.
+- Text that says what we already see ("Coffee").
+- Long scenery shots without a person or a reason.
+- Music at one level all the way, covering every real sound.
 
 ## Checklist before export
 
 - The hook is in the first 2 s.
 - Text and subtitles are inside the safe area.
 - The end has a line that invites comments.
+- Then "Look again before export" in the shared rules.

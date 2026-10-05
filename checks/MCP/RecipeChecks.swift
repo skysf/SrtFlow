@@ -4,7 +4,9 @@ import SrtFlowMCPKit
 // 剪辑风格（方案第 39–41 条）：配方卡的格式（开头几行 key: value，缺了照收）、名字 → id、内置和用户的合并（同 id 盖住内置、
 // 内置在前按固定顺序）、按 id / 标题找；存一套（同名改那一套、旧的挪走；内置的名字 = 用户改过的那一版）、删一套；
 // recipes / save_recipe 的结果；以及 App 资源里的五张内置卡：id 齐全、每张都有「什么时候用」，**卡里提到的工具名、参数名、
-// 选项值都真的存在**（工具改了名、卡没跟着改，AI 照着卡调就会报错）。编法见 scripts/check-mcp.sh。
+// 选项值都真的存在**（工具改了名、卡没跟着改，AI 照着卡调就会报错），每张卡都是「导演手册」（标杆 / 品味 / 别这样三节，
+// 共用规矩里有先出分镜表、品味、AI 剪片的通病、交片前再看一遍、从参考片学风格，docs/plans/2026-10-05-editing-aesthetics.md）。
+// 编法见 scripts/check-mcp.sh。
 
 func runRecipeChecks() {
     runRecipeSizeChecks()
@@ -125,6 +127,17 @@ private func builtInChecks() {
               "\(recipe.id) mentions generate_media only under the condition that it exists")
     }
     check(builtIn.allSatisfy { $0.body.contains("generate_media") }, "every card says what generate_media may add for its style")
+    // 品味写在卡里才管用（2026-10-05）：改卡时把这几节丢了，AI 就回到默认的剪法（镜头一样长、全是叠化、每个镜头都慢推）。
+    for recipe in builtIn {
+        for section in ["## The bar", "## Taste", "## Avoid"] {
+            check(recipe.body.contains(section), "\(recipe.id) has its \(section) section")
+        }
+        check(recipe.body.contains("Look again before export"), "\(recipe.id)'s checklist ends with the shared look-again review")
+    }
+    for section in ["## Plan before you cut", "## Taste for every style", "## AI tells to avoid", "## Look again before export",
+                    "## Learning a style from a reference video"] {
+        check(shared.contains(section), "the shared rules have \(section)")
+    }
 }
 
 /// 工具名、所有参数名（整份工具清单里的 properties）、选项词表里的值，外加 AI 能在结果里读到的几个字段名。
@@ -148,6 +161,7 @@ private func knownNames() -> Set<String> {
         + MCPVocabulary.keyframeEasings + MCPVocabulary.shapeAnimations)
     names.insert("music_credits")  // get_timeline 的结果里的字段
     names.insert("lines_with_word_times")  // get_subtitles 的结果里的字段
+    names.formUnion(["new_video", "new_audio"])  // track 参数开新轨的两个值（只写在说明里，不是参数名）
     // generate_media（只有填了 fal Key 才在清单里，但 listJSON 是配好时的全份）的词表和结果字段：卡里提到它们时要对得上。
     names.formUnion(MCPVocabulary.generationKinds + MCPVocabulary.videoResolutions + MCPVocabulary.generationAspects)
     names.formUnion(["estimated_cost_usd", "cost_usd", "waiting_for_user", "job_id"])
