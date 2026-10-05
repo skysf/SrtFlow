@@ -8,6 +8,11 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - Shape: 9:16 for short-video platforms, 16:9 for YouTube.
 - Length: 15–30 s for short-video platforms; never more than 60 s.
 
+## The bar
+
+The best-performing short ads on Douyin and TikTok, cut with the care of an Apple product film: the result in the first
+second, one clear message per beat, the product always at its best.
+
 ## Structure (30-second version)
 
 1. 0–3 s, the hook: the result first — the best-looking finished product, a before/after, the most striking number, or one
@@ -21,20 +26,22 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 
 ## Pace and pictures
 
-- Shots 1–3 s, about 2 s on average. Something must change every 2–3 s (a new shot, a picture zooming in, text appearing).
+- Shots 1–3 s, about 2 s on average, never the same length three times in a row. Something must change every 2–3 s (a new
+  shot, a picture zooming in, text appearing).
 - Talking parts: cut_speech first — remove filler words, shorten pauses to 0.15–0.25 s.
-- Transitions: mostly hard cuts; between parts now and then pushLeft or pushUp (at most 0.3 s); a whiteFade flash (0.15 s)
-  for revealing the finished product.
-- Picture animation: key product shots enter with pop or zoom (0.3 s); a still product photo slowly grows with set_keyframes
-  (scale 1 → 1.08 over the shot, the default easeInOut easing).
+- Transitions: mostly hard cuts; between parts now and then pushLeft or pushUp (at most 0.3 s, one direction for the whole
+  video); one whiteFade flash (0.15 s) for revealing the finished product.
+- Picture animation: key product shots enter with pop or zoom (0.3 s), at most one shot in three; a still product photo slowly
+  grows with set_keyframes (scale 1 → 1.08 over the shot, the default easeInOut easing); the other shots hold or carry their
+  own movement.
 - Filter: products, interiors, clean looks → coldWhite; everyday life → warmSun. Strength 0.5–0.7, one filter for the whole video.
 
 ## Text
 
 - Keyword text: Chinese PingFang SC bold; English Avenir Next bold (or Futura). font_size 44–52 on 9:16 (English capitals up to
   14 a line, Chinese up to 8), 90–110 on 16:9.
-- White with a dark outline, or on a solid box (background_color). animation_in pop or cascade (0.3 s). In the upper third
-  (subtitles take the bottom).
+- White with a dark outline, or on a solid box (background_color) in the video's one accent colour. animation_in pop or
+  cascade (0.3 s). In the upper third (subtitles take the bottom).
 - Subtitles: on, big and bold, the word being spoken highlighted. Before generate_subtitles or add_voiceover, set
   edit_subtitles style: size 56–64 on 16:9 or 42–48 on 9:16 (3–4 words a line), bold true, highlight #FFD400,
   highlight_scale 1.1; on 9:16 also position bottom, margin 0.22 (above the platform's buttons).
@@ -60,14 +67,35 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 
 ## Sound effects
 
-- Transition sounds come from add_clips sound_effect, made on this Mac (no download, no fal): a whoosh on a push,
-  a pop when a keyword appears, a shutter on a photo. Give hit_at = the cut or the moment the word appears; SrtFlow places
-  the start.
+- Transition sounds come from add_clips sound_effect, made on this Mac (no download, no fal): a whoosh on a push, a pop on
+  the first keyword of each selling point (not on every line), a shutter on a photo, one impact on the reveal. Give hit_at =
+  the cut or the moment the word appears; SrtFlow places the start.
 
 ## Generated media (only if generate_media is among your tools)
 
 - When find_audio has nothing bright, generate_media kind music ("upbeat, bright, electronic, no vocals") before asking the
   user for a track. Never generate pictures of the product.
+
+## Taste
+
+- The first frame is a poster: the product or the result big and sharp (filling 60–80% of the frame) with the line of big
+  text, and something already moving within 0.3 s.
+- Keyword text is the key 2–5 words, not the sentence being said, and it appears with the word as it is spoken (its time from
+  transcribe or get_subtitles), at most 0.2 s before.
+- Rhythm: two or three quick shots (0.8–1.5 s), then one held hero shot of the product (2–3 s, a slow push-in); vary the
+  pattern, never the same three times.
+- Punch in (shared taste rule 12) on the strongest selling line of someone talking.
+- One accent colour, taken from the product or the brand, for the highlight and the keyword boxes; all other text white.
+- The reveal gets the only whiteFade and the only impact; a rolling number lands with a ding or a hit.
+- The call to action is calm: the product held still, the text rising or fading in, no sound effect.
+
+## Avoid
+
+- A pop animation and a pop sound on every line of text.
+- Keyword text on every shot, or text that repeats the whole spoken sentence.
+- Every shot 2 s long; pushes in several directions in one video.
+- Music at full level under speech; a hard stop at the end.
+- Made-up urgency: countdowns, prices or "only 3 left" that the user did not give.
 
 ## Checklist before export
 
@@ -76,3 +104,4 @@ use_for: Selling a product, promoting a course or a service, app demos, live-str
 - The voice is clear and the music does not cover it.
 - The length is inside the range.
 - The last frame has the call to action and holds for 1.5 s.
+- Then "Look again before export" in the shared rules.
