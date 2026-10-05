@@ -27,6 +27,14 @@
 - `Keyframe.easing: KeyframeEasing`（`VideoEditKeyframeEasing.swift`）= 从这一帧到**下一帧**那一段用什么曲线：linear / easeIn /
   easeOut / easeInOut（最后一帧的没用）。曲线函数只有 `TextEasing` 一份（easeIn → easeInCubic、easeOut → easeOutCubic、
   easeInOut → easeInOutCubic），这里只是挑。`value(atSourceTime:)` 先算 t 再过曲线；**linear 那条式子和以前逐位一致**（自检钉着）。
+- **2026-10-05 加了三条（v32，[剪辑美感方案](../plans/2026-10-05-editing-aesthetics.md)第四节）**：`snap` 急停（指数 easeOut，除以 1 − 2⁻¹⁰
+  让终点正好是 1：一出手就几乎到位，推近、甩）、`overshoot` 回弹（`TextEasing.easeOutBack`，冲过头约 10%）、`spring` 弹簧
+  （1 − e^(−6t)·cos(3.5πt)，冲过头约 21%、回摆一两下，3.5π 让终点正好是 1）。曲线函数照旧只在 `TextEasing`。
+- **冲过头的两条要自己兜住**（`KeyframeEasing.overshoots`）：不透明度取值本来就夹在 0…1；摆放的宽高夹一个很小的下限
+  （`ClipAnimation.minimumAnimatedSize`，从大缩到很小时弹簧会冲成负的 —— 整个画面消失或翻过来）；算全程最低值的地方
+  （`minimumOpacity` → `KeyframeTrack.lowestReachedValue`）按落差的 `maximumOvershoot`（0.25）往低放宽。线性和老曲线的值都在
+  两帧之间，碰不到这两处，结果和以前逐位一致。
+- 存盘：用了这三条的工程是 **v32**（`requiresFormatVersion32`）；只认 v31 的旧版会把它们退成直线。
 - **默认值分两头**：检查器手打的帧默认线性（同 CapCut，老行为不变）；AI 的 `set_keyframes` 没给 `easing` 时一律 easeInOut
   （推镜、位移像人手做的）。`KeyframeTrack.set` 只在给了 `easing` 时才换已有帧的曲线，`setEasing(atSourceTime:)` 只换某一帧的曲线，
   `setEasing(forSegmentAtSourceTime:)` 换播放头所在那一段的（检查器的菜单）。
@@ -67,7 +75,7 @@
 - **意图用参数说**：`edit_clip keyframes` = `keep_frames`（默认：留在原画面上、窗口外的帧收成两头的值）/ `stretch`
   （`KeyframeTrack.stretched`，按新窗口等比重排）/ `clear`；结果里 `keyframes_note` 说明发生了什么。速度变了范围不变，三种都原样。
 - **让 AI 少算**：`set_keyframes relative=true`，时间是片段的比例（0 = 第一帧、1 = 最后一帧）。
-- **缓动**：`set_keyframes easing`（linear / easeIn / easeOut / easeInOut，词表 `MCPVocabulary.keyframeEasings` 和 `KeyframeEasing` 对账）
+- **缓动**：`set_keyframes easing`（linear / easeIn / easeOut / easeInOut / snap / overshoot / spring，词表 `MCPVocabulary.keyframeEasings` 和 `KeyframeEasing` 对账）
   管这一次给的每一段；没给一律 easeInOut。`get_timeline` 报的每个点末尾带那一段的曲线名。
 
 ## 预览切片（CompositionBuilder）

@@ -157,6 +157,9 @@ extension VideoEditInspectorView {
                         Text("Ease in").tag(KeyframeEasing.easeIn)
                         Text("Ease out").tag(KeyframeEasing.easeOut)
                         Text("Ease in and out").tag(KeyframeEasing.easeInOut)
+                        Text("Snap").tag(KeyframeEasing.snap)
+                        Text("Overshoot").tag(KeyframeEasing.overshoot)
+                        Text("Spring").tag(KeyframeEasing.spring)
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)

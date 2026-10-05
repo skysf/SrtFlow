@@ -66,6 +66,19 @@ struct KeyframeTrack: Hashable, Sendable {
     /// 有没有哪一段不是线性（存盘要抬版本：VideoEditFormatVersion 的 v27）。
     var hasEasing: Bool { keys.contains { $0.easing != .linear } }
 
+    /// 有没有哪一段用了只有 v32 才认识的曲线（急停 / 回弹 / 弹簧，VideoEditFormatVersion 的 v32）。
+    var usesVersion32Easing: Bool { keys.contains { $0.easing.isVersion32 } }
+
+    /// 这条轨实际播得到的最低值：回弹、弹簧往下走的那一段会冲到下一帧的值以下（按落差的 `maximumOvershoot` 放宽，
+    /// 宁低勿高）；没有这两种曲线时就是最小的那一帧，和以前一样。空轨 nil。
+    var lowestReachedValue: Double? {
+        guard var lowest = keys.map(\.value).min() else { return nil }
+        for (a, b) in zip(keys, keys.dropFirst()) where a.easing.overshoots && b.value < a.value {
+            lowest = min(lowest, b.value - (a.value - b.value) * KeyframeEasing.maximumOvershoot)
+        }
+        return lowest
+    }
+
     /// 播到 `time` 正处在哪一段（首帧之前算第一段、末帧之后算最后一段）的起点那帧的下标；不到两帧没有段。
     func segmentIndex(atSourceTime time: Double) -> Int? {
         guard keys.count >= 2 else { return nil }
@@ -162,6 +175,12 @@ struct ClipAnimation: Hashable, Sendable {
     /// 六条轨里有没有哪一段不是线性（存盘要抬版本：VideoEditFormatVersion 的 v27）。
     var hasEasing: Bool { tracks.contains(where: \.hasEasing) }
 
+    /// 六条轨里有没有哪一段用了急停 / 回弹 / 弹簧（VideoEditFormatVersion 的 v32）。
+    var usesVersion32Easing: Bool { tracks.contains(where: \.usesVersion32Easing) }
+
+    /// 回弹、弹簧从大缩到很小时会冲过头：宽高最少留这么多，冲成 0 或负的就是整个画面消失或翻过来。
+    static let minimumAnimatedSize = 0.001
+
     /// 六条轨（按检查器的顺序）。
     var tracks: [KeyframeTrack] { [centerX, centerY, width, height, rotation, opacity] }
 
@@ -251,8 +270,9 @@ extension EditClip {
         let source = sourceTime(atTimeline: time)
         if let value = animation.centerX.value(atSourceTime: source) { base.centerX = value }
         if let value = animation.centerY.value(atSourceTime: source) { base.centerY = value }
-        if let value = animation.width.value(atSourceTime: source) { base.width = value }
-        if let value = animation.height.value(atSourceTime: source) { base.height = value }
+        // 宽高夹一个很小的下限：只有回弹、弹簧冲过头时才碰得到（线性和缓动的值都在两帧之间）。
+        if let value = animation.width.value(atSourceTime: source) { base.width = max(value, ClipAnimation.minimumAnimatedSize) }
+        if let value = animation.height.value(atSourceTime: source) { base.height = max(value, ClipAnimation.minimumAnimatedSize) }
         return base
     }
 
@@ -272,12 +292,9 @@ extension EditClip {
         return min(max(value, 0), 1)
     }
 
-    /// 全程最低不透明度（预览黑底轨的判定要看动画里的最小值，不是静态值）。
+    /// 全程最低不透明度（预览黑底轨的判定要看动画里的最小值，不是静态值；回弹、弹簧冲过头的那一下也算）。
     var minimumOpacity: Double {
-        if let track = animation?.opacity, !track.isEmpty {
-            return track.keys.map(\.value).min() ?? opacity
-        }
-        return opacity
+        animation?.opacity.lowestReachedValue ?? opacity
     }
 }
 

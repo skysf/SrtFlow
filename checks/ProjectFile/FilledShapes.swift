@@ -29,7 +29,7 @@ func checkFilledShapes(root: URL) throws {
     check(state.requiresFormatVersion24, "有实心的形状 → v24 判据为真")
     try VideoEditProjectIO.save(state, to: path)
     let raw = try JSONSerialization.jsonObject(with: Data(contentsOf: path)) as? [String: Any]
-    checkEqual(raw?["formatVersion"] as? Int, 31, "带实心形状的工程写 latest（v31）")
+    checkEqual(raw?["formatVersion"] as? Int, 32, "带实心形状的工程写 latest（v32）")
     let back = try VideoEditProjectIO.load(from: path).timeline
     checkEqual(back.shapes.map(\.isFilled), [false, true], "往返不丢实心")
     checkEqual(back.shapes.last?.color, .black, "往返不丢颜色")

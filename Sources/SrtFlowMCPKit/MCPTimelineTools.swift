@@ -41,7 +41,7 @@ public enum MCPTimelineTools {
                 input: MCPSchema.object([
                     "clip_id": MCPSchema.string("Clip id from get_timeline."),
                     "relative": MCPSchema.boolean("Times are fractions 0–1 of the clip instead of seconds."),
-                    "easing": MCPSchema.string("Curve of every move: easeInOut (default), easeIn, easeOut, linear (constant speed).", oneOf: MCPVocabulary.keyframeEasings),
+                    "easing": MCPSchema.string("Curve of every move: easeInOut (default), easeIn, easeOut, linear (constant speed), snap (fast, then settles), overshoot (past it, back), spring (bounces).", oneOf: MCPVocabulary.keyframeEasings),
                     "position": MCPSchema.array(of: MCPSchema.object([
                         "time": MCPSchema.number("Timeline seconds.", minimum: 0),
                         "x": MCPSchema.number("Centre across, 0–1 on the frame (-2…3 for a picture bigger than the frame).", minimum: -2, maximum: 3),

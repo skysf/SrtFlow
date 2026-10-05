@@ -1061,6 +1061,9 @@
 "Ease in" = "缓入";
 "Ease out" = "缓出";
 "Ease in and out" = "缓入缓出";
+"Snap" = "急停";
+"Overshoot" = "回弹";
+"Spring" = "弹簧";
 "How the values move from the keyframe before the playhead to the next one" = "从播放头前面那一帧到下一帧，数值怎么走";
 
 // 优化媒体（预览工具条的菜单、转码中的提示，2026-10-01）

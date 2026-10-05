@@ -33,7 +33,7 @@ struct VideoEditProjectFile: Codable {
     var rowHeights: TimelineRowHeights
 
     /// reader 认识的最高版本（闸门比较对象）。
-    static let latestFormatVersion = 31
+    static let latestFormatVersion = 32
     /// writer 的基线版本：没有任何高版本 only 数据的工程一律写它，旧版照常能开。
     /// 具体判据见 `TimelineState.requiresFormatVersion4` / `...5` / `...6` /
     /// `...7` … `...14`（登记清单在那边）。
@@ -79,6 +79,7 @@ struct VideoEditProjectFile: Codable {
         _ = timeline.requiresFormatVersion29
         _ = timeline.requiresFormatVersion30
         _ = timeline.requiresFormatVersion31
+        _ = timeline.requiresFormatVersion32
         formatVersion = Self.latestFormatVersion
         savedAt = Date()
         self.timeline = timeline
