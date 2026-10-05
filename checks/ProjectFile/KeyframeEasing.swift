@@ -97,8 +97,9 @@ func checkKeyframeEasing(root: URL) throws {
     checkEqual(remapped.opacity.keys.map(\.easing), [.easeInOut, .easeIn, .linear], "remapped 每条轨都保曲线")
     checkEqual(remapped.centerX.keys.map(\.time), [0, 0.5, 1], "remapped 按给的换算挪时刻")
     checkEqual(remapped.centerX.keys.map(\.value), [0, 100, 50], "remapped 值原样")
-    check(abs((remapped.centerX.value(atSourceTime: 0.25) ?? -1) - (shape.value(atSourceTime: 2) ?? -2)) < 1e-12,
-          "remapped 之后同一个时间线时刻取到同一个值（线性换轴下曲线的形状不变）")
+    // 取四分之一处：缓入缓出在正中间和直线一样是 50，量不出曲线丢没丢（这一条第一版取了 2 秒，反向验证时照样绿）。
+    check(abs((remapped.centerX.value(atSourceTime: 0.125) ?? -1) - (shape.value(atSourceTime: 1) ?? -2)) < 1e-12,
+          "remapped 之后同一个时间线时刻取到同一个值（缓入缓出四分之一处 6.25，丢了曲线是 25）")
 
     // ---- 存盘 ----
     let encoder = JSONEncoder()
