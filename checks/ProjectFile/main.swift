@@ -428,11 +428,11 @@ do {
     let cueB = SubtitleCue(index: 2, start: 2, end: 4, text: "world")
     state.subtitle = SubtitleDocumentModel(cues: [cueA, cueB])
     try VideoEditProjectIO.save(state, to: project)
-    checkEqual(try savedVersion(), 31, "只有原文轨的工程也写 v31")
+    checkEqual(try savedVersion(), 32, "只有原文轨的工程也写 v32")
 
     var roundtrip = try VideoEditProjectIO.load(from: project).timeline
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 31, "往返后仍是 v31")
+    checkEqual(try savedVersion(), 32, "往返后仍是 v32")
     // 往返不能丢原文轨 —— 这才是本用例真正要守的东西
     checkEqual(roundtrip.subtitle?.cues.count, 2, "往返不丢原文 cue")
 
@@ -447,7 +447,7 @@ do {
         translationLinks: [tA.id: TranslationLink(sourceIDs: [cueA.id], sourceText: "hi", timeEdited: true)]
     )
     try VideoEditProjectIO.save(roundtrip, to: project)
-    checkEqual(try savedVersion(), 31, "带译文轨的工程写 v32（v4 的登记项已被后续版本覆盖）")
+    checkEqual(try savedVersion(), 32, "带译文轨的工程写 v32（v4 的登记项已被后续版本覆盖）")
     // requiresFormatVersion4 的登记判据本身仍要成立
     check(roundtrip.requiresFormatVersion4, "有 companion 数据时 v4 判据要为真")
 
@@ -520,7 +520,7 @@ do {
     var cleared = loaded
     cleared.subtitleCompanion = nil
     try VideoEditProjectIO.save(cleared, to: project)
-    checkEqual(try savedVersion(), 31, "新版 writer 一律写 latest")
+    checkEqual(try savedVersion(), 32, "新版 writer 一律写 latest")
 
     // ---- 字幕布局/可见性的版本闸门（v6，2026-08-09 PR#22 复审）----
     //
@@ -747,14 +747,14 @@ do {
     let nonFocusAnimation = nonFocusOverlays?.first?["animation"] as? [String: Any]
     check(nonFocusAnimation?["focusStartOpacity"] == nil, "没用对焦时不该写 focusStartOpacity 键")
 
-    // 闸门另一侧：比 reader 上限更高的 v32 必须拒开。
+    // 闸门另一侧：比 reader 上限更高的 v33 必须拒开。
     // **每次抬 latestFormatVersion 都要把这里跟着抬**：拿旧的版本号当「未来」，
     // 这条断言就变成在测一个 reader 已经认识的版本，闸门坏了也照样绿。
-    let future = dir.appendingPathComponent("v32.srtflowproj")
+    let future = dir.appendingPathComponent("v33.srtflowproj")
     try Data("""
-    { "formatVersion": 32, "timeline": { "mainClips": [] }, "media": [] }
+    { "formatVersion": 33, "timeline": { "mainClips": [] }, "media": [] }
     """.utf8).write(to: future)
-    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v32）必须拒开")
+    check((try? VideoEditProjectIO.load(from: future)) == nil, "未来版本（v33）必须拒开")
 
     // ---- 工程帧率（v5，无条件）----
     //
@@ -764,7 +764,7 @@ do {
     var fpsProject = cleared
     fpsProject.frameRate = .fps24
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 31, "默认 24fps 也要显式落盘，不能降级")
+    checkEqual(try savedVersion(), 32, "默认 24fps 也要显式落盘，不能降级")
     let savedJSON = try String(contentsOf: project, encoding: .utf8)
     check(savedJSON.contains("\"frameRate\""), "默认 24fps 的键必须真的写进文件")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps24,
@@ -772,7 +772,7 @@ do {
 
     fpsProject.frameRate = .fps60
     try VideoEditProjectIO.save(fpsProject, to: project)
-    checkEqual(try savedVersion(), 31, "非默认帧率同样写 latest")
+    checkEqual(try savedVersion(), 32, "非默认帧率同样写 latest")
     checkEqual(try VideoEditProjectIO.load(from: project).timeline.frameRate, .fps60, "帧率要存得住")
 
     // 只有**读**旧文件时才回退：v1–v4 没有帧率语义，按产品默认值 24 读。
