@@ -167,8 +167,9 @@ enum AnimatedClipPrerenderer {
             matte.sourceDuration = 1
             matte.speed = 1 / max(source.timelineDuration, 0.05)
             // 关键帧锚在源时间上，而 matte 的源时间轴和原素材不同 ——
-            // 把每个关键帧经由时间线时刻换算到 matte 自己的源轴上。
-            matte.animation = remappedAnimation(from: source, to: matte)
+            // 把每个关键帧经由时间线时刻换算到 matte 自己的源轴上（曲线一起带过去，fill 是带着曲线渲的）。
+            let target = matte
+            matte.animation = source.animation?.remapped { target.sourceTime(atTimeline: source.timelineTime(atSource: $0)) }
         }
         var matteState = TimelineState()
         // 临时时间线必须继承工程帧率：预渲染产物要接回主图，
@@ -203,27 +204,6 @@ enum AnimatedClipPrerenderer {
         normalized.videoFadeInDuration = fades.fadeIn
         normalized.videoFadeOutDuration = fades.fadeOut
         return normalized
-    }
-
-    /// 把关键帧从原素材的源时间轴换算到另一段（不同 sourceStart/speed）的源轴。
-    private static func remappedAnimation(from source: EditClip, to target: EditClip) -> ClipAnimation? {
-        guard let animation = source.animation else { return nil }
-        func convert(_ track: KeyframeTrack) -> KeyframeTrack {
-            KeyframeTrack(keys: track.keys.map { key in
-                Keyframe(
-                    time: target.sourceTime(atTimeline: source.timelineTime(atSource: key.time)),
-                    value: key.value
-                )
-            })
-        }
-        return ClipAnimation(
-            centerX: convert(animation.centerX),
-            centerY: convert(animation.centerY),
-            width: convert(animation.width),
-            height: convert(animation.height),
-            rotation: convert(animation.rotation),
-            opacity: convert(animation.opacity)
-        )
     }
 
     private static func render(

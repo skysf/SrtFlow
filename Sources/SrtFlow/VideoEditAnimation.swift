@@ -189,6 +189,19 @@ struct ClipAnimation: Hashable, Sendable {
         return copy
     }
 
+    /// 每个关键帧的时刻经 `map` 换到另一条源时间轴上，值和**曲线**原样带着（预渲染的 matte 用的是另一份素材的源轴）。
+    /// `map` 是线性的（时间线时刻进出两条源轴），一段两头之间的比例不变，带着曲线过去动起来一模一样；
+    /// 漏了曲线，matte 按直线走、画面按曲线走，成片里动画中途边缘错开（docs/bugfixes/2026-10-05-overlay-matte-drops-keyframe-easing.md）。
+    func remapped(_ map: (Double) -> Double) -> ClipAnimation {
+        func convert(_ track: KeyframeTrack) -> KeyframeTrack {
+            KeyframeTrack(keys: track.keys.map { Keyframe(time: map($0.time), value: $0.value, easing: $0.easing) })
+        }
+        return ClipAnimation(
+            centerX: convert(centerX), centerY: convert(centerY), width: convert(width), height: convert(height),
+            rotation: convert(rotation), opacity: convert(opacity)
+        )
+    }
+
     /// 所有轨的关键帧时刻去重升序（时间线块上画菱形、‹ › 跳帧用）。
     /// 这里比较的是 source time，去重容差要用 source 空间的（含 speed）。
     func allKeyTimes(tolerance: Double) -> [Double] {

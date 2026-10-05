@@ -31,6 +31,10 @@
   （推镜、位移像人手做的）。`KeyframeTrack.set` 只在给了 `easing` 时才换已有帧的曲线，`setEasing(atSourceTime:)` 只换某一帧的曲线，
   `setEasing(forSegmentAtSourceTime:)` 换播放头所在那一段的（检查器的菜单）。
 - `clipped` 补出来的头帧接着用被切开那段的曲线、`stretched` 带着曲线走（形状尽量保住；分割、`edit_clip keyframes` 都靠它们）。
+- **从旧关键帧构造新关键帧只走现成的三个函数**：`KeyframeTrack.clipped`、`KeyframeTrack.stretched`、`ClipAnimation.remapped`
+  （预渲染的 matte 换到白块素材的源轴上）都带着曲线；别手写 `Keyframe(time:value:)` 重建 —— easing 有默认值，漏了编译器不吭声，
+  matte 就按直线走、画面按曲线走，成片动画中途边缘错开（[案例](../bugfixes/2026-10-05-overlay-matte-drops-keyframe-easing.md)）。
+  回归：`scripts/check-video-fade.sh` 的 `EasedOverlay.swift`（真导出抽帧，预览和成片都量）+ 第 39 组的 remapped 用例。
 - 存盘：linear **不落键**（老工程存一轮 diff 是空的）、不认识的值回落 linear（`LenientCodableEnum`）；任一关键帧 easing ≠ linear 才抬
   **v27**（`requiresFormatVersion27`：旧版打开会退回直线，画面节奏当场不一样）。
 - **只对画面的六条轨有意义**：音量曲线（`EditClip.volumeCurve`）也是 `KeyframeTrack`，但预览的 audioMix 斜坡和导出的 `aeval`

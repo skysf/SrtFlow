@@ -18,5 +18,5 @@
 2495 checks/ProjectFile/main.swift
 677 checks/TextRender/main.swift
 1778 checks/TimelineSnap/main.swift
-643 checks/VideoFade/main.swift
+624 checks/VideoFade/main.swift
 948 checks/timeline-drag-wiring.sh
