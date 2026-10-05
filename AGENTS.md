@@ -212,7 +212,7 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - 上层视频轨动画段 fill + matte：`scripts/check-export-alpha-compositing.sh`。
 - 入场/出场动画的两条管线对账（预览取帧 vs 真导出抽帧）：`scripts/check-clip-animation.sh`。
 - 上层视频轨铺满 + 画面渐变的真产物（真跑导出再抽帧），以及上层轨藏起来的段不进成片、透明 PNG 的透明处露出下面那一层
-  （预览、静态的成片、带关键帧的成片）：`scripts/check-video-fade.sh`。
+  （预览、静态的成片、带关键帧的成片）、上层轨带缓动的关键帧 matte 和画面按同一条曲线走：`scripts/check-video-fade.sh`。
 - 检查器的 live 绑定只准接滑块和 scrub（离散控件没有结束信号，快照会挂着把
   下一次改动抹掉）：`checks/inspector-live-binding-wiring.sh`。
 - 画面文字：渲染图与成片**逐点重合**（同一个渲染函数是这套东西的全部前提），
@@ -667,6 +667,10 @@ Copilot 等所有 AI 代理、它们委派的子代理，以及人类贡献者�
 - [2026-10-03 record_screen 真机首测：四处小毛病](docs/bugfixes/2026-10-03-record-screen-first-device-test.md) — 测试版上真录（授权一次、窗口 / 整屏 / 区域、
   停止、锁、撤销、不覆盖、崩溃后丢弃）都通，撞出四处：等决定时锁提示叫 AI 去 stop（该说 resolve）、按时长停多录半秒到一秒、没授权时窗口表只有自己、
   残留报隐藏的临时文件名；结局的 `cut_short` 改名 `incomplete`。**新工具合并后尽早上真机走一遍：状态组合、时序、没授权时系统给的残缺数据，自检都够不着。**
+- [2026-10-05 上层轨带缓动的关键帧，成片里动画中途边缘错开](docs/bugfixes/2026-10-05-overlay-matte-drops-keyframe-easing.md) — 上层轨带关键帧的段
+  导出走 fill + matte 预渲染，matte 换到白块素材的源轴上重建关键帧时只抄了时间和值、曲线退成线性（9-30 加缓动时漏的）：画面按曲线走、
+  matte 按直线走，动画中途一边被切掉、一边冒黑边；预览是对的。换轴挪成带曲线的 `ClipAnimation.remapped`，真导出抽帧钉着。
+  **从旧关键帧构造新关键帧只走 remapped / clipped / stretched，带默认值的字段漏写编译器不吭声；影响画面的字段要测到它进成片的每一条路。**
 - [Bugfix 模板](docs/bugfixes/TEMPLATE.md) — 新案例必须使用的结构。
 
 ## 根目录文档
