@@ -128,6 +128,7 @@ xcrun swiftc \
   checks/AudioEngine/Compare.swift \
   checks/AudioEngine/ReaderChunks.swift \
   checks/AudioEngine/Timelines.swift \
+  checks/AudioEngine/Replace.swift \
   checks/AudioEngine/Oracle.swift \
   "$BUILD_DIR"/SrtFlowCore.build/*.o
 

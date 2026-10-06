@@ -42,6 +42,12 @@
 8. **引擎的时钟只从渲染块的时间戳来**（节点的 48 kHz 域）。`outputNode.lastRenderTime` 是声卡自己的采样率
    （这台机器 44.1 kHz），拿它算位置播放头会以 0.92 倍速走：2026-10-01 冒烟欠载 51k 帧、视频对表 60 次。
    一个静音的时钟节点一直挂着，没有一条轨出声的时间线也有人每拍更新时钟。
+9. **「结构没变」= 同样的轨、同样顺序的段、每段同样的几何、同样有没有场景**（`AudioEngineConfig.Segment.Structure`：
+   `clipID / url / start / end / sourceStart / speed / hasScene`；`TimelineAudioEngine.sameStructure` 比它）。这些在开流时就抄进
+   `SegmentStream`、流活着时改不了，有一项不同 `replace` 就整条重开流（和加 / 删一段同一条路）；只有增益、场景的参数、
+   推子能在流活着时换（`updateGains`）。判「能不能只换参数」要和开流读同一批字段 —— 2026-10-01 到 10-06 只比 clipID 的顺序，
+   挪一段 / 裁头尾 / 变速 / 换文件之后画面挪了、声音还在原地（[案例](../bugfixes/2026-10-06-audio-engine-replace-keeps-old-segment-positions.md)）。
+   自检第 13 组钉着：按 A 建 → `replace(B)` → 渲 = 直接按 B 建。
 
 ## 三、接进 App 的样子
 
@@ -58,7 +64,7 @@
   （[案例](../bugfixes/2026-10-01-preview-item-shorter-than-timeline-without-audio-tracks.md)；只垫那一截，画面铺满的工程一层都不多）。
   成片走引擎的离线模式（[成片的声音](export-audio-mixdown.md)），不碰播放器的合成。
 - **快路径和即时试听走配置**：`refreshAudioMix` / `previewAudioLive` 算一份 `AudioEngineConfig`
-  交给 `updateGains`（结构没变只换增益，流不重开；结构变了退到 `replace`）。
+  交给 `updateGains`（结构没变只换增益，流不重开；结构变了退到 `replace`；「结构」按第二节第 9 条，几何也算）。
 - **试听让路**：`AudioLibraryAudition` 让引擎的总推子乘让路量（播放器没有声音可压）。
 - **冒烟静音**：`SRTFLOW_SMOKE_MUTE` 也让引擎静音（渲染照跑，输出不出声卡）；结果里带 `audioEngine`
   （开没开、欠载几帧、视频对了几次表）。
@@ -100,6 +106,8 @@
   引擎本身只需重开那一段的流，改成快路径是后续一刀。
 - 没有音频输出设备的机器（托管 CI 的虚拟机可能就是）：实时引擎 `start()` 失败时宿主不挂时钟，播放头照旧由播放器走、
   只是没声音；引擎应当自己带一个静默的时钟，这一条还没做。
+- 几何变了（挪 / 裁 / 变速一段）是整条 `replace`：所有轨的流都重开，播放中大约一个 IO 缓冲的静音。只重开挪了的那一段的流、
+  别的流不动（`AudioTrackFeeder` 要能换 `track`）是后续；除了 2026-10-06 那个 bug 没有第二个用例，先不做。
 
 ## 五、回归
 
@@ -107,7 +115,9 @@
 （音频轨 + 推子 + 总推子、渐入渐出、音量曲线、主轨叠化、主轨接缝零头、静音段 + 隐藏轨 + 主轨推子、上层轨、
 44.1 kHz 单声道）引擎和 **oracle** 各渲一遍，逐 10 ms 窗口比 RMS、整段 RMS、帧数正好、零欠载，空时间线没有轨；第 10 组电平表
 （总表的槽 = 渲出来的峰值、主轨的槽 × 总推子 = 总表、静音段的轨是 0、隐藏轨没有槽）；第 11 组声音场景（强度 0 = 原声对着
-oracle 比；场景本身验结构，见第三节）；第 12 组变速（2 倍速和 0.5 倍速：包络对得上、时长正好、过零数出来的音高仍是 880 Hz）。
+oracle 比；场景本身验结构，见第三节）；第 12 组变速（2 倍速和 0.5 倍速：包络对得上、时长正好、过零数出来的音高仍是 880 Hz）；**第 13 组换配置**（`Replace.swift`：按 A 建引擎、`replace(B)`、离线渲 = 直接按 B 建的，
+B 分别是挪一段 / 裁头 / 裁尾 / 变速 / 换文件（数过零），只改音量的 B 仍是同一个结构且快路径压 6 dB；反向验证：`sameStructure` 换回只比
+clipID → 11 条红）。
 
 **oracle**（`checks/AudioEngine/Oracle.swift`，2026-10-01 PR3b 起）：PR1a–PR3a 期间参照是 AVFoundation 那份混音
 （`AVAssetReaderAudioMixOutput`）；删掉那条路之后，参照换成几十行、一眼看得完的纯 Swift 混音器 —— 源文件让 ffmpeg 解成

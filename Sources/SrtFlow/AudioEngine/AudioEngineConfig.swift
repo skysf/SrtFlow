@@ -34,6 +34,24 @@ struct AudioEngineConfig: Sendable {
         let compensation: Float
 
         var duration: Double { end - start }
+
+        /// 流开了之后就改不了的那部分（`SegmentStream` 开流时抄死 start / end / sourceStart / speed、按 url 开文件）：
+        /// 有一项不同就得重开流。增益、场景的参数、补偿不在里面 —— 它们能在流活着时换（`updateGains`）；有没有场景在
+        ///（效果链是开流时建的）。`TimelineAudioEngine.sameStructure` 按它比。2026-10-01 到 10-06 只比 clipID：挪一段 /
+        /// 裁头尾 / 变速之后画面挪了、声音还在原地（docs/bugfixes/2026-10-06-audio-engine-replace-keeps-old-segment-positions.md）。
+        struct Structure: Equatable {
+            let clipID: UUID
+            let url: URL
+            let start: Double
+            let end: Double
+            let sourceStart: Double
+            let speed: Double
+            let hasScene: Bool
+        }
+
+        var structure: Structure {
+            Structure(clipID: clipID, url: url, start: start, end: end, sourceStart: sourceStart, speed: speed, hasScene: scene != nil)
+        }
     }
 
     /// 时间线上的一条轨：主轨、每条上层视频轨、每条音频轨各一条（有声音才算）。
