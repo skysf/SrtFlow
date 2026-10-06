@@ -11,8 +11,10 @@
 - `MainThreadWatchdog`（`Sources/SrtFlow/MainThreadWatchdog.swift`）：一条后台线程每 25 ms 往主队列投
   一个心跳；心跳超过阈值（默认 60 ms，24 fps 的一帧半）还没落地，就在那一刻从外面抓一份主线程的调用栈
   （`MainThreadStackCapture.swift`：挂起主线程、读寄存器、沿帧指针走、只在它自己的栈范围内读内存、
-  几十微秒后恢复；符号化在恢复之后做）。心跳落地后记一次：卡了多久、当时在哪一栏 / 在不在播
-  （`contextProvider`，在主线程上读）、栈。
+  几十微秒后恢复；符号化在恢复之后做）。**挂起期间不分配内存、不拿锁**：地址先写进挂起前备好的缓冲区，
+  恢复之后才拷成数组 —— 硬约束见 [挂起主线程抓栈](../architecture/main-thread-stack-capture.md)，违反它的
+  后果见 [导出两次卡死](../bugfixes/2026-10-06-watchdog-capture-deadlocks-main-thread.md)。
+  心跳落地后记一次：卡了多久、当时在哪一栏 / 在不在播（`contextProvider`，在主线程上读）、栈。
 - **默认开着，正式版也开**：开销是后台线程每 25 ms 醒一次、主线程每次只跑一个读标志的空块。
   `SRTFLOW_STALL_LOG=0` 关掉；`SRTFLOW_STALL_THRESHOLD_MS=100` 改阈值。
 - 日志：`~/Library/Logs/SrtFlow/main-thread-stalls.log`，超过 1 MB 滚成 `.previous`。统一日志
@@ -48,6 +50,11 @@
 - 靠帧指针走栈：没有帧指针的帧（手写汇编、某些系统函数的叶子）会少一两层；只在 arm64 上抓栈，
   别的架构只记时长。
 - 心跳落地才记：App 彻底死掉的那一次记不下来（那是崩溃报告的事）。
+- **看门狗自己也能把 App 卡死**（2026-10-06 修掉的那一种）：日志突然断了、App 一直转彩球、系统随后判它无响应，
+  先想到看门狗挂起主线程之后没能恢复它。那次 spindump 两次都写着「not sampling」，没抓到栈；判断靠的是卡顿记录
+  断掉的时刻，详见 [导出两次卡死](../bugfixes/2026-10-06-watchdog-capture-deadlocks-main-thread.md)。
+- **几个 SrtFlow 同时开着（正式版 + 测试版），卡顿写进同一个日志文件**，文件里没有进程号。要分开看就查统一日志：
+  `log show --predicate 'subsystem == "com.srtflow.SrtFlow"'`，每一行带着进程号。
 
 ## 四、回归
 
@@ -58,3 +65,8 @@ CI 的虚拟机上看门狗线程醒来能晚几十毫秒（#117 首跑：250 ms
 
 反向验证（2026-10-01）：把阈值临时改成 10 秒 → 红（忙等一次都没记到）；把 `capture()` 临时改成
 返回空 → 红（栈里没有函数名、日志里没有栈）。恢复后转绿。
+
+**第 6、7 组（2026-10-06）**：挂起主线程期间抓栈线程一次都不许分配 / 释放内存。第 6 组把 libmalloc 的 `malloc_logger`
+钩子临时指向自检的回调，逐次问内核主线程的挂起计数，300 次抓栈里挂起期间必须是 0 次（确定性）；第 7 组让主线程
+2 秒里不停分配各种大小，另一条线程连续抓栈，5 秒不涨就判卡死（端到端）。为什么这样设计、反向验证的数字，见
+[挂起主线程抓栈](../architecture/main-thread-stack-capture.md) 第三节。

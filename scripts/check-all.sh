@@ -152,7 +152,7 @@ run_check "export-frame-rate（生产导出滤镜：帧率 + 拼接链 + 分辨�
 # ---- 第 3 组 ----
 shard 3
 run_check "player-clock（悬停 peek 状态机）" scripts/check-player-clock.sh
-run_check "main-thread-watchdog（主线程心跳：没卡不误报、卡了记时长 / context / 栈、stop 之后不记）" scripts/check-main-thread-watchdog.sh
+run_check "main-thread-watchdog（主线程心跳：没卡不误报、卡了记时长 / context / 栈、stop 之后不记；挂起抓栈期间不分配、不卡死）" scripts/check-main-thread-watchdog.sh
 run_check "freeze-frame（定格时间线变换）" scripts/check-freeze-frame.sh
 run_check "preview-composition（预览合成真取帧）" scripts/check-preview-composition.sh
 run_check "text-render（画面文字：渲染图与成片逐点重合）" scripts/check-text-render.sh
