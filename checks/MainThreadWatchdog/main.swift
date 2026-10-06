@@ -3,8 +3,12 @@ import Foundation
 // 主线程心跳看门狗的自检。编译方式见 scripts/check-main-thread-watchdog.sh。
 //
 // 合同（docs/testing/main-thread-stalls.md）：主线程没卡不许误报；卡过阈值记一次，时长对、
-// context 对、栈里有卡住的那个函数；日志文件里有同样的内容；stop 之后不再记；主线程不停分配内存时
-// 连续抓栈不许卡死（第 6 组，挂起期间不许分配：docs/architecture/main-thread-stack-capture.md）。
+// context 对、栈里有卡住的那个函数；日志文件里有同样的内容；stop 之后不再记；挂起主线程期间抓栈线程
+// 不许分配 / 释放内存（第 6 组）、主线程不停分配内存时连续抓栈不许卡死（第 7 组）—— 约束见
+// docs/architecture/main-thread-stack-capture.md。
+
+// 逐行刷新：第 7 组卡死时判卡死的线程用 _exit 退出，不刷缓冲区，前面几组的输出不能丢在里面。
+setvbuf(stdout, nil, _IOLBF, 0)
 
 var failures = 0
 var checks = 0
@@ -90,9 +94,12 @@ stallTheMainThread(milliseconds: 300)
 pump(0.2)
 check(watchdog.recentStalls.count == 2, "stop 之后不该再记：共 \(watchdog.recentStalls.count) 次")
 
-// 6. 挂起主线程抓栈的那几十微秒里不许分配内存：主线程不停分配内存的同时连续抓栈，不许卡死
-//    （CaptureUnderMallocChurn.swift；约束见 docs/architecture/main-thread-stack-capture.md）。
-checkCaptureUnderMallocChurn(seconds: 3)
+// 6. 挂起主线程抓栈的那几十微秒里，抓栈线程一次都不许分配 / 释放内存（确定性：malloc_logger 钩子逐次数，
+//    NoAllocationWhileSuspended.swift；约束见 docs/architecture/main-thread-stack-capture.md）。
+checkNoAllocationWhileSuspended(captures: 300)
+
+// 7. 端到端：主线程不停分配内存的同时连续抓栈，不许卡死（CaptureUnderMallocChurn.swift）。
+checkCaptureUnderMallocChurn(seconds: 2)
 
 print(failures == 0 ? "✓ main-thread-watchdog：\(checks) 项全部通过" : "✗ main-thread-watchdog：\(failures)/\(checks) 项失败")
 exit(failures == 0 ? 0 : 1)

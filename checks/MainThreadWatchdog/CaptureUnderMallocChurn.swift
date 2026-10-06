@@ -2,16 +2,17 @@ import Darwin
 import Foundation
 import Synchronization
 
-// 第 6 组：主线程一边不停分配 / 释放内存，另一条线程一边连续抓它的栈 —— 抓栈不许卡死。
+// 第 7 组（端到端）：主线程一边不停分配 / 释放内存，另一条线程一边连续抓它的栈 —— 抓栈不许卡死。
 //
 // 由来（docs/bugfixes/2026-10-06-watchdog-capture-deadlocks-main-thread.md）：抓栈要先挂起主线程。挂起期间挂起方
 // 只要分配一次内存，碰上主线程被挂起时正握着分配器的锁，挂起方就永远等那把锁，主线程也永远不会被恢复。
 // 原来的写法在挂起期间建 `[UInt]`：南极工程导出两次卡死、只能强制退出；同样的压力下本机 6 轮都在 1 秒内卡死。
 // 约束本身见 docs/architecture/main-thread-stack-capture.md。
 //
-// 为什么靠量、不做成每次必现：分配器的快路径不加锁。2026-10-06 探针：主线程用 zone 的 `force_lock` 或
-// `_malloc_fork_prepare` 握住全部分配器的锁 300 ms，优化构建里别的线程照样分配得出来，挡不住。所以这里让主线程
-// 分配各种大小（大块常走加锁的慢路径）外加 Swift 数组扩容，抓栈线程每秒挂起它成千上万次。
+// 这一组是撞出来的，不是每次必现：分配器的快路径不加锁（2026-10-06 探针：主线程用 zone 的 `force_lock` 或
+// `_malloc_fork_prepare` 握住全部分配器的锁 300 ms，优化构建里别的线程照样分配得出来），撞不撞得上要看两条线程
+// 碰巧落在哪组核上 —— 原写法在这里 10 轮只卡死 5 轮。所以确定性的守卫是第 6 组（逐次数挂起期间的分配），这一组
+// 留着当端到端的复现：主线程分配各种大小（大块常走加锁的慢路径）外加 Swift 数组扩容，抓栈线程每秒挂起它几十万次。
 //
 // 卡死时分配器的锁在被挂起的主线程手里：判卡死的线程只用原子量、write(2) 和 _exit，自己一次都不分配。
 
@@ -45,7 +46,7 @@ func checkCaptureUnderMallocChurn(seconds: Double) {
 
     let captures = state.captures.load(ordering: .relaxed)
     let deepest = state.deepest.load(ordering: .relaxed)
-    print("  第 6 组：主线程不停分配内存的 \(seconds) 秒里抓栈 \(captures) 次，最深 \(deepest) 层，没有卡死")
+    print("  第 7 组：主线程不停分配内存的 \(seconds) 秒里抓栈 \(captures) 次，最深 \(deepest) 层，没有卡死")
     check(captures >= 1_000, "主线程狂分配内存的 \(seconds) 秒里该抓到上千次栈（不然这一组没压到）：\(captures) 次")
     check(deepest >= 3, "抓到的栈该有好几层：最深 \(deepest) 层")
 }
