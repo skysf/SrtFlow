@@ -231,12 +231,14 @@ final class TimelineAudioEngine {
         engine.mainMixerNode.outputVolume = 0
     }
 
-    /// 同样的轨、同样的段，而且每段有没有场景也一样（流开的时候就定了有没有效果链；加上 / 去掉场景要重开流）。
-    private static func sameStructure(_ a: AudioEngineConfig, _ b: AudioEngineConfig) -> Bool {
+    /// 同样的轨、同样的段、每段同样的几何（在时间线哪一段出声、从素材哪一秒起、倍速、文件），而且每段有没有场景也一样
+    ///（`Segment.structure`：这些在开流时就抄死了，有一项不同就得重开流；只有增益、场景的参数、推子能在流活着时换）。
+    /// 2026-10-01 到 10-06 只比 clipID 的顺序：挪一段 / 裁头尾 / 变速 / 换文件之后 `replace` 走了 `updateGains`，画面挪了、
+    /// 声音还按旧位置出（docs/bugfixes/2026-10-06-audio-engine-replace-keeps-old-segment-positions.md）；自检第 13 组钉着。
+    static func sameStructure(_ a: AudioEngineConfig, _ b: AudioEngineConfig) -> Bool {
         guard a.tracks.count == b.tracks.count else { return false }
         return zip(a.tracks, b.tracks).allSatisfy { x, y in
-            x.name == y.name && x.segments.map(\.clipID) == y.segments.map(\.clipID)
-                && x.segments.map { $0.scene != nil } == y.segments.map { $0.scene != nil }
+            x.name == y.name && x.segments.map(\.structure) == y.segments.map(\.structure)
         }
     }
 

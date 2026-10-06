@@ -255,6 +255,9 @@ do {
     }
 }
 
+print("==> 13. 换配置：挪一段 / 裁头 / 裁尾 / 变速 / 换文件之后 replace，必须按新的几何出声（只改音量的仍走快路径，Replace.swift）")
+checkReplace(toneC: toneC, toneD: toneD)
+
 print("\(checks) checks, \(failures) failures")
 if failures == 0 { print("All checks passed") }
 finish(failures == 0 ? 0 : 1)
