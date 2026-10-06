@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 主线程心跳看门狗的自检：主线程没卡不许误报；卡过阈值记一次（时长、context、栈里有卡住的函数）；
-# 日志文件里有同样的内容；stop 之后不再记。合同见 docs/testing/main-thread-stalls.md。
+# 日志文件里有同样的内容；stop 之后不再记；挂起主线程期间抓栈线程不许分配 / 释放内存（第 6 组）、主线程不停
+# 分配内存时连续抓栈不许卡死（第 7 组）—— 约束见 docs/architecture/main-thread-stack-capture.md。
+# 合同见 docs/testing/main-thread-stalls.md。
 #
 # 用法：
 #   scripts/check-main-thread-watchdog.sh
@@ -24,7 +26,29 @@ xcrun swiftc \
   -o "$OUT" \
   Sources/SrtFlow/MainThreadStackCapture.swift \
   Sources/SrtFlow/MainThreadWatchdog.swift \
-  checks/MainThreadWatchdog/main.swift
+  checks/MainThreadWatchdog/main.swift \
+  checks/MainThreadWatchdog/NoAllocationWhileSuspended.swift \
+  checks/MainThreadWatchdog/CaptureUnderMallocChurn.swift
 
+# 第 7 组卡死时，自检进程里判卡死的线程会自己报红退出；这里再兜一道：2 分钟还没跑完就杀掉、判红，
+# 免得 CI 一直挂到作业超时。
 echo "==> 运行"
-"$OUT"
+"$OUT" &
+PID=$!
+(
+  waited=0
+  while kill -0 "${PID}" 2>/dev/null; do
+    if [ "${waited}" -ge 120 ]; then
+      kill -9 "${PID}" 2>/dev/null || true
+      echo "✗ main-thread-watchdog：自检 2 分钟还没跑完，判卡死" >&2
+      exit 0
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+) &
+GUARD=$!
+STATUS=0
+wait "${PID}" || STATUS=$?
+wait "${GUARD}" 2>/dev/null || true
+exit "${STATUS}"
